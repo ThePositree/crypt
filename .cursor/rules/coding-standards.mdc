@@ -1,0 +1,67 @@
+---
+description: Coding standards for the crypt Python codebase
+alwaysApply: true
+---
+
+# Coding standards
+
+## Language
+
+- Python 3.11+, type-hinted everywhere (`from __future__ import annotations`).
+- `mypy --strict` must pass.
+- `ruff check` and `ruff format` must pass.
+- English in code, comments, docstrings, commit messages, all md files.
+
+## Comments
+
+Do **not** narrate code. Only comment non-obvious intent, trade-offs, or
+constraints the code itself cannot express.
+
+```python
+# BAD
+# increment counter
+counter += 1
+
+# GOOD
+# OKX rate limit is 10 req / 2 s per IP+instId; back off for safety.
+counter += 1
+```
+
+## Data contracts
+
+All cross-module payloads are `pydantic` v2 models or `@dataclass(frozen=True)`.
+Never pass naked dicts across module boundaries.
+
+`Signal` is the canonical engine output — defined once, imported everywhere.
+
+## Engines
+
+- Each engine is a subclass of `BaseEngine` with `async def evaluate(ctx) -> Signal`.
+- Pure: no I/O inside `evaluate`. Data is pre-fetched into `ctx`.
+- Must handle missing data gracefully: emit `direction=neutral`,
+  `confidence=0`, and a `rationale` line explaining what was missing.
+- Each engine has a synthetic-data unit test in `tests/engines/`.
+
+## No look-ahead bias
+
+Indicators are computed on **closed** candles only. The current (forming)
+candle is excluded from any calculation. Backtest and live use the same code
+path.
+
+## Imports
+
+- Standard / third-party / local — separated, sorted (ruff isort).
+- Use absolute imports rooted at `crypt`.
+
+## Errors
+
+Never `except Exception: pass`. Either handle specifically and log, or
+re-raise with context.
+
+```python
+try:
+    data = await client.fetch_funding_rate(symbol)
+except ccxt.NetworkError as e:
+    logger.warning("funding fetch failed", symbol=symbol, error=str(e))
+    return None
+```
