@@ -30,6 +30,7 @@ Go to **Service → Variables** and add the following. All are plain text, no qu
 |----------|-------|-------|
 | `TELEGRAM_BOT_TOKEN` | `123456:ABC-...` | From @BotFather |
 | `TELEGRAM_CHAT_ID` | `-100...` or `12345...` | Your Telegram chat/channel ID |
+| `NUMBA_DISABLE_JIT` | `1` | pandas-ta 0.4.x depends on numba/llvmlite; without this flag LLVM initialises at import and hangs indefinitely in CPU-constrained containers |
 
 ### Recommended for the 14-day run
 

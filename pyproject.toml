@@ -28,6 +28,9 @@ dependencies = [
 # Technical-analysis stack. pandas-ta is the first choice; if pandas
 # compatibility bites, swap to `ta` and write an ADR.
 ta = [
+    # pandas-ta 0.4.x (only version available for Python 3.12+) pulls in
+    # numba/llvmlite. In Railway containers set NUMBA_DISABLE_JIT=1 to
+    # prevent LLVM initialisation from hanging on startup.
     "pandas-ta>=0.3.14b",
 ]
 

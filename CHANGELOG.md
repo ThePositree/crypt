@@ -6,6 +6,27 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-05-14 — Fix: pandas-ta 0.4.x numba/LLVM hang on Railway
+
+pandas-ta>=0.4 (only version available for Python 3.12+) added numba as a
+hard dependency. numba initialises LLVM via llvmlite at Python import time —
+before logging is even configured — causing a complete silent hang in
+CPU-constrained Railway containers.
+
+Fix: `NUMBA_DISABLE_JIT=1` is now documented as a required Railway Variable
+(and added to `.env.example`). With JIT disabled numba functions fall back to
+plain Python; indicators remain correct, just slightly slower.
+
+The `<0.4` constraint was tried but is not available for Python 3.12+ on PyPI.
+
+Files:
+- `pyproject.toml` (reverted <0.4 constraint, added explanatory comment)
+- `.env.example` (NUMBA_DISABLE_JIT=1 added)
+- `docs/deploy/railway.md` (moved to Required variables table)
+- `CHANGELOG.md`
+
+---
+
 ## 2026-05-14 — Fix: silent container on Railway deploy (output buffering + health check hang)
 
 Three issues caused the process to appear dead after bytecode compilation:
