@@ -68,6 +68,56 @@ OKX is the primary exchange, but some endpoints may be missing, rate-limited,
 or temporarily down. Engines must degrade gracefully: missing data ⇒ the
 engine emits `neutral` with reduced confidence, never raises into the pipeline.
 
+### When the owner says "fix" / pastes errors (not "continue")
+
+Chat instructions **override** stale assumptions from `IN_PROGRESS.md`. If the
+owner opens a fresh session with logs, tracebacks, CI output, or "this broke",
+treat it as **incident response**, not necessarily "resume the last bullet list".
+
+**Goal:** reproduce → isolate root cause → minimal fix + tests → document so
+the next agent is not blind.
+
+1. **Classify the signal**
+   - Build / lint / typecheck / unit test failure → run the same commands
+     locally (or infer the CI job from the pasted log).
+   - Runtime / deploy / exchange / infra → read any doc the error references
+     (e.g. `docs/deploy/*.md`), then reproduce or state why you cannot.
+
+2. **Reproduce before refactoring**
+   - Prefer one failing command with a stable exit code over guessing.
+   - If reproduction needs secrets or a host you do not have, say so in chat
+     and record what is missing in `IN_PROGRESS.md` (owner-facing "blocked on
+     …").
+
+3. **Fix**
+   - Smallest change that fixes the root cause; add or adjust tests when the
+     failure was a regression or logic bug.
+   - If the fix changes a public contract (CLI, env vars, engine behaviour),
+     update the relevant spec under `docs/` first or in the same change set.
+
+4. **Architectural or policy-changing fixes**
+   - If the fix commits the project to a new trade-off (library, threshold,
+     fallback exchange, deploy shape), add or supersede an ADR — same rule as
+     normal development.
+
+**Which markdown to touch (checklist)**
+
+| Situation | Update |
+|-----------|--------|
+| Any completed fix worth a paper trail | `CHANGELOG.md` (dated; say what broke and how it was fixed). |
+| You fixed something but another agent should verify / deploy | Top of `docs/tasks/IN_PROGRESS.md` — short **next steps** + link to failing command or PR. |
+| The fix closes a task line item | Move that item to `docs/tasks/DONE.md` with the date. |
+| You discovered follow-up risk (flaky test, missing monitoring) | `docs/tasks/BACKLOG.md` with `P0`/`P1`/`P2`. |
+| Behaviour or operator steps changed | Spec under `docs/` or `README.md` if commands / env / flags changed. |
+| Owner-facing deploy or ops behaviour changed | Relevant file under `docs/deploy/` or feature doc. |
+
+**"Continue" vs "fix"**
+
+- **Continue:** default when `IN_PROGRESS.md` describes unfinished work and the
+  owner did not paste a new failure — pick up from **next steps** there.
+- **Fix:** owner-supplied errors take priority; after the fix, reconcile
+  `IN_PROGRESS.md` (remove obsolete next steps, or add new ones if still open).
+
 ---
 
 ## 3. End of every session

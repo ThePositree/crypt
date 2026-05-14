@@ -6,6 +6,18 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-05-14 — AGENTS: incident / "fix this" workflow
+
+Clarified AI-first behaviour when the owner starts a session with errors or
+CI logs instead of "continue": chat overrides stale assumptions, reproduce
+before refactor, minimal fix + tests, and which task/changelog docs to touch.
+
+Files:
+- `AGENTS.md`
+- `.cursor/rules/ai-first-workflow.mdc`
+
+---
+
 ## 2026-05-14 — Session 6: Railway deployment
 
 Railway deployment config for the M1 14-day continuous run.

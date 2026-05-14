@@ -21,6 +21,12 @@ Read in order: `README.md`, `AGENTS.md`, `docs/tasks/ROADMAP.md`,
 Build your local task plan yourself. The owner sets global direction only.
 For non-trivial tasks use the todo tool and keep it current.
 
+## Errors / "fix this"
+
+When the owner pastes failures or asks to fix (not "continue"), follow the
+**incident checklist** in `AGENTS.md` (reproduce → minimal fix + tests →
+reconcile `IN_PROGRESS.md`, `CHANGELOG.md`, `DONE` / `BACKLOG` as appropriate).
+
 ## Before code
 
 For any new engine, sink, or module: write or update its spec under
