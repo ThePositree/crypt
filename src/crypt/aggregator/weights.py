@@ -46,10 +46,7 @@ class WeightsConfig:
         renormalised so they always sum to 1 over SCORING_ENGINES.
         """
         raw: dict[str, float] = self._data.get(regime.value, {})
-        weights = {
-            eng: float(raw.get(eng, 0.0))
-            for eng in SCORING_ENGINES
-        }
+        weights = {eng: float(raw.get(eng, 0.0)) for eng in SCORING_ENGINES}
         total = sum(weights.values())
         if total <= 0:
             equal = 1.0 / len(SCORING_ENGINES)

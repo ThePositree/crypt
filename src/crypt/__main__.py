@@ -2,24 +2,35 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import signal
 import sys
+from datetime import UTC, datetime
+from pathlib import Path
 
 from loguru import logger
 
 from crypt.config import Settings
+from crypt.runtime.health import run_health_check
 from crypt.runtime.orchestrator import Orchestrator
 from crypt.runtime.scheduler import H4Scheduler
 
+_HEARTBEAT_INTERVAL_S = 30 * 60  # 30 minutes
+_OKX_HEALTH_INTERVAL_S = 6 * 60 * 60  # 6 hours
+
 
 def _configure_logging(level: str) -> None:
+    log_dir = Path("logs")
+    log_dir.mkdir(parents=True, exist_ok=True)
     logger.remove()
     logger.add(sys.stderr, level=level, colorize=True, enqueue=True)
     logger.add(
-        "logs/crypt.log",
+        log_dir / "crypt.log",
         level=level,
-        rotation="100 MB",
+        # Rotate at midnight UTC so each day gets its own file.
+        rotation="00:00",
         retention="30 days",
+        compression="gz",
         serialize=True,
         enqueue=True,
     )
@@ -34,10 +45,7 @@ def _parse_args() -> argparse.Namespace:
         "--symbols",
         type=str,
         default="",
-        help=(
-            "Comma-separated OKX SWAP instrument IDs to monitor "
-            "(overrides SYMBOLS env var)"
-        ),
+        help=("Comma-separated OKX SWAP instrument IDs to monitor (overrides SYMBOLS env var)"),
     )
     parser.add_argument(
         "--once",
@@ -50,6 +58,30 @@ def _parse_args() -> argparse.Namespace:
         help="Skip the initial history bootstrap (assume data is already present)",
     )
     return parser.parse_args()
+
+
+async def _heartbeat_loop(settings: Settings, stop_event: asyncio.Event) -> None:
+    """
+    Logs a liveness line every 30 minutes and re-runs the OKX health check
+    every 6 hours so prolonged outages are surfaced between ticks.
+    """
+    last_okx_check = datetime.now(tz=UTC)
+    while not stop_event.is_set():
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(stop_event.wait(), timeout=_HEARTBEAT_INTERVAL_S)
+
+        if stop_event.is_set():
+            break
+
+        now = datetime.now(tz=UTC)
+        elapsed_since_okx = (now - last_okx_check).total_seconds()
+
+        logger.info("Heartbeat: alive at {}", now.isoformat())
+
+        if elapsed_since_okx >= _OKX_HEALTH_INTERVAL_S:
+            logger.info("Periodic OKX health check…")
+            await run_health_check(settings)
+            last_okx_check = now
 
 
 async def _main() -> None:
@@ -78,7 +110,11 @@ async def _main() -> None:
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, _shutdown, sig)
 
+    heartbeat_task: asyncio.Task[None] | None = None
+
     try:
+        await run_health_check(settings)
+
         if not args.no_bootstrap:
             await orchestrator.bootstrap()
 
@@ -86,10 +122,17 @@ async def _main() -> None:
             await orchestrator.tick()
         else:
             scheduler.start()
+            heartbeat_task = asyncio.create_task(
+                _heartbeat_loop(settings, stop_event), name="heartbeat"
+            )
             # Run one tick immediately so we don't wait up to 4h on startup.
             await orchestrator.tick()
             await stop_event.wait()
     finally:
+        if heartbeat_task is not None:
+            heartbeat_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await heartbeat_task
         scheduler.stop()
         await orchestrator.close()
         logger.info("Shutdown complete")

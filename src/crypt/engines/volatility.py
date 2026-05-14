@@ -1,20 +1,22 @@
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 import pandas_ta as ta
 
 from crypt.engines.base import BaseEngine
 from crypt.models import EvaluationContext, Signal, Timeframe, VolRegime
 
 _MIN_H4 = 60
-_RANK_WINDOW = 360    # 60 days * 6 H4 bars / day
+_RANK_WINDOW = 360  # 60 days * 6 H4 bars / day
 _HIGH_RANK = 0.85
 _LOW_RANK = 0.15
 
 
-def _rank_pct(series: np.ndarray, current: float) -> float:
+def _rank_pct(series: npt.NDArray[Any], current: float) -> float:
     """
     Percentile rank of `current` within `series`.
 
@@ -80,7 +82,7 @@ class VolatilityEngine(BaseEngine):
 
         # Use the full available history (up to _RANK_WINDOW bars).
         atr_vals = atr_series.dropna().values
-        close_vals = close.values[-len(atr_vals):]
+        close_vals = close.values[-len(atr_vals) :]
         # Avoid division by zero.
         with np.errstate(invalid="ignore", divide="ignore"):
             atr_pct_history = np.where(close_vals > 0, atr_vals / close_vals, np.nan)

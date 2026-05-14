@@ -70,10 +70,7 @@ def _aggregate_inner(
         equal = 1.0 / len(active_engines)
         eff_weights = dict.fromkeys(active_engines, equal)
     else:
-        eff_weights = {
-            eng: base_weights[eng] / active_weight_sum
-            for eng in active_engines
-        }
+        eff_weights = {eng: base_weights[eng] / active_weight_sum for eng in active_engines}
 
     # Weighted sum of strengths → score.
     score = 0.0
@@ -119,8 +116,7 @@ def _aggregate_inner(
     ]
     # Sort contributing signals by absolute contribution descending.
     contributions = [
-        (eng, eff_weights[eng] * abs(sig_map[eng].strength), sig_map[eng])
-        for eng in active_engines
+        (eng, eff_weights[eng] * abs(sig_map[eng].strength), sig_map[eng]) for eng in active_engines
     ]
     contributions.sort(key=lambda x: x[1], reverse=True)
     for eng, _contrib, sig in contributions:

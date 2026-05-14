@@ -18,7 +18,7 @@ from crypt.engines.regime import RegimeEngine
 from crypt.engines.trend import TrendEngine
 from crypt.engines.volatility import VolatilityEngine
 from crypt.exchange.okx import OKXClient
-from crypt.models import EvaluationContext, Regime, Signal, VolRegime
+from crypt.models import EvaluationContext, Regime, Signal, Timeframe, VolRegime
 from crypt.sinks.base import BaseSink
 from crypt.sinks.console import ConsoleSink
 from crypt.sinks.execution_stub import ExecutionStub
@@ -42,6 +42,9 @@ class Orchestrator:
             api_key=settings.okx_api_key,
             api_secret=settings.okx_api_secret,
             api_passphrase=settings.okx_api_passphrase,
+            max_retries=settings.okx_max_retries,
+            retry_base_delay=settings.okx_retry_base_delay,
+            retry_max_delay=settings.okx_retry_max_delay,
         )
         self._store = ParquetStore(settings.data_dir)
         self._ingestor = Ingestor(self._exchange, self._store, settings.symbols)
@@ -101,9 +104,30 @@ class Orchestrator:
         logger.info("Tick started")
         await self._ingestor.ingest_all()
 
-        tasks = [self._evaluate_symbol(sym) for sym in self._settings.symbols]
-        await asyncio.gather(*tasks, return_exceptions=True)
-        logger.info("Tick complete")
+        symbols = self._settings.symbols
+        n = len(symbols)
+        tasks = [self._evaluate_symbol(sym) for sym in symbols]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        ok = partial = failed = 0
+        for sym, res in zip(symbols, results, strict=True):
+            if isinstance(res, BaseException):
+                logger.error("tick: _evaluate_symbol {} raised: {}", sym, res)
+                failed += 1
+            elif res == "partial":
+                partial += 1
+            elif res == "failed":
+                failed += 1
+            else:
+                ok += 1
+
+        logger.info(
+            "Tick complete: {}/{} symbols OK, {} partial (missing data), {} failed",
+            ok,
+            n,
+            partial,
+            failed,
+        )
 
     async def close(self) -> None:
         """Graceful shutdown: close exchange session and all sinks."""
@@ -118,13 +142,22 @@ class Orchestrator:
     # Per-symbol evaluation
     # ------------------------------------------------------------------
 
-    async def _evaluate_symbol(self, symbol: str) -> None:
+    async def _evaluate_symbol(self, symbol: str) -> str:
+        """
+        Returns "ok", "partial", or raises on hard failure.
+        "partial" means the context was built but some data series were empty.
+        """
         try:
             tick_time = datetime.now(tz=UTC)
             ctx = self._ctx_builder.build(symbol, tick_time)
+            h4 = ctx.candles.get(Timeframe.H4)
+            d1 = ctx.candles.get(Timeframe.D1)
+            is_partial = (h4 is None or h4.empty) or (d1 is None or d1.empty)
             await self._run_engines_and_dispatch(ctx)
+            return "partial" if is_partial else "ok"
         except Exception as exc:
             logger.error("Evaluation failed for {}: {}", symbol, exc)
+            return "failed"
 
     async def _run_engines_and_dispatch(self, ctx: EvaluationContext) -> None:
         # 1. Volatility engine first — sets ctx.vol_regime for regime engine.
@@ -166,10 +199,13 @@ class Orchestrator:
         should_alert = self._filter.should_alert(guarded_verdict)
 
         # 6. Dispatch to sinks.
-        await asyncio.gather(
+        sink_results = await asyncio.gather(
             *[sink.emit(guarded_verdict, should_alert) for sink in self._sinks],
             return_exceptions=True,
         )
+        for sink, res in zip(self._sinks, sink_results, strict=True):
+            if isinstance(res, BaseException):
+                logger.error("sink {}: {}", type(sink).__name__, res)
 
         if should_alert:
             self._filter.record_alert(guarded_verdict)

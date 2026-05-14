@@ -6,7 +6,7 @@ import numpy as np
 import pandas_ta as ta
 
 from crypt.engines.base import BaseEngine
-from crypt.models import EvaluationContext, Signal, Timeframe
+from crypt.models import Direction, EvaluationContext, Signal, Timeframe
 
 _MIN_H4 = 200
 _MIN_D1 = 60
@@ -48,12 +48,7 @@ class TrendEngine(BaseEngine):
         adx_df = ta.adx(high, low, close, length=14)
         atr_series = ta.atr(high, low, close, length=14)
 
-        if (
-            ema50_series is None
-            or ema200_series is None
-            or adx_df is None
-            or atr_series is None
-        ):
+        if ema50_series is None or ema200_series is None or adx_df is None or atr_series is None:
             return self._neutral(
                 ctx,
                 rationale=["Indicator calculation failed (insufficient data)"],
@@ -75,13 +70,11 @@ class TrendEngine(BaseEngine):
         if adx14 < _ADX_THRESHOLD:
             return self._neutral(
                 ctx,
-                rationale=[
-                    f"ADX14={adx14:.1f} below threshold {_ADX_THRESHOLD} — no clear trend"
-                ],
+                rationale=[f"ADX14={adx14:.1f} below threshold {_ADX_THRESHOLD} — no clear trend"],
             )
 
         ema_gap = ema50 - ema200
-        direction = "bullish" if ema_gap > 0 else "bearish"
+        direction: Direction = "bullish" if ema_gap > 0 else "bearish"
 
         # Strength: normalise gap by 3*ATR, scale by ADX/30.
         if atr14 > 0 and not math.isnan(atr14):

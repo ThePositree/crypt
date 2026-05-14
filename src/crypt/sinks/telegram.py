@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import random
 
 from aiogram import Bot
 from aiogram.enums import ParseMode
@@ -53,13 +54,13 @@ class TelegramSink(BaseSink):
                 return
             except Exception as exc:
                 if attempt == _MAX_RETRIES:
-                    logger.error(
-                        "Telegram send failed after {} retries: {}", _MAX_RETRIES, exc
-                    )
+                    logger.error("Telegram send failed after {} retries: {}", _MAX_RETRIES, exc)
                 else:
-                    wait = _RETRY_BACKOFF ** attempt
+                    # Full-jitter: uniform(0.5, 1.5) multiplier avoids
+                    # thundering-herd when multiple symbols retry at once.
+                    wait = (_RETRY_BACKOFF**attempt) * random.uniform(0.5, 1.5)
                     logger.warning(
-                        "Telegram send attempt {}/{} failed ({}), retrying in {:.0f}s",
+                        "Telegram send attempt {}/{} failed ({}), retrying in {:.1f}s",
                         attempt,
                         _MAX_RETRIES,
                         exc,

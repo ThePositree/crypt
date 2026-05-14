@@ -65,13 +65,13 @@ class DecisionFilter:
         if verdict.symbol in self._last_alert:
             last_time, last_direction = self._last_alert[verdict.symbol]
             if now - last_time < self._cooldown and last_direction == verdict.decision:
-                    logger.debug(
-                        "{} suppressed — cooldown ({} remaining)",
-                        verdict.symbol,
-                        self._cooldown - (now - last_time),
-                    )
-                    return False
-                # Direction flip breaks the cooldown.
+                logger.debug(
+                    "{} suppressed — cooldown ({} remaining)",
+                    verdict.symbol,
+                    self._cooldown - (now - last_time),
+                )
+                return False
+            # Direction flip breaks the cooldown.
 
         return True
 

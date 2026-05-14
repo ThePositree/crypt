@@ -6,7 +6,7 @@ import numpy as np
 import pandas_ta as ta
 
 from crypt.engines.base import BaseEngine
-from crypt.models import EvaluationContext, Signal, Timeframe
+from crypt.models import Direction, EvaluationContext, Signal, Timeframe
 
 _MIN_H4 = 50
 
@@ -35,7 +35,7 @@ class MeanRevEngine(BaseEngine):
         close = h4["c"]
 
         rsi_series = ta.rsi(close, length=14)
-        bb_df = ta.bbands(close, length=20, std=2)
+        bb_df = ta.bbands(close, length=20, std=2.0)  # type: ignore[arg-type]
         if rsi_series is None or bb_df is None:
             return self._neutral(
                 ctx,
@@ -107,18 +107,14 @@ class MeanRevEngine(BaseEngine):
         rsi_arr = rsi_series.dropna().values
         if len(rsi_arr) >= 2:
             if overbought:
-                consecutive = int(
-                    np.sum(np.cumprod((rsi_arr[-2::-1] >= 70).astype(int)))
-                )
+                consecutive = int(np.sum(np.cumprod((rsi_arr[-2::-1] >= 70).astype(int))))
             else:
-                consecutive = int(
-                    np.sum(np.cumprod((rsi_arr[-2::-1] <= 30).astype(int)))
-                )
+                consecutive = int(np.sum(np.cumprod((rsi_arr[-2::-1] <= 30).astype(int))))
             if consecutive <= 2:
                 confidence += 0.1
 
         confidence = float(np.clip(confidence, 0.0, 1.0))
-        direction = "bearish" if overbought else "bullish"
+        direction: Direction = "bearish" if overbought else "bullish"
 
         rationale = [
             f"RSI14={rsi14:.1f}, close={close_val:.4f}",

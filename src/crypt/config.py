@@ -28,9 +28,7 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO")
 
     # Symbols to monitor — comma-separated in .env, list in code.
-    symbols: list[str] = Field(
-        default=["SOL-USDT-SWAP", "TON-USDT-SWAP", "XPL-USDT-SWAP"]
-    )
+    symbols: list[str] = Field(default=["SOL-USDT-SWAP", "TON-USDT-SWAP", "XPL-USDT-SWAP"])
 
     # Decision layer
     alert_confidence_threshold: int = Field(default=75, ge=0, le=100)
@@ -42,12 +40,17 @@ class Settings(BaseSettings):
     # Weights config — YAML file with per-regime engine weights.
     weights_path: Path = Field(default=Path("config/weights.yaml"))
 
+    # OKX fetch retry / backoff — tunable without code changes.
+    okx_max_retries: int = Field(default=5, ge=1)
+    okx_retry_base_delay: float = Field(default=2.0, ge=0.0)
+    okx_retry_max_delay: float = Field(default=60.0, ge=0.0)
+
     @field_validator("symbols", mode="before")
     @classmethod
     def _parse_symbols(cls, v: Any) -> list[str]:
         if isinstance(v, str):
             return [s.strip() for s in v.split(",") if s.strip()]
-        return v
+        return list(v)
 
     @property
     def okx_is_authenticated(self) -> bool:

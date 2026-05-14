@@ -15,6 +15,7 @@ from crypt.models import (
     TakerVolumeSnapshot,
     Timeframe,
 )
+from crypt.utils.retry import retry_with_backoff
 
 # Map our Timeframe enum values to ccxt / OKX timeframe strings.
 _TF_MAP: dict[Timeframe, str] = {
@@ -50,9 +51,20 @@ class OKXClient:
         api_key: str = "",
         api_secret: str = "",
         api_passphrase: str = "",
+        max_retries: int = 5,
+        retry_base_delay: float = 2.0,
+        retry_max_delay: float = 60.0,
     ) -> None:
+        self._max_retries = max_retries
+        self._retry_base_delay = retry_base_delay
+        self._retry_max_delay = retry_max_delay
+
         config: dict[str, Any] = {
             "enableRateLimit": True,
+            # 30 s hard cap per request — prevents hung connections from
+            # blocking the tick indefinitely (with max_instances=1 a hung
+            # request would also skip the following tick).
+            "timeout": 30_000,
             "options": {"defaultType": "swap"},
         }
         if api_key and api_secret and api_passphrase:
@@ -73,9 +85,17 @@ class OKXClient:
         limit: int = 300,
     ) -> list[Candle]:
         tf_str = _TF_MAP[timeframe]
+
+        async def _call() -> list[list[Any]]:
+            return await self._exchange.fetch_ohlcv(symbol, tf_str, limit=limit)  # type: ignore[no-any-return]
+
         try:
-            raw: list[list[Any]] = await self._exchange.fetch_ohlcv(
-                symbol, tf_str, limit=limit
+            raw: list[list[Any]] = await retry_with_backoff(
+                _call,
+                max_attempts=self._max_retries,
+                base_delay=self._retry_base_delay,
+                max_delay=self._retry_max_delay,
+                label=f"fetch_ohlcv {symbol}/{tf_str}",
             )
         except Exception as exc:
             logger.warning("fetch_ohlcv {}/{} failed: {}", symbol, tf_str, exc)
@@ -110,9 +130,16 @@ class OKXClient:
         symbol: str,
         limit: int = 168,
     ) -> list[FundingSnapshot] | None:
+        async def _call() -> list[Any]:
+            return await self._exchange.fetch_funding_rate_history(symbol, limit=limit)  # type: ignore[no-any-return]
+
         try:
-            raw = await self._exchange.fetch_funding_rate_history(
-                symbol, limit=limit
+            raw = await retry_with_backoff(
+                _call,
+                max_attempts=self._max_retries,
+                base_delay=self._retry_base_delay,
+                max_delay=self._retry_max_delay,
+                label=f"fetch_funding_history {symbol}",
             )
         except Exception as exc:
             logger.warning("fetch_funding_history {} failed: {}", symbol, exc)
@@ -145,9 +172,18 @@ class OKXClient:
         timeframe: str = "1h",
         limit: int = 168,
     ) -> list[OISnapshot] | None:
-        try:
-            raw = await self._exchange.fetch_open_interest_history(
+        async def _call() -> list[Any]:
+            return await self._exchange.fetch_open_interest_history(  # type: ignore[no-any-return]
                 symbol, timeframe=timeframe, limit=limit
+            )
+
+        try:
+            raw = await retry_with_backoff(
+                _call,
+                max_attempts=self._max_retries,
+                base_delay=self._retry_base_delay,
+                max_delay=self._retry_max_delay,
+                label=f"fetch_oi_history {symbol}",
             )
         except Exception as exc:
             logger.warning("fetch_oi_history {} failed: {}", symbol, exc)
@@ -177,11 +213,22 @@ class OKXClient:
         symbol: str,
         limit: int = 48,
     ) -> list[LongShortRatioSnapshot] | None:
-        # OKX uses the base instrument symbol for rubik endpoints, e.g. BTC-USDT.
-        # For SWAP contracts like BTC-USDT-SWAP we pass the full instId.
+        # /rubik/stat/contracts/long-short-account-ratio requires `ccy` (base
+        # currency, e.g. "SOL"), not the full instId.
+        ccy = symbol.split("-")[0]
+
+        async def _call() -> dict[str, Any]:
+            return await self._exchange.publicGetRubikStatContractsLongShortAccountRatio(  # type: ignore[no-any-return]
+                {"ccy": ccy, "period": "1H", "limit": str(limit)}
+            )
+
         try:
-            response = await self._exchange.publicGetRubikStatContractsLongShortAccountRatio(
-                {"instId": symbol, "period": "1H", "limit": str(limit)}
+            response = await retry_with_backoff(
+                _call,
+                max_attempts=self._max_retries,
+                base_delay=self._retry_base_delay,
+                max_delay=self._retry_max_delay,
+                label=f"fetch_ls_ratio {symbol}",
             )
         except Exception as exc:
             logger.warning("fetch_ls_ratio {} failed: {}", symbol, exc)
@@ -224,11 +271,22 @@ class OKXClient:
         symbol: str,
         limit: int = 48,
     ) -> list[TakerVolumeSnapshot] | None:
-        # Strip the "-SWAP" suffix to get the currency pair for the rubik endpoint.
-        ccy = symbol.replace("-SWAP", "").split("-")[0]
+        # /rubik/stat/taker-volume requires `ccy` (base currency, e.g. "SOL"),
+        # not the full instId.
+        ccy = symbol.split("-")[0]
+
+        async def _call() -> dict[str, Any]:
+            return await self._exchange.publicGetRubikStatTakerVolume(  # type: ignore[no-any-return]
+                {"ccy": ccy, "instType": "CONTRACTS", "period": "1H", "limit": str(limit)}
+            )
+
         try:
-            response = await self._exchange.publicGetRubikStatTakerVolume(
-                {"instId": symbol, "instType": "CONTRACTS", "period": "1H", "limit": str(limit)}
+            response = await retry_with_backoff(
+                _call,
+                max_attempts=self._max_retries,
+                base_delay=self._retry_base_delay,
+                max_delay=self._retry_max_delay,
+                label=f"fetch_taker_volume {symbol}",
             )
         except Exception as exc:
             logger.warning("fetch_taker_volume {} ({}) failed: {}", symbol, ccy, exc)

@@ -1,0 +1,19 @@
+[Unit]
+Description=crypt — ensemble decision system for OKX perpetual futures
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=n-tretyakov
+WorkingDirectory=/home/n-tretyakov/projects/crypt
+EnvironmentFile=/home/n-tretyakov/projects/crypt/.env
+ExecStart=/home/n-tretyakov/.local/bin/uv run python -m crypt
+Restart=always
+RestartSec=10
+# Capture stdout/stderr via journald (accessible with: journalctl -u crypt -f)
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

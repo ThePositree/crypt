@@ -80,13 +80,14 @@ class RegimeEngine(BaseEngine):
             regime = Regime.HIGH_VOL
         elif adx_h4 >= _ADX_TRENDING:
             # H4 strong but D1 weak → cautious, treat as ranging.
-            regime = Regime.TRENDING if (adx_d1 is None or adx_d1 >= _ADX_D1_MIN) else Regime.RANGING
+            regime = (
+                Regime.TRENDING if (adx_d1 is None or adx_d1 >= _ADX_D1_MIN) else Regime.RANGING
+            )
         else:
             regime = Regime.RANGING
 
         rationale = [
-            f"ADX_H4={adx_h4:.1f}"
-            + (f", ADX_D1={adx_d1:.1f}" if adx_d1 is not None else ""),
+            f"ADX_H4={adx_h4:.1f}" + (f", ADX_D1={adx_d1:.1f}" if adx_d1 is not None else ""),
             f"vol_regime={vol_regime}",
             f"→ {regime.value}",
         ]

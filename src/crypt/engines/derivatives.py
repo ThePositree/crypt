@@ -3,7 +3,15 @@ from __future__ import annotations
 import numpy as np
 
 from crypt.engines.base import BaseEngine
-from crypt.models import EvaluationContext, FundingSnapshot, OISnapshot, Signal, Timeframe
+from crypt.models import (
+    Direction,
+    EvaluationContext,
+    FundingSnapshot,
+    LongShortRatioSnapshot,
+    OISnapshot,
+    Signal,
+    Timeframe,
+)
 
 _DIRECTION_THRESHOLD = 0.25
 
@@ -28,9 +36,7 @@ class DerivativesEngine(BaseEngine):
         inputs_missing: list[str] = []
 
         # --- a) Funding sub-signal ---
-        funding_signal, funding_rationale = self._funding_signal(
-            ctx.funding, inputs_missing
-        )
+        funding_signal, funding_rationale = self._funding_signal(ctx.funding, inputs_missing)
 
         if funding_signal is None:
             # No funding data at all — cannot produce a useful signal.
@@ -66,6 +72,7 @@ class DerivativesEngine(BaseEngine):
             )
         )
 
+        direction: Direction
         if strength >= _DIRECTION_THRESHOLD:
             direction = "bullish"
         elif strength <= -_DIRECTION_THRESHOLD:
@@ -91,8 +98,12 @@ class DerivativesEngine(BaseEngine):
 
         rationale = [
             f"funding_signal={funding_signal:+.3f} ({funding_rationale})",
-            f"oi_signal={oi_signal:+.3f} ({oi_rationale})" if oi_signal is not None else "oi: missing",
-            f"ls_signal={ls_signal:+.3f} ({ls_rationale})" if ls_signal is not None else "ls_ratio: missing",
+            f"oi_signal={oi_signal:+.3f} ({oi_rationale})"
+            if oi_signal is not None
+            else "oi: missing",
+            f"ls_signal={ls_signal:+.3f} ({ls_rationale})"
+            if ls_signal is not None
+            else "ls_ratio: missing",
             f"strength={strength:+.3f}, weights=({w_fund:.1f},{w_oi:.1f},{w_ls:.1f})",
         ]
 
@@ -165,7 +176,7 @@ class DerivativesEngine(BaseEngine):
 
     @staticmethod
     def _ls_signal(
-        ls_ratio: list | None,
+        ls_ratio: list[LongShortRatioSnapshot] | None,
         inputs_missing: list[str],
     ) -> tuple[float | None, str]:
         if not ls_ratio or len(ls_ratio) < 2:

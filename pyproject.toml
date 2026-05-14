@@ -92,7 +92,9 @@ plugins = ["pydantic.mypy"]
 [[tool.mypy.overrides]]
 module = [
     "ccxt.*",
+    "pandas.*",
     "pandas_ta.*",
+    "pyarrow.*",
     "apscheduler.*",
 ]
 ignore_missing_imports = true

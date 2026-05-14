@@ -49,8 +49,9 @@ class H4Scheduler:
         )
 
     def stop(self) -> None:
-        self._scheduler.shutdown(wait=False)
-        logger.info("H4Scheduler stopped")
+        if self._scheduler.running:
+            self._scheduler.shutdown(wait=False)
+            logger.info("H4Scheduler stopped")
 
     async def _run(self) -> None:
         now = datetime.now(tz=UTC)
