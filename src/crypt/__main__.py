@@ -22,7 +22,8 @@ _OKX_HEALTH_INTERVAL_S = 6 * 60 * 60  # 6 hours
 def _configure_logging(level: str, log_dir: Path) -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
     logger.remove()
-    logger.add(sys.stderr, level=level, colorize=True, enqueue=True)
+    tty = sys.stderr.isatty()
+    logger.add(sys.stderr, level=level, colorize=tty, enqueue=tty)
     logger.add(
         log_dir / "crypt.log",
         level=level,

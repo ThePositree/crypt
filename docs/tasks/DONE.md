@@ -12,11 +12,13 @@ Railway deployment for the M1 14-day continuous run.
   GitHub auto-deploy, and file extraction methods.
 - Created `docs/decisions/0010-railway-deployment.md` (ADR; status: accepted).
 - Created `railway.toml` — Railpack builder, `uv sync --all-extras --no-dev` build command,
-  `uv run python -m crypt` start command, `ON_FAILURE` restart policy.
+  `uv run --no-dev python -m crypt` start command (avoids default `dev` group on `uv run`),
+  `ON_FAILURE` restart policy.
 - Created `.python-version` — pins Python 3.12 for Railpack.
 - Added `log_dir: Path` field to `Settings` (`config.py`); updated `__main__.py` to accept
   it in `_configure_logging`. On Railway: `LOG_DIR=data/logs` puts log files on the
-  persistent volume alongside parquet files.
+  persistent volume alongside parquet files. Stderr Loguru uses `isatty()` so colorize and
+  `enqueue` apply only in a real terminal (immediate logs on Railway).
 - Updated `.env.example` with `LOG_DIR` documentation.
 - Created `docs/deploy/railway.md` — step-by-step owner checklist (8 steps, including
   volume setup, env vars, monitoring, and exact file-extraction commands).

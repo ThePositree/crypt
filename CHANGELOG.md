@@ -6,6 +6,21 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-05-14 — Railway: `uv run --no-dev` + immediate stderr logs
+
+`uv run` includes the `dev` group by default, so every deploy was reinstalling
+mypy/ruff before the app started. Start command now passes `--no-dev`. Stderr
+logging uses colorize/enqueue only when stderr is a TTY so Railway log streams
+see lines immediately.
+
+Files:
+- `railway.toml`
+- `src/crypt/__main__.py`
+- `docs/deploy/railway.md`
+- `CHANGELOG.md`
+
+---
+
 ## 2026-05-14 — Fix Railway `railway.toml` parse error
 
 Removed invalid TOML line `$schema = ...` (that key belongs in `railway.json` only;

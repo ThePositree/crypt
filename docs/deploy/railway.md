@@ -178,3 +178,5 @@ Railway will email you a restoration link; the volume is permanently deleted aft
 | Service sleeping unexpectedly | Serverless feature still enabled | Go to Service Settings → Networking → disable Serverless |
 | `data/` directory empty after restart | Volume not attached or mounted at wrong path | Verify volume mount path = `/app/data` |
 | Log file missing from volume | `LOG_DIR` env var not set | Set `LOG_DIR=data/logs` in Variables, redeploy |
+| Deploy logs show `Downloading mypy` / `ruff` then long silence | `uv run` syncs the `dev` group by default | `railway.toml` uses `uv run --no-dev`; if you override the start command in the dashboard, keep `--no-dev` |
+| Logs appear late or only after a crash | Loguru `enqueue=True` on a non-TTY stderr | Fixed in code: stderr uses enqueue/colorize only when `stderr` is a TTY (e.g. local terminal) |

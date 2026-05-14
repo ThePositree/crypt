@@ -4,6 +4,8 @@ builder = "RAILPACK"
 buildCommand = "uv sync --all-extras --no-dev"
 
 [deploy]
-startCommand = "uv run python -m crypt"
+# uv includes the `dev` dependency group by default on `uv run` — skip it so
+# the container does not reinstall mypy/ruff on every cold start.
+startCommand = "uv run --no-dev python -m crypt"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
