@@ -1,0 +1,35 @@
+# Engine weights per regime.
+# Values are placeholder — calibrate in M2 against historical OKX H4 data.
+# Weights within each regime must sum to 1.0 across the directional engines
+# (trend, meanrev, derivatives). volatility/regime engines never contribute
+# to the weighted-sum score and their entries here are ignored.
+
+TRENDING:
+  trend:       0.55
+  meanrev:     0.05
+  derivatives: 0.30
+  volatility:  0.10
+
+RANGING:
+  trend:       0.15
+  meanrev:     0.50
+  derivatives: 0.25
+  volatility:  0.10
+
+HIGH_VOL:
+  trend:       0.20
+  meanrev:     0.20
+  derivatives: 0.30
+  volatility:  0.30
+
+# Per-regime decision thresholds on |score|.
+thresholds:
+  TRENDING:  0.25
+  RANGING:   0.30
+  HIGH_VOL:  0.45
+
+# Confidence multiplier based on volatility regime (from VolatilityEngine).
+vol_confidence_multiplier:
+  low:    0.95
+  normal: 1.00
+  high:   0.85

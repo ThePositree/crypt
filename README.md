@@ -15,9 +15,12 @@ This is **not** a trading bot. It is a research-and-alerting system.
 
 ## Status
 
-Pre-MVP. Project scaffold only. No engines implemented yet.
+**M1 code complete — pending live smoke test.**
+All engines, aggregator, decision layer, sinks, and runtime are implemented.
+42 synthetic-data unit tests pass. Next step: live OKX connectivity test
+and XPL-USDT-SWAP symbol verification.
 See `docs/tasks/ROADMAP.md` for milestones and `docs/tasks/IN_PROGRESS.md` for
-what is currently being worked on.
+what the next session should do.
 
 ## Stack
 
@@ -49,13 +52,18 @@ Anyone (human or agent) contributing should first read:
 
 ## Quick start
 
-> Not runnable yet. This section will be filled in once the MVP wiring lands.
-
 ```bash
-# placeholder
-uv sync
-cp .env.example .env  # fill TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
-uv run python -m crypt --symbols SOL-USDT-SWAP,TON-USDT-SWAP,XPL-USDT-SWAP
+uv sync --all-extras
+cp .env.example .env   # fill TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
+
+# One-shot tick (bootstrap + evaluate once, no scheduler):
+uv run python -m crypt --once
+
+# Live loop (runs every 4h):
+uv run python -m crypt
+
+# Custom symbols:
+uv run python -m crypt --symbols SOL-USDT-SWAP,TON-USDT-SWAP
 ```
 
 ## Layout

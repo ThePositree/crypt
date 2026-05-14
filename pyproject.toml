@@ -3,7 +3,7 @@ name = "crypt"
 version = "0.0.0"
 description = "Ensemble decision system for OKX perpetual futures"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = { text = "Proprietary" }
 authors = [{ name = "n-tretyakov" }]
 
@@ -81,7 +81,7 @@ known-first-party = ["crypt"]
 quote-style = "double"
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
 warn_unused_ignores = true
 warn_redundant_casts = true

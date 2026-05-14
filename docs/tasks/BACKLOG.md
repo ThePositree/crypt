@@ -13,46 +13,29 @@ finished.
 
 ## P0 — needed for MVP wiring
 
-- [ ] `pyproject.toml` and `uv` project setup with deps pinned to latest
-      compatible majors (`ccxt`, `pandas`, `pandas-ta`, `pydantic`,
-      `pydantic-settings`, `APScheduler`, `aiogram`, `loguru`, `pytest`,
-      `ruff`, `mypy`, `pyarrow`).
-- [ ] `src/crypt/config.py` — `pydantic-settings` loading `.env` + optional
-      YAML weights config.
-- [ ] `src/crypt/models.py` — `Candle`, `FundingSnapshot`, `OISnapshot`,
-      `LongShortRatioSnapshot`, `TakerVolumeSnapshot`, `Regime`, `Signal`,
-      `Verdict`.
-- [ ] `src/crypt/exchange/base.py` — `ExchangeClient` Protocol.
-- [ ] `src/crypt/exchange/okx.py` — OKX implementation via `ccxt`.
-      Includes the implicit `rubik/stat` endpoints for long/short ratio and
-      taker volume (ccxt does not expose these as unified methods).
-- [ ] `src/crypt/data/store.py` — Parquet read/write per `data/<symbol>/`.
-- [ ] `src/crypt/data/ingestor.py` — schedulable pull jobs per data type.
-- [ ] `src/crypt/data/context.py` — build `EvaluationContext` from the store.
-- [ ] `src/crypt/engines/base.py` — `BaseEngine` ABC with `evaluate(ctx)`.
-- [ ] `src/crypt/engines/trend.py` — see `docs/engines/trend.md`.
-- [ ] `src/crypt/engines/meanrev.py` — see `docs/engines/meanrev.md`.
-- [ ] `src/crypt/engines/derivatives.py` — see `docs/engines/derivatives.md`.
-- [ ] `src/crypt/engines/volatility.py` — see `docs/engines/volatility.md`.
-- [ ] `src/crypt/engines/regime.py` — see `docs/engines/regime.md`.
-- [ ] `src/crypt/aggregator/weights.py` + `ensemble.py` — see
-      `docs/engines/aggregator.md`.
-- [ ] `src/crypt/decision/filters.py` — confidence threshold + cooldown.
-- [ ] `src/crypt/sinks/{telegram,jsonlog,console,execution_stub}.py`.
-- [ ] `src/crypt/runtime/{scheduler,orchestrator}.py`.
-- [ ] `src/crypt/__main__.py` — CLI: `uv run python -m crypt --symbols ...`.
-- [ ] Per-engine synthetic-data unit tests under `tests/engines/`.
-- [ ] Verify `XPL-USDT-SWAP` is a real OKX SWAP instrument; if not, ask
-      owner for a replacement.
+- [x] `pyproject.toml` and `uv` project setup — done.
+- [x] `src/crypt/config.py` — done.
+- [x] `src/crypt/models.py` — done.
+- [x] `src/crypt/exchange/base.py` + `okx.py` — done.
+- [x] `src/crypt/data/store.py` + `ingestor.py` + `context.py` — done.
+- [x] `src/crypt/engines/` — all five engines done.
+- [x] `src/crypt/aggregator/` — done.
+- [x] `src/crypt/decision/filters.py` — done.
+- [x] `src/crypt/sinks/` — done.
+- [x] `src/crypt/runtime/` + `__main__.py` — done.
+- [x] Per-engine unit tests (42 tests) — done.
+- [ ] **Verify `XPL-USDT-SWAP` on OKX** — needs live network test.
+- [ ] **Smoke-test against OKX live API** — run `--once`, check console output.
+- [ ] **mypy clean pass** — run `uv run mypy src/` and fix type errors.
 
 ## P1 — MVP polish
 
-- [ ] Initial `weights.yaml` — placeholder values, to be overwritten by M2.
-- [ ] First-run bootstrap script: fetches the last ≥ 200 H4 candles per
-      symbol on cold start so indicators have warm-up data.
-- [ ] Graceful shutdown on `SIGTERM` / `SIGINT`.
+- [x] Initial `weights.yaml` — placeholder values, to be overwritten by M2.
+- [x] Bootstrap: `Orchestrator.bootstrap()` calls `ingest_all()` on cold start.
+- [x] Graceful shutdown on `SIGTERM` / `SIGINT` — in `__main__.py`.
 - [ ] Health-check helper that proves OKX connectivity and Telegram works.
 - [ ] Logging configuration (loguru): file + stdout, JSON in file.
+      (`__main__.py` has basic setup; needs the file sink wired up).
 
 ## P1 — M2 backtest harness
 

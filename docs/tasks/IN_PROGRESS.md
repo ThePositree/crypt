@@ -1,21 +1,25 @@
 # In progress
 
-Nothing is currently in progress. The previous session finished cleanly.
+Nothing is currently in progress. Session 2 finished cleanly.
 
 ## Next agent: where to start
 
-The scaffold (M0) is complete. The next session should begin **M1** by
-picking the first cluster of P0 items from `BACKLOG.md`:
+M1 code layer is complete. The next session should focus on **validation and
+MVP wiring**:
 
-1. `pyproject.toml` with `uv` and pinned dependencies.
-2. `src/crypt/config.py` (pydantic-settings).
-3. `src/crypt/models.py` (typed data contracts).
-4. `src/crypt/exchange/{base.py,okx.py}` (ccxt-backed OKX client, with
-   smoke test against the public OHLCV endpoint for `BTC-USDT-SWAP`).
-5. **Verify `XPL-USDT-SWAP` exists on OKX** — if not, ask the owner for a
-   replacement before continuing.
-
-Use Context7 (`/ccxt/ccxt` and `/websites/okx_docs-v5_en`) for any API
-detail. Write the spec for any module that does not yet have one in
-`docs/engines/` before writing its implementation. Update this file as work
-starts and ends.
+1. **Verify `XPL-USDT-SWAP` on OKX** — run `uv run python -m crypt --once
+   --symbols XPL-USDT-SWAP` (requires network). If the symbol does not exist,
+   ask the owner for a replacement and update `SYMBOLS` in `.env.example` and
+   `README.md`.
+2. **Smoke test against OKX** — run `uv run python -m crypt --once` with a
+   real `.env` and verify that candle data is fetched and a verdict is printed
+   to the console. Check for any OKX response-shape surprises in `okx.py`
+   (especially the `rubik/stat` endpoints — column names may differ from what
+   was assumed).
+3. **Bootstrap script** (BACKLOG P1) — first-run helper that fetches ≥ 200
+   H4 candles before the scheduler starts. Currently `bootstrap()` in
+   `Orchestrator` calls `ingest_all()` which should already do this; verify.
+4. **Logging configuration** (BACKLOG P1) — loguru file sink with JSON mode.
+5. **mypy** — run `uv run mypy src/` and fix type errors that surface.
+6. **Health-check helper** — verify OKX + Telegram connectivity on startup.
+7. Update `README.md` Quick start section (no longer a placeholder).
