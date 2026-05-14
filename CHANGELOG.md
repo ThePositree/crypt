@@ -6,6 +6,17 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-05-14 — Fix Railway `railway.toml` parse error
+
+Removed invalid TOML line `$schema = ...` (that key belongs in `railway.json` only;
+bare TOML keys cannot start with `$`). Railway deploy config now parses.
+
+Files:
+- `railway.toml`
+- `CHANGELOG.md`
+
+---
+
 ## 2026-05-14 — AGENTS: incident / "fix this" workflow
 
 Clarified AI-first behaviour when the owner starts a session with errors or
