@@ -38,7 +38,9 @@ def _check_disk_space(settings: Settings) -> None:
 
 
 async def _check_okx(settings: Settings) -> None:
-    exchange: ccxt.okx = ccxt.okx({"enableRateLimit": True, "options": {"defaultType": "swap"}})
+    exchange: ccxt.okx = ccxt.okx(
+        {"enableRateLimit": True, "timeout": 30_000, "options": {"defaultType": "swap"}}
+    )
     try:
         # fetch_time() is a lightweight public endpoint (GET /api/v5/public/time).
         await exchange.fetch_time()

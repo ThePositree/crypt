@@ -6,6 +6,23 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-05-14 — Fix: silent container on Railway deploy (output buffering + health check hang)
+
+Three issues caused the process to appear dead after bytecode compilation:
+1. `python -u` not set → Python buffered stderr in non-TTY container, log lines never flushed.
+2. Health check created `ccxt.okx` without `"timeout": 30_000` → `load_markets()` could hang indefinitely.
+3. Railpack auto-detects start command without `--no-dev` → dev packages (mypy/ruff) installed on every start, adding ~30-60 s delay before Python even booted.
+
+Fixes: `railway.toml` start command changed to `uv run --no-dev python -u -m crypt`; `health.py` ccxt instance gets explicit 30 s timeout; `railway.md` updated with `PYTHONUNBUFFERED=1` recommendation and expanded troubleshooting table.
+
+Files:
+- `railway.toml`
+- `src/crypt/runtime/health.py`
+- `docs/deploy/railway.md`
+- `CHANGELOG.md`
+
+---
+
 ## 2026-05-14 — Railway: `uv run --no-dev` + immediate stderr logs
 
 `uv run` includes the `dev` group by default, so every deploy was reinstalling

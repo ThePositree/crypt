@@ -39,6 +39,7 @@ Go to **Service → Variables** and add the following. All are plain text, no qu
 | `LOG_LEVEL` | `INFO` | |
 | `LOG_DIR` | `data/logs` | **Important:** puts log files on the persistent volume so they survive 14 days |
 | `ALERT_CONFIDENCE_THRESHOLD` | `75` | |
+| `PYTHONUNBUFFERED` | `1` | Prevents Python from buffering stdout/stderr — ensures log lines appear in the Railway log viewer immediately |
 
 ### Optional (not used in MVP)
 
@@ -178,5 +179,6 @@ Railway will email you a restoration link; the volume is permanently deleted aft
 | Service sleeping unexpectedly | Serverless feature still enabled | Go to Service Settings → Networking → disable Serverless |
 | `data/` directory empty after restart | Volume not attached or mounted at wrong path | Verify volume mount path = `/app/data` |
 | Log file missing from volume | `LOG_DIR` env var not set | Set `LOG_DIR=data/logs` in Variables, redeploy |
-| Deploy logs show `Downloading mypy` / `ruff` then long silence | `uv run` syncs the `dev` group by default | `railway.toml` uses `uv run --no-dev`; if you override the start command in the dashboard, keep `--no-dev` |
-| Logs appear late or only after a crash | Loguru `enqueue=True` on a non-TTY stderr | Fixed in code: stderr uses enqueue/colorize only when `stderr` is a TTY (e.g. local terminal) |
+| Deploy logs show `Downloading mypy` / `ruff` then long silence | `uv run` syncs the `dev` group by default; Railpack auto-detects the start command and may omit `--no-dev` | `railway.toml` uses `uv run --no-dev`; verify the start command in the Railway dashboard matches `uv run --no-dev python -u -m crypt` |
+| No log output at all after bytecode compilation | Python buffers stdout/stderr when not a TTY; Railway's log collector sees nothing until the buffer flushes | Fixed in code: `python -u` flag forces unbuffered I/O. You can also add `PYTHONUNBUFFERED=1` to Railway Variables as a belt-and-suspenders measure. |
+| Logs appear late or only after a crash | Loguru `enqueue=True` on a non-TTY stderr | Fixed in code: stderr uses enqueue/colorize only when `stderr` is a TTY (e.g. local terminal); `python -u` ensures the OS-level buffer is also bypassed |
