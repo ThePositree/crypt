@@ -21,15 +21,16 @@ tested, and hardened. Reliability features complete: retry with backoff on all
 OKX fetch calls, 30 s ccxt timeout, heartbeat loop, daily log rotation, systemd
 unit, disk-space guard, and tick summary logging.
 
+Railway deployment config is ready (`railway.toml`, `.python-version`, ADR-0010).
+
 42 synthetic-data unit tests pass; mypy 0 errors (36 files); ruff clean.
 
 **Owner action required:**
 1. Fill `.env` with `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`.
 2. Run `uv run python -m crypt --once` — confirm Telegram alert arrives.
-3. Start continuous run (see "Running as a service" below or quick-start).
+3. Deploy to Railway → follow `docs/deploy/railway.md` (8-step checklist).
 
-See `docs/tasks/ROADMAP.md` for milestones and `docs/tasks/IN_PROGRESS.md` for
-next steps.
+See `docs/tasks/ROADMAP.md` for milestones.
 
 ## Stack
 
@@ -75,7 +76,17 @@ uv run python -m crypt
 uv run python -m crypt --symbols SOL-USDT-SWAP,TON-USDT-SWAP
 ```
 
-## Running as a service
+## Deploying to Railway (recommended for 14-day run)
+
+Follow the step-by-step checklist in `docs/deploy/railway.md`.
+
+Short version:
+1. Connect GitHub repo to Railway → branch `master`.
+2. Add environment variables (see checklist for full list).
+3. Attach a persistent volume at `/app/data`; set `LOG_DIR=data/logs`.
+4. Confirm build succeeds and Telegram alert arrives.
+
+## Running as a service (local VPS / Linux)
 
 The `deploy/crypt.service` systemd unit runs the process under your user account
 with automatic restart on crash.

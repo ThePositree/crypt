@@ -6,6 +6,24 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-05-14 — Session 6: Railway deployment
+
+Railway deployment config for the M1 14-day continuous run.
+
+Files created/modified:
+- `railway.toml` — Railpack builder, production install, start command, restart policy.
+- `.python-version` — pins Python 3.12.
+- `src/crypt/config.py` — added `log_dir` field (env: `LOG_DIR`, default `logs/`).
+- `src/crypt/__main__.py` — `_configure_logging` now accepts `log_dir` from settings.
+- `.env.example` — documented `LOG_DIR`.
+- `docs/decisions/0010-railway-deployment.md` — ADR (accepted).
+- `docs/deploy/railway.md` — 8-step owner deployment guide with file extraction commands.
+- `docs/tasks/DONE.md`, `docs/tasks/IN_PROGRESS.md`, `docs/tasks/BACKLOG.md` — updated.
+
+ADRs introduced: 0010.
+
+---
+
 ## 2026-05-14 — Session 5: reliability hardening
 
 All P0/P1/P2 reliability items from BACKLOG completed. System is now ready

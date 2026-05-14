@@ -19,8 +19,7 @@ _HEARTBEAT_INTERVAL_S = 30 * 60  # 30 minutes
 _OKX_HEALTH_INTERVAL_S = 6 * 60 * 60  # 6 hours
 
 
-def _configure_logging(level: str) -> None:
-    log_dir = Path("logs")
+def _configure_logging(level: str, log_dir: Path) -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
     logger.remove()
     logger.add(sys.stderr, level=level, colorize=True, enqueue=True)
@@ -94,7 +93,7 @@ async def _main() -> None:
             update={"symbols": [s.strip() for s in args.symbols.split(",") if s.strip()]}
         )
 
-    _configure_logging(settings.log_level)
+    _configure_logging(settings.log_level, settings.log_dir)
     logger.info("Starting crypt — symbols: {}", settings.symbols)
 
     orchestrator = Orchestrator(settings)

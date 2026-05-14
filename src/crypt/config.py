@@ -36,6 +36,9 @@ class Settings(BaseSettings):
 
     # Storage
     data_dir: Path = Field(default=Path("data"))
+    # Log directory. Override with LOG_DIR=data/logs on Railway so that log
+    # files land on the persistent volume alongside parquet files.
+    log_dir: Path = Field(default=Path("logs"))
 
     # Weights config — YAML file with per-regime engine weights.
     weights_path: Path = Field(default=Path("config/weights.yaml"))

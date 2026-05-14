@@ -4,6 +4,25 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-05-14 — Session 6: Railway deployment config
+
+Railway deployment for the M1 14-day continuous run.
+
+- Researched Railpack (Railway's build system), Railway Volumes, log retention, billing,
+  GitHub auto-deploy, and file extraction methods.
+- Created `docs/decisions/0010-railway-deployment.md` (ADR; status: accepted).
+- Created `railway.toml` — Railpack builder, `uv sync --all-extras --no-dev` build command,
+  `uv run python -m crypt` start command, `ON_FAILURE` restart policy.
+- Created `.python-version` — pins Python 3.12 for Railpack.
+- Added `log_dir: Path` field to `Settings` (`config.py`); updated `__main__.py` to accept
+  it in `_configure_logging`. On Railway: `LOG_DIR=data/logs` puts log files on the
+  persistent volume alongside parquet files.
+- Updated `.env.example` with `LOG_DIR` documentation.
+- Created `docs/deploy/railway.md` — step-by-step owner checklist (8 steps, including
+  volume setup, env vars, monitoring, and exact file-extraction commands).
+
+---
+
 ## 2026-05-14 — Session 5: reliability hardening
 
 All P0/P1/P2 reliability BACKLOG items completed.

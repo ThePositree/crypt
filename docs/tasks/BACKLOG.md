@@ -71,6 +71,12 @@ single Python crash can silently end the run in hours, not days.
 
 - [x] **Tick summary log line** — done.
 
+## P1 — Railway post-deploy monitoring
+
+- [ ] After 14-day run: extract `data/*.parquet` and `data/logs/` using `railway run`
+      (see `docs/deploy/railway.md` Step 7 for exact commands).
+- [ ] Upgrade Railway plan to Pro if log retention > 7 days is needed mid-run.
+
 ## P2 — later
 
 - [ ] Sentiment engine (CryptoPanic freemium).
