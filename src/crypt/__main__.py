@@ -23,7 +23,16 @@ def _configure_logging(level: str, log_dir: Path) -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
     logger.remove()
     tty = sys.stderr.isatty()
-    logger.add(sys.stderr, level=level, colorize=tty, enqueue=tty)
+    # INFO and below → stdout so Railway tags them [inf] instead of [err].
+    logger.add(
+        sys.stdout,
+        level=level,
+        filter=lambda r: r["level"].no < 30,  # no=30 is WARNING
+        colorize=tty,
+        enqueue=tty,
+    )
+    # WARNING and above → stderr (Railway [err] is appropriate here).
+    logger.add(sys.stderr, level="WARNING", colorize=tty, enqueue=tty)
     logger.add(
         log_dir / "crypt.log",
         level=level,

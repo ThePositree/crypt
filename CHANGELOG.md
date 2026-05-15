@@ -6,6 +6,21 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-05-15 — Fix: all log levels tagged `[err]` in Railway
+
+**Root cause:** Loguru writes all levels to `sys.stderr` by default. Railway
+labels every byte from stderr as `[err]`, regardless of log level.
+
+**Fix:** Split the console sink in `_configure_logging`:
+- `DEBUG` / `INFO` → `sys.stdout` (Railway: `[inf]`)
+- `WARNING` and above → `sys.stderr` (Railway: `[err]`, correct)
+
+File log (`crypt.log`) unchanged — still receives all levels.
+
+Files touched: `src/crypt/__main__.py`, `CHANGELOG.md`
+
+---
+
 ## 2026-05-15 — Fix: aiogram 3.7.0 broke `Bot` initializer (`parse_mode` removed)
 
 **Root cause:** aiogram 3.7.0 removed `parse_mode`, `disable_web_page_preview`,
