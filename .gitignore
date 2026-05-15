@@ -34,9 +34,9 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 
-# Project data
-data/
-logs/
+# Project data (runtime artefacts — root-level only, not src/crypt/data/)
+/data/
+/logs/
 *.parquet
 *.log
 *.sqlite

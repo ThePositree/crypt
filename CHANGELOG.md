@@ -6,6 +6,22 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-05-15 — Fix: `ModuleNotFoundError: No module named 'crypt.data'` on Railway
+
+**Root cause:** `.gitignore` contained `data/` (no leading slash), which matched any
+directory named `data` anywhere in the tree — including `src/crypt/data/`.
+Railway builds from the git repo, so the entire Python package `crypt.data`
+(context, ingestor, store) was absent from the container.
+
+**Fix:** Changed `data/` → `/data/` and `logs/` → `/logs/` in `.gitignore`
+(leading slash limits the rule to the repository root only).
+Added `src/crypt/data/__init__.py`, `context.py`, `ingestor.py`, `store.py`
+to git tracking.
+
+Files touched: `.gitignore`, `CHANGELOG.md`
+
+---
+
 ## 2026-05-15 — Fix: slow shutdown (SIGINT did not interrupt in-flight awaits)
 
 ### What broke
