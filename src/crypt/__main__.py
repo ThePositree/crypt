@@ -102,10 +102,16 @@ async def _main() -> None:
 
     loop = asyncio.get_running_loop()
     stop_event = asyncio.Event()
+    main_task = asyncio.current_task()
 
     def _shutdown(sig: signal.Signals) -> None:
         logger.info("Received {}, shutting down…", sig.name)
         stop_event.set()
+        # Cancel the main task so that any in-progress await (health check,
+        # bootstrap, tick) is interrupted immediately rather than running
+        # to completion before the stop_event is checked.
+        if main_task is not None and not main_task.done():
+            main_task.cancel()
 
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, _shutdown, sig)
@@ -128,6 +134,8 @@ async def _main() -> None:
             # Run one tick immediately so we don't wait up to 4h on startup.
             await orchestrator.tick()
             await stop_event.wait()
+    except asyncio.CancelledError:
+        pass
     finally:
         if heartbeat_task is not None:
             heartbeat_task.cancel()

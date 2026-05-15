@@ -6,6 +6,9 @@ buildCommand = "uv sync --all-extras --no-dev"
 [deploy]
 # uv includes the `dev` dependency group by default on `uv run` — skip it so
 # the container does not reinstall mypy/ruff on every cold start.
-startCommand = "uv run --no-dev python -u -m crypt"
+# PYTHONPATH=/app/src ensures src/crypt/ is found before the deprecated
+# stdlib crypt.py module (Python 3.12), which would otherwise shadow our
+# package and cause a silent zero-exit on startup.
+startCommand = "PYTHONPATH=/app/src uv run --no-dev python -u -m crypt"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10

@@ -6,6 +6,43 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-05-15 — Fix: slow shutdown (SIGINT did not interrupt in-flight awaits)
+
+### What broke
+SIGINT only set `stop_event`, but long-running coroutines (`run_health_check`,
+`bootstrap`, `tick`) were awaited directly with no cancellation path.
+Shutdown took up to ~30 s because those operations ran to completion before
+`stop_event.wait()` was ever reached.
+
+### Fix
+Signal handler now also calls `main_task.cancel()` on the main asyncio task.
+`CancelledError` is raised at the current `await` point and propagates up
+through `asyncio.gather` chains; `except asyncio.CancelledError: pass` in
+`_main()` ensures the `finally` cleanup block still runs.
+
+Files touched: `src/crypt/__main__.py`.
+
+---
+
+## 2026-05-15 — Fix: root cause of silent zero-exit (stdlib crypt.py name collision)
+
+Package name `crypt` collides with the deprecated Python 3.12 stdlib module
+`crypt.py`. In Python's module resolution order, stdlib comes before
+site-packages and the editable-install `src/` path. So `python -m crypt`
+silently executed the stdlib module (no `__main__` block → exit 0, no output).
+
+Fix: prefix the start command with `PYTHONPATH=/app/src` (railway.toml).
+This puts `src/` at the front of `sys.path` before stdlib, so our package
+is found first. Same fix required locally: `PYTHONPATH=src` in `.env`.
+
+Files:
+- `railway.toml`
+- `.env.example`
+- `docs/deploy/railway.md`
+- `CHANGELOG.md`
+
+---
+
 ## 2026-05-14 — Fix: pandas-ta 0.4.x numba/LLVM hang on Railway
 
 pandas-ta>=0.4 (only version available for Python 3.12+) added numba as a

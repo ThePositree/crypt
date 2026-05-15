@@ -31,6 +31,7 @@ Go to **Service → Variables** and add the following. All are plain text, no qu
 | `TELEGRAM_BOT_TOKEN` | `123456:ABC-...` | From @BotFather |
 | `TELEGRAM_CHAT_ID` | `-100...` or `12345...` | Your Telegram chat/channel ID |
 | `NUMBA_DISABLE_JIT` | `1` | pandas-ta 0.4.x depends on numba/llvmlite; without this flag LLVM initialises at import and hangs indefinitely in CPU-constrained containers |
+| `PYTHONPATH` | `/app/src` | Already embedded in `railway.toml` `startCommand`; only needed if you override the start command in the dashboard |
 
 ### Recommended for the 14-day run
 
@@ -181,5 +182,6 @@ Railway will email you a restoration link; the volume is permanently deleted aft
 | `data/` directory empty after restart | Volume not attached or mounted at wrong path | Verify volume mount path = `/app/data` |
 | Log file missing from volume | `LOG_DIR` env var not set | Set `LOG_DIR=data/logs` in Variables, redeploy |
 | Deploy logs show `Downloading mypy` / `ruff` then long silence | `uv run` syncs the `dev` group by default; Railpack auto-detects the start command and may omit `--no-dev` | `railway.toml` uses `uv run --no-dev`; verify the start command in the Railway dashboard matches `uv run --no-dev python -u -m crypt` |
-| No log output at all after bytecode compilation | Python buffers stdout/stderr when not a TTY; Railway's log collector sees nothing until the buffer flushes | Fixed in code: `python -u` flag forces unbuffered I/O. You can also add `PYTHONUNBUFFERED=1` to Railway Variables as a belt-and-suspenders measure. |
+| No log output at all after bytecode compilation — process exits with code 0 | Package name `crypt` conflicts with deprecated Python 3.12 stdlib module; stdlib path comes before site-packages in `sys.path` so `python -m crypt` silently runs the stdlib module and exits | Fixed in `railway.toml`: start command is now `PYTHONPATH=/app/src uv run --no-dev python -u -m crypt`. Locally set `PYTHONPATH=src` in your shell (or copy `.env.example` to `.env`). |
+| No log output at all after bytecode compilation — process appears to hang | Python buffers stdout/stderr when not a TTY; Railway's log collector sees nothing until the buffer flushes | Fixed in code: `python -u` flag forces unbuffered I/O. You can also add `PYTHONUNBUFFERED=1` to Railway Variables as a belt-and-suspenders measure. |
 | Logs appear late or only after a crash | Loguru `enqueue=True` on a non-TTY stderr | Fixed in code: stderr uses enqueue/colorize only when `stderr` is a TTY (e.g. local terminal); `python -u` ensures the OS-level buffer is also bypassed |
