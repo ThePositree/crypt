@@ -1,8 +1,12 @@
 # ADR-0006: Liquidation analytics deferred (OKX exposes WS only)
 
-- **Status**: accepted
+- **Status**: accepted — complemented by [ADR-0012](0012-liquidations-roadmap.md) (post-M2 roadmap)
 - **Date**: 2026-05-13
 - **Owner**: agent
+
+> **Note (2026-05-15)**: ADR-0012 records the post-M2 plan for this
+> engine without superseding the analysis below. The MVP-phase
+> reasoning here is still valid.
 
 ## Context
 

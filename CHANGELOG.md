@@ -6,6 +6,84 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-05-15 — Planning session: post-M1 docs / specs / backlog refresh
+
+Pure documentation session. **No code changes.** The M1 14-day Railway
+run is in progress; pushes to `master` would trigger a redeploy and
+downtime (ADR-0010), so all work landed under `docs/` only.
+
+Owner asked the agent to brainstorm and document what else can land
+during and after the 14-day window, with extra detail so future agents
+can implement without re-deriving the design.
+
+### New documents
+
+- `docs/backtest.md` — full M2 harness spec (CLI, data preconditions,
+  no-look-ahead guard, walk-forward CV, weight optimiser with sanity
+  guards, bootstrap CI, baseline comparisons, HTML report, backfill
+  CLI, tests).
+- `docs/paper_trading.md` — full M3 spec (ledger schema, entry / exit
+  logic, SL/TP via ATR, restart recovery, P&L attribution, calibration
+  curve, owner ledger via Telegram commands, tests).
+- `docs/operator.md` — owner-facing runbook (anatomy of an alert,
+  red / green flags, post-calibration recipe, escalation).
+- `docs/operations/telegram_commands.md` — `/status`, `/last`,
+  `/explain`, `/health`, `/threshold`, `/pause`, `/trade`, etc.
+- `docs/operations/observability.md` — per-tick metrics jsonl,
+  error-to-Telegram webhook, engine telemetry log lines, OKX
+  instrumentation, heartbeat enrichment.
+- `docs/operations/ci.md` — GitHub Actions workflow, branch
+  protection, pre-commit hooks.
+- `docs/post_mortems/_template.md` — incident post-mortem template.
+- `docs/post_m1_code_fixes.md` — 8 latent issues to address after the
+  run (closed-flag invariant, critical-inputs guard, anti-flip-flop,
+  produced_at semantics, confidence-scale mismatch, XPL warm-up,
+  multiplier cap, `InputKey` enum).
+
+### New engine specs (no code yet — implement post-M2)
+
+- `docs/engines/sentiment.md` — CryptoPanic-backed (background polling,
+  graceful degrade, vote-weight calibration in M2).
+- `docs/engines/liquidations.md` — three implementation paths; default
+  Path B (Coinglass).
+- `docs/engines/btc_context.md` — BTC-as-leader alignment multiplier +
+  crisis filter; not part of weighted-sum score.
+- `docs/engines/calendar.md` — `config/events.yaml` manual schedule;
+  pre- and post-event confidence suppression curve.
+- `docs/engines/cross_symbol_confluence.md` — meta-engine, runs in
+  aggregator layer.
+
+### New ADRs
+
+- `0011-thresholds-rationale-and-uncalibrated-marker.md` — explains why
+  the current threshold values are placeholders and mandates an
+  `[UNCALIBRATED]` tag on Telegram alerts until M2 calibration.
+- `0012-liquidations-roadmap.md` — complements (does not supersede)
+  ADR-0006; promotes liquidation engine to BACKLOG P1 post-M2 with
+  three implementation paths. ADR-0006 status line updated to point
+  here.
+
+### Task tracking
+
+- `docs/tasks/BACKLOG.md` — full rewrite with P0/P1/P2 sections
+  cross-referencing all new specs. M2 (backtest) decomposed from 3
+  bullets into 12; M3 decomposed; new engines sequenced; operability
+  and observability tracks added.
+- `docs/tasks/IN_PROGRESS.md` — explicit next-steps block for the agent
+  picking up after the 14-day run, ordered: extract data → write
+  post-mortem → P0 quality gates → M2 starting with the no-look-ahead
+  test.
+
+ADRs introduced: 0011, 0012. ADR-0006 annotated.
+
+Files touched (directory level): `docs/`, `docs/engines/`,
+`docs/decisions/`, `docs/operations/`, `docs/post_mortems/`,
+`docs/tasks/`.
+
+No `src/` or `tests/` changes. No `pyproject.toml` / `uv.lock` changes.
+
+---
+
 ## 2026-05-15 — Fix: all log levels tagged `[err]` in Railway
 
 **Root cause:** Loguru writes all levels to `sys.stderr` by default. Railway
