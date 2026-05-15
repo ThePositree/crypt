@@ -6,6 +6,23 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-05-15 — Fix: `SettingsError` on Railway when `SYMBOLS` env var is empty
+
+**Root cause:** pydantic-settings v2 tries `json.loads()` on every `list[str]`
+field before calling `field_validator`. `SYMBOLS=` (empty string) → empty
+`json.loads("")` → `JSONDecodeError` → process crash.
+
+**Fix:**
+- Added `enable_decoding=False` to `SettingsConfigDict`: pydantic-settings now
+  passes the raw string to the `field_validator` instead of trying JSON first.
+- Updated `_parse_symbols` validator to fall back to `_DEFAULT_SYMBOLS` when
+  the env var is empty/blank.
+- Added troubleshooting row to `docs/deploy/railway.md`.
+
+Files touched: `src/crypt/config.py`, `docs/deploy/railway.md`, `CHANGELOG.md`
+
+---
+
 ## 2026-05-15 — Fix: `ModuleNotFoundError: No module named 'crypt.data'` on Railway
 
 **Root cause:** `.gitignore` contained `data/` (no leading slash), which matched any

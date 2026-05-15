@@ -8,11 +8,18 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+_DEFAULT_SYMBOLS = ["SOL-USDT-SWAP", "TON-USDT-SWAP", "XPL-USDT-SWAP"]
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        # Disable automatic JSON decoding for complex fields so that
+        # comma-separated env vars (e.g. SYMBOLS=A,B,C) are passed to
+        # field_validators as-is instead of crashing with JSONDecodeError.
+        enable_decoding=False,
     )
 
     # Telegram
@@ -27,8 +34,8 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = Field(default="INFO")
 
-    # Symbols to monitor — comma-separated in .env, list in code.
-    symbols: list[str] = Field(default=["SOL-USDT-SWAP", "TON-USDT-SWAP", "XPL-USDT-SWAP"])
+    # Symbols to monitor — comma-separated in env (e.g. SYMBOLS=A,B,C), list in code.
+    symbols: list[str] = Field(default_factory=lambda: list(_DEFAULT_SYMBOLS))
 
     # Decision layer
     alert_confidence_threshold: int = Field(default=75, ge=0, le=100)
@@ -52,7 +59,9 @@ class Settings(BaseSettings):
     @classmethod
     def _parse_symbols(cls, v: Any) -> list[str]:
         if isinstance(v, str):
-            return [s.strip() for s in v.split(",") if s.strip()]
+            parsed = [s.strip() for s in v.split(",") if s.strip()]
+            # Empty / blank env var → fall back to default symbol set.
+            return parsed if parsed else list(_DEFAULT_SYMBOLS)
         return list(v)
 
     @property
