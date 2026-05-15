@@ -6,6 +6,21 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-05-15 — Fix: aiogram 3.7.0 broke `Bot` initializer (`parse_mode` removed)
+
+**Root cause:** aiogram 3.7.0 removed `parse_mode`, `disable_web_page_preview`,
+and `protect_content` from the `Bot.__init__` signature. Passing `parse_mode`
+directly raised `TypeError` on every startup, crashing the process in a
+Railway crash-loop.
+
+**Fix:** Replaced `Bot(token=..., parse_mode=ParseMode.HTML)` with
+`Bot(token=..., default=DefaultBotProperties(parse_mode=ParseMode.HTML))`
+as required by aiogram ≥ 3.7.0.
+
+Files touched: `src/crypt/sinks/telegram.py`, `CHANGELOG.md`
+
+---
+
 ## 2026-05-15 — Fix: `SettingsError` on Railway when `SYMBOLS` env var is empty
 
 **Root cause:** pydantic-settings v2 tries `json.loads()` on every `list[str]`

@@ -77,6 +77,12 @@ single Python crash can silently end the run in hours, not days.
       (see `docs/deploy/railway.md` Step 7 for exact commands).
 - [ ] Upgrade Railway plan to Pro if log retention > 7 days is needed mid-run.
 
+## P1 — dependency hygiene
+
+- [ ] Pin `aiogram>=3.7` in `pyproject.toml` and add a note that `DefaultBotProperties`
+      is required for `parse_mode` — prevents silent regression if a future agent
+      downgrades the dependency.
+
 ## P2 — later
 
 - [ ] Sentiment engine (CryptoPanic freemium).

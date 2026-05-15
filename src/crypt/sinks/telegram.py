@@ -4,6 +4,7 @@ import asyncio
 import random
 
 from aiogram import Bot
+from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from loguru import logger
 
@@ -37,7 +38,10 @@ class TelegramSink(BaseSink):
     """
 
     def __init__(self, bot_token: str, chat_id: str) -> None:
-        self._bot = Bot(token=bot_token, parse_mode=ParseMode.HTML)
+        self._bot = Bot(
+            token=bot_token,
+            default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+        )
         self._chat_id = chat_id
 
     async def emit(self, verdict: Verdict, should_alert: bool) -> None:
