@@ -62,30 +62,29 @@ priorities below are the BACKLOG view.
 
 Full spec: **`docs/backtest.md`** (must-read before starting).
 
-- [ ] **Backfill CLI** — `docs/backtest.md` §14. New module
-      `src/crypt/backfill/__main__.py`. Pagination, resume safety, rate
-      limit, tqdm progress.
-- [ ] **`ReplayParquetStore` look-ahead guard** — `docs/backtest.md`
-      §5.1. Top priority of M2: write the test first, then the guard.
-- [ ] **`BacktestRecorder` + `BacktestExecutionSimulator`** —
-      `docs/backtest.md` §5.2, §7. Reused by paper trading (`docs/paper_trading.md`).
-- [ ] **Forward-label loader** — `docs/backtest.md` §6. Loads
-      `return_h4 / h24 / h96` and `mae / mfe`.
-- [ ] **Fee + slippage model** — `docs/backtest.md` §7. CLI overrides.
-- [ ] **Walk-forward CV** — `docs/backtest.md` §8. `--walk-forward-folds`
-      default 5.
-- [ ] **Weight optimiser** — `docs/backtest.md` §9. Grid + coordinate
-      descent + sanity guard.
-- [ ] **Bootstrap CI** — `docs/backtest.md` §10. 1000 resamples on every
-      headline metric.
-- [ ] **Baseline comparison** — `docs/backtest.md` §11. Buy-and-hold,
-      always-hold, random-direction.
-- [ ] **HTML report** — `docs/backtest.md` §12. Single `summary.html`,
-      no server.
-- [ ] **`weights.recommended.yaml` writer** — `docs/backtest.md` §13.
-      Median over folds, max threshold.
-- [ ] **`tests/backtest/*`** — `docs/backtest.md` §15. Look-ahead guard
-      test is the most important.
+- [x] **Backfill CLI** — `src/crypt/backfill/__main__.py` (2026-05-29).
+- [x] **`ReplayParquetStore` look-ahead guard** — `src/crypt/backtest/replay.py`;
+      8 tests in `tests/backtest/test_no_lookahead.py` (2026-05-29).
+- [x] **`BacktestRecorder` + `BacktestExecutionSimulator`** —
+      `src/crypt/backtest/{recorder,execution_sim,fee_model,risk_model}.py`
+      with all §18.4 fixes (2026-05-29).
+- [x] **Forward-label loader** — `src/crypt/backtest/labels.py` (2026-05-29).
+- [x] **Fee + slippage model** — `docs/backtest.md` §7. Wired into `__main__.py` (2026-05-29).
+- [x] **Walk-forward CV** — `src/crypt/backtest/walkforward.py` (2026-05-29).
+- [x] **Weight optimiser** — `src/crypt/backtest/optimizer.py` (2026-05-29).
+- [x] **Bootstrap CI** — `src/crypt/backtest/metrics.py` (2026-05-29).
+- [x] **Baseline comparison** — `src/crypt/backtest/metrics.py` + `__main__.py` (2026-05-29).
+- [x] **HTML report** — `src/crypt/backtest/report.py` (2026-05-29).
+- [x] **`weights.recommended.yaml` writer** — `optimizer.py` + `__main__.py` (2026-05-29).
+- [x] **`tests/backtest/*`** — labels, walkforward, metrics tests added (2026-05-29).
+- [x] **Coinglass backfill spec + ADR** — `docs/backfill.md`, ADR-0015 (2026-05-29).
+- [ ] **Coinglass backfill implementation** — P0; `CoinglassClient`,
+      `--source coinglass|auto`, tests. Spec: `docs/backfill.md`.
+      Blocked on owner `COINGLASS_API_KEY` for integration smoke.
+- [ ] **Run backfill + full backtest** — after Coinglass impl; workflow in
+      `docs/backfill.md` §7 and `IN_PROGRESS.md`.
+- [ ] **ADR-0014** — calibration result after M2 report is reviewed and weights accepted.
+- [ ] **Flip `uncalibrated = False`** — after ADR-0014 is written.
 
 ### Engine specs that will follow M2 calibration
 
@@ -100,7 +99,8 @@ engines are introduced one at a time with a fresh backtest each.
 - [ ] **`calendar` engine** — `docs/engines/calendar.md`. Manual
       `config/events.yaml`.
 - [ ] **`liquidations` engine** — `docs/engines/liquidations.md`,
-      ADR-0012. Default to Path B (Coinglass).
+      ADR-0012. Default to Path B (Coinglass). Reuse `CoinglassClient`
+      from ADR-0015 backfill work.
 - [ ] **`sentiment` engine** — `docs/engines/sentiment.md`. After
       liquidations because the data pipeline pattern is shared.
 

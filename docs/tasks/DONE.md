@@ -4,6 +4,67 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-05-29 — Coinglass backfill: spec + ADR (docs only)
+
+- `docs/backfill.md` — backfill contract: OKX + Coinglass sources, CLI
+  `--source`, endpoint mapping, tier limits, M2 operator workflow.
+- `docs/decisions/0015-coinglass-historical-backfill.md` — accepted ADR.
+- Cross-refs in `docs/backtest.md` §14/§16, `docs/decisions/0012`,
+  `.env.example`, `README.md`, task tracking files.
+- Implementation (`CoinglassClient`, CLI) deferred — see `IN_PROGRESS.md`.
+
+---
+
+## 2026-05-29 — M2 backtest harness: full pipeline — steps 4–11 (labels, metrics, walk-forward, optimizer, report, CLI)
+
+- `src/crypt/backtest/labels.py` — forward-label loader (§6): return_h4/h24/h96, MAE, MFE, hit_* columns.
+- `src/crypt/backtest/metrics.py` — port of ResultsAnalyzer with §18.4 fixes (equity-curve
+  duplicate-exit fix, Sharpe warning < 6 months, trade-level Sharpe); bootstrap CI; hit-rate
+  metrics; buy-and-hold / random-direction baselines.
+- `src/crypt/backtest/walkforward.py` — expanding-window walk-forward CV; `FoldSpec`, `generate_folds`,
+  `slice_verdicts`, `slice_trades`; hard no-overlap guarantee tested.
+- `src/crypt/backtest/optimizer.py` — grid search + coordinate descent weight optimiser (§9);
+  objective = `mean(pnl) - 0.5*std(pnl)`; sanity guards; `aggregate_weights_across_folds` (§13 median rule).
+- `src/crypt/backtest/report.py` — static HTML report generator with embedded matplotlib charts (§12).
+- `src/crypt/backtest/__main__.py` — full CLI entry point: precondition checks (§4), replay loop (§5),
+  forward labels, ExecutionSim wiring, walk-forward, optimization, baseline comparison, HTML report.
+- `tests/backtest/test_labels.py` — 8 tests for label computation, hit rates, drop-tail behaviour.
+- `tests/backtest/test_walkforward.py` — 8 tests incl. regression: no test-slice timestamp in train.
+- `tests/backtest/test_metrics.py` — 12 tests: basic metrics, equity-curve §18.4 fix, Sharpe warning,
+  bootstrap CI, buy-and-hold, generate_metrics integration.
+- `matplotlib>=3.8` added to runtime dependencies.
+
+Stats: 97 tests (was 67); mypy 0 errors (12 backtest files); ruff clean.
+
+---
+
+## 2026-05-29 — M2 backtest harness: backfill CLI + replay infrastructure (steps 1–3)
+
+- `src/crypt/backfill/__init__.py`, `__main__.py` — paginated backfill CLI for OKX
+  OHLCV/funding/OI/LS-ratio/taker-vol; resume-safe; tqdm progress; `--from`, `--to`,
+  `--data-types`, `--page-size`, `--max-rps`.
+- `src/crypt/exchange/okx.py` — pagination methods added: `fetch_ohlcv_page`,
+  `fetch_funding_history_page`, `fetch_oi_history_page`, `fetch_ls_ratio_range`,
+  `fetch_taker_volume_range`. `fetch_ohlcv` gains optional `since_ms` param.
+- `src/crypt/backtest/replay.py` — `ReplayParquetStore` (time-fence look-ahead guard)
+  and `ReplayContextBuilder` (drop-in for `ContextBuilder` in replay loop).
+- `tests/backtest/test_no_lookahead.py` — 8 tests: guard filters future data,
+  naïve builder leaks it (proof the test would catch a real regression).
+- `src/crypt/backtest/fee_model.py` — port of `StaticPercentFeeModel` with
+  maker/taker asymmetry.
+- `src/crypt/backtest/risk_model.py` — port of `BasicRiskModel` (ATR-distance sizer).
+- `src/crypt/backtest/execution_sim.py` — port of `ExecutionSim` with all §18.4 fixes:
+  `FundingRateModel` + `ZeroFundingModel` + `ParquetFundingModel` (🔴);
+  multi-symbol capital pool via `symbol` column (🔴); SL gap-adjusted fill (🟡);
+  `exit_time` off-by-one fixed (🟡).
+- `src/crypt/backtest/recorder.py` — `BacktestRecorder` (verdict sink → Parquet).
+- `src/crypt/backtest/__init__.py` — module exports.
+- `pyproject.toml` — `tqdm>=4.66` added; `tqdm.*` added to mypy overrides.
+
+Stats: 67 tests pass (was 59); mypy 0 errors (43 files); ruff clean.
+
+---
+
 ## 2026-05-29 — Post-M1 P0 quality gates + post-mortem + ADR-0013
 
 - `docs/post_mortems/2026-05-29-m1-run-summary.md` — M1 14-day run summary

@@ -117,5 +117,8 @@ provides for free. **Rejected** until vendor risk forces it.
   liquidations).
 - `ADR-0006` — original liquidation deferral; analysis remains valid
   for the MVP phase.
+- `ADR-0015` — Coinglass backfill client (implement first; liquidations
+  poller reuses the same `CoinglassClient`).
 - `docs/engines/liquidations.md` — engine spec.
+- `docs/backfill.md` — Coinglass endpoint mapping and CLI contract.
 - `docs/backtest.md` — where the ablation will be measured.

@@ -22,6 +22,8 @@ dependencies = [
     "loguru>=0.7",
     "httpx>=0.27",
     "PyYAML>=6.0",
+    "tqdm>=4.66",
+    "matplotlib>=3.8",
 ]
 
 [project.optional-dependencies]
@@ -99,6 +101,7 @@ module = [
     "pandas_ta.*",
     "pyarrow.*",
     "apscheduler.*",
+    "tqdm.*",
 ]
 ignore_missing_imports = true
 

@@ -76,6 +76,31 @@ uv run python -m crypt
 uv run python -m crypt --symbols SOL-USDT-SWAP,TON-USDT-SWAP
 ```
 
+## Historical backfill (M2 backtest)
+
+OHLCV comes from OKX (free). Deep derivatives history (funding, OI,
+long/short ratio) requires **Coinglass** when the backtest window exceeds
+~90 days. See `docs/backfill.md` and ADR-0015.
+
+```bash
+# Set COINGLASS_API_KEY in .env (Professional tier for ~2 years @ 1h)
+
+# Full backfill (OHLCV via OKX, derivatives via Coinglass)
+PYTHONPATH=src uv run python -m crypt.backfill \
+    --source coinglass \
+    --symbol SOL-USDT-SWAP \
+    --from 2024-01-01 --to 2026-05-01
+
+# Then run backtest — see docs/backtest.md
+PYTHONPATH=src uv run python -m crypt.backtest \
+    --from 2024-06-01 --to 2026-05-01 \
+    --symbols SOL-USDT-SWAP,TON-USDT-SWAP,XPL-USDT-SWAP \
+    --walk-forward-folds 5 \
+    --report-dir reports/backtest_2026-05/
+```
+
+Data lands in `data/<SYMBOL>/` (Parquet). Re-running is idempotent.
+
 ## Developer setup
 
 ```bash
@@ -126,6 +151,8 @@ crypt/
 ├── .cursor/rules/           # always-on rules for AI agents
 ├── docs/
 │   ├── architecture.md      # high-level design
+│   ├── backfill.md          # backfill CLI contract (OKX + Coinglass)
+│   ├── backtest.md          # M2 backtest harness contract
 │   ├── decisions/           # ADRs (one decision per file)
 │   ├── engines/             # per-engine specs (signal contracts, logic, thresholds)
 │   └── tasks/               # ROADMAP / BACKLOG / IN_PROGRESS / DONE

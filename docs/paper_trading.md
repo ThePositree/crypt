@@ -143,15 +143,31 @@ Run on every tick (which is every H4 close). For each open trade:
 3. **TP check**: did `high` (BUY) or `low` (SELL) cross `tp_price`?
    - If yes and SL did not fire in the same bar: exit at `tp_price`
      with `exit_reason="tp"`.
-   - If both fired in the same bar: this is an ambiguous fill. Our
-     default: **assume SL fires first** (worst case for the system).
-     Configurable via `PaperLedgerSettings.same_bar_resolution`.
+   - If both fired in the same bar: this is an **intra-bar TP/SL
+     ambiguity** — the true order of fills inside a bar is unknowable
+     from OHLC data. Our default: **assume SL fires first** (`worst_case`
+     policy — pessimistic, prevents overfitting). Configurable via
+     `PaperLedgerSettings.same_bar_resolution`.
+
+     The backtester solves this identically in
+     `backtester/src/backtester/execution_sim.py` — `_resolve_bar_exit()`
+     (lines 523–586) with `bar_exit_policy`. The paper ledger must use
+     the same logic for comparability between M2 backtest and M3 paper
+     results. Use `worst_case` as the consistent default in both.
+
 4. **Timeout**: if neither SL nor TP fires within `TIMEOUT_HOURS`
    (default `7 * 24 = 168 hours`), close at the next H4 open with
-   `exit_reason="timeout"`.
+   `exit_reason="timeout"`. Timeout exits use taker fee (market order).
 5. Compute `gross_return_pct = (exit_price / entry_price - 1) * direction`.
-   `round_trip_cost_pct` = same constants as backtest (`0.20%`).
-   `net_return_pct = gross_return_pct - round_trip_cost_pct`.
+   **Fee asymmetry** (same rule as `docs/backtest.md §7.2`):
+   - TP exits: `exit_fee = maker_fee (0.02%)`
+   - SL exits: `exit_fee = taker_fee (0.05%)`
+   - Timeout exits: `exit_fee = taker_fee (0.05%)`
+
+   Reference: `backtester/src/backtester/fee_model.py` —
+   `StaticPercentFeeModel` (lines 80–138).
+
+   `net_return_pct = gross_return_pct - entry_fee - exit_fee - slippage`.
 
 ---
 
@@ -166,13 +182,17 @@ class PaperLedgerSettings(BaseModel):
     tp_atr_mult: float = 3.0
     timeout_hours: int = 168
     same_bar_resolution: Literal["sl_first", "tp_first", "split"] = "sl_first"
-    round_trip_cost_pct: float = 0.002  # 0.20%
+    # Fee model (see docs/backtest.md §7.2 and backtester/src/backtester/fee_model.py)
+    taker_fee: float = 0.0005   # 0.05%
+    maker_fee: float = 0.0002   # 0.02%
+    slippage_bps: float = 5.0   # 5 bp per side
     ledger_path: Path = Path("data/paper_ledger.jsonl")
     pending_path: Path = Path("data/paper_pending.json")
 ```
 
-Defaults match `docs/backtest.md` so paper and backtest are directly
-comparable.
+Fee model mirrors `docs/backtest.md §7.2` exactly so paper and backtest
+P&L figures are directly comparable. Entry always uses `taker_fee`; TP
+exits use `maker_fee`; SL and timeout exits use `taker_fee`.
 
 ---
 
@@ -318,20 +338,71 @@ Produces:
 
 ## 15. Known weaknesses
 
-- **Pessimistic SL** (assumes SL fills at SL price exactly) — small
-  systematic bias against the system. We accept this. Real SL fills can
-  be slightly worse (gap through SL) or better (improved fill); the
-  asymmetry favours assuming the worse case.
+- **Pessimistic SL at exact trigger price**: assumes SL fills at `sl_price`
+  exactly. Real OKX stop-market fills can gap through (worse price) on fast
+  moves. For H4 on liquid pairs this is a small bias; for XPL in
+  high-volatility regimes it can be >0.2%. Exposed via `slippage_bps` in
+  settings. See also `docs/backtest.md §18.4` (SL gap issue).
+
+- **No gap-adjusted SL fill**: when a bar opens beyond SL (gap open), the
+  paper ledger should use `current_bar_open` as fill price, not `sl_price`.
+  This is not implemented in M3. Track this as a known optimistic bias.
+
+- **Funding rate not charged on open positions**: OKX perpetual swaps
+  pay/receive funding every 8 hours. A position held for the default
+  168-hour timeout accumulates 21 funding payments. At typical 0.01%/8h
+  this is 0.21% unrealised cost per side — enough to affect P&L attribution.
+  M3 does not model this. The `net_return_pct` will be slightly optimistic
+  for long-held positions. See `docs/backtest.md §18.4` (funding issue).
+
+  `PaperLedgerSettings.charge_funding: bool = False` — reserve the field
+  for a future improvement. When True, deduct
+  `sum(funding_rates_during_hold) * position_notional` from `net_return_pct`.
+
 - **Same-bar SL/TP resolution** is opaque. The default `sl_first`
-  resolution is unfavourable for the system; M2/M3 ablation should
-  re-run with `tp_first` and `split` to see how much it costs.
-- **No partial exits / trailing stop**. Realistic discretionary trading
-  often uses trailing stops; we explicitly do not — paper ledger is a
-  measurement instrument, not a trading strategy. M4 may add a
-  trailing-stop variant.
-- **Confidence buckets** at 10-point width with the existing 75
-  threshold give us only 3–4 buckets. As the system matures, narrow
-  buckets to 5 points.
-- **Calibration is sensitive to regime drift**: a system calibrated in
-  a trending market will be over-confident in a ranging market. M3 must
-  show calibration **per regime**, not just globally.
+  (`worst_case`) is unfavourable for the system; the M3 report should
+  include an ablation with `tp_first` to quantify the spread. See
+  `docs/backtest.md §18.4` (intra-bar ambiguity) for the reference
+  implementation.
+
+- **Equity curve and drawdown ignore unrealised P&L**: max drawdown is
+  computed only at trade-close events. A position 40% underwater before
+  recovering to -5% at close shows drawdown -5%, not -40%. The M3 report
+  must state this limitation explicitly. See `docs/backtest.md §18.4`.
+
+- **No partial exits / trailing stop**. Paper ledger is a measurement
+  instrument, not a trading strategy. M4 may add trailing-stop.
+
+- **Confidence buckets** at 10-point width with the existing 75 threshold
+  give us only 3–4 buckets. As the system matures, narrow to 5 points.
+
+- **Calibration is sensitive to regime drift**: a system calibrated in a
+  trending market will be over-confident in ranging. M3 must show
+  calibration **per regime**, not just globally.
+
+---
+
+## 16. Reference implementation: `backtester/`
+
+The exit-check logic, fee model, and position sizing in this document
+are deliberately aligned with the battle-tested backtester in `backtester/`
+(see `docs/backtest.md §18` for a full inventory of what to port).
+
+For M3 specifically, the exit-check task (`§6`) is a simplified version
+of `backtester/src/backtester/execution_sim.py` — `_update_active_positions()`
+(lines 428–521). Key differences vs M3:
+
+| Backtester ExecutionSim | M3 PaperLedger |
+|-------------------------|----------------|
+| Runs in a replay loop over historical data | Runs live on every H4 tick |
+| Manages multiple simultaneous positions | One position per symbol at a time (M3 simplification) |
+| Optional `entry_price` column for intra-bar entries | Entry always at next H4 open |
+| TTL in bars | Timeout in hours (`timeout_hours = 168`) |
+| Uses `Position` dataclass with leverage/margin | No leverage tracking in M3 |
+
+The `_resolve_bar_exit()` logic (`lines 523–586`) is identical and must
+be copied verbatim into the paper ledger exit check. The
+`bar_exit_policy="worst_case"` default must be preserved.
+
+For M4 (auto-execution), the full `ExecutionSim` can be used as-is
+to simulate live order management before switching to real OKX orders.

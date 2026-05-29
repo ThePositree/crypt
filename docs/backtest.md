@@ -181,16 +181,70 @@ question.
 
 Apply to every BUY/SELL verdict (HOLD verdicts have no fee).
 
-- Fees: OKX perpetual swap maker = `0.02%`, taker = `0.05%` (verify in
-  Context7 at implementation time — fee schedule changes). Assume **taker**
-  for BUY/SELL since we are reacting to a fresh signal.
-- Slippage: `--slippage-bps` (default `5 bp = 0.05%`). Per round-trip:
-  `2 * slippage_bps`.
-- Total cost per round-trip: `2 * 0.05% + 2 * 5bp = 0.20%`.
+### 7.1 Fee rates
 
-`pnl_net = return_horizon * direction_intent - round_trip_cost`.
+- OKX perpetual swap: maker = `0.02%`, taker = `0.05%` (verify via
+  Context7 at implementation time — fee schedule changes).
 
-Document the fee/slippage values in `reports/.../meta.json` so future
+### 7.2 Entry vs exit fee asymmetry
+
+This is the most important nuance missed in naive models:
+**entry and different exit types use different fee rates**.
+
+| Event | Order type | Fee rate |
+|-------|-----------|----------|
+| Entry (market reaction to signal) | Taker | `0.05%` |
+| Exit via Take Profit (resting limit) | Maker | `0.02%` |
+| Exit via Stop Loss (market order) | Taker | `0.05%` |
+| Exit via TTL timeout (market order) | Taker | `0.05%` |
+
+Reference: `backtester/src/backtester/fee_model.py` —
+`StaticPercentFeeModel.calculate_exit_fee()` (line 117) applies
+`maker_fee` when `is_maker=True` (TP exits), `taker_fee` otherwise.
+
+Using a single taker fee for all exits over-penalises TP exits by ~2.5×
+and makes calibrated weights unnecessarily conservative.
+
+### 7.3 Slippage
+
+- `--slippage-bps` (default `5 bp = 0.05%`). Applied per side (entry
+  and exit separately); per round-trip: `2 * slippage_bps`.
+
+### 7.4 P&L formula
+
+For a verdict at horizon `h`:
+
+```
+pnl_gross = return_h * direction_sign   # +1 BUY, -1 SELL
+pnl_net   = pnl_gross
+            - taker_fee                  # entry
+            - exit_fee(exit_type)        # see table above
+            - 2 * slippage_bps
+```
+
+For verdict-level forward-label evaluation (§6) we do not know the
+actual exit type at label time. Use the **expected** exit fee:
+
+```
+expected_exit_fee = win_rate * maker_fee + (1 - win_rate) * taker_fee
+```
+
+Bootstrap the win rate from the first fold; use `taker_fee` as a
+conservative fallback if win rate is unknown.
+
+### 7.5 Min net-exposure guard
+
+Reject an entry if the fee alone exceeds the expected risk reward:
+
+```python
+if fee_entry >= risk_value * 2:
+    skip_entry()
+```
+
+Reference: `backtester/src/backtester/execution_sim.py` line 730.
+This prevents entries where the fee consumes the entire expected gain.
+
+Document all fee/slippage values in `reports/.../meta.json` so future
 re-runs are comparable.
 
 ---
@@ -309,18 +363,83 @@ Files produced:
 
 `summary.html` must contain, in order:
 
-1. Headline table: expectancy, hit rate, drawdown, alerts/day, by
-   `(regime, symbol, fold)` with CI.
-2. Equity curve per symbol per fold (matplotlib → png embedded).
-3. Per-engine contribution to ensemble pnl (Shapley-like decomposition; if
-   too expensive, use the simpler `weighted_contribution = weight *
-   strength_at_alert`).
-4. Fragility section: which 10% of weeks contained 50% of the loss?
-5. Failure modes table: most-frequent `inputs_missing`, regime-flip
-   frequency, alert clustering.
-6. Baselines comparison.
-7. Critique paragraph — owner-readable, explicitly listing where the
-   model is fragile.
+### 12.1 Headline metrics table
+
+Per `(symbol, fold)` and aggregated across all folds:
+
+| Metric | Description |
+|--------|-------------|
+| `total_alerts` | BUY + SELL count |
+| `alerts_per_day` | Frequency check |
+| `win_rate` | `hits / total_alerts` (direction correct) |
+| `profit_factor` | `sum(wins) / abs(sum(losses))` — a PF > 1 means the strategy earns more than it loses |
+| `expectancy` | `mean(pnl_net)` per alert with 95% bootstrap CI |
+| `total_return_pct` | `(final_capital - initial) / initial * 100` |
+| `max_drawdown` | Rolling peak-to-trough as `%` (negative value) |
+| `sharpe_ratio` | Annualized Sharpe from monthly returns: `(MR - RFR_monthly) / SD_monthly * sqrt(12)` |
+| `avg_holding_bars` | Average H4 bars between alert and exit |
+
+Reference implementation for all these metrics:
+`backtester/src/backtester/results_analyzer.py` — `ResultsAnalyzer.generate()`.
+The Sharpe calculation at lines 186–225 is tested and correct for
+monthly resampling; port it directly.
+
+Show each metric with its bootstrap CI (§10). Flag `NOT SIGNIFICANT`
+in red when the expectancy CI crosses zero.
+
+### 12.2 Long / short breakdown
+
+Separate the headline table by direction. The ensemble may have
+asymmetric quality for BUY vs SELL — this is the most common fragility
+in momentum-based systems.
+
+Reference: `backtester/src/backtester/results_analyzer.py` —
+`_compute_side_metrics()` (lines 277–286).
+
+### 12.3 Exit distribution
+
+Count `take_profit / stop_loss / ttl_expired` exits. A healthy system
+has a TP rate consistent with the win rate. An unusually high TTL rate
+suggests signals that neither hit target nor stop — a sign of underpowered
+signals.
+
+Reference: `backtester/src/backtester/results_analyzer.py` —
+`_compute_exit_distribution()` (line 153).
+
+### 12.4 Equity curve
+
+Per symbol per fold (matplotlib → PNG embedded). Use `capital_after`
+timeline from the trade recorder.
+
+### 12.5 Monthly returns table
+
+```
+Month      MoM return (%)   Cumulative (%)
+2025-01    +3.2             +3.2
+2025-02    -1.4             +1.8
+...
+```
+
+Reference: `backtester/src/backtester/results_analyzer.py` —
+`_compute_monthly_returns_pct()` (lines 228–253).
+
+### 12.6 Per-engine contribution
+
+Shapley-like decomposition: if too expensive, use
+`weighted_contribution = weight * strength_at_alert`.
+
+### 12.7 Fragility section
+
+Which 10% of weeks contained 50% of the loss? Regime-flip frequency,
+alert clustering, most-frequent `inputs_missing`.
+
+### 12.8 Baselines comparison
+
+See §11.
+
+### 12.9 Critique paragraph
+
+Owner-readable, explicitly listing where the model is fragile.
 
 ---
 
@@ -341,30 +460,45 @@ turning the knob in production.
 
 ## 14. Backfill CLI (precondition for backtest)
 
-Separate but related CLI: `uv run python -m crypt.backfill`.
+Full contract: **`docs/backfill.md`**. ADR: **`docs/decisions/0015-coinglass-historical-backfill.md`**.
+
+Separate CLI: `uv run python -m crypt.backfill`.
 
 ```bash
-uv run python -m crypt.backfill \
+# Recommended for M2: OHLCV from OKX, deep derivatives from Coinglass
+PYTHONPATH=src uv run python -m crypt.backfill \
+    --source coinglass \
     --symbol SOL-USDT-SWAP \
-    --from 2023-01-01 \
+    --from 2024-01-01 \
     --to   2026-05-01 \
     [--data-types ohlcv,funding,oi,ls_ratio] \
     [--page-size 100] \
     [--max-rps 5]
 ```
 
+OKX-only (shallow derivatives history):
+
+```bash
+PYTHONPATH=src uv run python -m crypt.backfill \
+    --source okx \
+    --symbol SOL-USDT-SWAP \
+    --from 2024-01-01 \
+    --to   2026-05-01
+```
+
 Implementation notes:
-- Pagination per OKX endpoint (`fetch_ohlcv` returns max 100 bars per
-  call; loop with `since` parameter; respect `enableRateLimit`).
+- Pagination per vendor endpoint (OKX max 100; Coinglass max 1000 per call).
 - Resume safety: re-running must not produce duplicates (rely on
-  `_upsert` in `ParquetStore`).
-- Progress bar in stdout (tqdm) — backfilling 3 years of H4 history is
-  ~6600 bars per symbol, takes a few minutes.
-- Logs every page fetched with `since` boundary so failures are
-  diagnosable.
+  `_upsert` in `ParquetStore`; duplicate `ts` → last write wins).
+- Operator order when mixing sources: Coinglass historical pass first,
+  then OKX pass to overwrite recent rows with exchange-native values
+  (`docs/backfill.md` §2).
+- Progress bar in stdout (tqdm).
+- Logs every page fetched with time boundary so failures are diagnosable.
 
 This CLI is a precondition for §4 — agents must run it before the first
-backtest.
+backtest. For meaningful `derivatives` weight calibration, Coinglass
+backfill is required for windows longer than ~90 days.
 
 ---
 
@@ -396,8 +530,13 @@ backtest.
 - OKX OI snapshot timing is opaque; large OI deltas may be exchange
   bookkeeping, not market activity. Robust z-score normalisation absorbs
   some of this but not all.
+- **Derivatives history provenance:** when Coinglass backfill is used
+  (ADR-0015), backtest `derivatives` signals come from Coinglass OKX
+  pair history; live/paper uses OKX Rubik directly. Report must state
+  `data_provenance: coinglass+okx` and note possible train/live drift.
 - XPL has < 1 year of history at the time of writing — its per-symbol
-  results will have wide CIs. The report must surface this.
+  results will have wide CIs. The report must surface this. XPL may also
+  be absent from Coinglass — verify before backfill.
 - Walk-forward with 5 folds means each test slice is ~10 weeks. Regime
   transitions that span only one fold can produce misleading per-regime
   expectancy. Add per-week granularity charts in the report so the
@@ -412,14 +551,350 @@ backtest.
 
 1. Read this doc fully.
 2. Read `docs/architecture.md` §6 (backtest section).
-3. Implement `src/crypt/backtest/replay.py` with `ReplayParquetStore` first
+3. Read §18 (reference implementation) below — do not reinvent wheel.
+4. Implement `src/crypt/backtest/replay.py` with `ReplayParquetStore` first
    (the look-ahead guard).
-4. Write `tests/backtest/test_no_lookahead.py` next — this is the single
+5. Write `tests/backtest/test_no_lookahead.py` next — this is the single
    most important test in the milestone.
-5. Implement the recorder, then the optimiser, then the report.
-6. Run backfill CLI to populate ≥ 1 year of history for SOL/TON/XPL.
-7. Run `--walk-forward-folds 5` and inspect the report.
-8. Commit `weights.recommended.yaml` to `config/weights.yaml` once
+6. Implement the recorder, then the optimiser, then the report.
+7. Run backfill CLI to populate ≥ 1 year of history for SOL/TON/XPL.
+8. Run `--walk-forward-folds 5` and inspect the report.
+9. Commit `weights.recommended.yaml` to `config/weights.yaml` once
    sanity guards pass.
-9. Write a new ADR if any design point above was changed.
-10. Append a CHANGELOG entry describing what the report says.
+10. Write a new ADR if any design point above was changed.
+11. Append a CHANGELOG entry describing what the report says.
+
+---
+
+## 18. Reference implementation: `backtester/`
+
+There is a battle-tested backtester in `backtester/` (a separate git repo
+nested inside `crypt/`). The owner has run it in production and trusts it.
+**Do not reinvent anything that already exists there.** Port or adapt
+directly; add a comment citing the source file.
+
+The backtester's architecture does not plug directly into crypt's pipeline
+(different entry point, BingX-centric data loader, strategy-based rather
+than engine-based) — but its **execution simulation, risk model, fee model,
+and metrics computation are directly reusable**.
+
+### 18.1 What to port
+
+#### Execution simulation — `BacktestExecutionSimulator`
+
+Our `BacktestExecutionSimulator` (§5.2) should be adapted from
+`backtester/src/backtester/execution_sim.py` — `ExecutionSim` class.
+
+Key mechanics proven correct:
+
+**Entry timing** (lines 690–697): signal fires on bar `i`; position opens
+at `bar[i+1].open`. Optional `entry_price` column allows intra-bar entries
+within `[low, high]`.
+
+**Intra-bar TP/SL ambiguity** (lines 523–586, `_resolve_bar_exit`): when
+both TP and SL lie within the same bar's `[low, high]` range, the true
+exit order is unknowable from OHLC data. The backtester resolves this via
+a configurable policy:
+
+```python
+bar_exit_policy = "worst_case"   # conservative default — prefer SL
+bar_exit_policy = "best_case"    # optimistic — prefer TP
+```
+
+Always use `worst_case` in our backtest (pessimistic, prevents overfitting
+to bars where both were touched). Report both in the report so the owner
+can see the spread.
+
+**Exit types and TTL** (lines 459–520): three exit reasons —
+`take_profit`, `stop_loss`, `ttl_expired`. TTL forces close at
+`bar[TTL+1].open` with taker fee. For H4 horizon, a TTL of 6 bars (24h)
+is a reasonable default; expose as `--position-ttl-bars`.
+
+**Position sizing formula** (lines 189–193 in `risk_model.py`):
+```python
+risk_value     = available_balance * (risk_percent / 100)
+sl_dist        = abs(entry_price - sl_price)
+size           = risk_value / sl_dist
+position_value = size * entry_price
+```
+SL price for crypt verdicts: use `entry_price - SL_ATR_MULT * atr_h4`
+(same formula as paper trading in §5 of `docs/paper_trading.md`).
+
+**Leverage and margin checks** (`risk_model.py` lines 196–213): guard
+against leverage exceeding `max_allowed_leverage`. For OKX H4 with
+default ATR-based SL, typical leverage is 3–8×; cap at 20× for safety.
+
+**Isolated futures mode** (lines 326–353 in `execution_sim.py`): when
+multiple positions are open, locked margin reduces available balance.
+Use `is_isolated_futures=True` when simulating multi-symbol runs to avoid
+over-counting capital.
+
+**Daily limits** (lines 879–909): `max_daily_profit` and
+`max_daily_loss` in RRR units. Useful for the sanity guard: a day with
+`daily_rrr > 10` is probably a data artefact, not a real trading day.
+
+**Trade record columns** (line 493–514, `trade_history.append(...)`).
+Exact set our `BacktestRecorder` must emit:
+```
+entry_time, exit_time, entry_price, exit_price, size,
+pnl_abs, pnl_rel, fee_entry, fee_exit, tp_price, sl_price,
+exit_reason, capital_before, capital_after, holding_bars,
+leverage, is_long, entry_bar_index, exit_bar_index
+```
+
+#### Fee model — `FeeModel` / `StaticPercentFeeModel`
+
+Port `backtester/src/backtester/fee_model.py` verbatim; it is 140 lines.
+The `FeeModel` abstract class is clean and allows future customisation
+(e.g. tiered fees, funding-rate-adjusted fees) without touching the sim.
+
+```python
+class FeeModel:
+    def calculate_entry_fee(self, position_value, ctx) -> float: ...
+    def calculate_exit_fee(self, exit_value, *, is_maker, ctx) -> float: ...
+```
+
+#### Risk model — `RiskModel` / `BasicRiskModel`
+
+Port `backtester/src/backtester/risk_model.py` verbatim; it is 234 lines.
+`EntryContext` and `RiskResult` are frozen dataclasses — clean contract
+between the sim loop and the sizing logic.
+
+#### Metrics — `ResultsAnalyzer`
+
+`backtester/src/backtester/results_analyzer.py` contains all metric
+formulas we need (see §12). Port the following methods directly:
+
+| Method | Lines | What |
+|--------|-------|------|
+| `_compute_basic_metrics` | 96–137 | win rate, profit factor, avg win/loss |
+| `_compute_drawdown_metrics` | 178–183 | rolling max-drawdown |
+| `_compute_sharpe_ratio` | 186–225 | annualized Sharpe (monthly resampling) |
+| `_compute_monthly_returns_pct` | 228–253 | monthly returns table |
+| `_compute_exit_distribution` | 152–155 | TP/SL/TTL counts |
+| `_compute_side_metrics` | 277–286 | long/short split |
+
+These methods are pure functions of a `pd.DataFrame` of trades — they
+have no dependency on the rest of the backtester and can be copy-pasted
+into `src/crypt/backtest/metrics.py`.
+
+#### Tests as patterns
+
+`backtester/tests/test_execution_sim_run.py` and
+`backtester/tests/test_risk_fee_models.py` show the correct way to write
+simulation tests: construct a minimal OHLCV `pd.DataFrame` with explicit
+values, run the sim, and verify **exact numeric results** (using
+`pytest.approx`). No mocks, no fixtures with side effects.
+
+Adapt the following test patterns for `tests/backtest/`:
+- `test_basic_long_take_profit_path` — verify math from first principles
+- `test_intrabar_policy_best_case_prefers_take_profit` — the ambiguity
+  test; port both best_case and worst_case variants
+- `test_fee_too_large_blocks_position` — the min-net-exposure guard
+- `test_ttl_expiration_exit` — TTL at `holding_bars == ttl_bars`
+
+### 18.2 What NOT to port
+
+| Module | Why |
+|--------|-----|
+| `backtester/src/backtester/strategies/` | Strategy classes; our engines are the replacement |
+| `backtester/src/backtester/data_loader.py` (BingX loader) | We use OKX via ccxt; BingX is irrelevant |
+| `backtester/src/backtester/optimizer.py` | Uses Optuna; we use grid + coord-descent (§9) |
+| `backtester/src/backtester/trade_analyzer.py` | Predicate-feature AUC/KS analysis; out of M2 scope |
+| `backtester/scripts/` | Streamlit dashboards; our report is static HTML |
+| `backtester/src/gui/` | GUI app; out of scope |
+
+### 18.3 Integration sketch
+
+```
+crypt/backtest/
+├── replay.py          # ReplayParquetStore (look-ahead guard)
+├── recorder.py        # BacktestRecorder → trades.parquet
+├── execution_sim.py   # Ported from backtester/src/backtester/execution_sim.py
+├── fee_model.py       # Ported from backtester/src/backtester/fee_model.py
+├── risk_model.py      # Ported from backtester/src/backtester/risk_model.py
+├── metrics.py         # Ported from backtester/src/backtester/results_analyzer.py
+├── optimizer.py       # Grid + coord-descent (new, see §9)
+├── report.py          # HTML report generator (new)
+└── __main__.py        # CLI entry point
+```
+
+The ported files should have a header comment:
+```python
+# Adapted from backtester/src/backtester/<original_file>.py
+# Original: https://github.com/AuriumX/backtester
+```
+
+### 18.4 Known issues in the backtester — fix before use
+
+These are problems found after detailed code review. Some are bugs, some
+are simulation inaccuracies. All must be addressed during porting.
+
+---
+
+#### 🔴 Critical: `is_perpetual` is dead code — funding rate is not modelled
+
+`execution_sim.py:155` — `is_perpetual: bool = False` is stored but never
+used anywhere. There is no `if self.is_perpetual` in the entire file.
+
+For OKX perpetual swaps, funding is charged every 8 hours. A position
+held for the default TTL of 24 H4 bars (= 96 hours) accumulates 12
+funding payments. At a calm rate of 0.01%/8h that is **0.12% unrealised
+cost**, comparable to the round-trip fee. In high-funding periods
+(0.1%/8h) it reaches **1.2% per position** — a number that will
+materially affect weight calibration.
+
+**Fix when porting**: add a `FundingRateModel` interface alongside
+`FeeModel`. On each bar where a position is open, charge
+`position_value * funding_rate_at_bar_open`. The funding data is already
+in our Parquet store (`crypt/data/store.py`). A `ZeroFundingModel` can be
+the default for backward-compatibility / `--no-funding` flag.
+
+---
+
+#### 🔴 Critical: single-asset architecture — capital is not shared
+
+`Backtester(df, strategy)` takes one DataFrame for one symbol. Running
+three independent `ExecutionSim` instances would give each its own full
+`initial_capital`, tripling the simulated capital. There is no concept of
+a shared pool in the backtester.
+
+**Fix when porting**: run a single `ExecutionSim` whose input DataFrame is
+the time-ordered union of signals from all three symbols. Each row carries
+a `symbol` column so the recorder can group by symbol. Use
+`is_isolated_futures=True` so locked margin per open position reduces the
+available balance for subsequent entries.
+
+---
+
+#### 🟡 Important: SL fills at exact SL price — gap risk is missing
+
+`execution_sim.py:572`:
+```python
+return ExitReason.STOP_LOSS, pos.sl_price
+```
+
+OKX stop-market orders execute at the best available price after
+triggering, not at the trigger price. When price gaps through the SL
+(e.g. a candle opens below SL for a long), the actual fill is at the
+open, which can be significantly worse.
+
+**Fix when porting**: for a long position, use
+`exit_price = min(sl_price, current_bar_open_if_gapped_below_sl)`.
+Practically: if `current_bar_low <= sl_price` AND
+`current_bar_open < sl_price`, use `current_bar_open` as the fill price.
+This requires passing `current_bar_open` into `_resolve_bar_exit`.
+
+For H4 on liquid pairs (SOL, TON) the bias is small. For XPL or in
+high-volatility regimes it can be meaningful. At minimum, expose a
+`--sl-pessimism-pct` CLI flag that adds a fixed percentage slippage to
+all SL exits (e.g. `--sl-pessimism-pct 0.1` = SL fills 0.1% worse than
+the trigger price).
+
+---
+
+#### 🟡 Important: equity curve loses trades with equal `exit_time`
+
+`results_analyzer.py:162`:
+```python
+equity.drop_duplicates(subset="exit_time", keep="last", inplace=True)
+```
+
+When two positions close on the same bar (which happens constantly in our
+multi-symbol setup), only the last trade's `capital_after` survives in
+the equity curve. `total_pnl_abs` is unaffected (it sums `pnl_abs`
+directly), but **Sharpe ratio and drawdown are computed from the equity
+curve** and will be wrong.
+
+**Fix when porting**: do not drop duplicates. Instead, reconstruct the
+equity curve by sorting all trades by `exit_time, entry_time` and
+computing a running capital sum:
+```python
+trades_sorted = trades.sort_values(["exit_time", "entry_time"])
+equity_curve  = trades_sorted.set_index("exit_time")["capital_after"]
+```
+Accept that multiple points can share a timestamp; `resample("ME").last()`
+in the Sharpe calculation handles this correctly.
+
+---
+
+#### 🟡 Important: drawdown ignores unrealised P&L
+
+`_compute_drawdown_metrics` builds the equity curve from `capital_after`
+at trade-close events only. Between a position's entry and close, there
+is no mark-to-market. A position that loses 40% unrealised intrabar and
+then recovers to -5% at close will show max drawdown -5%, not -40%.
+
+**Consequence for M2**: the reported max drawdown will be optimistic.
+The weight optimiser's objective (§9) does not see drawdown peaks that
+occur intra-position.
+
+**Fix**: if funding data is available bar-by-bar (it will be, because we
+need it for funding charges), build a parallel mark-to-market equity
+series by computing `unrealised_pnl` on each bar for open positions and
+inserting those data points into the equity curve before computing
+drawdown. If too expensive, document the limitation explicitly in the
+report (§16 lists it).
+
+---
+
+#### 🟠 Minor: `exit_time` is recorded as `next_time` (off by one bar)
+
+`execution_sim.py:497`: `"exit_time": next_time`
+
+When a TP or SL fires within bar `i`'s range, the fill happened sometime
+during bar `i`. But `next_time` is bar `i+1`'s open timestamp. The trade
+record timestamps the exit ~4 hours later than it actually occurred.
+
+This does not affect P&L (exit price is correct). It does affect:
+- `holding_bars` is overstated by 1 for every TP/SL exit
+- Trade timestamps are confusing to read in the CSV/Parquet output
+
+**Fix when porting**: use `df.index[i]` (current bar's close time) as
+`exit_time` for TP/SL exits. Keep `next_time` only for TTL exits (which
+genuinely execute at the next bar's open).
+
+---
+
+#### 🟠 Minor: Sharpe is unreliable for short test slices
+
+`results_analyzer.py:211–225` — Sharpe is computed from monthly-resampled
+returns. With 5 walk-forward folds on 1.5 years of H4 data, each test
+slice is roughly 10 weeks (≈2.5 months). Two to three monthly data
+points give a Sharpe with enormous confidence intervals.
+
+**Fix when porting**: if `n_monthly_samples < 6`, print a visible warning
+in the report:
+```
+⚠ Sharpe ratio computed from only N months — not statistically reliable.
+```
+As a complement, also report a **trade-level Sharpe**:
+`mean(pnl_net) / std(pnl_net) * sqrt(annualised_trade_freq)`,
+which uses all individual trades and is more stable for small samples.
+
+---
+
+#### 🔵 Trivial: redundant inner `if` in daily-limit logic
+
+`execution_sim.py:880` and `894` — the same condition
+`if self.max_daily_profit or self.max_daily_loss` appears twice,
+the second nested inside the first. Harmless, but note that this
+condition evaluates `max_daily_profit = 0` as **falsy**, silently
+disabling the limit. The inner guards on lines 898 and 904 correctly
+check `is not None and > 0`, so no actual bug, but the outer condition
+is misleading.
+
+---
+
+#### Summary table
+
+| Issue | Severity | P&L impact | Fix |
+|-------|----------|-----------|-----|
+| Funding rate not modelled | 🔴 Critical | Up to 1.2% per trade | Add `FundingRateModel` |
+| Single-asset, capital not shared | 🔴 Critical | Capital tripled in multi-symbol | Unified multi-symbol sim |
+| SL fills at exact trigger price | 🟡 Important | Optimistic bias, ~0.1–0.5% | Gap-adjusted exit price |
+| Equity curve drops duplicate exit timestamps | 🟡 Important | Wrong Sharpe/drawdown | Remove `drop_duplicates` |
+| Drawdown ignores unrealised PnL | 🟡 Important | Drawdown understated | Mark-to-market equity curve |
+| `exit_time` off by one bar | 🟠 Minor | None (metadata only) | Use bar `i` close timestamp |
+| Sharpe unreliable for ≤ 6 months | 🟠 Minor | Misleading metric | Warning + trade-level Sharpe |
+| Redundant `if` in daily limits | 🔵 Trivial | None | Cleanup |
