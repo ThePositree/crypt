@@ -30,7 +30,16 @@ def test_very_stable_vol_low_or_normal() -> None:
     c = 100.0
     t = datetime(2025, 1, 1, tzinfo=UTC)
     for i in range(210):
-        rows.append({"open_time": t + timedelta(hours=4 * i), "o": c, "h": c * 1.005, "l": c * 0.995, "c": c, "volume": 1.0})
+        rows.append(
+            {
+                "open_time": t + timedelta(hours=4 * i),
+                "o": c,
+                "h": c * 1.005,
+                "l": c * 0.995,
+                "c": c,
+                "volume": 1.0,
+            }
+        )
     h4 = pd.DataFrame(rows)
     ctx = make_ctx(h4=h4)
     sig = engine.evaluate(ctx)
@@ -51,12 +60,30 @@ def test_vol_spike_at_end_high() -> None:
     for i in range(350):
         h = c * 1.005
         lo = c * 0.995
-        rows.append({"open_time": t + timedelta(hours=4 * i), "o": c, "h": h, "l": lo, "c": c, "volume": 1.0})
+        rows.append(
+            {
+                "open_time": t + timedelta(hours=4 * i),
+                "o": c,
+                "h": h,
+                "l": lo,
+                "c": c,
+                "volume": 1.0,
+            }
+        )
     # 10 candles of 5% range.
     for i in range(10):
         h = c * 1.05
         lo = c * 0.95
-        rows.append({"open_time": t + timedelta(hours=4 * (350 + i)), "o": c, "h": h, "l": lo, "c": c, "volume": 1.0})
+        rows.append(
+            {
+                "open_time": t + timedelta(hours=4 * (350 + i)),
+                "o": c,
+                "h": h,
+                "l": lo,
+                "c": c,
+                "volume": 1.0,
+            }
+        )
 
     h4 = pd.DataFrame(rows)
     ctx = make_ctx(h4=h4)

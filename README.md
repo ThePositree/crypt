@@ -76,6 +76,17 @@ uv run python -m crypt
 uv run python -m crypt --symbols SOL-USDT-SWAP,TON-USDT-SWAP
 ```
 
+## Developer setup
+
+```bash
+uv sync --all-extras
+uv tool install pre-commit
+pre-commit install
+```
+
+Pre-commit runs `ruff` (with auto-fix) and `mypy --strict` on every commit.
+CI runs the same checks plus `pytest` and `uv lock --check` on every push.
+
 ## Deploying to Railway (recommended for 14-day run)
 
 Follow the step-by-step checklist in `docs/deploy/railway.md`.

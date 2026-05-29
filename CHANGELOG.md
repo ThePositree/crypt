@@ -6,6 +6,77 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-05-29 — Post-M1 run: P0 quality gates, post-mortem, stdlib name fix
+
+M1 14-day run completed successfully (255 verdicts, 0 errors, 0 alerts). All P0
+post-run work shipped in this session.
+
+### Post-mortem
+
+- `docs/post_mortems/2026-05-29-m1-run-summary.md` — full 14-day run analysis:
+  tick completeness, decision distribution, regime breakdown, key observations
+  (zero alerts, TON BUY streak at conf 50%, XPL bootstrapping behaviour).
+
+### P0 quality gates (all 5 shipped)
+
+- **GitHub Actions CI** — `.github/workflows/ci.yml`: ruff lint, ruff format,
+  mypy strict, pytest, uv lock check, gitleaks secret scan.
+- **Pre-commit hooks** — `.pre-commit-config.yaml`: ruff (with auto-fix) +
+  mypy. README "Developer setup" section added.
+- **`[UNCALIBRATED]` marker** — `Settings.uncalibrated: bool = True` added to
+  `config.py`; `TelegramSink._format_message` now appends `⚠️ [UNCALIBRATED]`
+  to the alert title when flag is True; wired through `Orchestrator._build_sinks`.
+  Unit tests in `tests/sinks/test_telegram.py` (8 tests).
+- **Closed-candle invariant** — `OKXClient.fetch_ohlcv` now uses time-based
+  `closed` determination (bar_close + 5s safety buffer). `Ingestor._ingest_ohlcv`
+  pre-filters to closed candles before `save_candles`. `ParquetStore.save_candles`
+  raises `ValueError` on any non-closed candle. Tests in
+  `tests/data/test_store_closed_invariant.py` (4 tests).
+- **Critical-inputs guard refactor** — `Signal.critical_missing: list[str]`
+  field added. `BaseEngine.critical_inputs: ClassVar[list[str]] = []` declared;
+  TrendEngine, MeanRevEngine, VolatilityEngine, RegimeEngine declare
+  `critical_inputs = ["candles[H4]"]`; DerivativesEngine keeps `[]`.
+  `DecisionFilter._has_critical_missing` now reads `sig.critical_missing`
+  instead of substring-matching `"candles[H4]"` in `inputs_missing`. New tests
+  in `tests/decision/test_filters.py` (+5 tests).
+
+### `crypt` stdlib name conflict fix (ADR-0013)
+
+- `pyproject.toml` — `[tool.pytest.ini_options]` gets `pythonpath = ["src"]`;
+  `uv run pytest` now works out of the box without `PYTHONPATH=src`.
+- `docs/decisions/0013-crypt-stdlib-name-conflict.md` — ADR documenting root
+  cause, fixes applied, agent instructions, what was deliberately NOT done.
+- `docs/deploy/railway.md` — troubleshooting table updated with ADR-0013 link.
+
+### Stats
+
+- Tests: 59 passed (was 42); mypy 0 errors (36 files); ruff clean.
+- New files: 8 (`ci.yml`, `.pre-commit-config.yaml`, post-mortem, ADR-0013,
+  `test_telegram.py`, `test_store_closed_invariant.py`, `tests/sinks/__init__.py`,
+  `tests/data/__init__.py`).
+- Modified files: `config.py`, `sinks/telegram.py`, `runtime/orchestrator.py`,
+  `exchange/okx.py`, `data/store.py`, `data/ingestor.py`, `models.py`,
+  `engines/base.py`, `engines/trend.py`, `engines/meanrev.py`,
+  `engines/volatility.py`, `engines/regime.py`, `decision/filters.py`,
+  `pyproject.toml`, `README.md`, `docs/deploy/railway.md`,
+  `docs/tasks/IN_PROGRESS.md`, `docs/tasks/BACKLOG.md`, `docs/tasks/DONE.md`.
+
+ADRs introduced: 0013.
+
+---
+
+## 2026-05-29 — Fix Railway data export docs (`railway run` vs `railway ssh`)
+
+`railway run` runs commands locally with injected env vars; `/app/data` exists only
+inside the deployed container where the volume is mounted. Step 7 in the deploy guide
+incorrectly used `railway run`, causing `find: '/app/data': No such file or directory`.
+
+- `docs/deploy/railway.md` — Step 7 now uses `railway ssh`; added prerequisites,
+  extract commands, and troubleshooting rows.
+- `docs/operator.md`, `docs/decisions/0010-railway-deployment.md` — aligned references.
+
+---
+
 ## 2026-05-15 — Planning session: post-M1 docs / specs / backlog refresh
 
 Pure documentation session. **No code changes.** The M1 14-day Railway

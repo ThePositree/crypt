@@ -4,6 +4,25 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-05-29 — Post-M1 P0 quality gates + post-mortem + ADR-0013
+
+- `docs/post_mortems/2026-05-29-m1-run-summary.md` — M1 14-day run summary
+  (255 verdicts, 0 crashes, 0 alerts, key observations).
+- `.github/workflows/ci.yml` — GitHub Actions CI (ruff, mypy, pytest, uv lock,
+  gitleaks).
+- `.pre-commit-config.yaml` — pre-commit hooks (ruff + mypy).
+- `[UNCALIBRATED]` Telegram marker — `Settings.uncalibrated`, `TelegramSink`,
+  8 unit tests.
+- Closed-candle invariant — time-based `closed` in OKXClient, ingestor filter,
+  `save_candles` assertion, 4 unit tests.
+- Critical-inputs guard refactor — `Signal.critical_missing`,
+  `BaseEngine.critical_inputs`, per-engine declarations, filter updated, 5 new
+  tests.
+- ADR-0013 (`crypt` stdlib name conflict) — `pythonpath = ["src"]` in
+  `pyproject.toml`; `uv run pytest` now works without `PYTHONPATH=src`.
+
+---
+
 ## 2026-05-14 — Session 6: Railway deployment config
 
 Railway deployment for the M1 14-day continuous run.

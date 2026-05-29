@@ -29,18 +29,13 @@ checked-off; only post-M1 work is listed below.
 
 ### CI / quality gates
 
-- [ ] **GitHub Actions CI** — implement `.github/workflows/ci.yml` per
-      `docs/operations/ci.md`. Required checks: `ruff check`, `ruff
-      format --check`, `mypy --strict`, `pytest`, `uv lock --check`,
-      `gitleaks`. Add branch protection on `master`.
-- [ ] **Pre-commit hooks** — `.pre-commit-config.yaml` mirroring CI
-      (ruff + mypy). README "Developer setup" snippet.
+- [x] **GitHub Actions CI** — `.github/workflows/ci.yml` (2026-05-29).
+- [x] **Pre-commit hooks** — `.pre-commit-config.yaml` (2026-05-29).
 
 ### Threshold transparency
 
-- [ ] **`[UNCALIBRATED]` marker on Telegram alerts** — per
-      ADR-0011. Add `Settings.uncalibrated: bool = True`; update
-      `TelegramSink._format_message`; unit test for both flag states.
+- [x] **`[UNCALIBRATED]` marker on Telegram alerts** — ADR-0011; shipped
+      2026-05-29. Removed when M2 calibration lands (ADR-0014).
 - [ ] **`config/weights.yaml` header comment** — make it explicit at
       the top of the file that values are placeholders pending M2
       calibration.
@@ -50,10 +45,14 @@ checked-off; only post-M1 work is listed below.
 See `docs/post_m1_code_fixes.md` for the technical detail of each. The
 priorities below are the BACKLOG view.
 
-- [ ] **Closed-candle invariant** — `post_m1_code_fixes.md` §1. P0
-      because it's a no-look-ahead-bias correctness risk.
-- [ ] **Critical-inputs guard refactor** — `post_m1_code_fixes.md` §2.
-      P0 because future engines will rely on it.
+- [x] **Closed-candle invariant** — `post_m1_code_fixes.md` §1. Shipped 2026-05-29.
+- [x] **Critical-inputs guard refactor** — `post_m1_code_fixes.md` §2. Shipped 2026-05-29.
+
+### Package name / stdlib conflict
+
+- [x] **`crypt` vs Python stdlib `crypt`** — ADR-0013; `pythonpath = ["src"]`
+      in `pyproject.toml` (2026-05-29). `uv run pytest` now works without
+      manual `PYTHONPATH=src`.
 
 ---
 
@@ -157,11 +156,13 @@ From `docs/post_m1_code_fixes.md`:
 
 ### Railway post-run hygiene
 
-- [ ] **Extract `data/*.parquet` and `data/logs/`** via `railway run`
-      per `docs/deploy/railway.md` Step 7.
+- [x] **Extract `data/*.parquet` and `data/logs/`** — done; files in `prod/`
+      (2026-05-29).
 - [ ] **Decide retention** — Pro plan if we ever want > 7 days of
       cloud-side logs. Currently logs are on the persistent volume so
       this is mostly cosmetic.
+- [ ] **Stop / pause Railway service** — owner action; Parquet data already
+      extracted to `prod/`.
 
 ---
 

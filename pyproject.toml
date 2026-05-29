@@ -106,3 +106,7 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "-ra -q"
+# Prepend src/ so our `crypt` package is found before the deprecated stdlib
+# `crypt` module (Python 3.12). Without this, `import crypt.models` resolves
+# to the stdlib file and raises ModuleNotFoundError. See ADR-0013.
+pythonpath = ["src"]

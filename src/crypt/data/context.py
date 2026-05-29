@@ -17,8 +17,8 @@ from crypt.models import (
 # How many rows to load for each data type when building a context.
 _CANDLE_LIMIT = 250
 _FUNDING_LIMIT = 200  # ~7-8 days of 8h funding snapshots
-_OI_LIMIT = 200       # ~8 days of hourly
-_LS_LIMIT = 100       # ~4 days of hourly
+_OI_LIMIT = 200  # ~8 days of hourly
+_LS_LIMIT = 100  # ~4 days of hourly
 _TAKER_LIMIT = 100
 
 
@@ -28,6 +28,7 @@ def _df_to_funding(df: pd.DataFrame, symbol: str) -> list[FundingSnapshot] | Non
     result = []
     for _, row in df.iterrows():
         from decimal import Decimal
+
         result.append(
             FundingSnapshot(
                 symbol=symbol,

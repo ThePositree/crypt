@@ -16,10 +16,13 @@ _MAX_RETRIES = 3
 _RETRY_BACKOFF = 2.0  # seconds
 
 
-def _format_message(verdict: Verdict) -> str:
+def _format_message(verdict: Verdict, *, uncalibrated: bool = True) -> str:
     emoji = _DECISION_EMOJI.get(verdict.decision, "⚪")
+    title = f"{emoji} <b>{verdict.symbol}</b> — <b>{verdict.decision}</b>"
+    if uncalibrated:
+        title += " ⚠️ [UNCALIBRATED]"
     lines = [
-        f"{emoji} <b>{verdict.symbol}</b> — <b>{verdict.decision}</b>",
+        title,
         f"Confidence: {verdict.confidence}%   Score: {verdict.score:+.3f}",
         f"Regime: {verdict.regime.value}",
         "",
@@ -35,14 +38,19 @@ class TelegramSink(BaseSink):
     Retries up to _MAX_RETRIES times with exponential backoff on network errors.
     Failures are logged but never raised — the verdict is always persisted by
     other sinks regardless.
+
+    When ``uncalibrated=True`` (default), every alert includes an
+    ``[UNCALIBRATED]`` warning per ADR-0011. Flip to ``False`` only after
+    M2 produces calibrated weights and ADR-0013 ratifies them.
     """
 
-    def __init__(self, bot_token: str, chat_id: str) -> None:
+    def __init__(self, bot_token: str, chat_id: str, *, uncalibrated: bool = True) -> None:
         self._bot = Bot(
             token=bot_token,
             default=DefaultBotProperties(parse_mode=ParseMode.HTML),
         )
         self._chat_id = chat_id
+        self._uncalibrated = uncalibrated
 
     async def emit(self, verdict: Verdict, should_alert: bool) -> None:
         if not should_alert:
@@ -50,7 +58,7 @@ class TelegramSink(BaseSink):
         if verdict.decision == "HOLD":
             return
 
-        text = _format_message(verdict)
+        text = _format_message(verdict, uncalibrated=self._uncalibrated)
         for attempt in range(1, _MAX_RETRIES + 1):
             try:
                 await self._bot.send_message(self._chat_id, text)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -24,6 +24,18 @@ _TF_MAP: dict[Timeframe, str] = {
     Timeframe.H4: "4h",
     Timeframe.D1: "1d",
 }
+
+# Duration of each bar in seconds.
+_TF_SECONDS: dict[Timeframe, int] = {
+    Timeframe.M15: 15 * 60,
+    Timeframe.H1: 60 * 60,
+    Timeframe.H4: 4 * 60 * 60,
+    Timeframe.D1: 24 * 60 * 60,
+}
+
+# A bar is only marked closed once its expected end time is this far in the past.
+# Protects against OKX occasionally including the still-forming bar at the boundary.
+_CLOSED_SAFETY_BUFFER: timedelta = timedelta(seconds=5)
 
 # OKX rubik/stat period strings that match our timeframes.
 _RUBIK_PERIOD_MAP: dict[str, str] = {
@@ -101,22 +113,26 @@ class OKXClient:
             logger.warning("fetch_ohlcv {}/{} failed: {}", symbol, tf_str, exc)
             return []
 
+        now = datetime.now(tz=UTC)
+        tf_seconds = _TF_SECONDS[timeframe]
         candles: list[Candle] = []
-        for i, row in enumerate(raw):
+        for row in raw:
             ts_ms, o, h, lo, c, vol = row[:6]
-            is_last = i == len(raw) - 1
+            open_time = _ts_ms_to_dt(ts_ms)
+            bar_close = open_time + timedelta(seconds=tf_seconds)
+            # A bar is closed only when its expected end is safely in the past.
+            is_closed = bar_close + _CLOSED_SAFETY_BUFFER <= now
             candles.append(
                 Candle(
                     symbol=symbol,
                     timeframe=timeframe,
-                    open_time=_ts_ms_to_dt(ts_ms),
+                    open_time=open_time,
                     o=Decimal(str(o)),
                     h=Decimal(str(h)),
                     low=Decimal(str(lo)),
                     c=Decimal(str(c)),
                     volume=Decimal(str(vol)),
-                    # The last candle in the response may still be forming.
-                    closed=not is_last,
+                    closed=is_closed,
                 )
             )
         return candles

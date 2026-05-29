@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from typing import ClassVar
 
 import numpy as np
 import pandas_ta as ta
@@ -18,6 +19,8 @@ class MeanRevEngine(BaseEngine):
     Bullish when RSI14 ≤ 30 AND close ≤ lower Bollinger Band(20, 2).
     Bearish when RSI14 ≥ 70 AND close ≥ upper Bollinger Band(20, 2).
     """
+
+    critical_inputs: ClassVar[list[str]] = ["candles[H4]"]
 
     @property
     def name(self) -> str:

@@ -89,6 +89,11 @@ class Signal(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     rationale: list[str] = Field(default_factory=list)
     inputs_missing: list[str] = Field(default_factory=list)
+    # Subset of inputs_missing that are critical for this engine's output.
+    # Populated by BaseEngine._signal / _neutral from each engine's
+    # critical_inputs ClassVar. Used by DecisionFilter to downgrade verdicts
+    # whose primary data dependency is absent.
+    critical_missing: list[str] = Field(default_factory=list)
     meta: dict[str, object] = Field(default_factory=dict)
     produced_at: datetime
 

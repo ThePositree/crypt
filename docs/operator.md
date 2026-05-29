@@ -160,7 +160,7 @@ Severe outages mean a tick may be skipped entirely; that's fine.
 ### Weekly
 - Skim Railway logs for `WARNING`/`ERROR` patterns. A handful per week
   is normal; a flood is not.
-- Eyeball `data/verdicts.jsonl` (or download via `railway run` per the
+- Eyeball `data/verdicts.jsonl` (or download via `railway ssh` per the
   deploy guide) — does the regime mix look sane?
 - Note any time the system "got it wrong" in obvious ways — these
   observations are what M3 paper-trading analysis exists for.

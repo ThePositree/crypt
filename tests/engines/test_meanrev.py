@@ -48,8 +48,14 @@ def test_no_candles_neutral() -> None:
 def test_flat_price_neutral() -> None:
     """Zero-variance series → BB upper == BB mid → neutral."""
     rows = [
-        {"open_time": pd.Timestamp("2025-01-01") + pd.Timedelta(hours=4 * i),
-         "o": 100.0, "h": 100.0, "l": 100.0, "c": 100.0, "volume": 1.0}
+        {
+            "open_time": pd.Timestamp("2025-01-01") + pd.Timedelta(hours=4 * i),
+            "o": 100.0,
+            "h": 100.0,
+            "l": 100.0,
+            "c": 100.0,
+            "volume": 1.0,
+        }
         for i in range(60)
     ]
     h4 = pd.DataFrame(rows)

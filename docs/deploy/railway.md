@@ -131,23 +131,40 @@ heartbeats, the process has stalled — check logs and redeploy if needed.
 
 ## Step 7 — Extract data and logs at the end of the run
 
-> **Important:** there is no file browser in Railway. Files are accessed through the service
-> shell via `railway run`.
+> **Important:** there is no file browser in Railway. Files live on the persistent volume
+> inside the **running** service container. Use `railway ssh`, not `railway run`.
+>
+> `railway run` executes the command **on your local machine** (it only injects Railway
+> env vars). `/app/data` does not exist locally, so `find /app/data` fails with
+> "No such file or directory".
 
-### Method A — Railway CLI shell (recommended)
+### Prerequisites
+
+1. `railway link` (project + service).
+2. Service is **running** (volume is mounted only in the deployed container).
+3. SSH key registered — the first `railway ssh` prompts you to add one (`railway ssh keys`).
+
+### Method A — Railway CLI SSH (recommended)
 
 ```bash
-# Link your local terminal to the project/service first (if not already linked)
-railway link
+# Sanity check: volume mount and parquet count (run inside the container)
+railway ssh -- sh -c 'ls -la /app/data && find /app/data -name "*.parquet" | wc -l'
 
 # Copy parquet files to your local machine
-railway run -- sh -c "find /app/data -name '*.parquet' | tar czf - -T -" > data_export.tar.gz
+railway ssh -- sh -c 'find /app/data -name "*.parquet" | tar czf - -T -' > data_export.tar.gz
 
 # Copy the full log file
-railway run -- cat /app/data/logs/crypt.log > crypt_full.log
+railway ssh -- cat /app/data/logs/crypt.log > crypt_full.log
 
 # Or copy all rotated log files (including compressed .gz archives)
-railway run -- sh -c "tar czf - /app/data/logs/" > logs_export.tar.gz
+railway ssh -- sh -c 'tar czf - /app/data/logs/' > logs_export.tar.gz
+```
+
+Extract locally:
+
+```bash
+tar xzf data_export.tar.gz
+tar xzf logs_export.tar.gz
 ```
 
 ### Method B — Volume dump template
@@ -176,13 +193,15 @@ Railway will email you a restoration link; the volume is permanently deleted aft
 | Symptom | Likely cause | Fix |
 |---------|-------------|-----|
 | Build fails with `uv: command not found` | Railpack did not detect uv | Ensure `uv.lock` is committed and pushed |
-| `ModuleNotFoundError: crypt` | `uv sync --all-extras` didn't install the local package | Check `pyproject.toml` `[build-system]` section |
+| `ModuleNotFoundError: No module named 'crypt.models'` | `crypt` package name clashes with deprecated Python stdlib `crypt` module; stdlib is found first if `src/` is not on `sys.path` | `uv run pytest` is fine (pythonpath set in pyproject.toml). For direct invocation: `PYTHONPATH=src uv run python -m crypt`. See ADR-0013. |
 | Telegram alerts not arriving | Bot token or chat ID wrong, or `ALERT_CONFIDENCE_THRESHOLD` too high | Check Variables; lower threshold to 0 for a test run with `--once` |
 | Service sleeping unexpectedly | Serverless feature still enabled | Go to Service Settings → Networking → disable Serverless |
 | `data/` directory empty after restart | Volume not attached or mounted at wrong path | Verify volume mount path = `/app/data` |
+| `find: '/app/data': No such file or directory` when exporting | Used `railway run` (local shell) instead of `railway ssh` (container) | Use commands in Step 7 with `railway ssh`; confirm volume is attached and service is running |
+| `railway ssh` fails / connection refused | No SSH key, or service not running | Run `railway ssh keys`; redeploy service; copy SSH command from dashboard (right-click service → Copy SSH Command) |
 | Log file missing from volume | `LOG_DIR` env var not set | Set `LOG_DIR=data/logs` in Variables, redeploy |
 | Deploy logs show `Downloading mypy` / `ruff` then long silence | `uv run` syncs the `dev` group by default; Railpack auto-detects the start command and may omit `--no-dev` | `railway.toml` uses `uv run --no-dev`; verify the start command in the Railway dashboard matches `uv run --no-dev python -u -m crypt` |
-| No log output at all after bytecode compilation — process exits with code 0 | Package name `crypt` conflicts with deprecated Python 3.12 stdlib module; stdlib path comes before site-packages in `sys.path` so `python -m crypt` silently runs the stdlib module and exits | Fixed in `railway.toml`: start command is now `PYTHONPATH=/app/src uv run --no-dev python -u -m crypt`. Locally set `PYTHONPATH=src` in your shell (or copy `.env.example` to `.env`). |
+| No log output at all after bytecode compilation — process exits with code 0 | Package name `crypt` conflicts with deprecated Python 3.12 stdlib module; stdlib path comes before site-packages in `sys.path` so `python -m crypt` silently runs the stdlib module and exits | Fixed in `railway.toml`: start command is now `PYTHONPATH=/app/src uv run --no-dev python -u -m crypt`. Locally set `PYTHONPATH=src` in your shell (or copy `.env.example` to `.env`). See ADR-0013 for full explanation and future-agent instructions. |
 | No log output at all after bytecode compilation — process appears to hang | Python buffers stdout/stderr when not a TTY; Railway's log collector sees nothing until the buffer flushes | Fixed in code: `python -u` flag forces unbuffered I/O. You can also add `PYTHONUNBUFFERED=1` to Railway Variables as a belt-and-suspenders measure. |
 | Logs appear late or only after a crash | Loguru `enqueue=True` on a non-TTY stderr | Fixed in code: stderr uses enqueue/colorize only when `stderr` is a TTY (e.g. local terminal); `python -u` ensures the OS-level buffer is also bypassed |
 | `SettingsError: error parsing value for field "symbols"` / `JSONDecodeError: Expecting value: line 1 column 1` | `SYMBOLS` env var is set to an empty string in Railway | Either delete the `SYMBOLS` variable (default list is used) or set a non-empty comma-separated value, e.g. `SOL-USDT-SWAP,TON-USDT-SWAP,XPL-USDT-SWAP`. Fixed in code: empty string now silently falls back to defaults. |

@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import ClassVar
 
 from loguru import logger
 
+from crypt.data.store import ParquetStore
 from crypt.exchange.base import ExchangeClient
 from crypt.models import Timeframe
-
-if TYPE_CHECKING:
-    from crypt.data.store import ParquetStore
 
 
 class Ingestor:
@@ -22,7 +20,7 @@ class Ingestor:
 
     # Candle limits per timeframe — enough warm-up for the slowest indicator
     # (EMA200 on H4 needs 200 bars; D1 needs 60).
-    _OHLCV_LIMITS: dict[Timeframe, int] = {
+    _OHLCV_LIMITS: ClassVar[dict[Timeframe, int]] = {
         Timeframe.H4: 250,
         Timeframe.H1: 250,
         Timeframe.D1: 100,
@@ -31,7 +29,7 @@ class Ingestor:
     def __init__(
         self,
         exchange: ExchangeClient,
-        store: "ParquetStore",
+        store: ParquetStore,
         symbols: list[str],
     ) -> None:
         self._exchange = exchange
@@ -65,8 +63,9 @@ class Ingestor:
         for tf, limit in self._OHLCV_LIMITS.items():
             try:
                 candles = await self._exchange.fetch_ohlcv(symbol, tf, limit=limit)
-                if candles:
-                    self._store.save_candles(candles)
+                closed = [c for c in candles if c.closed]
+                if closed:
+                    self._store.save_candles(closed)
             except Exception as exc:
                 logger.error("OHLCV {}/{} error: {}", symbol, tf.value, exc)
 

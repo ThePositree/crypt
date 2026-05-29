@@ -14,7 +14,9 @@ _T0 = datetime(2025, 1, 1, tzinfo=UTC)
 
 def _make_funding(rates: list[float]) -> list[FundingSnapshot]:
     return [
-        FundingSnapshot(symbol="BTC-USDT-SWAP", ts=_T0 + timedelta(hours=8 * i), rate=Decimal(str(r)))
+        FundingSnapshot(
+            symbol="BTC-USDT-SWAP", ts=_T0 + timedelta(hours=8 * i), rate=Decimal(str(r))
+        )
         for i, r in enumerate(rates)
     ]
 

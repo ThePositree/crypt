@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -103,6 +103,14 @@ class ParquetStore:
     def save_candles(self, candles: list[Candle]) -> None:
         if not candles:
             return
+        open_candles = [c for c in candles if not c.closed]
+        if open_candles:
+            raise ValueError(
+                f"save_candles received {len(open_candles)} non-closed candle(s); "
+                "only closed bars may be persisted to prevent look-ahead bias. "
+                f"First offender: {open_candles[0].symbol} {open_candles[0].timeframe} "
+                f"{open_candles[0].open_time.isoformat()}"
+            )
         symbol = candles[0].symbol
         tf = candles[0].timeframe
         path = _ohlcv_path(self._base, symbol, tf)
@@ -155,17 +163,13 @@ class ParquetStore:
             return
         symbol = snapshots[0].symbol
         path = _funding_path(self._base, symbol)
-        new_df = pd.DataFrame(
-            [{"ts": s.ts, "rate": float(s.rate)} for s in snapshots]
-        )
+        new_df = pd.DataFrame([{"ts": s.ts, "rate": float(s.rate)} for s in snapshots])
         new_df["ts"] = pd.to_datetime(new_df["ts"], utc=True)
         existing = _read_parquet(path)
         merged = _upsert(existing, new_df, "ts")
         _write_parquet(merged, path)
 
-    def load_funding(
-        self, symbol: str, limit: int | None = None
-    ) -> pd.DataFrame:
+    def load_funding(self, symbol: str, limit: int | None = None) -> pd.DataFrame:
         path = _funding_path(self._base, symbol)
         df = _read_parquet(path)
         if df is None or df.empty:
@@ -182,9 +186,7 @@ class ParquetStore:
             return
         symbol = snapshots[0].symbol
         path = _oi_path(self._base, symbol)
-        new_df = pd.DataFrame(
-            [{"ts": s.ts, "oi": float(s.oi)} for s in snapshots]
-        )
+        new_df = pd.DataFrame([{"ts": s.ts, "oi": float(s.oi)} for s in snapshots])
         new_df["ts"] = pd.to_datetime(new_df["ts"], utc=True)
         existing = _read_parquet(path)
         merged = _upsert(existing, new_df, "ts")
@@ -222,9 +224,7 @@ class ParquetStore:
         merged = _upsert(existing, new_df, "ts")
         _write_parquet(merged, path)
 
-    def load_ls_ratio(
-        self, symbol: str, limit: int | None = None
-    ) -> pd.DataFrame:
+    def load_ls_ratio(self, symbol: str, limit: int | None = None) -> pd.DataFrame:
         path = _ls_ratio_path(self._base, symbol)
         df = _read_parquet(path)
         if df is None or df.empty:
@@ -256,9 +256,7 @@ class ParquetStore:
         merged = _upsert(existing, new_df, "ts")
         _write_parquet(merged, path)
 
-    def load_taker_volume(
-        self, symbol: str, limit: int | None = None
-    ) -> pd.DataFrame:
+    def load_taker_volume(self, symbol: str, limit: int | None = None) -> pd.DataFrame:
         path = _taker_vol_path(self._base, symbol)
         df = _read_parquet(path)
         if df is None or df.empty:
@@ -291,6 +289,6 @@ class ParquetStore:
             if df is None or df.empty:
                 continue
             ts_col = "open_time" if "open_time" in df.columns else "ts"
-            df = df[df[ts_col] >= pd.Timestamp(before, tz=timezone.utc)]
+            df = df[df[ts_col] >= pd.Timestamp(before, tz=UTC)]
             if not df.empty:
                 _write_parquet(df.reset_index(drop=True), path)

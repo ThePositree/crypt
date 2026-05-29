@@ -78,7 +78,13 @@ class Orchestrator:
         sinks.append(ExecutionStub())
 
         if cfg.telegram_bot_token and cfg.telegram_chat_id:
-            sinks.append(TelegramSink(cfg.telegram_bot_token, cfg.telegram_chat_id))
+            sinks.append(
+                TelegramSink(
+                    cfg.telegram_bot_token,
+                    cfg.telegram_chat_id,
+                    uncalibrated=cfg.uncalibrated,
+                )
+            )
         else:
             logger.warning("Telegram not configured — alerts will be console-only")
 

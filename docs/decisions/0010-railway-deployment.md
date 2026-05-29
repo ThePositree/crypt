@@ -64,7 +64,8 @@ keeping both parquet files and log files on the single persistent volume.
 ### Negative / Watch-outs
 - **Log retention on Hobby plan is 7 days.** Railway's cloud log viewer will only show the
   last 7 days. Since logs are also written to `/app/data/logs/crypt.log` (on the Volume),
-  the full 14-day log file is still accessible via `railway run`.
+  the full 14-day log file is still accessible via `railway ssh` (not `railway run`,
+  which executes locally).
 - **Re-deploy causes brief downtime** when a Volume is attached (Railway prevents two
   simultaneous mounts for data integrity). Avoid pushing to `master` during the 14-day run.
 - **Single volume per service** — `data/` and `logs/` share the same 5 GB volume. Not an
