@@ -6,6 +6,95 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-01 — M2 report reviewed; OHLCV calibration rejected
+
+Owner reran the SOL/TON OHLCV-only backtest after the multi-symbol execution
+fix. The replay completed, but the optimizer sanity guard fired on the first
+two out-of-sample folds, so generated weights are not promoted.
+
+- Added ADR-0014 documenting the rejected calibration result and the decision
+  to keep alerts marked uncalibrated.
+- Fixed `weights_to_yaml()` so candidate files containing numpy scalar weights
+  are emitted as safe, portable YAML instead of Python object tags.
+- Added a regression test for safe YAML serialization.
+- Added follow-ups for guarded-report artifact semantics and weak long-side
+  signals.
+
+**ADRs:** ADR-0014.
+
+**Verification:** `uv run pytest -q` passed; `uv run ruff check src tests`
+clean; `uv run mypy src` clean.
+
+**Files touched:** `src/crypt/backtest/`, `tests/backtest/`, `docs/`,
+`reports/backtest_2026-06/`.
+
+---
+
+## 2026-06-01 — Hotfix: multi-symbol backtest execution uses symbol-local next bars
+
+Owner backtest log showed impossible SL validation lines where prices from
+different instruments were paired (for example SOL entry levels with TON stop
+prices). Root cause: `ExecutionSim` used the next global row in a combined
+multi-symbol DataFrame for next-open entries and TTL exits.
+
+- `ExecutionSim.run()` now computes `next_open`, `next_time`, and bar number
+  per symbol before the simulation loop.
+- Backtest simulation frames now include explicit `entry_price = close` from
+  the closed signal candle.
+- Cleaned up pandas `pct_change(fill_method=None)` and timezone-aware UTC
+  generation timestamps for warnings seen in the same run.
+- Added a regression test for same-timestamp SOL/TON rows.
+
+**ADRs:** none.
+
+**Verification:** `uv run pytest -q` → 124 passed; `uv run ruff check src tests`
+clean; `uv run mypy src` clean.
+
+**Files touched:** `src/crypt/backtest/`, `tests/backtest/`, `docs/`.
+
+---
+
+## 2026-06-01 — Backtest optimizer recomputes candidate scores
+
+- Fixed M2 calibration blocker: `BacktestRecorder` now persists
+  `strength_<engine>` columns for scoring engines.
+- Updated `optimizer._apply_weights` to recompute score/decision from replayed
+  strengths under candidate weights instead of reusing the old final `score`.
+- Added focused tests proving candidate weights change score, decision, and
+  objective.
+
+**ADRs:** none.
+
+**Verification:** `uv run pytest -q` → 119 passed; `uv run ruff check src tests`
+clean; `uv run mypy src` clean.
+
+**Files touched:** `src/crypt/backtest/`, `tests/backtest/`, `docs/`.
+
+---
+
+## 2026-06-01 — SMC liquidity engine
+
+- Extended SMC core with `SMCLiquidityLevel`, `SMCLiquiditySweep`, ATR-scaled
+  equal high/low detection, swing liquidity levels, wick-distance metadata,
+  and same-candle ambiguity flags.
+- Added `SMCLiquidityEngine`: reversal signal from fresh equal/swing high-low
+  sweeps with rejection bonus and neutral missing-data/ambiguous paths.
+- Wired `smc_liquidity` into live orchestration, replay, aggregator scoring,
+  placeholder weights, optimizer engine lists, and backtest docs.
+- Added tests for equal-level confirmation timing, sweep timing, ambiguous
+  double sweeps, bullish/bearish liquidity output, and missing H4 data.
+
+**ADRs:** none.
+
+**Verification:** `uv run pytest -q` → 116 passed; `uv run ruff check src tests`
+clean; `uv run mypy src` clean.
+
+**Files touched:** `src/crypt/structure/`, `src/crypt/engines/`,
+`src/crypt/runtime/`, `src/crypt/backtest/`, `src/crypt/aggregator/`,
+`tests/`, `config/`, `docs/`.
+
+---
+
 ## 2026-06-01 — SMC order-block engine
 
 - Extended SMC core with `SMCOrderBlock`, order-block extraction from

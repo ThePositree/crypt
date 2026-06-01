@@ -15,6 +15,7 @@ from crypt.decision.filters import DecisionFilter
 from crypt.engines.derivatives import DerivativesEngine
 from crypt.engines.meanrev import MeanRevEngine
 from crypt.engines.regime import RegimeEngine
+from crypt.engines.smc_liquidity import SMCLiquidityEngine
 from crypt.engines.smc_order_blocks import SMCOrderBlocksEngine
 from crypt.engines.smc_structure import SMCStructureEngine
 from crypt.engines.trend import TrendEngine
@@ -58,6 +59,7 @@ class Orchestrator:
         self._derivatives = DerivativesEngine()
         self._smc_structure = SMCStructureEngine()
         self._smc_order_blocks = SMCOrderBlocksEngine()
+        self._smc_liquidity = SMCLiquidityEngine()
         self._volatility = VolatilityEngine()
         self._regime = RegimeEngine()
 
@@ -187,12 +189,14 @@ class Orchestrator:
             deriv_signal,
             smc_structure_signal,
             smc_order_blocks_signal,
+            smc_liquidity_signal,
         ) = await asyncio.gather(
             asyncio.to_thread(self._trend.evaluate, ctx),
             asyncio.to_thread(self._meanrev.evaluate, ctx),
             asyncio.to_thread(self._derivatives.evaluate, ctx),
             asyncio.to_thread(self._smc_structure.evaluate, ctx),
             asyncio.to_thread(self._smc_order_blocks.evaluate, ctx),
+            asyncio.to_thread(self._smc_liquidity.evaluate, ctx),
         )
 
         all_signals: list[Signal] = [
@@ -201,6 +205,7 @@ class Orchestrator:
             deriv_signal,
             smc_structure_signal,
             smc_order_blocks_signal,
+            smc_liquidity_signal,
             vol_signal,
             regime_signal,
         ]

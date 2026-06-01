@@ -61,12 +61,24 @@ def test_generate_folds_last_test_to_equals_to_dt() -> None:
     assert folds[-1].test_to == to_dt
 
 
-def test_generate_folds_invalid_n_folds() -> None:
-    """n_folds < 2 raises ValueError."""
+def test_generate_folds_single_split() -> None:
+    """n_folds=1 produces one non-robust 50/50 train/test split."""
     from_dt = datetime(2025, 1, 1, tzinfo=UTC)
     to_dt = datetime(2026, 1, 1, tzinfo=UTC)
-    with pytest.raises(ValueError, match="n_folds must be >= 2"):
-        generate_folds(from_dt, to_dt, 1)
+    folds = generate_folds(from_dt, to_dt, 1)
+
+    assert len(folds) == 1
+    assert folds[0].train_from == from_dt
+    assert folds[0].train_to == folds[0].test_from
+    assert folds[0].test_to == to_dt
+
+
+def test_generate_folds_invalid_n_folds() -> None:
+    """n_folds < 1 raises ValueError."""
+    from_dt = datetime(2025, 1, 1, tzinfo=UTC)
+    to_dt = datetime(2026, 1, 1, tzinfo=UTC)
+    with pytest.raises(ValueError, match="n_folds must be >= 1"):
+        generate_folds(from_dt, to_dt, 0)
 
 
 def test_generate_folds_synthetic_1_year_4_folds() -> None:

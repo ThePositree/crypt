@@ -50,6 +50,10 @@ class ReplayParquetStore:
 
     def __init__(self, store: ParquetStore) -> None:
         self._store = store
+        self._candles_cache: dict[tuple[str, Timeframe], pd.DataFrame] = {}
+        self._oi_cache: dict[str, pd.DataFrame] = {}
+        self._ls_ratio_cache: dict[str, pd.DataFrame] = {}
+        self._taker_volume_cache: dict[str, pd.DataFrame] = {}
 
     def load_candles(
         self,
@@ -59,7 +63,12 @@ class ReplayParquetStore:
         limit: int | None = _CANDLE_LIMIT,
     ) -> pd.DataFrame:
         """Load closed candles strictly before tick_time."""
-        df = self._store.load_candles(symbol, timeframe, limit=None)
+        cache_key = (symbol, timeframe)
+        if cache_key not in self._candles_cache:
+            self._candles_cache[cache_key] = self._store.load_candles(
+                symbol, timeframe, limit=None
+            )
+        df = self._candles_cache[cache_key]
         if df.empty:
             return df
         df = _filter_ts(df, "open_time", tick_time)
@@ -74,7 +83,9 @@ class ReplayParquetStore:
         limit: int | None = _OI_LIMIT,
     ) -> pd.DataFrame:
         """Load open-interest snapshots strictly before tick_time."""
-        df = self._store.load_oi(symbol, limit=None)
+        if symbol not in self._oi_cache:
+            self._oi_cache[symbol] = self._store.load_oi(symbol, limit=None)
+        df = self._oi_cache[symbol]
         if df.empty:
             return df
         df = _filter_ts(df, "ts", tick_time)
@@ -89,7 +100,9 @@ class ReplayParquetStore:
         limit: int | None = _LS_LIMIT,
     ) -> pd.DataFrame:
         """Load long/short ratio snapshots strictly before tick_time."""
-        df = self._store.load_ls_ratio(symbol, limit=None)
+        if symbol not in self._ls_ratio_cache:
+            self._ls_ratio_cache[symbol] = self._store.load_ls_ratio(symbol, limit=None)
+        df = self._ls_ratio_cache[symbol]
         if df.empty:
             return df
         df = _filter_ts(df, "ts", tick_time)
@@ -104,7 +117,9 @@ class ReplayParquetStore:
         limit: int | None = _TAKER_LIMIT,
     ) -> pd.DataFrame:
         """Load taker-volume snapshots strictly before tick_time."""
-        df = self._store.load_taker_volume(symbol, limit=None)
+        if symbol not in self._taker_volume_cache:
+            self._taker_volume_cache[symbol] = self._store.load_taker_volume(symbol, limit=None)
+        df = self._taker_volume_cache[symbol]
         if df.empty:
             return df
         df = _filter_ts(df, "ts", tick_time)

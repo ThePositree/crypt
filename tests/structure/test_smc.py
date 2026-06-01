@@ -101,3 +101,54 @@ def test_order_block_mitigation_marks_block_inactive() -> None:
     block = [ob for ob in state.order_blocks if ob.direction == BULLISH][-1]
     assert not block.active
     assert block.mitigated_at == df["open_time"].iloc[6] + timedelta(hours=4)
+
+
+def test_equal_high_detected_after_second_pivot_confirmation() -> None:
+    closes = [100, 101, 104, 100, 99, 100, 104, 100, 99]
+    highs = [101, 102, 110.0, 104, 103, 104, 110.1, 104, 103]
+    lows = [99, 100, 98, 97, 96, 97, 98, 97, 96]
+    df = _candles(closes, highs, lows)
+
+    before_confirmation = df["open_time"].iloc[7] + timedelta(hours=4)
+    after_confirmation = df["open_time"].iloc[8] + timedelta(hours=4)
+
+    early = analyse_smc(df, tick_time=before_confirmation, internal_length=2, swing_length=50)
+    late = analyse_smc(df, tick_time=after_confirmation, internal_length=2, swing_length=50)
+
+    assert not early.liquidity_levels
+    equal_highs = [level for level in late.liquidity_levels if level.level_type == "equal"]
+    assert equal_highs
+    assert equal_highs[-1].side == "high"
+    assert equal_highs[-1].known_at == after_confirmation
+
+
+def test_equal_high_sweep_known_after_sweep_candle_close() -> None:
+    closes = [100, 101, 104, 100, 99, 100, 104, 100, 99, 108]
+    highs = [101, 102, 110.0, 104, 103, 104, 110.1, 104, 103, 112]
+    lows = [99, 100, 98, 97, 96, 97, 98, 97, 96, 106]
+    df = _candles(closes, highs, lows)
+
+    before_sweep_close = df["open_time"].iloc[9]
+    after_sweep_close = df["open_time"].iloc[9] + timedelta(hours=4)
+
+    early = analyse_smc(df, tick_time=before_sweep_close, internal_length=2, swing_length=50)
+    late = analyse_smc(df, tick_time=after_sweep_close, internal_length=2, swing_length=50)
+
+    assert not early.liquidity_sweeps
+    sweep = late.liquidity_sweeps[-1]
+    assert sweep.side == "high"
+    assert sweep.level_type == "equal"
+    assert sweep.known_at == after_sweep_close
+
+
+def test_same_candle_high_low_sweep_is_marked_ambiguous() -> None:
+    closes = [100, 101, 104, 100, 99, 100, 104, 100, 99, 100, 96, 100, 99, 100, 100]
+    highs = [101, 102, 110.0, 104, 103, 104, 110.1, 104, 103, 104, 103, 104, 103, 104, 112]
+    lows = [99, 100, 98, 97, 96.0, 97, 98, 97, 96.1, 97, 97, 97, 97, 97, 93]
+    df = _candles(closes, highs, lows)
+
+    state = analyse_smc(df, internal_length=2, swing_length=50)
+
+    ambiguous = [sweep for sweep in state.liquidity_sweeps if sweep.ambiguous]
+    assert ambiguous
+    assert {sweep.side for sweep in ambiguous} == {"high", "low"}

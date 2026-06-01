@@ -67,23 +67,35 @@ def generate_folds(
     from_dt, to_dt : datetime
         Date range to split. Both are normalised to UTC if naive.
     n_folds : int
-        Number of folds.  Must be >= 2 (at least one train + one test slice).
+        Number of folds.  ``1`` produces a single 50/50 train/test split.
 
     Returns
     -------
     list[FoldSpec]
-        Length n_folds - 1 (each fold produces one train + one test slice).
+        Length n_folds - 1 for n_folds >= 2 (each fold produces one train + one test slice).
         Fold 0: train = [from, from + T/N], test = [from + T/N, from + 2*T/N].
         Fold k: train = [from, from + T/N*(k+1)], test expands by one step.
     """
-    if n_folds < 2:
-        raise ValueError("n_folds must be >= 2 for at least one train+test split")
+    if n_folds < 1:
+        raise ValueError("n_folds must be >= 1")
 
     from_ts = _ensure_utc(from_dt)
     to_ts = _ensure_utc(to_dt)
 
     if to_ts <= from_ts:
         raise ValueError("to_dt must be after from_dt")
+
+    if n_folds == 1:
+        midpoint = from_ts + (to_ts - from_ts) / 2
+        return [
+            FoldSpec(
+                fold_index=0,
+                train_from=from_ts.to_pydatetime(),
+                train_to=midpoint.to_pydatetime(),
+                test_from=midpoint.to_pydatetime(),
+                test_to=to_ts.to_pydatetime(),
+            )
+        ]
 
     total_seconds = (to_ts - from_ts).total_seconds()
     step_seconds = total_seconds / n_folds

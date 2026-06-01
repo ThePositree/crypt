@@ -1,0 +1,29 @@
+HIGH_VOL:
+  derivatives: 0.0
+  meanrev: 0.26
+  smc_liquidity: 0.0925
+  smc_order_blocks: 0.555
+  smc_structure: 0.0
+  trend: 0.0925
+RANGING:
+  derivatives: 0.0
+  meanrev: 0.0
+  smc_liquidity: 0.588
+  smc_order_blocks: 0.0
+  smc_structure: 0.392
+  trend: 0.02
+TRENDING:
+  derivatives: 0.0
+  meanrev: 0.11
+  smc_liquidity: 0.56
+  smc_order_blocks: 0.0
+  smc_structure: 0.11
+  trend: 0.22
+thresholds:
+  HIGH_VOL: 0.5
+  RANGING: 0.55
+  TRENDING: 0.55
+vol_confidence_multiplier:
+  high: 0.85
+  low: 0.95
+  normal: 1.0

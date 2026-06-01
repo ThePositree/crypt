@@ -95,17 +95,27 @@ Full spec: **`docs/backtest.md`** (must-read before starting).
       candle-only SMC directional engine (2026-06-01).
 - [x] **`smc_order_blocks` engine** — `docs/engines/smc_order_blocks.md`;
       retest signal from active order-block zones.
-- [ ] **`smc_liquidity` engine** — `docs/engines/smc_liquidity.md`;
-      equal high/low and swing-level sweep signal.
-- [ ] **Fix optimizer score recomputation** — P0 before trusting M2
-      calibration. `BacktestRecorder` currently stores only final `score`;
-      `optimizer._apply_weights` can change thresholds but cannot recompute
-      scores from per-engine strengths. Persist per-engine strengths or
-      rerun aggregation per candidate before accepting `weights.recommended.yaml`.
-- [ ] **Run OHLCV backfill + full backtest** — OKX candles only,
-      `--from 2024-02-01`. Workflow in `IN_PROGRESS.md`.
-- [ ] **ADR-0014** — calibration result after M2 report is reviewed and weights accepted.
-- [ ] **Flip `uncalibrated = False`** — after ADR-0014 is written.
+- [x] **`smc_liquidity` engine** — `docs/engines/smc_liquidity.md`;
+      equal high/low and swing-level sweep signal (2026-06-01).
+- [x] **Fix optimizer score recomputation** — P0 before trusting M2
+      calibration. Fixed 2026-06-01: recorder persists `strength_<engine>`
+      columns and optimizer recomputes candidate score/decision/objective from
+      them before accepting `weights.recommended.yaml`.
+- [x] **Run OHLCV backfill + full backtest** — OKX candles only.
+      SOL/TON report reviewed in ADR-0014 (2026-06-01); generated weights
+      rejected by sanity guard.
+- [x] **ADR-0014** — calibration result after M2 report is reviewed. Written
+      2026-06-01; weights rejected, not accepted.
+- [ ] **Flip `uncalibrated = False`** — only after a future calibration ADR
+      accepts weights that pass the sanity guard.
+- [ ] **Fix guarded-report artifact semantics** — P1. If any walk-forward
+      fold fires the optimizer sanity guard, do not present
+      `weights.recommended.yaml` as promotable and make `weights.candidate.yaml`
+      clearly represent the aggregate non-promotable candidate rather than the
+      last fold's weights.
+- [ ] **Investigate weak long-side signals** — P1. ADR-0014 report review
+      showed negative `h24` proxy expectancy on `SOL` BUY and `TON` BUY
+      alerts; add a filter or context engine before the next calibration run.
 
 ### Engine specs that will follow M2 calibration
 

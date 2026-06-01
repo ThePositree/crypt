@@ -501,19 +501,38 @@ class ExecutionSim:
         loss_num = 0
         daily_blocked = False
 
-        timestamps = df.index.tolist()
-        records = df.to_records()
+        work_df = df.copy()
+        work_df["__bar_time"] = pd.to_datetime(work_df.index, utc=True)
+        if has_symbol:
+            symbol_key = work_df["symbol"].astype(str)
+            grouped = work_df.groupby(symbol_key, sort=False)
+            work_df["__bar_number"] = grouped.cumcount()
+            work_df["__next_open"] = grouped["open"].shift(-1)
+            work_df["__next_time"] = grouped["__bar_time"].shift(-1)
+        else:
+            work_df["__bar_number"] = range(len(work_df))
+            work_df["__next_open"] = work_df["open"].shift(-1)
+            work_df["__next_time"] = work_df["__bar_time"].shift(-1)
 
-        for i in range(len(records) - 1):
+        # The final row per symbol has no next open for next-bar entries/TTL exits.
+        # TP/SL resolution on those rows is intentionally skipped; the backtest
+        # drops tail labels, so forced terminal liquidation would add noise.
+        work_df = work_df[work_df["__next_open"].notna()].copy()
+        if work_df.empty:
+            return pd.DataFrame()
+
+        records = work_df.to_records()
+
+        for i in range(len(records)):
             if capital <= 1:
                 logger.warning("Capital below 1, stopping simulation")
                 break
 
             row = records[i]
-            next_record = records[i + 1]
-            bar_time = pd.Timestamp(timestamps[i])
-            next_time = pd.Timestamp(timestamps[i + 1])
-            next_open: float = float(next_record["open"])
+            bar_time = pd.Timestamp(row["__bar_time"])
+            next_time = pd.Timestamp(row["__next_time"])
+            next_open: float = float(row["__next_open"])
+            bar_number = int(row["__bar_number"])
             current_high: float = float(row["high"])
             current_low: float = float(row["low"])
             current_open: float = float(row["open"])
@@ -551,7 +570,7 @@ class ExecutionSim:
             capital, active_positions = self._update_active_positions(
                 active_positions=active_positions,
                 capital=capital,
-                i=i,
+                i=bar_number,
                 bar_time=bar_time,
                 current_high=current_high,
                 current_low=current_low,
@@ -588,7 +607,7 @@ class ExecutionSim:
             # Step 2: try to open new position.
             if not daily_blocked:
                 active_positions = self._try_open_position(
-                    i=i,
+                    i=bar_number,
                     bar_time=bar_time,
                     next_time=next_time,
                     next_open=next_open,

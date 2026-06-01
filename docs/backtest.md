@@ -143,6 +143,19 @@ In backtest:
 - `ConsoleSink` — kept (optional `--quiet` flag to silence it).
 - `ExecutionStub` — replaced by `BacktestExecutionSimulator` (see §7).
 
+`BacktestRecorder` must persist the scoring-engine strengths used to compute
+each verdict. The optimiser replays candidate weights from these raw strengths;
+reusing the already-aggregated `score` would only retest thresholds and would
+make candidate engine weights ineffective. Required replay columns:
+
+- `symbol`, `tick_time`, `decision`, `confidence`, `score`, `regime`,
+  `rationale`.
+- `strength_<engine>` for each scoring engine in `SCORING_ENGINES`
+  (`trend`, `meanrev`, `derivatives`, `smc_structure`, `smc_order_blocks`,
+  `smc_liquidity`). Missing engine signals are stored as `NaN` so candidate
+  scoring can renormalise across engines that actually produced a signal, the
+  same way the live aggregator does.
+
 ### 5.3 Reproducibility
 
 - `--seed` controls every `random.*` call in the run (jitter in
@@ -286,7 +299,8 @@ Given a train slice:
 ### 9.1 Search space
 
 For each regime in `{TRENDING, RANGING, HIGH_VOL}` and each primary M2
-directional engine in `{trend, meanrev, smc_structure, smc_order_blocks}`:
+directional engine in
+`{trend, meanrev, smc_structure, smc_order_blocks, smc_liquidity}`:
 
 - Weight grid: `[0.0, 0.1, 0.2, ..., 0.9, 1.0]`, constrained to
   `sum_engines = 1.0` per regime.

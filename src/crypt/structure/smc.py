@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Literal
+from typing import Any, Literal
 
 import pandas as pd
 
@@ -12,6 +12,12 @@ BEARISH = -1
 PivotKind = Literal["swing", "internal"]
 PivotSide = Literal["high", "low"]
 StructureType = Literal["BOS", "CHOCH"]
+LiquidityLevelType = Literal["equal", "swing"]
+
+_SMC_CACHE_MAX = 32
+_SMC_ENGINE_WINDOW_BARS = 128
+_SMC_CACHE: dict[tuple[object, ...], SMCState] = {}
+_SMC_CACHE_ORDER: list[tuple[object, ...]] = []
 
 
 @dataclass(frozen=True)
@@ -50,12 +56,39 @@ class SMCOrderBlock:
 
 
 @dataclass(frozen=True)
+class SMCLiquidityLevel:
+    kind: PivotKind
+    side: PivotSide
+    level_type: LiquidityLevelType
+    level: float
+    first_time: datetime
+    second_time: datetime | None
+    known_at: datetime
+    source_index: int
+    swept: bool = False
+
+
+@dataclass(frozen=True)
+class SMCLiquiditySweep:
+    side: PivotSide
+    level_type: LiquidityLevelType
+    level: float
+    event_time: datetime
+    known_at: datetime
+    wick_distance_atr: float
+    level_known_at: datetime
+    ambiguous: bool = False
+
+
+@dataclass(frozen=True)
 class SMCState:
     swing_bias: int = 0
     internal_bias: int = 0
     pivots: list[SMCPivot] = field(default_factory=list)
     structure_events: list[SMCStructureEvent] = field(default_factory=list)
     order_blocks: list[SMCOrderBlock] = field(default_factory=list)
+    liquidity_levels: list[SMCLiquidityLevel] = field(default_factory=list)
+    liquidity_sweeps: list[SMCLiquiditySweep] = field(default_factory=list)
 
 
 @dataclass
@@ -106,6 +139,32 @@ class _MutableOrderBlock:
         )
 
 
+@dataclass
+class _MutableLiquidityLevel:
+    kind: PivotKind
+    side: PivotSide
+    level_type: LiquidityLevelType
+    level: float
+    first_time: datetime
+    second_time: datetime | None
+    known_at: datetime
+    source_index: int
+    swept: bool = False
+
+    def frozen(self) -> SMCLiquidityLevel:
+        return SMCLiquidityLevel(
+            kind=self.kind,
+            side=self.side,
+            level_type=self.level_type,
+            level=self.level,
+            first_time=self.first_time,
+            second_time=self.second_time,
+            known_at=self.known_at,
+            source_index=self.source_index,
+            swept=self.swept,
+        )
+
+
 def analyse_smc(
     candles: pd.DataFrame,
     *,
@@ -134,6 +193,7 @@ def analyse_smc(
         _update_pivots(df, i, internal_length, "internal", state)
         _update_pivots(df, i, swing_length, "swing", state)
         _update_order_block_mitigation(df, i, state)
+        _update_liquidity_sweeps(df, i, state)
         _update_structure(df, i, "internal", state)
         _update_structure(df, i, "swing", state)
 
@@ -143,6 +203,70 @@ def analyse_smc(
         pivots=state.pivots,
         structure_events=state.structure_events,
         order_blocks=[ob.frozen() for ob in state.order_blocks],
+        liquidity_levels=[level.frozen() for level in state.liquidity_levels],
+        liquidity_sweeps=state.liquidity_sweeps,
+    )
+
+
+def analyse_smc_cached(
+    candles: pd.DataFrame,
+    *,
+    tick_time: datetime | None = None,
+    swing_length: int = 50,
+    internal_length: int = 5,
+) -> SMCState:
+    """Small per-process cache for repeated SMC engine calls on the same context."""
+    window = candles.tail(_SMC_ENGINE_WINDOW_BARS).reset_index(drop=True)
+    key = _cache_key(window, tick_time, swing_length, internal_length)
+    cached = _SMC_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    state = analyse_smc(
+        window,
+        tick_time=tick_time,
+        swing_length=swing_length,
+        internal_length=internal_length,
+    )
+    _SMC_CACHE[key] = state
+    _SMC_CACHE_ORDER.append(key)
+    while len(_SMC_CACHE_ORDER) > _SMC_CACHE_MAX:
+        oldest = _SMC_CACHE_ORDER.pop(0)
+        _SMC_CACHE.pop(oldest, None)
+    return state
+
+
+def _cache_key(
+    candles: pd.DataFrame,
+    tick_time: datetime | None,
+    swing_length: int,
+    internal_length: int,
+) -> tuple[object, ...]:
+    if candles.empty:
+        boundary: tuple[Any, ...] = (0, None, None, None)
+    elif "open_time" in candles.columns:
+        content_hash = int(
+            pd.util.hash_pandas_object(
+                candles[[col for col in ["open_time", "o", "h", "l", "c"] if col in candles]],
+                index=False,
+            ).sum()
+        )
+        boundary = (
+            len(candles),
+            candles["open_time"].iloc[0],
+            candles["open_time"].iloc[-1],
+            candles["h"].iloc[-1] if "h" in candles.columns else None,
+            candles["l"].iloc[-1] if "l" in candles.columns else None,
+            candles["c"].iloc[-1] if "c" in candles.columns else None,
+            content_hash,
+        )
+    else:
+        boundary = (len(candles), None, None, None)
+    return (
+        *boundary,
+        pd.Timestamp(tick_time).isoformat() if tick_time is not None else None,
+        swing_length,
+        internal_length,
     )
 
 
@@ -157,6 +281,8 @@ class _AnalyzerState:
         self.pivots: list[SMCPivot] = []
         self.structure_events: list[SMCStructureEvent] = []
         self.order_blocks: list[_MutableOrderBlock] = []
+        self.liquidity_levels: list[_MutableLiquidityLevel] = []
+        self.liquidity_sweeps: list[SMCLiquiditySweep] = []
 
     def get_pivot(self, kind: PivotKind, side: PivotSide) -> _MutablePivot | None:
         if kind == "swing" and side == "high":
@@ -238,7 +364,9 @@ def _update_pivots(
     pivot_time = df.at[j, "open_time"].to_pydatetime()
 
     if candidate_high > float(left_high.max()) and candidate_high > float(right_high.max()):
-        state.set_pivot(
+        _register_pivot(
+            df,
+            j,
             _MutablePivot(
                 kind=kind,
                 side="high",
@@ -246,10 +374,13 @@ def _update_pivots(
                 pivot_time=pivot_time,
                 known_at=known_at,
                 index=j,
-            )
+            ),
+            state,
         )
     if candidate_low < float(left_low.min()) and candidate_low < float(right_low.min()):
-        state.set_pivot(
+        _register_pivot(
+            df,
+            j,
             _MutablePivot(
                 kind=kind,
                 side="low",
@@ -257,8 +388,77 @@ def _update_pivots(
                 pivot_time=pivot_time,
                 known_at=known_at,
                 index=j,
+            ),
+            state,
+        )
+
+
+def _register_pivot(
+    df: pd.DataFrame,
+    pivot_index: int,
+    pivot: _MutablePivot,
+    state: _AnalyzerState,
+) -> None:
+    _create_equal_level(df, pivot_index, pivot, state)
+    state.set_pivot(pivot)
+    if pivot.kind == "swing":
+        state.liquidity_levels.append(
+            _MutableLiquidityLevel(
+                kind=pivot.kind,
+                side=pivot.side,
+                level_type="swing",
+                level=pivot.level,
+                first_time=pivot.pivot_time,
+                second_time=None,
+                known_at=pivot.known_at,
+                source_index=pivot.index,
             )
         )
+
+
+def _create_equal_level(
+    df: pd.DataFrame,
+    pivot_index: int,
+    pivot: _MutablePivot,
+    state: _AnalyzerState,
+) -> None:
+    previous = [
+        p
+        for p in state.pivots
+        if p.kind == pivot.kind and p.side == pivot.side and p.index < pivot.index
+    ]
+    if not previous:
+        return
+
+    tolerance = _equal_level_tolerance(df, pivot_index)
+    if tolerance <= 0:
+        return
+
+    candidate = min(previous, key=lambda p: abs(p.level - pivot.level))
+    if abs(candidate.level - pivot.level) > tolerance:
+        return
+
+    state.liquidity_levels.append(
+        _MutableLiquidityLevel(
+            kind=pivot.kind,
+            side=pivot.side,
+            level_type="equal",
+            level=(candidate.level + pivot.level) / 2.0,
+            first_time=candidate.pivot_time,
+            second_time=pivot.pivot_time,
+            known_at=pivot.known_at,
+            source_index=pivot.index,
+        )
+    )
+
+
+def _equal_level_tolerance(df: pd.DataFrame, pivot_index: int) -> float:
+    start = max(0, pivot_index - 14)
+    atr = float(_true_range(df.loc[start:pivot_index]).tail(14).mean())
+    if not pd.notna(atr) or atr <= 0:
+        close = float(df.at[pivot_index, "c"])
+        return abs(close) * 0.001
+    return max(atr * 0.10, float(df.at[pivot_index, "c"]) * 0.0005)
 
 
 def _update_structure(
@@ -401,3 +601,54 @@ def _update_order_block_mitigation(
         ):
             block.active = False
             block.mitigated_at = known_at
+
+
+def _update_liquidity_sweeps(
+    df: pd.DataFrame,
+    i: int,
+    state: _AnalyzerState,
+) -> None:
+    if not state.liquidity_levels:
+        return
+
+    high = float(df.at[i, "h"])
+    low = float(df.at[i, "l"])
+    close = float(df.at[i, "c"])
+    event_time = df.at[i, "open_time"].to_pydatetime()
+    known_at = df.at[i, "known_at"].to_pydatetime()
+    atr = _atr_at(df, i)
+
+    candidates: list[tuple[_MutableLiquidityLevel, float]] = []
+    for level in state.liquidity_levels:
+        if level.swept or level.known_at >= known_at:
+            continue
+        if level.side == "high" and high > level.level and close < level.level:
+            candidates.append((level, high - level.level))
+        elif level.side == "low" and low < level.level and close > level.level:
+            candidates.append((level, level.level - low))
+
+    if not candidates:
+        return
+
+    sides = {level.side for level, _ in candidates}
+    ambiguous = len(sides) > 1
+    for level, wick_distance in candidates:
+        level.swept = True
+        state.liquidity_sweeps.append(
+            SMCLiquiditySweep(
+                side=level.side,
+                level_type=level.level_type,
+                level=level.level,
+                event_time=event_time,
+                known_at=known_at,
+                wick_distance_atr=round(wick_distance / atr, 4) if atr > 0 else 0.0,
+                level_known_at=level.known_at,
+                ambiguous=ambiguous,
+            )
+        )
+
+
+def _atr_at(df: pd.DataFrame, i: int) -> float:
+    start = max(0, i - 14)
+    value = float(_true_range(df.loc[start:i]).tail(14).mean())
+    return value if pd.notna(value) and value > 0 else 0.0

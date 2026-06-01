@@ -10,7 +10,7 @@ from __future__ import annotations
 import base64
 import io
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -285,7 +285,7 @@ def build_report(
     guard_violations : list[str]
         Non-empty if optimizer sanity guard fired.
     """
-    now_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    now_str = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
     # Aggregate metrics section
     agg_table = _metrics_table(aggregate_metrics)

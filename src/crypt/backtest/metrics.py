@@ -119,7 +119,7 @@ def compute_sharpe_ratio(
     if n < 6:
         warning = f"⚠ Sharpe ratio computed from only {n} months — not statistically reliable."
 
-    monthly_returns = monthly_capital.pct_change()
+    monthly_returns = monthly_capital.pct_change(fill_method=None)
     monthly_returns.iloc[0] = (monthly_capital.iloc[0] - initial_capital) / initial_capital
     sd = float(monthly_returns.std())
     if sd == 0:
@@ -162,7 +162,7 @@ def compute_monthly_returns_pct(
     monthly_capital = equity_curve.resample("ME").last()
     if len(monthly_capital) == 0:
         return {}
-    monthly_returns = monthly_capital.pct_change().fillna(0) * 100
+    monthly_returns = monthly_capital.pct_change(fill_method=None).fillna(0) * 100
     monthly_returns.iloc[0] = (monthly_capital.iloc[0] - initial_capital) / initial_capital * 100
     monthly_returns_abs = (monthly_capital - initial_capital) / initial_capital * 100
 

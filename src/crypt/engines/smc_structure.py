@@ -7,7 +7,7 @@ import numpy as np
 
 from crypt.engines.base import BaseEngine
 from crypt.models import Direction, EvaluationContext, Signal, Timeframe
-from crypt.structure.smc import BULLISH, SMCStructureEvent, analyse_smc
+from crypt.structure.smc import BULLISH, SMCStructureEvent, analyse_smc_cached
 
 _MIN_H4 = 60
 _MAX_EVENT_AGE_BARS = 12
@@ -39,7 +39,7 @@ class SMCStructureEngine(BaseEngine):
                 inputs_missing=["candles[H4]"],
             )
 
-        state = analyse_smc(h4, tick_time=ctx.tick_time)
+        state = analyse_smc_cached(h4, tick_time=ctx.tick_time)
         event = _latest_structure_event(state.structure_events)
         if event is None:
             return self._neutral(

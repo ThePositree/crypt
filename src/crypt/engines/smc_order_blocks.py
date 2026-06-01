@@ -7,7 +7,7 @@ import pandas as pd
 
 from crypt.engines.base import BaseEngine
 from crypt.models import Direction, EvaluationContext, Signal, Timeframe
-from crypt.structure.smc import BULLISH, SMCOrderBlock, SMCStructureEvent, analyse_smc
+from crypt.structure.smc import BULLISH, SMCOrderBlock, SMCStructureEvent, analyse_smc_cached
 
 _MIN_H4 = 60
 _MAX_CONFIDENCE = 0.85
@@ -32,7 +32,7 @@ class SMCOrderBlocksEngine(BaseEngine):
                 inputs_missing=["candles[H4]"],
             )
 
-        state = analyse_smc(h4, tick_time=ctx.tick_time)
+        state = analyse_smc_cached(h4, tick_time=ctx.tick_time)
         visible = h4[pd.to_datetime(h4["open_time"], utc=True) < pd.Timestamp(ctx.tick_time)]
         if visible.empty:
             return self._neutral(ctx, rationale=["No closed H4 candle at tick_time"])

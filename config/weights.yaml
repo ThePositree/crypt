@@ -3,7 +3,7 @@
 # ADR-0017: primary M2 calibration is OHLCV-only. derivatives stays in the
 # codebase but has weight 0 until deep OI/LS history is proven useful.
 # Weights within each regime must sum to 1.0 across the directional engines
-# (trend, meanrev, smc_structure, smc_order_blocks for M2).
+# (trend, meanrev, smc_structure, smc_order_blocks, smc_liquidity for M2).
 # volatility/regime engines never contribute to the weighted-sum score and
 # their entries here are ignored.
 
@@ -11,24 +11,27 @@ TRENDING:
   trend:         0.50
   meanrev:       0.05
   derivatives:   0.00
-  smc_structure: 0.35
+  smc_structure: 0.30
   smc_order_blocks: 0.10
+  smc_liquidity: 0.05
   volatility:    0.00
 
 RANGING:
   trend:         0.15
   meanrev:       0.45
   derivatives:   0.00
-  smc_structure: 0.30
+  smc_structure: 0.25
   smc_order_blocks: 0.10
+  smc_liquidity: 0.05
   volatility:    0.00
 
 HIGH_VOL:
   trend:         0.20
   meanrev:       0.25
   derivatives:   0.00
-  smc_structure: 0.45
+  smc_structure: 0.40
   smc_order_blocks: 0.10
+  smc_liquidity: 0.05
   volatility:    0.00
 
 # Per-regime decision thresholds on |score|.

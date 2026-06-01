@@ -27,7 +27,10 @@ Python dataclasses under `crypt.structure.smc`:
   source pivot, structure kind.
 - `SMCOrderBlock` — bullish/bearish zone (`low`, `high`), origin time,
   source event, active/mitigated state.
-- `SMCLiquidityEvent` — equal high/low or sweep event with level and time.
+- `SMCLiquidityLevel` — equal high/low or swing high/low candidate level,
+  source times, confirmation time, and swept state.
+- `SMCLiquiditySweep` — confirmed sweep of an equal/swing level, level type,
+  event time, wick distance in ATR units, and ambiguity flag.
 - `SMCState` — current swing/internal bias, latest events, active order blocks.
 
 Every event has both the source candle time and the `known_at` time. Engines
@@ -91,10 +94,18 @@ Mitigation:
 
 - Fewer than `max(swing_length, internal_length, 200)` candles: return an empty
   state; engines emit neutral.
+- Runtime engines analyse a bounded recent H4 window rather than the full
+  parquet history. The first M2 implementation uses the latest 128 closed H4
+  candles for cached engine calls: enough for swing confirmation
+  (`2 * swing_length`), ATR-scaled equal-level tolerance, and the engines'
+  fresh-event windows, while keeping two-year replay practical. Longer-lived
+  historical level memory is deferred until a dedicated S/R or higher-timeframe
+  level engine is implemented.
 - NaN prices or non-monotonic `open_time`: caller should fail schema
   validation; analyser skips invalid rows defensively.
 - Multiple events on one candle are allowed and returned in deterministic
-  order: pivots, structure breaks, order blocks, liquidity events.
+  order: pivots, order-block mitigation, liquidity sweeps, then structure
+  breaks and new order blocks.
 
 ## Tests
 

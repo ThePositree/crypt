@@ -12,7 +12,10 @@ from pathlib import Path
 
 import pandas as pd
 
+from crypt.aggregator.weights import SCORING_ENGINES
 from crypt.models import Verdict
+
+_STRENGTH_COLUMNS = [f"strength_{engine}" for engine in sorted(SCORING_ENGINES)]
 
 
 class BacktestRecorder:
@@ -33,17 +36,23 @@ class BacktestRecorder:
 
     def record(self, verdict: Verdict) -> None:
         """Append one verdict to the in-memory buffer."""
-        self._rows.append(
-            {
-                "symbol": verdict.symbol,
-                "tick_time": verdict.produced_at,
-                "decision": verdict.decision,
-                "confidence": verdict.confidence,
-                "score": verdict.score,
-                "regime": verdict.regime,
-                "rationale": verdict.rationale,
-            }
-        )
+        row: dict[str, object] = {
+            "symbol": verdict.symbol,
+            "tick_time": verdict.produced_at,
+            "decision": verdict.decision,
+            "confidence": verdict.confidence,
+            "score": verdict.score,
+            "regime": verdict.regime,
+            "rationale": verdict.rationale,
+        }
+        strengths = {
+            signal.engine: signal.strength
+            for signal in verdict.breakdown
+            if signal.engine in SCORING_ENGINES
+        }
+        for engine in sorted(SCORING_ENGINES):
+            row[f"strength_{engine}"] = strengths.get(engine)
+        self._rows.append(row)
 
     def to_dataframe(self) -> pd.DataFrame:
         """Return all recorded verdicts as a DataFrame."""
@@ -57,6 +66,7 @@ class BacktestRecorder:
                     "score",
                     "regime",
                     "rationale",
+                    *_STRENGTH_COLUMNS,
                 ]
             )
         df = pd.DataFrame(self._rows)

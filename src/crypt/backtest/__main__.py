@@ -54,6 +54,7 @@ from crypt.decision.filters import DecisionFilter
 from crypt.engines.derivatives import DerivativesEngine
 from crypt.engines.meanrev import MeanRevEngine
 from crypt.engines.regime import RegimeEngine
+from crypt.engines.smc_liquidity import SMCLiquidityEngine
 from crypt.engines.smc_order_blocks import SMCOrderBlocksEngine
 from crypt.engines.smc_structure import SMCStructureEngine
 from crypt.engines.trend import TrendEngine
@@ -139,7 +140,7 @@ def _check_preconditions(
             continue
 
         h4_times = pd.to_datetime(h4["open_time"], utc=True)
-        if h4_times.min() > pd.Timestamp(h4_warmup_start, tz="UTC"):
+        if h4_times.min() > _utc_timestamp(h4_warmup_start):
             logger.error(
                 "Precondition FAIL: {} H4 history starts at {} — need data from {} for warm-up",
                 sym,
@@ -148,7 +149,7 @@ def _check_preconditions(
             )
             ok = False
 
-        if h4_times.max() < pd.Timestamp(to_dt, tz="UTC") - timedelta(hours=4):
+        if h4_times.max() < _utc_timestamp(to_dt) - timedelta(hours=4):
             logger.error(
                 "Precondition FAIL: {} H4 history ends at {} — need coverage to {}",
                 sym,
@@ -164,7 +165,7 @@ def _check_preconditions(
             continue
 
         d1_times = pd.to_datetime(d1["open_time"], utc=True)
-        if d1_times.min() > pd.Timestamp(d1_warmup_start, tz="UTC"):
+        if d1_times.min() > _utc_timestamp(d1_warmup_start):
             logger.error(
                 "Precondition FAIL: {} D1 history starts at {} — need data from {} for warm-up",
                 sym,
@@ -173,7 +174,7 @@ def _check_preconditions(
             )
             ok = False
 
-        if d1_times.max() < pd.Timestamp(to_dt, tz="UTC") - timedelta(days=1):
+        if d1_times.max() < _utc_timestamp(to_dt) - timedelta(days=1):
             logger.error(
                 "Precondition FAIL: {} D1 history ends at {} — need coverage to {}",
                 sym,
@@ -183,6 +184,14 @@ def _check_preconditions(
             ok = False
 
     return ok
+
+
+def _utc_timestamp(dt: datetime | pd.Timestamp) -> pd.Timestamp:
+    """Convert naive or aware datetimes to a UTC pandas Timestamp."""
+    ts = pd.Timestamp(dt)
+    if ts.tzinfo is None:
+        return ts.tz_localize("UTC")
+    return ts.tz_convert("UTC")
 
 
 # ---------------------------------------------------------------------------
@@ -239,6 +248,7 @@ def _run_replay(
     deriv_eng = DerivativesEngine()
     smc_structure_eng = SMCStructureEngine()
     smc_order_blocks_eng = SMCOrderBlocksEngine()
+    smc_liquidity_eng = SMCLiquidityEngine()
     vol_eng = VolatilityEngine()
     regime_eng = RegimeEngine()
 
@@ -271,6 +281,7 @@ def _run_replay(
                 deriv_signal = deriv_eng.evaluate(ctx)
                 smc_structure_signal = smc_structure_eng.evaluate(ctx)
                 smc_order_blocks_signal = smc_order_blocks_eng.evaluate(ctx)
+                smc_liquidity_signal = smc_liquidity_eng.evaluate(ctx)
 
                 all_signals: list[Signal] = [
                     trend_signal,
@@ -278,6 +289,7 @@ def _run_replay(
                     deriv_signal,
                     smc_structure_signal,
                     smc_order_blocks_signal,
+                    smc_liquidity_signal,
                     vol_signal,
                     regime_signal,
                 ]
@@ -356,6 +368,7 @@ def _build_sim_df(
     # SL price: entry = close at tick_time (the bar that just closed).
     # For BUY: sl = close - SL_ATR_MULT * atr  (below entry)
     # For SELL: sl = close + SL_ATR_MULT * atr  (above entry)
+    merged["entry_price"] = merged["close"].astype(float)
     merged["sl_price"] = np.where(
         merged["signal"] == 1,
         merged["close"] - _SL_ATR_MULT * merged["atr"],
@@ -565,8 +578,8 @@ def main(argv: list[str] | None = None) -> int:
                     if sym_sim_dfs:
                         test_sim_df = pd.concat(sym_sim_dfs).sort_index()
                 else:
-                    mask_lo = combined_sim_df.index >= pd.Timestamp(fold.test_from, tz="UTC")
-                    mask_hi = combined_sim_df.index < pd.Timestamp(fold.test_to, tz="UTC")
+                    mask_lo = combined_sim_df.index >= _utc_timestamp(fold.test_from)
+                    mask_hi = combined_sim_df.index < _utc_timestamp(fold.test_to)
                     test_sim_df = combined_sim_df[mask_lo & mask_hi]
 
             trades_df = pd.DataFrame()
@@ -649,8 +662,8 @@ def main(argv: list[str] | None = None) -> int:
             if ohlcv is not None:
                 bah = compute_buy_and_hold(
                     ohlcv,
-                    from_dt=pd.Timestamp(from_dt, tz="UTC"),
-                    to_dt=pd.Timestamp(to_dt, tz="UTC"),
+                    from_dt=_utc_timestamp(from_dt),
+                    to_dt=_utc_timestamp(to_dt),
                 )
                 baselines[f"Buy-and-hold {sym}"] = bah
 
@@ -679,7 +692,7 @@ def main(argv: list[str] | None = None) -> int:
 
         # Build metadata.
         meta: dict[str, Any] = {
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
             "git_sha": _git_sha(),
             "weights_sha": _file_sha(str(weights_path)),
             "from_dt": str(from_dt.date()),
