@@ -1,106 +1,103 @@
 # In progress
 
-## Status as of 2026-05-29 (session 4)
+## Status as of 2026-06-01 (session 8)
 
-**Active work:** Coinglass backfill integration (ADR-0015).
+**Active work:** SMC structure and order-block slices are implemented and
+verified. Next: liquidity engine, then OHLCV backfill/backtest.
 
-Spec and ADR are written. Code is **not** implemented yet.
+Owner direction: do not pay for historical derivatives/order-flow data until
+the product demonstrates value. Use free OKX candle history first. ADR-0017
+captures this decision.
 
 ---
 
 ## Next steps for the implementing agent
 
-### 1. Coinglass backfill (P0 for M2 calibration)
+### 1. Implement next SMC engines (P0)
 
-Read first:
+Specs written:
 
-- `docs/backfill.md` (full contract)
-- `docs/decisions/0015-coinglass-historical-backfill.md`
-- Resolve Coinglass API v4 via **Context7 MCP** before writing HTTP code.
+- `docs/engines/smc_core.md`
+- `docs/engines/smc_structure.md`
+- `docs/engines/smc_order_blocks.md`
+- `docs/engines/smc_liquidity.md`
 
-Implementation order:
+Completed:
 
-1. `Settings.coinglass_api_key` + `.env.example` (already has placeholder).
-2. `src/crypt/exchange/coinglass.py` — `CoinglassClient` with paginated
-   fetch methods matching §4.3 in `docs/backfill.md`.
-3. Extend `src/crypt/backfill/__main__.py`:
-   - `--source okx|coinglass|auto`
-   - Coinglass paths for `funding`, `oi`, `ls_ratio`, `taker_vol`
-   - OHLCV always via OKX regardless of `--source`
-4. `tests/backfill/test_symbol_mapping.py`, `test_coinglass_parsers.py`,
-   `test_source_routing.py` (synthetic fixtures).
-5. Owner provides `COINGLASS_API_KEY` (Professional tier for 2y @ 1h).
+- `src/crypt/structure/smc.py` — first deterministic analyser slice:
+  confirmed pivots + BOS/CHoCH with `known_at` timing; now also creates and
+  mitigates order-block zones from structure breaks.
+- `src/crypt/engines/smc_structure.py` — first directional SMC engine.
+- `src/crypt/engines/smc_order_blocks.py` — active order-block retest engine.
+- Tests proving no-lookahead timing for pivot confirmation and structure
+  signals, order-block creation/mitigation, and retest signals.
 
-Smoke command after implementation:
+Next implementation order:
+
+1. Extend `src/crypt/structure/smc.py` with equal highs/lows and sweeps.
+2. Add `src/crypt/engines/smc_liquidity.py`.
+3. Add synthetic no-lookahead tests for equal-level detection, sweep timing,
+   and liquidity-engine output.
+4. Before running the full backtest report, fix optimizer score recomputation
+   from per-engine strengths (see `BACKLOG.md` P0).
+
+### 2. Wire OHLCV-only M2 calibration (P0)
+
+- `smc_structure` and `smc_order_blocks` are already wired into live/replay
+  aggregation.
+- `config/weights.yaml` already sets `derivatives: 0.0` for primary M2.
+- Add `smc_liquidity` to `SCORING_ENGINES` only after its engine
+  implementation and tests land.
+
+### 3. Run candle backfill + backtest
+
+Only OHLCV is required for the first M2 report:
 
 ```bash
-PYTHONPATH=src uv run python -m crypt.backfill \
-    --source coinglass \
-    --symbol SOL-USDT-SWAP \
-    --from 2024-01-01 --to 2026-05-01 \
-    --data-types funding,oi,ls_ratio
+for SYMBOL in SOL-USDT-SWAP TON-USDT-SWAP XPL-USDT-SWAP; do
+    PYTHONPATH=src uv run python -m crypt.backfill \
+        --symbol "$SYMBOL" \
+        --from 2024-02-01 --to 2026-06-01 \
+        --data-types ohlcv
+done
 ```
 
-Then OKX overlay for recent window (see `docs/backfill.md` §7).
-
-### 2. Run full backfill + backtest (after step 1)
+Then:
 
 ```bash
-# All three symbols — verify XPL on Coinglass supported-exchange-pairs first
-PYTHONPATH=src uv run python -m crypt.backfill --source coinglass \
-    --symbol SOL-USDT-SWAP --from 2024-01-01 --to 2026-05-01
-PYTHONPATH=src uv run python -m crypt.backfill --source coinglass \
-    --symbol TON-USDT-SWAP --from 2024-01-01 --to 2026-05-01
-# XPL only if supported:
-PYTHONPATH=src uv run python -m crypt.backfill --source coinglass \
-    --symbol XPL-USDT-SWAP --from 2024-01-01 --to 2026-05-01
-
 PYTHONPATH=src uv run python -m crypt.backtest \
-    --from 2024-06-01 --to 2026-05-01 \
+    --from 2024-06-01 --to 2026-06-01 \
     --symbols SOL-USDT-SWAP,TON-USDT-SWAP,XPL-USDT-SWAP \
     --walk-forward-folds 5 \
-    --report-dir reports/backtest_2026-05/
+    --report-dir reports/backtest_2026-06/
 ```
 
-### 3. After backtest report reviewed
+### 4. After backtest report is reviewed
 
-- **ADR-0014** — calibration result: weights, expectancy CI, dataset window.
-- Flip `Settings.uncalibrated = False`.
-- Copy `weights.recommended.yaml` → `config/weights.yaml` if sanity guards pass.
-
----
-
-## Completed earlier (M2 harness steps 4–11)
-
-All backtest pipeline modules implemented and tested (2026-05-29 session 3).
-See `docs/tasks/DONE.md`.
-
-OKX backfill history-wall performance fix shipped same day (`CHANGELOG.md`).
+- Write **ADR-0014** — calibration result: final weights, expectancy CI,
+  dataset window, and critique of weak/collapsed engines.
+- Flip `Settings.uncalibrated = False` only if the report justifies it.
+- Copy accepted `weights.recommended.yaml` → `config/weights.yaml`.
 
 ---
 
 ## Known limitations / caveats
 
-- **Coinglass cost:** ~$699/mo Professional for 720 days @ `1h`; one-month
-  bulk download is the expected operator pattern.
-- **Train/live drift:** backtest uses Coinglass history; live uses OKX —
-  document `data_provenance` in report (see `docs/backfill.md` §4.4).
-- **XPL** may lack Coinglass coverage — check API before backfill.
-- **Optimizer is slow** on large datasets; use `--no-optimize` for smoke runs.
-
----
-
-## Hard blockers
-
-- **Coinglass API key** — owner must subscribe and set `COINGLASS_API_KEY`
-  before historical backfill can run at full depth.
+- `pinescript/smc.pine` is a LuxAlgo CC BY-NC-SA reference. Do not copy code
+  verbatim into proprietary Python modules. Implement the documented behaviour.
+- PineScript MTF sections using `lookahead_on` must not be ported directly.
+- `order_block`, `liquidity`, FVG, and Fibonacci can overfit easily; add one
+  engine at a time and require synthetic no-lookahead tests.
+- Context7 MCP was requested by project rules. In session 8 the Context7
+  pandas lookup failed with `fetch failed`; no new libraries were added.
 
 ---
 
 ## Reading list
 
 - `AGENTS.md`
-- `docs/backfill.md` ← **start here for current task**
-- `docs/decisions/0015-coinglass-historical-backfill.md`
-- `docs/backtest.md` (M2 contract)
-- `docs/decisions/0012-liquidations-roadmap.md` (future shared Coinglass client)
+- `docs/decisions/0017-ohlcv-only-m2-smc.md`
+- `docs/engines/smc_core.md`
+- `docs/engines/smc_structure.md`
+- `docs/backtest.md`
+- `pinescript/smc.pine`

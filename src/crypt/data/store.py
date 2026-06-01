@@ -11,7 +11,6 @@ from loguru import logger
 
 from crypt.models import (
     Candle,
-    FundingSnapshot,
     LongShortRatioSnapshot,
     OISnapshot,
     TakerVolumeSnapshot,
@@ -20,7 +19,6 @@ from crypt.models import (
 
 # Column schemas for each data type.
 _OHLCV_COLS = ["open_time", "o", "h", "l", "c", "volume"]
-_FUNDING_COLS = ["ts", "rate"]
 _OI_COLS = ["ts", "oi"]
 _LS_RATIO_COLS = ["ts", "long_ratio", "short_ratio"]
 _TAKER_VOL_COLS = ["ts", "buy_vol", "sell_vol"]
@@ -33,10 +31,6 @@ def _symbol_dir(base: Path, symbol: str) -> Path:
 
 def _ohlcv_path(base: Path, symbol: str, timeframe: Timeframe) -> Path:
     return _symbol_dir(base, symbol) / f"ohlcv_{timeframe.value}.parquet"
-
-
-def _funding_path(base: Path, symbol: str) -> Path:
-    return _symbol_dir(base, symbol) / "funding.parquet"
 
 
 def _oi_path(base: Path, symbol: str) -> Path:
@@ -156,29 +150,6 @@ class ParquetStore:
             df = df.tail(limit).reset_index(drop=True)
         return df
 
-    # --- Funding ---
-
-    def save_funding(self, snapshots: list[FundingSnapshot]) -> None:
-        if not snapshots:
-            return
-        symbol = snapshots[0].symbol
-        path = _funding_path(self._base, symbol)
-        new_df = pd.DataFrame([{"ts": s.ts, "rate": float(s.rate)} for s in snapshots])
-        new_df["ts"] = pd.to_datetime(new_df["ts"], utc=True)
-        existing = _read_parquet(path)
-        merged = _upsert(existing, new_df, "ts")
-        _write_parquet(merged, path)
-
-    def load_funding(self, symbol: str, limit: int | None = None) -> pd.DataFrame:
-        path = _funding_path(self._base, symbol)
-        df = _read_parquet(path)
-        if df is None or df.empty:
-            return pd.DataFrame(columns=_FUNDING_COLS)
-        df = df[_FUNDING_COLS].sort_values("ts").reset_index(drop=True)
-        if limit is not None:
-            df = df.tail(limit).reset_index(drop=True)
-        return df
-
     # --- Open Interest ---
 
     def save_oi(self, snapshots: list[OISnapshot]) -> None:
@@ -278,7 +249,6 @@ class ParquetStore:
             lambda: _ohlcv_path(self._base, symbol, Timeframe.H4),
             lambda: _ohlcv_path(self._base, symbol, Timeframe.H1),
             lambda: _ohlcv_path(self._base, symbol, Timeframe.D1),
-            lambda: _funding_path(self._base, symbol),
             lambda: _oi_path(self._base, symbol),
             lambda: _ls_ratio_path(self._base, symbol),
             lambda: _taker_vol_path(self._base, symbol),

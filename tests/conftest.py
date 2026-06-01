@@ -9,7 +9,6 @@ import pandas as pd
 
 from crypt.models import (
     EvaluationContext,
-    FundingSnapshot,
     LongShortRatioSnapshot,
     OISnapshot,
     Timeframe,
@@ -163,7 +162,6 @@ def make_ctx(
     symbol: str = "BTC-USDT-SWAP",
     h4: pd.DataFrame | None = None,
     d1: pd.DataFrame | None = None,
-    funding: list[FundingSnapshot] | None = None,
     oi: list[OISnapshot] | None = None,
     ls_ratio: list[LongShortRatioSnapshot] | None = None,
 ) -> EvaluationContext:
@@ -176,7 +174,6 @@ def make_ctx(
         symbol=symbol,
         tick_time=datetime.now(tz=UTC),
         candles=candles,
-        funding=funding,
         oi=oi,
         ls_ratio=ls_ratio,
         taker_volume=None,

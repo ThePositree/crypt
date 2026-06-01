@@ -79,10 +79,14 @@ error message and exit `1`.
 
 - For each symbol in `--symbols`, the parquet store contains at least
   `H4` candles spanning `[from - 250 * 4h, to]` (so EMA200 has warm-up).
-- For each symbol, funding history covers at least `[from - 7d, to]`.
-- For each symbol, OI history (`1h`) covers at least `[from - 7d, to]`.
-- L/S ratio history is optional; if missing, log a WARNING and disable
-  the L/S sub-signal in the derivatives engine (same as live).
+- For each symbol in `--symbols`, the parquet store contains enough `D1`
+  candles to cover the same backtest window plus 60 daily bars of warm-up.
+- H1 candles are optional for the first OHLCV-only SMC slice. If a future
+  SMC confirmation rule requires H1, the engine spec must make that
+  dependency explicit and the precondition must be upgraded.
+- Funding, OI, L/S ratio, taker-volume, liquidations, and sentiment are **not**
+  required for M2 primary calibration (ADR-0017). Engines that depend on those
+  series must be excluded from primary M2 weights or assigned weight `0`.
 - All input parquet files pass schema validation:
   - `open_time` monotonic, no duplicates, `tz=UTC`.
   - No gaps larger than `2 * timeframe` (one missed bar is tolerated).
@@ -281,15 +285,16 @@ Given a train slice:
 
 ### 9.1 Search space
 
-For each regime in `{TRENDING, RANGING, HIGH_VOL}` and each directional
-engine in `{trend, meanrev, derivatives}`:
+For each regime in `{TRENDING, RANGING, HIGH_VOL}` and each primary M2
+directional engine in `{trend, meanrev, smc_structure, smc_order_blocks}`:
 
 - Weight grid: `[0.0, 0.1, 0.2, ..., 0.9, 1.0]`, constrained to
   `sum_engines = 1.0` per regime.
 - Threshold grid (per regime, on `|score|`): `[0.15, 0.20, ..., 0.55]`.
 
-This gives `O(11^3 * 9) ≈ 12k` combinations per regime, times 3 regimes —
-tractable.
+`derivatives` is kept at weight `0` for primary M2 calibration (ADR-0017).
+Future reports may reintroduce it only after deep OI/LS history is proven
+stable for the full dataset window.
 
 ### 9.2 Objective
 
@@ -460,45 +465,33 @@ turning the knob in production.
 
 ## 14. Backfill CLI (precondition for backtest)
 
-Full contract: **`docs/backfill.md`**. ADR: **`docs/decisions/0015-coinglass-historical-backfill.md`**.
+Full contract: **`docs/backfill.md`**. ADRs:
+**`docs/decisions/0016-drop-funding-fix-oi-endpoint.md`** and
+**`docs/decisions/0017-ohlcv-only-m2-smc.md`**.
 
 Separate CLI: `uv run python -m crypt.backfill`.
 
 ```bash
-# Recommended for M2: OHLCV from OKX, deep derivatives from Coinglass
+# Recommended for M2 primary calibration: OHLCV from OKX
 PYTHONPATH=src uv run python -m crypt.backfill \
-    --source coinglass \
     --symbol SOL-USDT-SWAP \
-    --from 2024-01-01 \
-    --to   2026-05-01 \
-    [--data-types ohlcv,funding,oi,ls_ratio] \
+    --from 2024-02-01 \
+    --to   2026-06-01 \
+    --data-types ohlcv \
     [--page-size 100] \
     [--max-rps 5]
 ```
 
-OKX-only (shallow derivatives history):
-
-```bash
-PYTHONPATH=src uv run python -m crypt.backfill \
-    --source okx \
-    --symbol SOL-USDT-SWAP \
-    --from 2024-01-01 \
-    --to   2026-05-01
-```
-
 Implementation notes:
-- Pagination per vendor endpoint (OKX max 100; Coinglass max 1000 per call).
+- Pagination per OKX endpoint (OKX max 100 per call).
 - Resume safety: re-running must not produce duplicates (rely on
   `_upsert` in `ParquetStore`; duplicate `ts` → last write wins).
-- Operator order when mixing sources: Coinglass historical pass first,
-  then OKX pass to overwrite recent rows with exchange-native values
-  (`docs/backfill.md` §2).
 - Progress bar in stdout (tqdm).
 - Logs every page fetched with time boundary so failures are diagnosable.
 
 This CLI is a precondition for §4 — agents must run it before the first
-backtest. For meaningful `derivatives` weight calibration, Coinglass
-backfill is required for windows longer than ~90 days.
+backtest. Derivatives/order-flow backfill is not required for the primary M2
+report.
 
 ---
 
@@ -527,16 +520,13 @@ backfill is required for windows longer than ~90 days.
 
 - H4 forward labels look 96h ahead — only ~2200 non-overlapping samples
   per symbol per year. Statistical power is modest.
-- OKX OI snapshot timing is opaque; large OI deltas may be exchange
-  bookkeeping, not market activity. Robust z-score normalisation absorbs
-  some of this but not all.
-- **Derivatives history provenance:** when Coinglass backfill is used
-  (ADR-0015), backtest `derivatives` signals come from Coinglass OKX
-  pair history; live/paper uses OKX Rubik directly. Report must state
-  `data_provenance: coinglass+okx` and note possible train/live drift.
+- SMC events are deterministic but easy to overfit. The report must show
+  per-engine hit rate and per-symbol expectancy so a single structural engine
+  cannot hide weak generalisation.
+- Derivatives data is excluded from primary M2 weights. A later secondary
+  report may test OI/LS, but it must state data coverage and provenance.
 - XPL has < 1 year of history at the time of writing — its per-symbol
-  results will have wide CIs. The report must surface this. XPL may also
-  be absent from Coinglass — verify before backfill.
+  results will have wide CIs. The report must surface this.
 - Walk-forward with 5 folds means each test slice is ~10 weeks. Regime
   transitions that span only one fold can produce misleading per-regime
   expectancy. Add per-week granularity charts in the report so the

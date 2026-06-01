@@ -33,7 +33,7 @@ from tqdm import tqdm
 
 from crypt.aggregator.ensemble import aggregate
 from crypt.aggregator.weights import WeightsConfig
-from crypt.backtest.execution_sim import ExecutionSim, ParquetFundingModel, ZeroFundingModel
+from crypt.backtest.execution_sim import ExecutionSim, ZeroFundingModel
 from crypt.backtest.labels import compute_labels
 from crypt.backtest.metrics import (
     compute_buy_and_hold,
@@ -54,6 +54,8 @@ from crypt.decision.filters import DecisionFilter
 from crypt.engines.derivatives import DerivativesEngine
 from crypt.engines.meanrev import MeanRevEngine
 from crypt.engines.regime import RegimeEngine
+from crypt.engines.smc_order_blocks import SMCOrderBlocksEngine
+from crypt.engines.smc_structure import SMCStructureEngine
 from crypt.engines.trend import TrendEngine
 from crypt.engines.volatility import VolatilityEngine
 from crypt.models import EvaluationContext, Regime, Signal, Timeframe, VolRegime
@@ -63,8 +65,7 @@ from crypt.models import EvaluationContext, Regime, Signal, Timeframe, VolRegime
 # ---------------------------------------------------------------------------
 
 _H4_BARS_WARMUP = 250  # EMA-200 + buffer
-_FUNDING_WARMUP_DAYS = 7
-_OI_WARMUP_DAYS = 7
+_D1_BARS_WARMUP = 60
 
 # ATR multiplier for SL price (matches paper trading spec §5).
 _SL_ATR_MULT = 2.0
@@ -128,8 +129,7 @@ def _check_preconditions(
     """Return True if all preconditions pass, else log errors and return False."""
     ok = True
     h4_warmup_start = from_dt - timedelta(hours=4 * _H4_BARS_WARMUP)
-    funding_start = from_dt - timedelta(days=_FUNDING_WARMUP_DAYS)
-    oi_start = from_dt - timedelta(days=_OI_WARMUP_DAYS)
+    d1_warmup_start = from_dt - timedelta(days=_D1_BARS_WARMUP)
 
     for sym in symbols:
         h4 = store.load_candles(sym, Timeframe.H4, limit=None)
@@ -157,34 +157,30 @@ def _check_preconditions(
             )
             ok = False
 
-        funding = store.load_funding(sym, limit=None)
-        if funding.empty:
-            logger.error("Precondition FAIL: no funding history for {}", sym)
+        d1 = store.load_candles(sym, Timeframe.D1, limit=None)
+        if d1.empty:
+            logger.error("Precondition FAIL: no D1 candles for {}", sym)
             ok = False
-        else:
-            fund_times = pd.to_datetime(funding["ts"], utc=True)
-            if fund_times.min() > pd.Timestamp(funding_start, tz="UTC"):
-                logger.warning(
-                    "Precondition WARNING: {} funding history starts at {} (expected from {})",
-                    sym,
-                    fund_times.min().date(),
-                    funding_start.date(),
-                )
+            continue
 
-        oi = store.load_oi(sym, limit=None)
-        if oi.empty:
-            logger.warning(
-                "Precondition WARNING: no OI history for {} — derivatives engine will degrade", sym
+        d1_times = pd.to_datetime(d1["open_time"], utc=True)
+        if d1_times.min() > pd.Timestamp(d1_warmup_start, tz="UTC"):
+            logger.error(
+                "Precondition FAIL: {} D1 history starts at {} — need data from {} for warm-up",
+                sym,
+                d1_times.min().date(),
+                d1_warmup_start.date(),
             )
-        else:
-            oi_times = pd.to_datetime(oi["ts"], utc=True)
-            if oi_times.min() > pd.Timestamp(oi_start, tz="UTC"):
-                logger.warning(
-                    "Precondition WARNING: {} OI history starts at {} (expected from {})",
-                    sym,
-                    oi_times.min().date(),
-                    oi_start.date(),
-                )
+            ok = False
+
+        if d1_times.max() < pd.Timestamp(to_dt, tz="UTC") - timedelta(days=1):
+            logger.error(
+                "Precondition FAIL: {} D1 history ends at {} — need coverage to {}",
+                sym,
+                d1_times.max().date(),
+                to_dt.date(),
+            )
+            ok = False
 
     return ok
 
@@ -241,6 +237,8 @@ def _run_replay(
     trend_eng = TrendEngine()
     meanrev_eng = MeanRevEngine()
     deriv_eng = DerivativesEngine()
+    smc_structure_eng = SMCStructureEngine()
+    smc_order_blocks_eng = SMCOrderBlocksEngine()
     vol_eng = VolatilityEngine()
     regime_eng = RegimeEngine()
 
@@ -271,11 +269,15 @@ def _run_replay(
                 trend_signal = trend_eng.evaluate(ctx)
                 meanrev_signal = meanrev_eng.evaluate(ctx)
                 deriv_signal = deriv_eng.evaluate(ctx)
+                smc_structure_signal = smc_structure_eng.evaluate(ctx)
+                smc_order_blocks_signal = smc_order_blocks_eng.evaluate(ctx)
 
                 all_signals: list[Signal] = [
                     trend_signal,
                     meanrev_signal,
                     deriv_signal,
+                    smc_structure_signal,
+                    smc_order_blocks_signal,
                     vol_signal,
                     regime_signal,
                 ]
@@ -372,20 +374,9 @@ def _build_sim_df(
 # ---------------------------------------------------------------------------
 
 
-def _build_funding_model(
-    store: ParquetStore, symbols: list[str], no_fees: bool
-) -> dict[str, ParquetFundingModel | ZeroFundingModel]:
-    if no_fees:
-        return {sym: ZeroFundingModel() for sym in symbols}
-    models: dict[str, ParquetFundingModel | ZeroFundingModel] = {}
-    for sym in symbols:
-        df = store.load_funding(sym, limit=None)
-        if df.empty:
-            logger.warning("{}: no funding data — using ZeroFundingModel", sym)
-            models[sym] = ZeroFundingModel()
-        else:
-            models[sym] = ParquetFundingModel(df)
-    return models
+def _build_funding_model(symbols: list[str]) -> dict[str, ZeroFundingModel]:
+    # Funding data removed per ADR-0016 — always use ZeroFundingModel.
+    return {sym: ZeroFundingModel() for sym in symbols}
 
 
 # ---------------------------------------------------------------------------
@@ -505,13 +496,8 @@ def main(argv: list[str] | None = None) -> int:
         if sim_dfs:
             combined_sim_df = pd.concat(sim_dfs).sort_index()
 
-        # Build funding model.
-        funding_models = _build_funding_model(store, symbols, args.no_fees)
-        # Use per-symbol funding — pick the first one if multi-symbol.
-        # In a unified sim, we use the funding of the symbol in each row.
-        # ExecutionSim's ParquetFundingModel.charge() receives the symbol.
-        # Since we use a single sim, we merge all funding into one model
-        # by wrapping in a dispatcher.
+        # Funding removed per ADR-0016; always ZeroFundingModel.
+        funding_models = _build_funding_model(symbols)
         funding_model = _MultiSymbolFundingModel(funding_models)
 
         # Fee/slippage config.
@@ -755,7 +741,7 @@ class _MultiSymbolFundingModel:
 
     def __init__(
         self,
-        models: dict[str, ParquetFundingModel | ZeroFundingModel],
+        models: dict[str, ZeroFundingModel],
     ) -> None:
         self._models = models
         self._zero = ZeroFundingModel()

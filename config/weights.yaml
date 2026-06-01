@@ -1,26 +1,35 @@
 # Engine weights per regime.
 # Values are placeholder — calibrate in M2 against historical OKX H4 data.
+# ADR-0017: primary M2 calibration is OHLCV-only. derivatives stays in the
+# codebase but has weight 0 until deep OI/LS history is proven useful.
 # Weights within each regime must sum to 1.0 across the directional engines
-# (trend, meanrev, derivatives). volatility/regime engines never contribute
-# to the weighted-sum score and their entries here are ignored.
+# (trend, meanrev, smc_structure, smc_order_blocks for M2).
+# volatility/regime engines never contribute to the weighted-sum score and
+# their entries here are ignored.
 
 TRENDING:
-  trend:       0.55
-  meanrev:     0.05
-  derivatives: 0.30
-  volatility:  0.10
+  trend:         0.50
+  meanrev:       0.05
+  derivatives:   0.00
+  smc_structure: 0.35
+  smc_order_blocks: 0.10
+  volatility:    0.00
 
 RANGING:
-  trend:       0.15
-  meanrev:     0.50
-  derivatives: 0.25
-  volatility:  0.10
+  trend:         0.15
+  meanrev:       0.45
+  derivatives:   0.00
+  smc_structure: 0.30
+  smc_order_blocks: 0.10
+  volatility:    0.00
 
 HIGH_VOL:
-  trend:       0.20
-  meanrev:     0.20
-  derivatives: 0.30
-  volatility:  0.30
+  trend:         0.20
+  meanrev:       0.25
+  derivatives:   0.00
+  smc_structure: 0.45
+  smc_order_blocks: 0.10
+  volatility:    0.00
 
 # Per-regime decision thresholds on |score|.
 thresholds:

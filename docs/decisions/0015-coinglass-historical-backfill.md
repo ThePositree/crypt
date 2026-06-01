@@ -1,7 +1,8 @@
 # ADR-0015: Coinglass as read-only backfill source for derivatives history
 
-- **Status**: accepted
+- **Status**: superseded by ADR-0016
 - **Date**: 2026-05-29
+- **Superseded**: 2026-06-01 — see `docs/decisions/0016-drop-funding-fix-oi-endpoint.md`
 - **Owner**: agent (confirmed by owner in chat)
 
 ## Context
@@ -89,6 +90,23 @@ Full endpoint mapping, CLI contract, and tier limits: **`docs/backfill.md`**.
   one-time Enterprise CSV export.
 - Merge with ADR-0012 implementation — single API key, shared rate-limit
   budget across backfill + liquidation poller.
+
+## Supersession note (2026-06-01)
+
+ADR-0016 retired this ADR in full:
+
+- Owner decided to drop the funding sub-signal from `DerivativesEngine`
+  entirely (funding interval instability across OKX contracts; 3-month OKX
+  history ceiling; train/live drift risk).
+- OI history endpoint fixed to use OKX's deep
+  `/rubik/stat/contracts/open-interest-history` (data to Feb 2024), removing
+  the main motivation for Coinglass OI backfill.
+- LS ratio already came from the correct deep OKX endpoint.
+- With funding dropped and OI/LS from OKX natively, no remaining data gap
+  requires Coinglass.
+
+`CoinglassClient` was **never implemented**. No code to roll back.
+Coinglass remains a valid future option for the liquidations engine (ADR-0012).
 
 ## References
 

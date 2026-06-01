@@ -3,7 +3,7 @@ Look-ahead guard regression test.
 
 Contract (docs/backtest.md §5.1):
     At tick_time = T, no engine may access any datum with
-    open_time >= T (candles) or ts >= T (funding/OI/LS-ratio/taker-vol).
+    open_time >= T (candles) or ts >= T (OI/LS-ratio/taker-vol).
 
 This test deliberately injects a future candle and verifies:
 1. ReplayParquetStore filters it out (guard works).
@@ -23,7 +23,7 @@ import pytest
 from crypt.backtest.replay import ReplayContextBuilder, ReplayParquetStore
 from crypt.data.context import ContextBuilder
 from crypt.data.store import ParquetStore
-from crypt.models import Candle, FundingSnapshot, OISnapshot, Timeframe
+from crypt.models import Candle, OISnapshot, Timeframe
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -40,10 +40,6 @@ def _make_candle(symbol: str, open_time: datetime, close: float = 100.0) -> Cand
         volume=Decimal("1000"),
         closed=True,
     )
-
-
-def _make_funding(symbol: str, ts: datetime, rate: float = 0.0001) -> FundingSnapshot:
-    return FundingSnapshot(symbol=symbol, ts=ts, rate=Decimal(str(rate)))
 
 
 def _make_oi(symbol: str, ts: datetime, oi: float = 1_000_000.0) -> OISnapshot:
@@ -66,16 +62,13 @@ def store_with_future_bar(tmp_path: Path) -> ParquetStore:
     store.save_candles([_make_candle(SYMBOL, PAST_TIME, close=100.0)])
     # Future candle — open_time == TICK_TIME, must NOT be visible at tick_time.
     store.save_candles([_make_candle(SYMBOL, FUTURE_TIME, close=999.0)])
-    # Funding: one past, one at boundary.
-    store.save_funding([
-        _make_funding(SYMBOL, PAST_TIME - timedelta(hours=8), 0.0001),
-        _make_funding(SYMBOL, TICK_TIME, 0.9999),  # must be filtered
-    ])
     # OI: one past, one at boundary.
-    store.save_oi([
-        _make_oi(SYMBOL, PAST_TIME - timedelta(hours=1), 1_000_000),
-        _make_oi(SYMBOL, TICK_TIME, 9_999_999),  # must be filtered
-    ])
+    store.save_oi(
+        [
+            _make_oi(SYMBOL, PAST_TIME - timedelta(hours=1), 1_000_000),
+            _make_oi(SYMBOL, TICK_TIME, 9_999_999),  # must be filtered
+        ]
+    )
     return store
 
 
@@ -98,14 +91,6 @@ class TestReplayParquetStoreGuard:
         df = rs.load_candles(SYMBOL, Timeframe.H4, TICK_TIME)
         # All returned rows must have open_time < TICK_TIME.
         assert (df["open_time"] < pd.Timestamp(TICK_TIME)).all()
-
-    def test_funding_boundary_excluded(self, store_with_future_bar: ParquetStore) -> None:
-        rs = ReplayParquetStore(store_with_future_bar)
-        df = rs.load_funding(SYMBOL, TICK_TIME)
-        assert not df.empty
-        funding_rates = set(df["rate"].tolist())
-        assert 0.9999 not in funding_rates, "boundary funding rate must be filtered"
-        assert 0.0001 in funding_rates, "past funding rate must be present"
 
     def test_oi_boundary_excluded(self, store_with_future_bar: ParquetStore) -> None:
         rs = ReplayParquetStore(store_with_future_bar)
@@ -140,11 +125,8 @@ class TestLeakProof:
     which would itself be a bug in how the test is set up).
     """
 
-    def test_naive_builder_sees_future_candle(
-        self, store_with_future_bar: ParquetStore
-    ) -> None:
+    def test_naive_builder_sees_future_candle(self, store_with_future_bar: ParquetStore) -> None:
         """ContextBuilder (no guard) must return the future candle."""
-        # Use the live ContextBuilder which has NO time-fence.
         builder = ContextBuilder(store_with_future_bar)
         ctx = builder.build(SYMBOL, TICK_TIME)
         df_h4 = ctx.candles.get(Timeframe.H4)
@@ -156,9 +138,7 @@ class TestLeakProof:
             "if it does not, the test setup is wrong"
         )
 
-    def test_replay_builder_hides_future_candle(
-        self, store_with_future_bar: ParquetStore
-    ) -> None:
+    def test_replay_builder_hides_future_candle(self, store_with_future_bar: ParquetStore) -> None:
         """ReplayContextBuilder must hide the future candle."""
         rs = ReplayParquetStore(store_with_future_bar)
         builder = ReplayContextBuilder(rs)

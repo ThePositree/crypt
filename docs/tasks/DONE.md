@@ -4,6 +4,72 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-01 — SMC order-block engine (session 8)
+
+- `src/crypt/structure/smc.py` — added `SMCOrderBlock`, order-block creation
+  from BOS/CHoCH pivot-to-break windows, high-volatility candle parsing, and
+  mitigation state.
+- `src/crypt/engines/smc_order_blocks.py` — added active order-block retest
+  engine with bias confluence, zone rejection bonus, ATR width filter, and
+  neutral degradation on missing H4 data.
+- `src/crypt/runtime/orchestrator.py`, `src/crypt/backtest/__main__.py` —
+  wired the engine into live and replay evaluation.
+- `src/crypt/aggregator/weights.py`, `config/weights.yaml`,
+  `src/crypt/backtest/optimizer.py` — added `smc_order_blocks` to primary M2
+  scoring and placeholder calibration search.
+- Tests added: `tests/engines/test_smc_order_blocks.py`; SMC core tests now
+  cover order-block creation and mitigation.
+
+Verification: `109 passed`; `ruff check src tests` clean; `mypy src` clean.
+
+---
+
+## 2026-06-01 — ADR-0017 + first OHLCV-only SMC structure slice (session 7)
+
+- `docs/decisions/0017-ohlcv-only-m2-smc.md` — M2 primary calibration moved
+  to free OKX OHLCV data; derivatives weight set to 0 until proven.
+- `docs/engines/smc_core.md`, `smc_structure.md`, `smc_order_blocks.md`,
+  `smc_liquidity.md` — SMC contracts written before code.
+- `src/crypt/structure/smc.py` — first SMC analyser slice: confirmed pivots
+  and BOS/CHoCH with explicit `known_at` timing.
+- `src/crypt/engines/smc_structure.py` — candle-only directional engine.
+- `src/crypt/runtime/orchestrator.py`, `src/crypt/backtest/__main__.py` —
+  `smc_structure` wired into live and replay signals.
+- `config/weights.yaml`, `src/crypt/aggregator/weights.py` — scoring set and
+  placeholder weights updated for ADR-0017.
+- Tests added: `tests/structure/test_smc.py`,
+  `tests/engines/test_smc_structure.py`.
+
+Verification: `103 passed`; `ruff check src tests` clean; `mypy src` clean.
+
+---
+
+## 2026-06-01 — ADR-0016 code implementation: drop funding, fix OI endpoint (session 6)
+
+All code changes from ADR-0016 implemented and verified (97 tests, mypy 0, ruff clean).
+
+- `src/crypt/exchange/okx.py` — OI endpoint fixed to `publicGetRubikStatContractsOpenInterestHistory`.
+- `src/crypt/engines/derivatives.py` — funding removed; OI 0.67 / LS 0.33.
+- `src/crypt/models.py`, `data/context.py`, `data/store.py`, `data/ingestor.py` — funding paths removed.
+- `src/crypt/backfill/__main__.py` — `funding` data-type removed.
+- `src/crypt/backtest/replay.py`, `backtest/__main__.py` — funding references removed.
+- Tests updated: `test_derivatives.py`, `test_no_lookahead.py`, `test_filters.py`, `conftest.py`.
+- `.env.example` — Coinglass env vars replaced with tombstone comment.
+
+---
+
+## 2026-06-01 — ADR-0016: drop funding, fix OI endpoint, retire Coinglass (docs only — session 5)
+
+- `docs/decisions/0016-drop-funding-fix-oi-endpoint.md` — new ADR (accepted).
+- `docs/decisions/0015-coinglass-historical-backfill.md` — status updated to
+  superseded.
+- `docs/engines/derivatives.md` — spec rewritten: funding removed, weights
+  rebalanced to OI 0.67 / LS 0.33.
+- `docs/backfill.md` — Coinglass section removed; OI/LS from OKX native.
+- `docs/tasks/IN_PROGRESS.md`, `docs/tasks/BACKLOG.md`, `CHANGELOG.md` — updated.
+
+---
+
 ## 2026-05-29 — Coinglass backfill: spec + ADR (docs only)
 
 - `docs/backfill.md` — backfill contract: OKX + Coinglass sources, CLI

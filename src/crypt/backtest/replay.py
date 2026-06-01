@@ -5,7 +5,7 @@ the no-look-ahead contract during backtesting.
 Hard contract (from docs/backtest.md §5.1):
 
     At tick_time = T, no engine may access any datum with
-    open_time >= T (candles) or ts >= T (funding/OI/LS-ratio).
+    open_time >= T (candles) or ts >= T (OI/LS-ratio/taker-vol).
 
 The live ParquetStore is safe by construction (future data has not arrived
 yet). During replay we have the full dataset, so we must slice explicitly.
@@ -26,7 +26,6 @@ from crypt.models import (
 # How many rows to load per data type before slicing.  Keep identical to the
 # live context builder so the replay uses the same warm-up window.
 _CANDLE_LIMIT = 250
-_FUNDING_LIMIT = 200
 _OI_LIMIT = 200
 _LS_LIMIT = 100
 _TAKER_LIMIT = 100
@@ -64,21 +63,6 @@ class ReplayParquetStore:
         if df.empty:
             return df
         df = _filter_ts(df, "open_time", tick_time)
-        if limit is not None:
-            df = df.tail(limit).reset_index(drop=True)
-        return df
-
-    def load_funding(
-        self,
-        symbol: str,
-        tick_time: datetime,
-        limit: int | None = _FUNDING_LIMIT,
-    ) -> pd.DataFrame:
-        """Load funding snapshots strictly before tick_time."""
-        df = self._store.load_funding(symbol, limit=None)
-        if df.empty:
-            return df
-        df = _filter_ts(df, "ts", tick_time)
         if limit is not None:
             df = df.tail(limit).reset_index(drop=True)
         return df
@@ -147,14 +131,11 @@ class ReplayContextBuilder:
             if not df.empty:
                 candles[tf] = df
 
-        funding_df = self._rs.load_funding(symbol, tick_time)
         oi_df = self._rs.load_oi(symbol, tick_time)
         ls_df = self._rs.load_ls_ratio(symbol, tick_time)
         taker_df = self._rs.load_taker_volume(symbol, tick_time)
 
-        # Reuse the existing helpers from live ContextBuilder.
         from crypt.data.context import (
-            _df_to_funding,
             _df_to_ls_ratio,
             _df_to_oi,
             _df_to_taker_volume,
@@ -164,7 +145,6 @@ class ReplayContextBuilder:
             symbol=symbol,
             tick_time=tick_time,
             candles=candles,
-            funding=_df_to_funding(funding_df, symbol),
             oi=_df_to_oi(oi_df, symbol),
             ls_ratio=_df_to_ls_ratio(ls_df, symbol),
             taker_volume=_df_to_taker_volume(taker_df, symbol),

@@ -6,6 +6,163 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-01 — SMC order-block engine
+
+- Extended SMC core with `SMCOrderBlock`, order-block extraction from
+  pivot-to-break structure windows, high-volatility candle parsing, and
+  mitigation state.
+- Added `SMCOrderBlocksEngine`: active zone retest signal with structure-bias
+  confluence, rejection bonus, ATR width filter, and neutral missing-data path.
+- Wired `smc_order_blocks` into live orchestration, replay, aggregator scoring,
+  placeholder weights, and optimizer engine lists.
+- Added tests for order-block creation, mitigation, retest signal, no retest
+  before the closed candle, and missing H4 data.
+- Added a P0 backlog item for optimizer score recomputation before trusting
+  M2 calibration output.
+
+**ADRs:** none.
+
+**Verification:** `uv run pytest -q` → 109 passed; `uv run ruff check src tests`
+clean; `uv run mypy src` clean.
+
+**Files touched:** `src/crypt/structure/`, `src/crypt/engines/`,
+`src/crypt/runtime/`, `src/crypt/backtest/`, `src/crypt/aggregator/`,
+`tests/`, `config/`, `docs/`.
+
+---
+
+## 2026-06-01 — ADR-0017: OHLCV-only M2 + first SMC structure engine
+
+Owner direction: stop blocking M2 on paid/short derivatives history and first
+prove value with free OKX candles.
+
+- Added ADR-0017: primary M2 calibration is OHLCV-only; `derivatives` weight
+  is `0` until deep OI/LS history is separately proven.
+- Added SMC specs: `smc_core`, `smc_structure`, `smc_order_blocks`,
+  `smc_liquidity`.
+- Implemented first SMC core slice in `src/crypt/structure/smc.py`:
+  confirmed pivots + BOS/CHoCH with explicit `known_at` timing.
+- Added `SMCStructureEngine` and wired it into live orchestration and replay.
+- Updated `config/weights.yaml`, aggregator scoring engines, backtest
+  preconditions, README/backfill/backtest docs for OHLCV-only M2.
+- Added no-lookahead tests for SMC pivot/event timing and engine output.
+
+**ADRs:** 0017.
+
+**Verification:** `uv run pytest` → 103 passed; `uv run ruff check src tests`
+clean; `uv run mypy src` clean.
+
+**Files touched:** `docs/`, `src/crypt/structure/`, `src/crypt/engines/`,
+`src/crypt/aggregator/`, `src/crypt/backtest/`, `src/crypt/runtime/`,
+`tests/`, `config/`, `README.md`.
+
+---
+
+## 2026-06-01 — Hotfix: OI endpoint parameter `instId` (not `ccy`)
+
+OKX `/rubik/stat/contracts/open-interest-history` requires `instId`
+(e.g. `SOL-USDT-SWAP`), not `ccy` (`SOL`). ADR-0016 had the wrong parameter.
+Also switched stored field from `row[1]` (contracts) to `row[3]` (oiUsd) for
+USD-denominated OI, consistent with the prior `openInterestValue` field.
+
+- `src/crypt/exchange/okx.py` — `fetch_oi_history` and `fetch_oi_history_page`:
+  `ccy=ccy` → `instId=symbol`, `row[1]` → `row[3]` (oiUsd).
+
+Discovered on first live backfill run (error code `50014 instId can't be empty`).
+
+---
+
+## 2026-06-01 — ADR-0016 code implementation: drop funding, fix OI endpoint
+
+Session 6. All code changes from ADR-0016 implemented; 97 tests pass,
+mypy 0 errors, ruff clean.
+
+### Code changes
+
+- `src/crypt/exchange/okx.py` — `fetch_oi_history` and `fetch_oi_history_page`
+  replaced `ccxt`'s `fetch_open_interest_history` (9-day history) with direct
+  call to `publicGetRubikStatContractsOpenInterestHistory` (data to Feb 2024).
+- `src/crypt/engines/derivatives.py` — `_funding_signal` removed; weights
+  rebalanced to OI 0.67 / LS 0.33; graceful degradation reworked.
+- `src/crypt/models.py` — `EvaluationContext.funding` field removed.
+- `src/crypt/data/context.py` — `_FUNDING_LIMIT`, `_df_to_funding`, funding
+  loading removed.
+- `src/crypt/data/store.py` — `save_funding`, `load_funding`, `_funding_path`,
+  `_FUNDING_COLS` removed.
+- `src/crypt/data/ingestor.py` — `_ingest_funding` removed.
+- `src/crypt/backfill/__main__.py` — `_backfill_funding`, `funding` data-type
+  removed; default `--data-types` changed to `ohlcv,oi,ls_ratio`.
+- `src/crypt/backtest/replay.py` — `load_funding`, `_FUNDING_LIMIT` removed;
+  `ReplayContextBuilder` updated.
+- `src/crypt/backtest/__main__.py` — funding precondition check removed;
+  `_build_funding_model` simplified to always return `ZeroFundingModel`;
+  `_FUNDING_WARMUP_DAYS` constant removed.
+- `tests/engines/test_derivatives.py` — rewritten without funding fixtures;
+  6 OI+LS-only tests.
+- `tests/backtest/test_no_lookahead.py` — funding fixture and
+  `test_funding_boundary_excluded` removed; OI guard test retained.
+- `tests/decision/test_filters.py`, `tests/conftest.py` — `funding` arg
+  removed from `make_ctx`; `FundingSnapshot` import removed.
+- `.env.example` — Coinglass env vars replaced with tombstone comment.
+
+### Docs (unchanged from session 5 — already updated by prior agent)
+
+`docs/backfill.md`, `docs/engines/derivatives.md`, `docs/decisions/0016-*`.
+
+---
+
+## 2026-06-01 — Drop funding; fix OI endpoint; retire Coinglass plan (ADR-0016)
+
+**Decisions made in owner-agent design session.**
+
+### Funding sub-signal dropped from `DerivativesEngine`
+
+OKX perpetual swap contracts run on 1 h / 2 h / 4 h / 8 h funding settlement
+cycles (e.g. TON-USDT-SWAP moved to 4 h in April 2025). The engine's
+`_FUNDING_LIMIT = 200` window assumed a fixed 8 h cycle; a 4 h contract
+silently halves the effective z-score window, producing miscalibrated weights
+with no error signal. OKX also retains only ~3 months of funding history —
+insufficient for M2. The sub-signal is removed; `DerivativesEngine` now runs
+on OI momentum (0.67) + L/S ratio (0.33).
+
+### OI endpoint corrected
+
+`ccxt`'s `fetch_open_interest_history` calls
+`/rubik/stat/contracts/open-interest-volume` (only ~9 days of history).
+The correct endpoint is `/rubik/stat/contracts/open-interest-history`, which
+OKX retains to February 2024. `OKXClient.fetch_oi_history_page` must be
+updated to call `publicGetRubikStatContractsOpenInterestHistory` directly.
+
+### Coinglass plan retired (ADR-0015 superseded)
+
+With funding dropped and OI/LS both available from OKX native deep endpoints,
+no remaining data gap requires a third-party vendor. `CoinglassClient` was
+never implemented; no rollback needed.
+
+### Product vision clarified
+
+Session discussion captured in `BACKLOG.md`:
+- Output goal: BUY/SELL + entry price + SL (ATR-based) + TP (2:1 R:R fixed).
+- New engine categories planned: structural (S/R, VWAP, Fibonacci), volume
+  (CVD, OBV), price action (Order Blocks, FVG, BOS/ChoCH).
+- Engine = "alpha factor / signal generator", not a complete strategy.
+
+**ADRs:** 0016 (new). 0015 (superseded).
+
+**Docs updated:**
+
+- `docs/decisions/0016-drop-funding-fix-oi-endpoint.md` — new ADR (accepted).
+- `docs/decisions/0015-coinglass-historical-backfill.md` — status → superseded.
+- `docs/engines/derivatives.md` — spec updated (no-funding design, new weights).
+- `docs/backfill.md` — Coinglass section removed; OI endpoint table updated.
+- `docs/tasks/IN_PROGRESS.md` — next steps rewritten for OI fix + engine cleanup.
+- `docs/tasks/BACKLOG.md` — Coinglass items removed; product vision + new engine
+  categories added.
+
+**Code not yet written.** Next agent implements changes in `IN_PROGRESS.md`.
+
+---
+
 ## 2026-05-29 — Coinglass backfill: spec + ADR (implementation pending)
 
 Owner approved Coinglass as a read-only backfill source for deep

@@ -208,6 +208,7 @@ class OKXClient:
         limit: int = 100,
     ) -> list[FundingSnapshot] | None:
         """Fetch one page of funding rate history starting from since_ms. Used by backfill."""
+
         async def _call() -> list[Any]:
             return await self._exchange.fetch_funding_rate_history(  # type: ignore[no-any-return]
                 symbol, since=since_ms, limit=limit
@@ -249,16 +250,30 @@ class OKXClient:
     async def fetch_oi_history(
         self,
         symbol: str,
-        timeframe: str = "1h",
+        timeframe: str = "1h",  # noqa: ARG002 — interface compat, deep endpoint ignores it
         limit: int = 168,
     ) -> list[OISnapshot] | None:
-        async def _call() -> list[Any]:
-            return await self._exchange.fetch_open_interest_history(  # type: ignore[no-any-return]
-                symbol, timeframe=timeframe, limit=limit
+        # OKX deep-history endpoint — goes back to Feb 2024; ccxt's high-level
+        # fetch_open_interest_history only covers ~9 days (ADR-0016).
+        # Endpoint: GET /api/v5/rubik/stat/contracts/open-interest-history
+        # Requires instId (full swap id), not ccy.
+        # Response row: [ts_ms, oi_contracts, oiCcy, oiUsd] — we store oiUsd (row[3]).
+        now_ms = int(datetime.now(tz=UTC).timestamp() * 1000)
+        since_ms = now_ms - limit * 3_600_000
+
+        async def _call() -> dict[str, Any]:
+            return await self._exchange.publicGetRubikStatContractsOpenInterestHistory(  # type: ignore[no-any-return]
+                {
+                    "instId": symbol,
+                    "period": "1H",
+                    "begin": str(since_ms),
+                    "end": str(now_ms),
+                    "limit": str(min(limit, 100)),
+                }
             )
 
         try:
-            raw = await retry_with_backoff(
+            response = await retry_with_backoff(
                 _call,
                 max_attempts=self._max_retries,
                 base_delay=self._retry_base_delay,
@@ -269,17 +284,17 @@ class OKXClient:
             logger.warning("fetch_oi_history {} failed: {}", symbol, exc)
             return None
 
+        data = response.get("data", [])
+        if not data:
+            return None
+
         result: list[OISnapshot] = []
-        for item in raw:
-            ts = item.get("timestamp")
-            oi = item.get("openInterestValue") or item.get("openInterest")
-            if ts is None or oi is None:
-                continue
+        for row in data:
             result.append(
                 OISnapshot(
                     symbol=symbol,
-                    ts=_ts_ms_to_dt(ts),
-                    oi=Decimal(str(oi)),
+                    ts=_ts_ms_to_dt(int(row[0])),
+                    oi=Decimal(str(row[3])),  # oiUsd — USD-denominated OI
                 )
             )
         return sorted(result, key=lambda s: s.ts)
@@ -289,16 +304,26 @@ class OKXClient:
         symbol: str,
         since_ms: int,
         limit: int = 100,
-        timeframe: str = "1h",
+        timeframe: str = "1h",  # noqa: ARG002 — interface compat, deep endpoint ignores it
     ) -> list[OISnapshot] | None:
         """Fetch one page of OI history starting from since_ms. Used by backfill."""
-        async def _call() -> list[Any]:
-            return await self._exchange.fetch_open_interest_history(  # type: ignore[no-any-return]
-                symbol, timeframe=timeframe, since=since_ms, limit=limit
+        # OKX deep-history endpoint — goes back to Feb 2024; ccxt's high-level
+        # fetch_open_interest_history only covers ~9 days (ADR-0016).
+        # Requires instId (full swap id). Response: [ts, oi_contracts, oiCcy, oiUsd].
+
+        async def _call() -> dict[str, Any]:
+            return await self._exchange.publicGetRubikStatContractsOpenInterestHistory(  # type: ignore[no-any-return]
+                {
+                    "instId": symbol,
+                    "period": "1H",
+                    "begin": str(since_ms),
+                    "end": str(since_ms + limit * 3_600_000),
+                    "limit": str(min(limit, 100)),
+                }
             )
 
         try:
-            raw = await retry_with_backoff(
+            response = await retry_with_backoff(
                 _call,
                 max_attempts=self._max_retries,
                 base_delay=self._retry_base_delay,
@@ -310,13 +335,15 @@ class OKXClient:
             logger.warning("fetch_oi_history_page {} failed: {}", symbol, exc)
             return None
 
+        data = response.get("data", [])
+        if not data:
+            return None
+
         result: list[OISnapshot] = []
-        for item in raw:
-            ts = item.get("timestamp")
-            oi = item.get("openInterestValue") or item.get("openInterest")
-            if ts is None or oi is None:
-                continue
-            result.append(OISnapshot(symbol=symbol, ts=_ts_ms_to_dt(ts), oi=Decimal(str(oi))))
+        for row in data:
+            result.append(
+                OISnapshot(symbol=symbol, ts=_ts_ms_to_dt(int(row[0])), oi=Decimal(str(row[3])))
+            )
         return sorted(result, key=lambda s: s.ts) if result else None
 
     # ------------------------------------------------------------------

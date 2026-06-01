@@ -4,9 +4,9 @@ Backfill CLI — fetches historical OKX data into the Parquet store.
 Usage:
     uv run python -m crypt.backfill \\
         --symbol SOL-USDT-SWAP \\
-        --from 2023-01-01 \\
-        --to   2026-05-01 \\
-        [--data-types ohlcv,funding,oi,ls_ratio] \\
+        --from 2024-02-01 \\
+        --to   2026-06-01 \\
+        [--data-types ohlcv,oi,ls_ratio] \\
         [--page-size 100] \\
         [--max-rps 5]
 
@@ -116,47 +116,6 @@ async def _backfill_ohlcv(
                     await asyncio.sleep(delay_s)
 
 
-async def _backfill_funding(
-    client: OKXClient,
-    store: ParquetStore,
-    symbol: str,
-    from_dt: datetime,
-    to_dt: datetime,
-    page_size: int,
-    delay_s: float,
-) -> None:
-    """Paginate forward through funding rate history."""
-    # OKX funding is every 8h; 7-day warmup = 21 extra samples.
-    warmup_ms = 7 * 24 * _MS_PER_HOUR
-    start_ms = _dt_to_ms(from_dt) - warmup_ms
-    end_ms = _dt_to_ms(to_dt)
-
-    # Rough estimate: one funding tick every 8h.
-    total_est = max(1, (end_ms - start_ms) // (8 * _MS_PER_HOUR))
-
-    with tqdm(total=total_est, desc=f"{symbol} funding", unit="tick", leave=False) as pbar:
-        cursor = start_ms
-        while cursor < end_ms:
-            snaps = await client.fetch_funding_history_page(symbol, cursor, limit=page_size)
-            if not snaps:
-                logger.debug("{} funding: no data at since={}", symbol, cursor)
-                break
-
-            store.save_funding(snaps)
-            last_ts_ms = _dt_to_ms(snaps[-1].ts)
-            logger.debug("{} funding: fetched {}, last={}", symbol, len(snaps), last_ts_ms)
-
-            new_cursor = last_ts_ms + 1
-            pbar.update(max(0, (new_cursor - cursor) // (8 * _MS_PER_HOUR)))
-
-            if last_ts_ms >= end_ms or new_cursor <= cursor:
-                break
-            cursor = new_cursor
-
-            if delay_s > 0:
-                await asyncio.sleep(delay_s)
-
-
 async def _backfill_oi(
     client: OKXClient,
     store: ParquetStore,
@@ -253,7 +212,9 @@ async def _backfill_rubik(
                 if tv_result:
                     store.save_taker_volume(tv_result)
                     fetched = len(tv_result)
-            logger.debug("{} {}: fetched {} records [{}, {}]", symbol, data_type, fetched, cursor, window_end)
+            logger.debug(
+                "{} {}: fetched {} records [{}, {}]", symbol, data_type, fetched, cursor, window_end
+            )
 
             if fetched == 0:
                 consecutive_empty += 1
@@ -303,9 +264,6 @@ async def _run_backfill(
         if "ohlcv" in data_types:
             await _backfill_ohlcv(client, store, symbol, from_dt, to_dt, page_size, delay_s)
 
-        if "funding" in data_types:
-            await _backfill_funding(client, store, symbol, from_dt, to_dt, page_size, delay_s)
-
         if "oi" in data_types:
             await _backfill_oi(client, store, symbol, from_dt, to_dt, page_size, delay_s)
 
@@ -331,11 +289,13 @@ def main() -> None:
     )
     parser.add_argument("--symbol", required=True, help="OKX instId, e.g. SOL-USDT-SWAP")
     parser.add_argument("--from", dest="from_date", required=True, help="Start date YYYY-MM-DD")
-    parser.add_argument("--to", dest="to_date", required=True, help="End date YYYY-MM-DD (exclusive)")
+    parser.add_argument(
+        "--to", dest="to_date", required=True, help="End date YYYY-MM-DD (exclusive)"
+    )
     parser.add_argument(
         "--data-types",
-        default="ohlcv,funding,oi,ls_ratio",
-        help="Comma-separated list: ohlcv,funding,oi,ls_ratio,taker_vol",
+        default="ohlcv,oi,ls_ratio",
+        help="Comma-separated list: ohlcv,oi,ls_ratio,taker_vol",
     )
     parser.add_argument("--page-size", type=int, default=100, help="Records per API call (max 100)")
     parser.add_argument("--max-rps", type=float, default=5.0, help="Max API requests per second")
@@ -354,7 +314,7 @@ def main() -> None:
         sys.exit(1)
 
     data_types = [t.strip() for t in args.data_types.split(",") if t.strip()]
-    valid_types = {"ohlcv", "funding", "oi", "ls_ratio", "taker_vol"}
+    valid_types = {"ohlcv", "oi", "ls_ratio", "taker_vol"}
     unknown = set(data_types) - valid_types
     if unknown:
         logger.error("Unknown data types: {}. Valid: {}", unknown, valid_types)

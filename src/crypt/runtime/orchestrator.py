@@ -15,6 +15,8 @@ from crypt.decision.filters import DecisionFilter
 from crypt.engines.derivatives import DerivativesEngine
 from crypt.engines.meanrev import MeanRevEngine
 from crypt.engines.regime import RegimeEngine
+from crypt.engines.smc_order_blocks import SMCOrderBlocksEngine
+from crypt.engines.smc_structure import SMCStructureEngine
 from crypt.engines.trend import TrendEngine
 from crypt.engines.volatility import VolatilityEngine
 from crypt.exchange.okx import OKXClient
@@ -54,6 +56,8 @@ class Orchestrator:
         self._trend = TrendEngine()
         self._meanrev = MeanRevEngine()
         self._derivatives = DerivativesEngine()
+        self._smc_structure = SMCStructureEngine()
+        self._smc_order_blocks = SMCOrderBlocksEngine()
         self._volatility = VolatilityEngine()
         self._regime = RegimeEngine()
 
@@ -177,16 +181,26 @@ class Orchestrator:
         regime = Regime(regime_str)
 
         # 3. Directional engines (can run in parallel — they are pure functions).
-        trend_signal, meanrev_signal, deriv_signal = await asyncio.gather(
+        (
+            trend_signal,
+            meanrev_signal,
+            deriv_signal,
+            smc_structure_signal,
+            smc_order_blocks_signal,
+        ) = await asyncio.gather(
             asyncio.to_thread(self._trend.evaluate, ctx),
             asyncio.to_thread(self._meanrev.evaluate, ctx),
             asyncio.to_thread(self._derivatives.evaluate, ctx),
+            asyncio.to_thread(self._smc_structure.evaluate, ctx),
+            asyncio.to_thread(self._smc_order_blocks.evaluate, ctx),
         )
 
         all_signals: list[Signal] = [
             trend_signal,
             meanrev_signal,
             deriv_signal,
+            smc_structure_signal,
+            smc_order_blocks_signal,
             vol_signal,
             regime_signal,
         ]

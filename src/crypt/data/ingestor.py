@@ -46,10 +46,9 @@ class Ingestor:
 
     async def _ingest_symbol(self, symbol: str) -> None:
         logger.info("Ingesting {}", symbol)
-        labels = ["ohlcv", "funding", "oi", "ls_ratio", "taker_volume"]
+        labels = ["ohlcv", "oi", "ls_ratio", "taker_volume"]
         results = await asyncio.gather(
             self._ingest_ohlcv(symbol),
-            self._ingest_funding(symbol),
             self._ingest_oi(symbol),
             self._ingest_ls_ratio(symbol),
             self._ingest_taker_volume(symbol),
@@ -69,17 +68,9 @@ class Ingestor:
             except Exception as exc:
                 logger.error("OHLCV {}/{} error: {}", symbol, tf.value, exc)
 
-    async def _ingest_funding(self, symbol: str) -> None:
-        try:
-            snapshots = await self._exchange.fetch_funding_history(symbol, limit=200)
-            if snapshots:
-                self._store.save_funding(snapshots)
-        except Exception as exc:
-            logger.error("Funding {} error: {}", symbol, exc)
-
     async def _ingest_oi(self, symbol: str) -> None:
         try:
-            snapshots = await self._exchange.fetch_oi_history(symbol, timeframe="1h", limit=200)
+            snapshots = await self._exchange.fetch_oi_history(symbol, limit=200)
             if snapshots:
                 self._store.save_oi(snapshots)
         except Exception as exc:

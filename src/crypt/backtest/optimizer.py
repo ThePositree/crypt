@@ -40,7 +40,7 @@ from crypt.aggregator.weights import WeightsConfig
 _WEIGHT_GRID = np.round(np.arange(0.0, 1.01, 0.1), 2).tolist()
 _THRESHOLD_GRID = np.round(np.arange(0.15, 0.56, 0.05), 2).tolist()
 _REGIMES = ("TRENDING", "RANGING", "HIGH_VOL")
-_ENGINES = ("trend", "meanrev", "derivatives")
+_ENGINES = ("trend", "meanrev", "smc_structure", "smc_order_blocks")
 # Fine grid for coordinate descent (5x finer than weight grid)
 _FINE_STEP = 0.02
 
@@ -135,13 +135,13 @@ def _apply_weights(
 # ---------------------------------------------------------------------------
 
 
-def _weight_candidates() -> list[tuple[float, float, float]]:
-    """All (trend, meanrev, derivatives) weight triples that sum to 1.0."""
-    result: list[tuple[float, float, float]] = []
-    for w1, w2 in itertools.product(_WEIGHT_GRID, repeat=2):
-        w3 = round(1.0 - w1 - w2, 10)
-        if 0.0 <= w3 <= 1.0 + 1e-9:
-            result.append((w1, w2, round(w3, 2)))
+def _weight_candidates() -> list[tuple[float, ...]]:
+    """All primary OHLCV-only weight tuples that sum to 1.0."""
+    result: list[tuple[float, ...]] = []
+    for leading in itertools.product(_WEIGHT_GRID, repeat=len(_ENGINES) - 1):
+        last = round(1.0 - sum(leading), 10)
+        if 0.0 <= last <= 1.0 + 1e-9:
+            result.append((*leading, round(last, 2)))
     return result
 
 
@@ -153,23 +153,20 @@ def _grid_search(
 
     Returns (best_weights_data, best_objective, n_alerts).
     """
-    weight_triples = _weight_candidates()
+    weight_tuples = _weight_candidates()
     best_obj = -float("inf")
     best_weights: dict[str, Any] = {}
     best_n_alerts = 0
 
     for thresholds in itertools.product(_THRESHOLD_GRID, repeat=len(_REGIMES)):
-        for regime_weights in itertools.product(weight_triples, repeat=len(_REGIMES)):
+        for regime_weights in itertools.product(weight_tuples, repeat=len(_REGIMES)):
             candidate: dict[str, Any] = {
                 "thresholds": dict(zip(_REGIMES, thresholds, strict=True)),
                 "vol_confidence_multiplier": {"low": 0.95, "normal": 1.0, "high": 0.85},
             }
-            for regime, (w1, w2, w3) in zip(_REGIMES, regime_weights, strict=True):
-                candidate[regime] = {
-                    "trend": w1,
-                    "meanrev": w2,
-                    "derivatives": w3,
-                }
+            for regime, weights in zip(_REGIMES, regime_weights, strict=True):
+                candidate[regime] = dict(zip(_ENGINES, weights, strict=True))
+                candidate[regime]["derivatives"] = 0.0
 
             verdicts_new = _apply_weights(verdicts, candidate)
             obj = _objective(verdicts_new, WeightsConfig(candidate))

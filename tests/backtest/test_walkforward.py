@@ -50,7 +50,7 @@ def test_generate_folds_expanding_train() -> None:
     for i in range(1, len(folds)):
         prev_train_end = folds[i - 1].train_to
         curr_train_end = folds[i].train_to
-        assert curr_train_end > prev_train_end, f"fold {i} train end not later than fold {i-1}"
+        assert curr_train_end > prev_train_end, f"fold {i} train end not later than fold {i - 1}"
 
 
 def test_generate_folds_last_test_to_equals_to_dt() -> None:
@@ -85,12 +85,8 @@ def test_generate_folds_synthetic_1_year_4_folds() -> None:
     tick_series = pd.Series(ticks, name="tick_time")
 
     for fold in folds:
-        train_ticks = tick_series[
-            (tick_series >= fold.train_from) & (tick_series < fold.train_to)
-        ]
-        test_ticks = tick_series[
-            (tick_series >= fold.test_from) & (tick_series < fold.test_to)
-        ]
+        train_ticks = tick_series[(tick_series >= fold.train_from) & (tick_series < fold.train_to)]
+        test_ticks = tick_series[(tick_series >= fold.test_from) & (tick_series < fold.test_to)]
         overlap = set(train_ticks.values) & set(test_ticks.values)
         assert len(overlap) == 0, (
             f"Fold {fold.fold_index}: {len(overlap)} timestamps appear in both train and test"
@@ -104,10 +100,7 @@ def test_generate_folds_synthetic_1_year_4_folds() -> None:
 
 def _make_verdicts(n: int, start: datetime) -> pd.DataFrame:
     return pd.DataFrame(
-        [
-            {"tick_time": start + timedelta(hours=4 * i), "decision": "BUY"}
-            for i in range(n)
-        ]
+        [{"tick_time": start + timedelta(hours=4 * i), "decision": "BUY"} for i in range(n)]
     )
 
 

@@ -121,7 +121,6 @@ def test_critical_missing_via_engine_classvar() -> None:
         symbol="TEST",
         tick_time=_NOW,
         candles={},  # no H4 — should trigger critical_missing
-        funding=None,
         oi=None,
         ls_ratio=None,
         taker_volume=None,
@@ -144,7 +143,6 @@ def test_non_critical_engine_has_empty_critical_missing() -> None:
         symbol="TEST",
         tick_time=_NOW,
         candles={},
-        funding=None,
         oi=None,
         ls_ratio=None,
         taker_volume=None,

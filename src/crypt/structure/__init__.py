@@ -1,0 +1,1 @@
+"""Candle-structure analysis helpers."""

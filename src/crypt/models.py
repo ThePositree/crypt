@@ -135,9 +135,6 @@ class EvaluationContext:
     # Keyed by Timeframe; may be empty/missing for a given timeframe.
     candles: dict[Timeframe, pd.DataFrame]
 
-    # Funding: ordered list, oldest first, newest last. None if fetch failed.
-    funding: list[FundingSnapshot] | None
-
     # Open interest: 1h bars, oldest first. None if fetch failed.
     oi: list[OISnapshot] | None
 

@@ -77,12 +77,33 @@ Full spec: **`docs/backtest.md`** (must-read before starting).
 - [x] **HTML report** — `src/crypt/backtest/report.py` (2026-05-29).
 - [x] **`weights.recommended.yaml` writer** — `optimizer.py` + `__main__.py` (2026-05-29).
 - [x] **`tests/backtest/*`** — labels, walkforward, metrics tests added (2026-05-29).
-- [x] **Coinglass backfill spec + ADR** — `docs/backfill.md`, ADR-0015 (2026-05-29).
-- [ ] **Coinglass backfill implementation** — P0; `CoinglassClient`,
-      `--source coinglass|auto`, tests. Spec: `docs/backfill.md`.
-      Blocked on owner `COINGLASS_API_KEY` for integration smoke.
-- [ ] **Run backfill + full backtest** — after Coinglass impl; workflow in
-      `docs/backfill.md` §7 and `IN_PROGRESS.md`.
+- [x] **Coinglass backfill spec + ADR-0015** — superseded by ADR-0016 (2026-06-01).
+      Coinglass not needed; funding dropped; OI/LS from OKX native endpoints.
+- [x] **Fix OI endpoint** — `src/crypt/exchange/okx.py`: replaced with
+      direct `publicGetRubikStatContractsOpenInterestHistory` call (2026-06-01).
+- [x] **Remove funding from `DerivativesEngine`** — weights OI 0.67 / LS 0.33;
+      removed from `EvaluationContext`, `context.py`, `store.py`, backfill CLI,
+      `replay.py`, `backtest/__main__.py` (2026-06-01).
+- [x] **ADR-0017: OHLCV-only M2 calibration** — primary M2 backtest uses
+      free OKX candles only; derivatives weight is `0` until deep OI/LS is
+      proven useful (2026-06-01).
+- [x] **SMC core analyser** — `docs/engines/smc_core.md`; deterministic
+      Python implementation of pivots, BOS/CHoCH, order blocks, equal
+      highs/lows, sweeps; first slice covers pivots + BOS/CHoCH with
+      no-lookahead tests (2026-06-01).
+- [x] **`smc_structure` engine** — `docs/engines/smc_structure.md`; first
+      candle-only SMC directional engine (2026-06-01).
+- [x] **`smc_order_blocks` engine** — `docs/engines/smc_order_blocks.md`;
+      retest signal from active order-block zones.
+- [ ] **`smc_liquidity` engine** — `docs/engines/smc_liquidity.md`;
+      equal high/low and swing-level sweep signal.
+- [ ] **Fix optimizer score recomputation** — P0 before trusting M2
+      calibration. `BacktestRecorder` currently stores only final `score`;
+      `optimizer._apply_weights` can change thresholds but cannot recompute
+      scores from per-engine strengths. Persist per-engine strengths or
+      rerun aggregation per candidate before accepting `weights.recommended.yaml`.
+- [ ] **Run OHLCV backfill + full backtest** — OKX candles only,
+      `--from 2024-02-01`. Workflow in `IN_PROGRESS.md`.
 - [ ] **ADR-0014** — calibration result after M2 report is reviewed and weights accepted.
 - [ ] **Flip `uncalibrated = False`** — after ADR-0014 is written.
 
@@ -164,6 +185,27 @@ From `docs/post_m1_code_fixes.md`:
 - [ ] **Stop / pause Railway service** — owner action; Parquet data already
       extracted to `prod/`.
 
+### Product output: entry / SL / TP in Verdict
+
+From session 5 discussion: the system's goal is to output a complete trade
+setup (direction + entry + stop-loss + take-profit), not just BUY/SELL/HOLD.
+Proposed design for M3+:
+
+- **Entry price**: close of the H4 candle that triggered the signal.
+- **SL**: `Entry − 1.5 × ATR14(H4)` for longs (reversed for shorts).
+  ATR is already computed in `VolatilityEngine`; needs to be exported via
+  `Signal.meta` or a new field.
+- **TP**: `Entry + 2 × (Entry − SL)` — fixed 2:1 R:R (mechanical, per owner request).
+
+Implementation tasks (post-M2 calibration):
+
+- [ ] **Export ATR in `VolatilityEngine.meta`** — add `atr14_h4` to
+      `Signal.meta` so the aggregator can use it.
+- [ ] **Add `entry`, `sl`, `tp` to `Verdict`** — optional fields, populated
+      when `decision != HOLD`. Aggregator computes from entry + ATR-based SL.
+- [ ] **Update `TelegramSink`** — include entry/SL/TP in alert message.
+- [ ] **Update `JsonlSink` + backtest recorder** — log new Verdict fields.
+
 ---
 
 ## P1 — M3 (paper trading) once M2 weights are calibrated
@@ -207,6 +249,39 @@ Full spec: **`docs/paper_trading.md`**.
 
 ### Engines further out
 
+The product vision (session 5) is to aggregate **all** trader tools into one
+verdict — indicators, structure, volume, price action — so the owner gets
+in seconds what takes a trader hours to assemble manually.
+
+Planned engine categories (post-M2, one at a time with fresh backtest each):
+
+**Structural / level engines** (give price zones, feed future SL logic):
+- [ ] **`support_resistance` engine** — classical S/R via pivot highs/lows
+      on D1/H4. Lower priority now because ADR-0017 starts with SMC
+      structure/order-block/liquidity engines.
+- [ ] **`vwap` engine** — daily + weekly VWAP with ±1σ bands. Price position
+      relative to VWAP as mean-reversion signal.
+- [ ] **`volume_profile` engine** — POC, VAH, VAL from recent session volume.
+      Requires tick-or-minute data; defer until data pipeline supports it.
+- [ ] **`fibonacci` engine** — auto-drawn Fib retracements on the last
+      significant swing. Defer until SMC core can provide reliable impulse
+      legs; first use as confluence, not standalone direction.
+
+**Volume / order-flow engines:**
+- [ ] **`volume_delta` engine** — CVD (cumulative volume delta) / taker
+      buy-sell volume imbalance. Directional pressure signal. Uses existing
+      `taker_vol` data if backfilled.
+- [ ] **`obv` engine** — On-Balance Volume trend confirmation.
+
+**Price action / structure engines:**
+- [x] **SMC specs** — `smc_core`, `smc_structure`, `smc_order_blocks`,
+      `smc_liquidity` written for ADR-0017 (2026-06-01).
+- [ ] **`fvg` engine** — Fair Value Gaps (imbalance candles). Defer until
+      the PineScript `lookahead_on` MTF logic is rewritten safely.
+- [ ] **`smc_premium_discount` engine** — premium/equilibrium/discount zones
+      from the latest confirmed swing range. Defer until after first SMC report.
+
+**Meta:**
 - [ ] **ML meta-aggregator** — LightGBM on engine outputs. Decide
       after M3 paper trading shows reproducible expectancy.
 - [ ] **Higher-frequency engine** (M15 or M5) — only if M3 data
