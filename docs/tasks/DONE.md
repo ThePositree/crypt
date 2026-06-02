@@ -4,6 +4,106 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-02 — H1 setup stop-distance cap diagnostic
+
+- Added `max_sl_distance_atr` as an explicit donor `crypt_ensemble` strategy
+  parameter, preserving the existing `8 ATR` default when omitted.
+- Added the parameter to the donor Optuna suggestion surface and covered the
+  explicit cap with a focused structural-stop unit test.
+- Set `max_sl_distance_atr = 4.0` in
+  `backtester/strategies/crypt_ensemble_h1.json` for bounded H1 diagnostics.
+- Updated the MTF spec and README to document the H1 stop-distance cap as a
+  diagnostic setup-geometry knob, not final calibration.
+- Reran bounded SOL H1 MTF smoke:
+  `/tmp/crypt_donor_h1_mtf_smoke_h1_max4/20260602_195943`.
+- Smoke produced 745 H1 signal rows, 105 tradeable signals, 98 trades,
+  all executed trades using `sl_source_tf = 1h`, final capital 9947.0,
+  `total_return_pct = -0.53`, `profit_factor = 0.97`, and max drawdown
+  `-7.41`. TTL exits fell from 50.0% in the previous H1 stop-source smoke to
+  37.8%; trade frequency fell from 6.27 to 3.89 trades/day.
+
+Verification: ruff check and format clean on changed donor strategy/test
+files; targeted donor pytest `23 passed`; full donor pytest `96 passed` with
+3 existing pandas warnings; bounded SOL H1 smoke completed in about 6 minutes
+35 seconds.
+
+---
+
+## 2026-06-02 — H1 structural stop-source selection for MTF donor strategy
+
+- Updated `docs/crypt_ensemble_mtf.md` to make the H1-vs-H4 structural stop
+  selection contract explicit.
+- Added H1 stop-source selection to donor `crypt_ensemble`: H4 remains the
+  primary setup stop, while H1 execution mode may replace it with a valid,
+  known, same-direction H1 structural stop only when it is closer by
+  execution-timeframe ATR distance.
+- Preserved H4 default behaviour and existing H4 `_structural_stop_state(ctx)`
+  compatibility for tests and callers.
+- Added focused tests showing H1 structure replaces a wider H4 stop, and that
+  a wider H1 stop does not override H4.
+- Reran bounded SOL H1 MTF smoke:
+  `/tmp/crypt_donor_h1_mtf_smoke_h1_stop_source/20260602_194225`.
+- Smoke produced 745 H1 signal rows, 159 tradeable signals, 158 trades,
+  153 tradeable signals with `sl_source_tf = 1h`, final capital 9058.19,
+  `total_return_pct = -9.42`, `profit_factor = 0.66`, max drawdown `-10.44`.
+  The result is diagnostic only; setup geometry and performance remain open.
+
+Verification: ruff check and format clean on changed donor strategy/test
+files; targeted donor pytest `22 passed`; full donor pytest `95 passed` with
+3 existing pandas warnings; bounded SOL H1 smoke completed in about 6 minutes
+35 seconds.
+
+---
+
+## 2026-06-02 — MTF no-lookahead tests and next-open entry
+
+- Added focused donor `crypt_ensemble` tests for D1 forming-candle exclusion,
+  future-known H4 structural stop anchors, and H1 signal timing through
+  `ExecutionSim`.
+- Fixed `crypt_ensemble` signal rows to leave `entry_price` empty so donor
+  execution enters at the next execution-bar open after the closed signal
+  candle, instead of using the signal candle close as a current-bar custom
+  entry.
+- Updated MTF docs and README to describe the donor next-open entry contract.
+- Recorded that the previous bounded SOL H1 smoke predates this entry-timing
+  fix and must be rerun before comparing H1 metrics.
+- Reran bounded SOL H1 MTF smoke after the fix:
+  `/tmp/crypt_donor_h1_mtf_smoke_bounded_next_open/20260602_192846`.
+- Updated H1 diagnostic result: 745 H1 signal rows, 35 short trades, final
+  capital 9357.25 from 10000, `total_return_pct = -6.43`,
+  `profit_factor = 0.04`, max drawdown `-6.27`; sample trades confirm
+  entry on the next H1 open after the signal timestamp.
+
+Verification: targeted donor pytest `20 passed`; full donor pytest
+`93 passed`; ruff check and format clean on changed donor strategy/test files.
+All donor pytest runs still show 3 existing pandas warnings in the full suite.
+Bounded SOL H1 smoke completed.
+
+---
+
+## 2026-06-02 — Donor `crypt-parquet` smoke range limiter
+
+- Added inclusive `--from` / `--to` CLI bounds for donor
+  `crypt-parquet` runs.
+- `CryptParquetDataLoader` now parses timezone-naive bounds as UTC and filters
+  primary/output rows by their `DatetimeIndex`.
+- Preserved pre-start candle history in `StrategyData.candles` up to `--to`
+  so bounded smokes still have H4/D1 warmup for engines.
+- Added loader and CLI tests for date-range propagation and inclusive
+  primary filtering plus context warmup retention.
+- Reran bounded SOL H1 MTF smoke after owner restored local Parquet data:
+  `/tmp/crypt_donor_h1_mtf_smoke_bounded/20260602_191541`.
+- Smoke produced 745 H1 signal rows, 35 short trades, final capital 9340.69
+  from 10000, `total_return_pct = -6.59`, `profit_factor = 0.05`, and full
+  exports including `trades.csv`, `trade_diagnostics.csv`, `signals.csv`, and
+  `signal_diagnostics.csv`.
+
+Verification: ruff clean on changed donor files; targeted donor pytest
+`26 passed`; full donor pytest `90 passed`; both with 3 existing pandas
+warnings.
+
+---
+
 ## 2026-06-02 — `backtester/` vendored into crypt monorepo (docs)
 
 - Owner directed folding `backtester/` into the `crypt` repository (no nested
@@ -12,8 +112,8 @@ Reverse-chronological archive of completed work. Newest on top.
   one-time git migration steps and consequences.
 - Updated `README.md`, `docs/backtest.md`, `docs/backtester_migration.md`, and
   ADR-0018 cross-references.
-- Git commit of `backtester/` file tree is owner-operated after
-  `rm -rf backtester/.git`.
+- Current working-tree check confirms `backtester/.git` is absent and
+  `backtester/` files are tracked from the `crypt` root repository.
 
 ---
 

@@ -259,8 +259,12 @@ Keep the first slice intentionally narrow.
    - D1 context is not strongly opposite;
    - H4 setup direction is BUY/SELL;
    - H1 trigger confirms the same direction.
-7. Use structural stop from H4 setup first; if too wide, allow H1 structure to
-   provide a closer protective stop only when it is aligned with the H4 setup.
+7. Use structural stop from H4 setup first. In H1 execution mode, also plan a
+   stop from closed H1 structure and replace the H4 stop only when the H1 stop
+   is valid, protective for the same signal, known at or before the H1 tick,
+   and closer than the H4 stop by execution-timeframe ATR distance. If H1 has
+   no valid aligned stop, keep the H4 stop; if neither timeframe has a valid
+   structural stop, neutralize the signal as before.
 8. Export diagnostics:
    - `context_tf`;
    - `setup_tf`;
@@ -283,7 +287,11 @@ Retune at minimum:
 - `rrr`: start with 1.0, 1.5, 2.0;
 - sweep freshness: measure in each timeframe's own bars;
 - SMC event staleness;
-- maximum stop distance in execution ATR;
+- maximum stop distance in execution ATR. The H4 default may keep the current
+  broad `8 ATR` guard, but H1 diagnostics should expose this as
+  `max_sl_distance_atr` and start with a tighter `4 ATR` cap because the
+  latest bounded smoke showed TTL-expired trades clustered around wider stops
+  (`p50 = 4.107 ATR`, `p95 = 7.157 ATR`);
 - trigger confidence thresholds;
 - long-side filters, because recent SOL smokes show long trades are the main
   drag.
@@ -315,10 +323,71 @@ cd backtester
 PYTHONPATH=src:../src uv run --extra dev backtester run \
     --data-source crypt-parquet \
     --data-dir ../data \
+    --primary-timeframe 1h \
     --symbol SOL-USDT-SWAP \
+    --from 2025-01-01 \
+    --to 2025-02-01 \
     --strategy strategies/crypt_ensemble_h1.json \
-    --output /tmp/crypt_donor_h1_mtf_smoke
+    --output /tmp/crypt_donor_h1_mtf_smoke_bounded
 ```
+
+After the bounded smoke exports clean diagnostics, run the same command without
+`--from` / `--to` for full-history acceptance.
+
+Implementation note: `--from` / `--to` should bound the primary/output frame
+only. Context/setup candle frames must retain pre-start history up to `--to`,
+otherwise H4/D1 engines lose warmup and the bounded smoke degenerates into
+all-HOLD setup rows.
+
+Latest bounded SOL result as of 2026-06-02 after the next-open entry fix:
+
+- artifact:
+  `/tmp/crypt_donor_h1_mtf_smoke_bounded_next_open/20260602_192846`;
+- 745 H1 signal rows, 35 short trades, 0 long trades;
+- H4 setup distribution: 124 BUY, 228 SELL, 393 HOLD;
+- H1 trigger exported 176 `1h_candle_confirm` rows, of which 35 had valid H4
+  structural stops and became tradeable short signals;
+- final capital 9357.25 from 10000, `total_return_pct = -6.43`,
+  `profit_factor = 0.04`, max drawdown `-6.27`;
+- exit distribution: 21 `ttl_expired`, 14 `stop_loss`;
+- sample trades confirm next-open execution
+  (`signal_time = 2025-01-03 13:00:00+00:00`,
+  `entry_time = 2025-01-03 14:00:00+00:00`);
+- all stops used H4 order-block anchors (`sl_source_tf = 4h`), so H1 stop
+  source behaviour remains unaccepted.
+
+Latest bounded SOL result as of 2026-06-02 after H1 structural stop-source
+selection:
+
+- artifact:
+  `/tmp/crypt_donor_h1_mtf_smoke_h1_stop_source/20260602_194225`;
+- 745 H1 signal rows;
+- signal distribution: 57 long, 102 short, 586 neutral;
+- stop-source distribution among tradeable signals: 153 H1 stops, 6 H4 stops;
+- 158 trades: 57 long, 101 short;
+- final capital 9058.19 from 10000, `total_return_pct = -9.42`,
+  `profit_factor = 0.66`, max drawdown `-10.44`;
+- exit distribution: 79 `ttl_expired`, 51 `stop_loss`, 28 `take_profit`;
+- H1 source behaviour is now contract-visible, but the metrics are diagnostic
+  only. The H1 stop-source pass raised trade frequency to 6.27 trades/day and
+  needs setup geometry, TTL/RRR, stop-distance caps, and performance review
+  before full-history acceptance.
+
+Latest bounded SOL result as of 2026-06-02 after adding
+`max_sl_distance_atr = 4.0` to the H1 diagnostic config:
+
+- artifact:
+  `/tmp/crypt_donor_h1_mtf_smoke_h1_max4/20260602_195943`;
+- 745 H1 signal rows;
+- signal distribution: 39 long, 66 short, 640 neutral;
+- 105 tradeable signals; all 98 executed trades used `sl_source_tf = 1h`;
+- 98 trades: 39 long, 59 short;
+- final capital 9947.0 from 10000, `total_return_pct = -0.53`,
+  `profit_factor = 0.97`, max drawdown `-7.41`;
+- exit distribution: 37 `ttl_expired`, 35 `stop_loss`, 26 `take_profit`;
+- `ttl_expired` share improved from 50.0% to 37.8%, and trade frequency fell
+  from 6.27 to 3.89 trades/day. This is still one bounded SOL diagnostic
+  slice; do not treat it as full-history H1 acceptance or final calibration.
 
 Inspect:
 

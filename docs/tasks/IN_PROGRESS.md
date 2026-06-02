@@ -1,12 +1,254 @@
 # In progress
 
-## Status as of 2026-06-02 (session 24, continued)
+## Status as of 2026-06-02 (session 29)
 
-**Monorepo (ADR-0021):** owner is folding `backtester/` into this repository.
-Documentation is updated. After `rm -rf backtester/.git`, commit from the
-`crypt` root with `git add backtester/` (see ADR-0021 if a gitlink was staged
-earlier). Do not commit donor changes only inside a nested repo — that layout
-is retired.
+**Active work:** continue M2 donor H1 MTF setup-geometry tuning after the
+first explicit stop-distance cap diagnostic.
+
+Completed this session:
+
+- Added `max_sl_distance_atr` to donor `crypt_ensemble` as an explicit
+  strategy parameter. Default remains `8.0`, preserving existing H4 behavior
+  when the parameter is omitted.
+- Added `max_sl_distance_atr` to `suggest_params()` so future donor Optuna can
+  tune it explicitly instead of relying on a hidden constant.
+- Set `max_sl_distance_atr = 4.0` in the H1 diagnostic strategy config.
+- Added a focused unit test proving an explicit tighter cap neutralizes a
+  structurally valid but too-wide stop.
+- Updated README, BACKLOG, DONE, MTF docs, and CHANGELOG with the diagnostic
+  contract and smoke result.
+- Reran bounded SOL H1 MTF smoke:
+  `/tmp/crypt_donor_h1_mtf_smoke_h1_max4/20260602_195943`.
+
+Verification:
+
+- `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check backtester/src/backtester/strategies/crypt_ensemble.py backtester/tests/test_crypt_ensemble_strategy.py`
+  -> clean.
+- `UV_CACHE_DIR=/tmp/uv-cache uv run ruff format --check backtester/src/backtester/strategies/crypt_ensemble.py backtester/tests/test_crypt_ensemble_strategy.py`
+  -> clean after formatting the strategy file.
+- `PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache uv run --extra dev pytest tests/test_crypt_ensemble_strategy.py -q`
+  in `backtester/` -> 23 passed, 1 existing pandas warning.
+- `PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache uv run --extra dev pytest tests -q`
+  in `backtester/` -> 96 passed, 3 existing pandas warnings.
+- Bounded SOL H1 MTF smoke command:
+  `PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_INSTALL_DIR=/tmp/uv-python uv run --extra dev backtester run --data-source crypt-parquet --data-dir ../data --primary-timeframe 1h --symbol SOL-USDT-SWAP --from 2025-01-01 --to 2025-02-01 --strategy strategies/crypt_ensemble_h1.json --output /tmp/crypt_donor_h1_mtf_smoke_h1_max4`
+  -> completed in about 6 minutes 35 seconds.
+
+Current bounded smoke diagnostic:
+
+- 745 H1 signal rows.
+- Signal distribution: 39 long, 66 short, 640 neutral.
+- 105 tradeable signals; all 98 executed trades used `sl_source_tf = 1h`.
+- 98 trades: 39 long, 59 short.
+- Final capital 9947.0 from 10000; `total_return_pct = -0.53`,
+  `profit_factor = 0.97`, max drawdown `-7.41`.
+- Exit distribution: 37 `ttl_expired`, 35 `stop_loss`, 26 `take_profit`.
+- TTL share improved from 50.0% to 37.8%, and trade frequency fell from 6.27
+  to 3.89 trades/day. This is still a bounded SOL diagnostic, not full-history
+  H1 acceptance.
+
+### Next steps
+
+1. Do not run full-history H1 acceptance yet. The bounded January smoke still
+   takes about 6 minutes 35 seconds for 745 H1 bars.
+2. Continue focused H1 geometry grids before broad Optuna: compare `ttl` 12,
+   24, 36, 48; `rrr` 1.0, 1.25, 1.5; and `max_sl_distance_atr` 3.0, 4.0,
+   5.0 on the same bounded slice.
+3. Add trigger/side diagnostics before accepting metrics: the max-4 run is
+   near break-even overall, but both long and short PnL remain slightly
+   negative in this window.
+4. Profile/cache MTF SMC replay only after parity tests prove no-lookahead
+   output remains identical.
+
+---
+
+## Status as of 2026-06-02 (session 28)
+
+**Active work:** continue M2 donor MTF acceptance after H1 structural
+stop-source selection.
+
+Completed this session:
+
+- Updated the MTF spec with the H1-vs-H4 structural stop-source contract.
+- Implemented H1 structural stop-source selection in donor `crypt_ensemble`.
+  H4 remains the primary setup stop; H1 execution mode can replace it only
+  with a valid, same-direction, known, closer H1 structural stop.
+- Added focused tests for choosing a closer H1 stop and keeping H4 when the
+  H1 candidate is wider.
+- Reran bounded SOL H1 MTF smoke:
+  `/tmp/crypt_donor_h1_mtf_smoke_h1_stop_source/20260602_194225`.
+- Updated BACKLOG, DONE, MTF docs, and CHANGELOG with the diagnostic result.
+
+Verification:
+
+- `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check backtester/src/backtester/strategies/crypt_ensemble.py backtester/tests/test_crypt_ensemble_strategy.py`
+  -> clean.
+- `UV_CACHE_DIR=/tmp/uv-cache uv run ruff format --check backtester/src/backtester/strategies/crypt_ensemble.py backtester/tests/test_crypt_ensemble_strategy.py`
+  -> clean after formatting one test file.
+- `PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache uv run --extra dev pytest tests/test_crypt_ensemble_strategy.py -q`
+  in `backtester/` -> 22 passed, 1 existing pandas warning.
+- `PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache uv run --extra dev pytest tests -q`
+  in `backtester/` -> 95 passed, 3 existing pandas warnings.
+- Bounded SOL H1 MTF smoke command:
+  `PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_INSTALL_DIR=/tmp/uv-python uv run --extra dev backtester run --data-source crypt-parquet --data-dir ../data --primary-timeframe 1h --symbol SOL-USDT-SWAP --from 2025-01-01 --to 2025-02-01 --strategy strategies/crypt_ensemble_h1.json --output /tmp/crypt_donor_h1_mtf_smoke_h1_stop_source`
+  -> completed in about 6 minutes 35 seconds.
+
+Current bounded smoke diagnostic:
+
+- 745 H1 signal rows.
+- Signal distribution: 57 long, 102 short, 586 neutral.
+- 159 tradeable signals; stop-source distribution among them: 153 H1, 6 H4.
+- 158 trades: 57 long, 101 short.
+- Final capital 9058.19 from 10000; `total_return_pct = -9.42`,
+  `profit_factor = 0.66`, max drawdown `-10.44`.
+- Exit distribution: 79 `ttl_expired`, 51 `stop_loss`, 28 `take_profit`.
+- Trade frequency rose to 6.27 trades/day, so this is contract acceptance for
+  H1 stop-source diagnostics, not profitability acceptance.
+
+### Next steps
+
+1. Do not run full-history H1 acceptance yet. The bounded January smoke now
+   takes about 6 minutes 35 seconds for 745 H1 bars because H1 stop-source
+   selection adds another SMC pass.
+2. Retune H1 setup geometry before broad Optuna: TTL, RRR, stop-distance caps,
+   and trigger filters. The latest bounded smoke still has 50% TTL exits and
+   much higher trade frequency than the previous 35-trade diagnostic.
+3. Profile/cache MTF SMC replay only after parity tests prove no-lookahead
+   output remains identical.
+4. Keep long-side filtering in scope. The latest bounded smoke produced 57
+   long trades with total PnL -499.45 and 101 short trades with total PnL
+   -442.36; both sides remain negative in this diagnostic window.
+
+---
+
+## Status as of 2026-06-02 (session 27)
+
+**Active work:** continue M2 donor MTF acceptance after the no-lookahead test
+expansion and entry-timing fix.
+
+Completed this session:
+
+- Added explicit H1 MTF no-lookahead tests for D1 forming-candle exclusion,
+  future-known H4 structural stop-anchor rejection, and donor execution timing
+  after a closed H1 trigger candle.
+- Fixed donor `crypt_ensemble` rows to leave `entry_price` empty. This lets
+  `ExecutionSim` enter at the next execution-bar open instead of treating the
+  signal candle close as a custom current-bar entry.
+- Reran bounded SOL H1 MTF smoke after the entry-timing fix:
+  `/tmp/crypt_donor_h1_mtf_smoke_bounded_next_open/20260602_192846`.
+- Updated README, MTF spec, BACKLOG, DONE, and CHANGELOG with the next-open
+  entry contract.
+
+Verification:
+
+- `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check backtester/src/backtester/strategies/crypt_ensemble.py backtester/tests/test_crypt_ensemble_strategy.py`
+  -> clean.
+- `UV_CACHE_DIR=/tmp/uv-cache uv run ruff format --check backtester/src/backtester/strategies/crypt_ensemble.py backtester/tests/test_crypt_ensemble_strategy.py`
+  -> clean.
+- `PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache uv run --extra dev pytest tests/test_crypt_ensemble_strategy.py -q`
+  in `backtester/` -> 20 passed, 1 existing pandas warning.
+- `PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache uv run --extra dev pytest tests -q`
+  in `backtester/` -> 93 passed, 3 existing pandas warnings.
+- Bounded SOL H1 MTF smoke command:
+  `PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_INSTALL_DIR=/tmp/uv-python uv run --extra dev backtester run --data-source crypt-parquet --data-dir ../data --primary-timeframe 1h --symbol SOL-USDT-SWAP --from 2025-01-01 --to 2025-02-01 --strategy strategies/crypt_ensemble_h1.json --output /tmp/crypt_donor_h1_mtf_smoke_bounded_next_open`
+  -> completed in about 4 minutes 7 seconds.
+
+Current bounded smoke diagnostic:
+
+- 745 H1 signal rows.
+- H4 setup distribution: 124 BUY, 228 SELL, 393 HOLD.
+- 176 `1h_candle_confirm` trigger rows; 35 had valid H4 structural stops and
+  became tradeable signals.
+- 35 trades, all short.
+- Final capital 9357.25 from 10000; `total_return_pct = -6.43`,
+  `profit_factor = 0.04`, max drawdown `-6.27`.
+- Exit distribution: 21 `ttl_expired`, 14 `stop_loss`.
+- All stops still used H4 order-block anchors (`sl_source_tf = 4h`,
+  `sl_anchor_type = order_block`).
+- Sample trades confirm next-open execution: first `signal_time` is
+  `2025-01-03 13:00:00+00:00`, first `entry_time` is
+  `2025-01-03 14:00:00+00:00`.
+
+### Next steps
+
+1. Do not run full-history H1 acceptance yet. Bounded January smoke still takes
+   about 4 minutes for 745 H1 bars, so full-history H1 needs parity-safe
+   caching/profiling.
+2. Improve stop-source behavior for H1 mode. Current first slice always uses
+   H4 structural stop source diagnostics; the spec still calls for H1
+   structure to provide a closer protective stop when aligned with H4.
+3. Retune H1 setup geometry before broad Optuna. The bounded smoke still has
+   60% TTL exits and all tradeable stops are H4 order blocks.
+4. Keep long-side filtering in scope. The bounded January H1 smoke produced
+   zero long trades because D1/H1 gating only allowed bearish aligned entries
+   in that window; this is diagnostic, not acceptance.
+
+---
+
+## Status as of 2026-06-02 (session 26)
+
+**Active work:** continue M2 donor MTF acceptance. The donor `crypt-parquet`
+range limiter is implemented as inclusive `--from` / `--to` CLI bounds, and
+the bounded SOL H1 MTF smoke now completes with project Parquet data.
+
+Important fix this session: date bounds now limit `StrategyData.primary`
+and output rows, while `StrategyData.candles` keeps pre-start H1/H4/D1 history
+up to `--to` for engine warmup. The first local run after restoring data
+produced zero trades because the earlier limiter clipped all H4/D1 warmup and
+made every H4 setup `HOLD`.
+
+Completed smoke command:
+
+```bash
+cd backtester
+PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_INSTALL_DIR=/tmp/uv-python \
+  uv run --extra dev backtester run \
+  --data-source crypt-parquet \
+  --data-dir ../data \
+  --primary-timeframe 1h \
+  --symbol SOL-USDT-SWAP \
+  --from 2025-01-01 \
+  --to 2025-02-01 \
+  --strategy strategies/crypt_ensemble_h1.json \
+  --output /tmp/crypt_donor_h1_mtf_smoke_bounded
+```
+
+Observed loader error: `crypt-parquet requires H4 candles for symbol
+'SOL-USDT-SWAP'` before owner restored local data. After data was available
+and the warmup-preserving limiter fix landed, the same smoke completed at:
+
+`/tmp/crypt_donor_h1_mtf_smoke_bounded/20260602_191541`
+
+Diagnostic result:
+
+- 745 H1 signal rows.
+- H4 setup distribution: 124 BUY, 228 SELL, 393 HOLD.
+- H1 trigger produced 35 tradeable signals, all short.
+- 35 trades, `trades_per_day = 2.9167`.
+- Final capital 9340.69 from 10000; `total_return_pct = -6.59`,
+  `profit_factor = 0.05`, max drawdown `-6.45`.
+- Exit distribution: 21 `ttl_expired`, 14 `stop_loss`.
+- All stops used H4 order-block anchors (`sl_source_tf = 4h`,
+  `sl_anchor_type = order_block`), so H1 stop-source behavior is still not
+  accepted.
+
+### Next steps
+
+1. Do not run full-history H1 acceptance yet. The bounded January smoke took
+   about 4 minutes 18 seconds for 745 H1 bars after warmup history was
+   preserved, so full-history H1 still needs parity-safe caching/profiling.
+2. Expand MTF no-lookahead tests before accepting smoke metrics: D1 forming
+   candle exclusion, future-known H4 structural object ignored, and H1
+   trigger/entry timing through donor execution.
+3. Improve stop-source behavior for H1 mode. Current first slice always uses
+   H4 structural stop source diagnostics; the spec still calls for H1
+   structure to provide a closer protective stop when aligned with H4.
+4. Retune H1 setup geometry before broad Optuna. The bounded smoke has 60%
+   TTL exits and H4 order-block stops with median stop distance in the
+   3-5 ATR range depending on exit reason.
+5. Keep long-side filtering in scope. The bounded January H1 smoke produced
+   zero long trades because D1/H1 gating only allowed bearish aligned entries
+   in that window; this is diagnostic, not acceptance.
 
 ---
 

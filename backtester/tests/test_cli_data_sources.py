@@ -120,6 +120,20 @@ def test_build_cli_data_loader_crypt_parquet_primary_timeframe():
     assert loader.primary_timeframe == "1h"
 
 
+def test_build_cli_data_loader_crypt_parquet_date_range():
+    loader = build_cli_data_loader(
+        "crypt-parquet",
+        data_dir="/tmp/data",
+        symbol="SOL-USDT-SWAP",
+        start="2024-01-01",
+        end="2024-01-31 23:00:00",
+    )
+
+    assert isinstance(loader, CryptParquetDataLoader)
+    assert loader.start == pd.Timestamp("2024-01-01 00:00:00", tz="UTC")
+    assert loader.end == pd.Timestamp("2024-01-31 23:00:00", tz="UTC")
+
+
 def test_build_cli_data_loader_crypt_parquet_missing_params_raises():
     import pytest
 

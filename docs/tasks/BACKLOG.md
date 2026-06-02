@@ -149,19 +149,55 @@ ADR-0021 tracks it in this monorepo. Implementation details live in
       generic enough for a future 15m trigger. Start from
       `docs/crypt_ensemble_mtf.md`; preserve current H4 default mode, add
       timeframe-role config, use H1 as primary only in the H1 strategy config,
-      and add no-lookahead tests before smoke runs. First additive code slice
-      shipped 2026-06-02; full H1 smoke remains open.
-- [ ] **Add donor smoke range limiter for project Parquet** — P0 before
+      and add no-lookahead tests before full acceptance. First additive code
+      slice and bounded SOL H1 smoke shipped 2026-06-02; full H1 smoke remains
+      open.
+- [x] **Add donor smoke range limiter for project Parquet** — P0 before
       rerunning full H1 MTF smoke. The attempted SOL H1 smoke loaded 21517 H1
       bars and did not reach export during the session. Add `from`/`to` or
       equivalent range selection for `crypt-parquet` so MTF contract smokes can
-      complete quickly before launching full-history long runs.
+      complete quickly before launching full-history long runs. Shipped
+      2026-06-02 as `--from` / `--to` on the donor run CLI. Follow-up fix:
+      bounds now limit primary/output rows while preserving pre-start candle
+      history for H4/D1 warmup up to `--to`.
+- [x] **Expand MTF no-lookahead tests before full H1 acceptance** — P0.
+      Add explicit tests for D1 forming-candle exclusion, future-known H4
+      structural object rejection, and donor execution entry timing after a
+      closed H1 trigger candle. Shipped 2026-06-02. This also fixed
+      `crypt_ensemble` to leave `entry_price` empty so donor execution enters
+      at the next execution-bar open instead of the signal candle close.
+- [x] **Implement H1 structural stop-source selection** — P0 before accepting
+      H1 MTF metrics. The bounded SOL H1 smoke at
+      `/tmp/crypt_donor_h1_mtf_smoke_bounded/20260602_191541` produced 35
+      trades, all with `sl_source_tf = 4h` and order-block anchors. The MTF
+      spec still calls for aligned H1 structure to provide a closer protective
+      stop when available. Shipped 2026-06-02. Bounded SOL smoke after the
+      change completed at
+      `/tmp/crypt_donor_h1_mtf_smoke_h1_stop_source/20260602_194225`: 159
+      tradeable signals, 153 with `sl_source_tf = 1h`; 158 trades, final
+      capital 9058.19, `total_return_pct = -9.42`, `profit_factor = 0.66`.
+      This is a contract diagnostic, not accepted profitability.
+- [x] **Rerun bounded SOL H1 MTF smoke after next-open entry fix** — P0
+      before comparing H1 metrics. The previous bounded smoke predates the
+      `entry_price = NaN` fix, so its trades used signal-candle close entries
+      rather than donor next-H1-open entries. Completed 2026-06-02 at
+      `/tmp/crypt_donor_h1_mtf_smoke_bounded_next_open/20260602_192846`:
+      745 H1 signal rows, 35 short trades, final capital 9357.25,
+      `total_return_pct = -6.43`, `profit_factor = 0.04`, max drawdown
+      `-6.27`; sample trades confirm entry on the next H1 open.
 - [ ] **Tune H4/H1 setup geometry before broad Optuna** — P0 before
       interpreting MTF smokes or starting broad Optuna. Current structural SOL
       H4 smoke closed 1496/1672 trades by `ttl_expired`; median TTL-expired
       `sl_distance_atr` was 3.985, so with `rrr = 2` the TP is roughly 8 ATR
       away while `ttl = 6` H4 bars allows only 24 hours. For H1, retune `ttl`,
-      `rrr`, and stop-distance caps instead of inheriting H4 values.
+      `rrr`, and stop-distance caps instead of inheriting H4 values. The first
+      bounded H1 smoke had 60% TTL exits and `profit_factor = 0.05`; after H1
+      stop-source selection, the bounded smoke produced 158 trades with 50%
+      TTL exits and `profit_factor = 0.66`. A first tighter H1
+      `max_sl_distance_atr = 4.0` diagnostic reduced the same January slice to
+      98 trades, 37.8% TTL exits, `profit_factor = 0.97`, and
+      `total_return_pct = -0.53`; continue with `ttl` / `rrr` / trigger and
+      side-filter grids before accepting H1 metrics.
 - [ ] **Add minimal donor Optuna support for `crypt_ensemble` parameters** —
       P0 after structural SL. Adapt the existing donor optimizer shape rather
       than adding new donor-wide semantics. Register strategy parameters:
@@ -175,7 +211,9 @@ ADR-0021 tracks it in this monorepo. Implementation details live in
       The straightforward engine-wired donor strategy is slow on 5545 SOL H4
       bars. Do not add caching/incremental shortcuts until tests prove outputs
       are identical to the straightforward closed-candle replay and preserve
-      no-lookahead semantics.
+      no-lookahead semantics. H1 stop-source selection added a second SMC pass
+      per H1 tick; the bounded January smoke now takes about 6 minutes 35
+      seconds for 745 H1 bars.
 - [ ] **Compare risk-base periods out of sample** — P1. Monthly is the
       current `crypt_ensemble` default, but `weekly` and `backtest` should be
       compared in donor walk-forward/Optuna work before treating sizing mode

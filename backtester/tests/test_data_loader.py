@@ -329,6 +329,101 @@ def test_crypt_parquet_loader_can_use_h1_as_primary(monkeypatch):
     assert not result.candles["H4"].empty
 
 
+def test_crypt_parquet_loader_filters_candles_by_date_range(monkeypatch):
+    import sys
+    import types
+
+    symbol = "SOL-USDT-SWAP"
+    h4 = pd.DataFrame(
+        {
+            "open_time": pd.date_range(
+                "2024-01-01 00:00:00",
+                periods=4,
+                freq="4h",
+                tz="UTC",
+            ),
+            "o": [1.0, 2.0, 3.0, 4.0],
+            "h": [1.5, 2.5, 3.5, 4.5],
+            "l": [0.5, 1.5, 2.5, 3.5],
+            "c": [1.2, 2.2, 3.2, 4.2],
+            "volume": [10.0, 20.0, 30.0, 40.0],
+        }
+    )
+    h1 = pd.DataFrame(
+        {
+            "open_time": pd.date_range(
+                "2024-01-01 00:00:00",
+                periods=10,
+                freq="1h",
+                tz="UTC",
+            ),
+            "o": range(10),
+            "h": range(1, 11),
+            "l": range(10),
+            "c": range(1, 11),
+            "volume": range(10, 20),
+        }
+    )
+
+    class FakeTimeframe:
+        H4 = "H4"
+        H1 = "H1"
+        D1 = "D1"
+
+    class FakeParquetStore:
+        def __init__(self, data_dir):
+            self.data_dir = data_dir
+
+        def load_candles(self, loaded_symbol, timeframe):
+            assert loaded_symbol == symbol
+            if timeframe == FakeTimeframe.H4:
+                return h4
+            if timeframe == FakeTimeframe.H1:
+                return h1
+            return pd.DataFrame(columns=["open_time", "o", "h", "l", "c", "volume"])
+
+        def load_oi(self, loaded_symbol):
+            assert loaded_symbol == symbol
+            return pd.DataFrame(columns=["ts", "oi"])
+
+        def load_ls_ratio(self, loaded_symbol):
+            assert loaded_symbol == symbol
+            return pd.DataFrame(columns=["ts", "long_ratio", "short_ratio"])
+
+        def load_taker_volume(self, loaded_symbol):
+            assert loaded_symbol == symbol
+            return pd.DataFrame(columns=["ts", "buy_vol", "sell_vol"])
+
+    crypt_mod = types.ModuleType("crypt")
+    crypt_data_mod = types.ModuleType("crypt.data")
+    crypt_store_mod = types.ModuleType("crypt.data.store")
+    crypt_models_mod = types.ModuleType("crypt.models")
+    crypt_store_mod.ParquetStore = FakeParquetStore
+    crypt_models_mod.Timeframe = FakeTimeframe
+    monkeypatch.setitem(sys.modules, "crypt", crypt_mod)
+    monkeypatch.setitem(sys.modules, "crypt.data", crypt_data_mod)
+    monkeypatch.setitem(sys.modules, "crypt.data.store", crypt_store_mod)
+    monkeypatch.setitem(sys.modules, "crypt.models", crypt_models_mod)
+
+    result = CryptParquetDataLoader(
+        data_dir="/tmp/data",
+        symbol=symbol,
+        primary_timeframe="1h",
+        start="2024-01-01 02:00:00",
+        end="2024-01-01 06:00:00",
+    ).load()
+
+    assert list(result.primary.index) == list(
+        pd.date_range("2024-01-01 02:00:00", periods=5, freq="1h", tz="UTC")
+    )
+    assert list(result.candles["H1"].index) == list(
+        pd.date_range("2024-01-01 00:00:00", periods=7, freq="1h", tz="UTC")
+    )
+    assert list(result.candles["H4"].index) == list(
+        pd.date_range("2024-01-01 00:00:00", periods=2, freq="4h", tz="UTC")
+    )
+
+
 def test_base_data_loader_is_abstract():
     class Dummy(BaseDataLoader):
         def load(self):

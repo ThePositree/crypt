@@ -15,20 +15,18 @@ This is **not** a trading bot. It is a research-and-alerting system.
 
 ## Status
 
-**M1 ready for 14-day continuous run.**
-All engines, aggregator, decision layer, sinks, and runtime are implemented,
-tested, and hardened. Reliability features complete: retry with backoff on all
-OKX fetch calls, 30 s ccxt timeout, heartbeat loop, daily log rotation, systemd
-unit, disk-space guard, and tick summary logging.
+**M1 complete.**
+All signal-only MVP components are implemented and the live manual-alerting
+surface has already been completed. Engines, aggregator, decision layer, sinks,
+runtime, retry/backoff, heartbeat, log rotation, service config, and Railway
+deployment docs are in place.
 
-Railway deployment config is ready (`railway.toml`, `.python-version`, ADR-0010).
-
-42 synthetic-data unit tests pass; mypy 0 errors (36 files); ruff clean.
-
-**Owner action required:**
-1. Fill `.env` with `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`.
-2. Run `uv run python -m crypt --once` — confirm Telegram alert arrives.
-3. Deploy to Railway → follow `docs/deploy/railway.md` (8-step checklist).
+Current active work is **M2 donor backtester migration and calibration**.
+`backtester/` is now vendored as ordinary source in this monorepo per ADR-0021.
+The donor `crypt_ensemble` strategy can replay the existing ensemble over
+project Parquet data and the first multi-timeframe H1 execution slice exists,
+but full H1 smoke acceptance remains open behind H1 setup-geometry retuning
+and a performance pass.
 
 See `docs/tasks/ROADMAP.md` for milestones.
 
@@ -109,10 +107,12 @@ adapting `crypt_ensemble` to its existing strategy API.
 
 The current `crypt_ensemble` donor strategy runs the existing engines and
 aggregator over project Parquet data and emits donor-compatible `signal`,
-`entry_price`, structural SMC `sl_price`, and verdict metadata. Stop-losses are
-anchored to active order blocks, fresh liquidity sweeps, or confirmed pivots
-with an ATR buffer; if no structural anchor exists, the donor signal is
-neutralized by default instead of falling back to mechanical ATR-only stops.
+structural SMC `sl_price`, and verdict metadata. It leaves `entry_price` empty
+so donor execution enters at the next execution-bar open after a closed signal
+candle. Stop-losses are anchored to active order blocks, fresh liquidity
+sweeps, or confirmed pivots with an ATR buffer; if no structural anchor exists,
+the donor signal is neutralized by default instead of falling back to
+mechanical ATR-only stops.
 Donor execution exports `signal_time`, `risk_base_capital`, confidence, score,
 regime, rationale, stop diagnostics, and per-engine strengths into `trades.csv`
 for audit. It also writes `trade_diagnostics.csv`, a compact report for exit
@@ -139,7 +139,10 @@ PYTHONPATH=src:../src uv run --extra dev backtester run \
 ```
 
 Experimental H1 MTF mode keeps D1/H4 as context/setup but uses H1 as the
-primary execution frame:
+primary execution frame. The current diagnostic H1 config uses
+`max_sl_distance_atr = 4.0` to reject structural stops wider than 4 execution
+ATR; this is an explicit setup-geometry tuning knob, not a calibrated final
+parameter.
 
 ```bash
 PYTHONPATH=src:../src uv run --extra dev backtester run \
@@ -147,14 +150,19 @@ PYTHONPATH=src:../src uv run --extra dev backtester run \
     --data-dir ../data \
     --primary-timeframe 1h \
     --symbol SOL-USDT-SWAP \
+    --from 2025-01-01 \
+    --to 2025-02-01 \
     --strategy strategies/crypt_ensemble_h1.json \
     --output results/crypt_ensemble_sol_h1
 ```
 
-Expected current result: data loads, `crypt_ensemble` shows per-bar progress,
-and donor execution writes `trades.csv`, `trade_diagnostics.csv`,
-`metrics.csv`, `signals.csv`, and `signal_diagnostics.csv` when the full run
-completes. `equity_curve.csv` is written only when trades exist.
+Use `--from` / `--to` for bounded donor `crypt-parquet` smokes before running
+full-history H1 MTF. The bounds limit the primary/output timeframe while
+preserving earlier candle history for H4/D1 warmup up to `--to`. Expected
+current result: data loads, `crypt_ensemble` shows per-bar progress, and donor
+execution writes `trades.csv`, `trade_diagnostics.csv`, `metrics.csv`,
+`signals.csv`, and `signal_diagnostics.csv` when the run completes.
+`equity_curve.csv` is written only when trades exist.
 
 ## Developer setup
 

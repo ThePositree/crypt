@@ -54,9 +54,9 @@ _DEFAULT_SL_ATR_MULT = 2.0
 _DEFAULT_SL_ATR_BUFFER_MULT = 0.10
 _DEFAULT_ALLOW_ATR_SL_FALLBACK = False
 _DEFAULT_MIN_CONFIDENCE: int | None = None
+_DEFAULT_MAX_SL_DISTANCE_ATR = 8.0
 _H4 = timedelta(hours=4)
 _MAX_SWEEP_AGE_BARS = 3
-_MAX_SL_DISTANCE_ATR = 8.0
 
 _StopAnchorType = Literal[
     "order_block", "liquidity_sweep", "pivot", "atr_fallback", "none"
@@ -107,6 +107,9 @@ class CryptEnsembleStrategy(BaseStrategy):
         self.min_confidence = _optional_int(
             params.get("min_confidence", _DEFAULT_MIN_CONFIDENCE)
         )
+        self.max_sl_distance_atr = float(
+            params.get("max_sl_distance_atr", _DEFAULT_MAX_SL_DISTANCE_ATR)
+        )
         self.timeframes = _timeframe_role_config(params.get("timeframes"))
         self.progress = bool(params.get("progress", True))
         self.weights = WeightsConfig.load(_weights_path(params.get("weights_path")))
@@ -123,7 +126,9 @@ class CryptEnsembleStrategy(BaseStrategy):
         strategy_data = _coerce_strategy_data(data)
         primary = strategy_data.primary.sort_index().copy()
         out = primary.copy()
-        tick_index = _tick_index_from_open_index(primary.index, self.timeframes.execution)
+        tick_index = _tick_index_from_open_index(
+            primary.index, self.timeframes.execution
+        )
         out.index = tick_index
         out.index.name = "tick_time"
 
@@ -131,7 +136,10 @@ class CryptEnsembleStrategy(BaseStrategy):
             tf: _to_crypt_candles(_candle_frame(strategy_data, tf))
             for tf in (Timeframe.H4, Timeframe.H1, Timeframe.D1, Timeframe.M15)
         }
-        if self.timeframes.execution == Timeframe.H4 and crypt_candles[Timeframe.H4].empty:
+        if (
+            self.timeframes.execution == Timeframe.H4
+            and crypt_candles[Timeframe.H4].empty
+        ):
             crypt_candles[Timeframe.H4] = _to_crypt_candles(primary)
         extras = strategy_data.extras
         symbol = str(strategy_data.metadata.get("symbol", "UNKNOWN"))
@@ -154,20 +162,26 @@ class CryptEnsembleStrategy(BaseStrategy):
                     extras=extras,
                 )
                 mtf = self._mtf_decision(ctx, primary.loc[open_time])
-                stop_state = _structural_stop_state(ctx)
-                sl_source_tf = Timeframe.H4
+                signal = _signal_from_verdict(
+                    mtf.verdict,
+                    signal_override=mtf.signal_override,
+                    min_confidence=self.min_confidence,
+                )
+                stop, sl_source_tf = _select_structural_stop(
+                    ctx=ctx,
+                    signal=signal,
+                    price_row=primary.loc[open_time],
+                    atr=atr.loc[open_time],
+                    sl_atr_mult=self.sl_atr_mult,
+                    sl_atr_buffer_mult=self.sl_atr_buffer_mult,
+                    max_sl_distance_atr=self.max_sl_distance_atr,
+                    allow_atr_sl_fallback=self.allow_atr_sl_fallback,
+                    execution_tf=self.timeframes.execution,
+                )
                 rows.append(
                     _row_from_verdict(
                         mtf.verdict,
-                        primary.loc[open_time],
-                        atr.loc[open_time],
-                        self.sl_atr_mult,
-                        self.sl_atr_buffer_mult,
-                        self.allow_atr_sl_fallback,
-                        self.min_confidence,
-                        stop_state,
-                        tick_time.to_pydatetime(),
-                        signal_override=mtf.signal_override,
+                        stop,
                         rationale_suffix=mtf.rationale_suffix,
                         context_tf=",".join(tf.value for tf in self.timeframes.context),
                         setup_tf=",".join(tf.value for tf in self.timeframes.setup),
@@ -217,7 +231,9 @@ class CryptEnsembleStrategy(BaseStrategy):
         )
         return verdict.model_copy(update={"produced_at": ctx.tick_time})
 
-    def _mtf_decision(self, ctx: EvaluationContext, price_row: pd.Series) -> _MTFDecision:
+    def _mtf_decision(
+        self, ctx: EvaluationContext, price_row: pd.Series
+    ) -> _MTFDecision:
         verdict = self._evaluate_context(ctx)
         setup_direction = verdict.decision
         context_bias = _context_bias(ctx)
@@ -270,6 +286,7 @@ class CryptEnsembleStrategy(BaseStrategy):
         return {
             "sl_atr_mult": trial.suggest_float("sl_atr_mult", 1.0, 3.5),
             "sl_atr_buffer_mult": trial.suggest_float("sl_atr_buffer_mult", 0.05, 0.30),
+            "max_sl_distance_atr": trial.suggest_float("max_sl_distance_atr", 2.0, 8.0),
             "min_confidence": trial.suggest_int("min_confidence", 0, 75, step=5),
         }
 
@@ -285,7 +302,9 @@ def _optional_int(value: object) -> int | None:
     if value is None:
         return None
     if not isinstance(value, int | float | str | bytes | bytearray):
-        raise TypeError(f"min_confidence must be int-compatible, got {type(value).__name__}")
+        raise TypeError(
+            f"min_confidence must be int-compatible, got {type(value).__name__}"
+        )
     return int(value)
 
 
@@ -305,7 +324,9 @@ def _timeframe_role_config(value: object) -> TimeframeRoleConfig:
         context=tuple(_parse_timeframe(item) for item in _as_list(context_raw)),
         setup=tuple(_parse_timeframe(item) for item in _as_list(setup_raw)),
         trigger=_parse_timeframe(value.get("trigger", Timeframe.H4.value)),
-        execution=_parse_timeframe(value.get("execution", value.get("trigger", Timeframe.H4.value))),
+        execution=_parse_timeframe(
+            value.get("execution", value.get("trigger", Timeframe.H4.value))
+        ),
     )
 
 
@@ -481,24 +502,94 @@ def _atr14_from_donor_frame(df: pd.DataFrame) -> pd.Series:
 
 
 def _structural_stop_state(ctx: EvaluationContext) -> SMCState:
-    h4 = ctx.candles.get(Timeframe.H4)
-    if h4 is None or h4.empty:
+    return _structural_stop_state_for_timeframe(ctx, Timeframe.H4)
+
+
+def _structural_stop_state_for_timeframe(
+    ctx: EvaluationContext, timeframe: Timeframe
+) -> SMCState:
+    candles = ctx.candles.get(timeframe)
+    if candles is None or candles.empty:
         return SMCState()
-    return analyse_smc_cached(h4, tick_time=ctx.tick_time)
+    return analyse_smc_cached(candles, tick_time=ctx.tick_time)
 
 
-def _row_from_verdict(
+def _signal_from_verdict(
     verdict: Verdict,
+    *,
+    signal_override: int | None,
+    min_confidence: int | None,
+) -> int:
+    signal = {"BUY": 1, "SELL": -1, "HOLD": 0}.get(verdict.decision, 0)
+    if signal_override is not None:
+        signal = signal_override
+    if min_confidence is not None and verdict.confidence < min_confidence:
+        return 0
+    return signal
+
+
+def _select_structural_stop(
+    *,
+    ctx: EvaluationContext,
+    signal: int,
     price_row: pd.Series,
     atr: float,
     sl_atr_mult: float,
     sl_atr_buffer_mult: float,
+    max_sl_distance_atr: float,
     allow_atr_sl_fallback: bool,
-    min_confidence: int | None,
-    stop_state: SMCState,
-    tick_time: datetime,
+    execution_tf: Timeframe,
+) -> tuple[_StopPlan, Timeframe]:
+    entry = float(price_row["close"])
+    atr_value = float(atr) if np.isfinite(atr) else 0.0
+    h4_stop = _plan_structural_stop(
+        signal=signal,
+        entry=entry,
+        atr=atr_value,
+        sl_atr_mult=sl_atr_mult,
+        sl_atr_buffer_mult=sl_atr_buffer_mult,
+        max_sl_distance_atr=max_sl_distance_atr,
+        allow_atr_sl_fallback=allow_atr_sl_fallback,
+        state=_structural_stop_state(ctx),
+        tick_time=ctx.tick_time,
+    )
+    if execution_tf != Timeframe.H1:
+        return h4_stop, Timeframe.H4
+
+    h1_stop = _plan_structural_stop(
+        signal=signal,
+        entry=entry,
+        atr=atr_value,
+        sl_atr_mult=sl_atr_mult,
+        sl_atr_buffer_mult=sl_atr_buffer_mult,
+        max_sl_distance_atr=max_sl_distance_atr,
+        allow_atr_sl_fallback=False,
+        state=_structural_stop_state_for_timeframe(ctx, Timeframe.H1),
+        tick_time=ctx.tick_time,
+    )
+    if _prefer_candidate_stop(h1_stop, h4_stop):
+        return h1_stop, Timeframe.H1
+    return h4_stop, Timeframe.H4
+
+
+def _prefer_candidate_stop(candidate: _StopPlan, fallback: _StopPlan) -> bool:
+    if candidate.signal == 0:
+        return False
+    if fallback.signal == 0:
+        return True
+    if candidate.signal != fallback.signal:
+        return False
+    if candidate.distance_atr is None:
+        return False
+    if fallback.distance_atr is None:
+        return True
+    return candidate.distance_atr < fallback.distance_atr
+
+
+def _row_from_verdict(
+    verdict: Verdict,
+    stop: _StopPlan,
     *,
-    signal_override: int | None = None,
     rationale_suffix: str | None = None,
     context_tf: str = "1d",
     setup_tf: str = "4h",
@@ -509,27 +600,10 @@ def _row_from_verdict(
     trigger_known_at: datetime | None = None,
     sl_source_tf: str = "4h",
 ) -> dict[str, object]:
-    signal = {"BUY": 1, "SELL": -1, "HOLD": 0}.get(verdict.decision, 0)
-    if signal_override is not None:
-        signal = signal_override
-    if min_confidence is not None and verdict.confidence < min_confidence:
-        signal = 0
-    close = float(price_row["close"])
-    atr_value = float(atr) if np.isfinite(atr) else 0.0
-    stop = _plan_structural_stop(
-        signal=signal,
-        entry=close,
-        atr=atr_value,
-        sl_atr_mult=sl_atr_mult,
-        sl_atr_buffer_mult=sl_atr_buffer_mult,
-        allow_atr_sl_fallback=allow_atr_sl_fallback,
-        state=stop_state,
-        tick_time=tick_time,
-    )
     row: dict[str, object] = {
         "signal": stop.signal,
         "sl_price": float(stop.sl_price),
-        "entry_price": close,
+        "entry_price": np.nan,
         "confidence": verdict.confidence,
         "score": verdict.score,
         "regime": verdict.regime.value,
@@ -541,7 +615,9 @@ def _row_from_verdict(
         "sl_anchor_type": stop.anchor_type,
         "sl_anchor_level": stop.anchor_level,
         "sl_anchor_known_at": (
-            stop.anchor_known_at.isoformat() if stop.anchor_known_at is not None else None
+            stop.anchor_known_at.isoformat()
+            if stop.anchor_known_at is not None
+            else None
         ),
         "sl_distance_atr": stop.distance_atr,
         "context_tf": context_tf,
@@ -572,6 +648,7 @@ def _plan_structural_stop(
     atr: float,
     sl_atr_mult: float,
     sl_atr_buffer_mult: float,
+    max_sl_distance_atr: float,
     allow_atr_sl_fallback: bool,
     state: SMCState,
     tick_time: datetime,
@@ -590,7 +667,9 @@ def _plan_structural_stop(
     )
     if anchor is None:
         if allow_atr_sl_fallback:
-            sl_price = entry - sl_atr_mult * atr if signal == 1 else entry + sl_atr_mult * atr
+            sl_price = (
+                entry - sl_atr_mult * atr if signal == 1 else entry + sl_atr_mult * atr
+            )
             return _validated_stop(
                 signal=signal,
                 entry=entry,
@@ -599,6 +678,7 @@ def _plan_structural_stop(
                 anchor_type="atr_fallback",
                 anchor_level=None,
                 anchor_known_at=None,
+                max_sl_distance_atr=max_sl_distance_atr,
             )
         return _neutral_stop(entry, "no structural stop anchor")
 
@@ -613,6 +693,7 @@ def _plan_structural_stop(
         anchor_type=anchor_type,
         anchor_level=level,
         anchor_known_at=known_at,
+        max_sl_distance_atr=max_sl_distance_atr,
     )
 
 
@@ -626,7 +707,9 @@ def _order_block_anchor(
         if block.active
         and block.direction == direction
         and block.known_at <= tick_time
-        and ((signal == 1 and block.low < entry) or (signal == -1 and block.high > entry))
+        and (
+            (signal == 1 and block.low < entry) or (signal == -1 and block.high > entry)
+        )
     ]
     if not candidates:
         return None
@@ -650,11 +733,16 @@ def _liquidity_sweep_anchor(
         if sweep.side == protective_side
         and sweep.known_at <= tick_time
         and max(0.0, (tick_time - sweep.known_at) / _H4) <= _MAX_SWEEP_AGE_BARS
-        and ((signal == 1 and sweep.level < entry) or (signal == -1 and sweep.level > entry))
+        and (
+            (signal == 1 and sweep.level < entry)
+            or (signal == -1 and sweep.level > entry)
+        )
     ]
     if not candidates:
         return None
-    sweep = max(candidates, key=lambda item: (item.known_at, item.level_type == "swing"))
+    sweep = max(
+        candidates, key=lambda item: (item.known_at, item.level_type == "swing")
+    )
     return ("liquidity_sweep", sweep.level, sweep.known_at)
 
 
@@ -667,13 +755,20 @@ def _pivot_anchor(
         for pivot in state.pivots
         if pivot.side == protective_side
         and pivot.known_at <= tick_time
-        and ((signal == 1 and pivot.level < entry) or (signal == -1 and pivot.level > entry))
+        and (
+            (signal == 1 and pivot.level < entry)
+            or (signal == -1 and pivot.level > entry)
+        )
     ]
     if not candidates:
         return None
 
     def key(pivot: SMCPivot) -> tuple[int, datetime, float]:
-        return (1 if pivot.kind == "swing" else 0, pivot.known_at, -abs(entry - pivot.level))
+        return (
+            1 if pivot.kind == "swing" else 0,
+            pivot.known_at,
+            -abs(entry - pivot.level),
+        )
 
     pivot = max(candidates, key=key)
     return ("pivot", pivot.level, pivot.known_at)
@@ -688,6 +783,7 @@ def _validated_stop(
     anchor_type: _StopAnchorType,
     anchor_level: float | None,
     anchor_known_at: datetime | None,
+    max_sl_distance_atr: float,
 ) -> _StopPlan:
     if not np.isfinite(sl_price):
         return _neutral_stop(entry, "invalid structural stop")
@@ -697,7 +793,7 @@ def _validated_stop(
         return _neutral_stop(entry, "structural stop is not above short entry")
 
     distance_atr = abs(entry - sl_price) / atr
-    if distance_atr <= 0 or distance_atr > _MAX_SL_DISTANCE_ATR:
+    if distance_atr <= 0 or distance_atr > max_sl_distance_atr:
         return _neutral_stop(entry, "structural stop distance outside ATR guard")
     return _StopPlan(
         signal,

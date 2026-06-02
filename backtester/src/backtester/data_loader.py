@@ -292,22 +292,73 @@ class ParquetDataLoader(BaseDataLoader):
         return self._standardize_ohlcv_frame(df, timestamp_col=self.timestamp_col)
 
 
+def _parse_utc_bound(
+    value: str | datetime | pd.Timestamp | None, *, name: str
+) -> pd.Timestamp | None:
+    if value is None:
+        return None
+
+    try:
+        ts = pd.Timestamp(value)
+    except ValueError as exc:
+        raise ValueError(f"Invalid crypt-parquet {name} datetime: {value!r}") from exc
+
+    if ts.tzinfo is None:
+        return ts.tz_localize("UTC")
+    return ts.tz_convert("UTC")
+
+
+def _filter_datetime_index(
+    df: pd.DataFrame,
+    *,
+    start: pd.Timestamp | None,
+    end: pd.Timestamp | None,
+) -> pd.DataFrame:
+    if start is None and end is None:
+        return df
+
+    mask = pd.Series(True, index=df.index)
+    if start is not None:
+        mask &= df.index >= start
+    if end is not None:
+        mask &= df.index <= end
+    return df.loc[mask]
+
+
+def _filter_context_datetime_index(
+    df: pd.DataFrame,
+    *,
+    end: pd.Timestamp | None,
+) -> pd.DataFrame:
+    return _filter_datetime_index(df, start=None, end=end)
+
+
 class CryptParquetDataLoader(BaseDataLoader):
     """Load the crypt project Parquet layout for one symbol."""
 
     def __init__(
-        self, data_dir: str, symbol: str, primary_timeframe: str = "4h"
+        self,
+        data_dir: str,
+        symbol: str,
+        primary_timeframe: str = "4h",
+        start: str | datetime | pd.Timestamp | None = None,
+        end: str | datetime | pd.Timestamp | None = None,
     ) -> None:
         super().__init__()
         self.data_dir = data_dir
         self.symbol = symbol
         self.primary_timeframe = primary_timeframe
+        self.start = _parse_utc_bound(start, name="start")
+        self.end = _parse_utc_bound(end, name="end")
+        if self.start is not None and self.end is not None and self.start > self.end:
+            raise ValueError("crypt-parquet start must be <= end")
 
     def _load_candles(self, store: Any, timeframe: Any) -> pd.DataFrame:
         raw = store.load_candles(self.symbol, timeframe)
         if raw.empty:
             return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
-        return self._standardize_ohlcv_frame(raw, timestamp_col="open_time")
+        frame = self._standardize_ohlcv_frame(raw, timestamp_col="open_time")
+        return _filter_context_datetime_index(frame, end=self.end)
 
     def load(self) -> StrategyData:
         try:
@@ -337,6 +388,7 @@ class CryptParquetDataLoader(BaseDataLoader):
                 "crypt-parquet primary_timeframe must be one of: 1h, 4h, 1d"
             )
         primary = candles[primary_key]
+        primary = _filter_datetime_index(primary, start=self.start, end=self.end)
         if primary.empty:
             raise ValueError(
                 "crypt-parquet requires non-empty "

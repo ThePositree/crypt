@@ -14,6 +14,7 @@ import pandas as pd
 import pytest
 
 from backtester.data_contracts import StrategyData
+from backtester.execution_sim import ExecutionSim
 from backtester.registry import STRATEGIES
 from backtester.strategies import crypt_ensemble as crypt_ensemble_mod
 from backtester.strategies.crypt_ensemble import CryptEnsembleStrategy
@@ -115,7 +116,9 @@ def _event(direction: int, known_at=None) -> SMCStructureEvent:
     )
 
 
-def _order_block(direction: int, low: float, high: float, known_at=None) -> SMCOrderBlock:
+def _order_block(
+    direction: int, low: float, high: float, known_at=None
+) -> SMCOrderBlock:
     known = known_at or _ts()
     return SMCOrderBlock(
         kind="internal",
@@ -182,7 +185,7 @@ def test_crypt_ensemble_maps_verdicts_to_donor_signal_and_sl():
     expected_index = primary.index + pd.Timedelta(hours=4)
     assert list(result.index) == list(expected_index)
     assert list(result["signal"]) == [1, -1, 0]
-    assert list(result["entry_price"]) == [10.5, 11.5, 12.5]
+    assert result["entry_price"].isna().all()
     assert list(result["sl_anchor_type"]) == ["pivot", "pivot", "none"]
     assert list(result["sl_price"]) == [8.8, 14.2, 12.5]
     assert list(result["confidence"]) == [80, 80, 0]
@@ -247,10 +250,14 @@ def test_crypt_ensemble_suggests_strategy_params_for_optuna():
                 assert low == 1.0
                 assert high == 3.5
                 return 2.5
-            assert name == "sl_atr_buffer_mult"
-            assert low == 0.05
-            assert high == 0.30
-            return 0.15
+            if name == "sl_atr_buffer_mult":
+                assert low == 0.05
+                assert high == 0.30
+                return 0.15
+            assert name == "max_sl_distance_atr"
+            assert low == 2.0
+            assert high == 8.0
+            return 4.0
 
         def suggest_int(self, name: str, low: int, high: int, *, step: int) -> int:
             assert name == "min_confidence"
@@ -264,6 +271,7 @@ def test_crypt_ensemble_suggests_strategy_params_for_optuna():
     assert params == {
         "sl_atr_mult": 2.5,
         "sl_atr_buffer_mult": 0.15,
+        "max_sl_distance_atr": 4.0,
         "min_confidence": 35,
     }
 
@@ -282,6 +290,7 @@ def test_structural_sl_uses_bullish_order_block_low_with_atr_buffer():
         atr=10.0,
         sl_atr_mult=2.0,
         sl_atr_buffer_mult=0.10,
+        max_sl_distance_atr=8.0,
         allow_atr_sl_fallback=False,
         state=state,
         tick_time=_ts(),
@@ -306,6 +315,7 @@ def test_structural_sl_uses_bearish_order_block_high_with_atr_buffer():
         atr=10.0,
         sl_atr_mult=2.0,
         sl_atr_buffer_mult=0.10,
+        max_sl_distance_atr=8.0,
         allow_atr_sl_fallback=False,
         state=state,
         tick_time=_ts(),
@@ -318,7 +328,9 @@ def test_structural_sl_uses_bearish_order_block_high_with_atr_buffer():
 
 
 def test_structural_sl_uses_fresh_sweep_when_no_order_block_exists():
-    state = SMCState(liquidity_sweeps=[_sweep("low", 96.0)], pivots=[_pivot("low", 90.0)])
+    state = SMCState(
+        liquidity_sweeps=[_sweep("low", 96.0)], pivots=[_pivot("low", 90.0)]
+    )
 
     stop = crypt_ensemble_mod._plan_structural_stop(
         signal=1,
@@ -326,6 +338,7 @@ def test_structural_sl_uses_fresh_sweep_when_no_order_block_exists():
         atr=5.0,
         sl_atr_mult=2.0,
         sl_atr_buffer_mult=0.20,
+        max_sl_distance_atr=8.0,
         allow_atr_sl_fallback=False,
         state=state,
         tick_time=_ts(),
@@ -337,7 +350,9 @@ def test_structural_sl_uses_fresh_sweep_when_no_order_block_exists():
 
 
 def test_structural_sl_uses_pivot_fallback_for_short():
-    state = SMCState(pivots=[_pivot("high", 103.0), _pivot("high", 112.0, kind="swing")])
+    state = SMCState(
+        pivots=[_pivot("high", 103.0), _pivot("high", 112.0, kind="swing")]
+    )
 
     stop = crypt_ensemble_mod._plan_structural_stop(
         signal=-1,
@@ -345,6 +360,7 @@ def test_structural_sl_uses_pivot_fallback_for_short():
         atr=10.0,
         sl_atr_mult=2.0,
         sl_atr_buffer_mult=0.10,
+        max_sl_distance_atr=8.0,
         allow_atr_sl_fallback=False,
         state=state,
         tick_time=_ts(),
@@ -365,6 +381,7 @@ def test_structural_sl_excessive_distance_neutralizes_signal():
         atr=1.0,
         sl_atr_mult=2.0,
         sl_atr_buffer_mult=0.10,
+        max_sl_distance_atr=8.0,
         allow_atr_sl_fallback=False,
         state=state,
         tick_time=_ts(),
@@ -375,6 +392,26 @@ def test_structural_sl_excessive_distance_neutralizes_signal():
     assert stop.sl_price == 100.0
 
 
+def test_structural_sl_respects_explicit_max_distance_cap():
+    state = SMCState(order_blocks=[_order_block(BULLISH, low=96.0, high=97.0)])
+
+    stop = crypt_ensemble_mod._plan_structural_stop(
+        signal=1,
+        entry=100.0,
+        atr=1.0,
+        sl_atr_mult=2.0,
+        sl_atr_buffer_mult=0.10,
+        max_sl_distance_atr=4.0,
+        allow_atr_sl_fallback=False,
+        state=state,
+        tick_time=_ts(),
+    )
+
+    assert stop.signal == 0
+    assert stop.anchor_type == "none"
+    assert "ATR guard" in str(stop.rationale_suffix)
+
+
 def test_structural_sl_no_anchor_without_fallback_neutralizes_signal():
     stop = crypt_ensemble_mod._plan_structural_stop(
         signal=1,
@@ -382,6 +419,7 @@ def test_structural_sl_no_anchor_without_fallback_neutralizes_signal():
         atr=10.0,
         sl_atr_mult=2.0,
         sl_atr_buffer_mult=0.10,
+        max_sl_distance_atr=8.0,
         allow_atr_sl_fallback=False,
         state=SMCState(),
         tick_time=_ts(),
@@ -396,7 +434,9 @@ def test_structural_sl_ignores_anchor_known_after_tick_time():
     tick_time = _ts()
     state = SMCState(
         order_blocks=[
-            _order_block(BULLISH, low=95.0, high=98.0, known_at=tick_time + timedelta(hours=4))
+            _order_block(
+                BULLISH, low=95.0, high=98.0, known_at=tick_time + timedelta(hours=4)
+            )
         ],
         pivots=[_pivot("low", 90.0, known_at=tick_time)],
     )
@@ -407,6 +447,7 @@ def test_structural_sl_ignores_anchor_known_after_tick_time():
         atr=10.0,
         sl_atr_mult=2.0,
         sl_atr_buffer_mult=0.10,
+        max_sl_distance_atr=8.0,
         allow_atr_sl_fallback=False,
         state=state,
         tick_time=tick_time,
@@ -493,6 +534,90 @@ def test_crypt_ensemble_h1_mode_uses_h1_execution_index_and_diagnostics():
     assert set(result["sl_source_tf"]) == {"4h"}
 
 
+def test_crypt_ensemble_h1_mode_uses_closer_h1_structural_stop(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    primary = _ohlcv_at(["2024-01-02 01:00:00"], closes=[10.5])
+    h4 = _ohlcv_at(["2024-01-01 20:00:00"], closes=[10.5])
+    d1 = _ohlcv_at(["2024-01-01 00:00:00"], closes=[12.0])
+    h1_state = SMCState(pivots=[_pivot("low", 10.0)])
+    monkeypatch.setattr(
+        crypt_ensemble_mod,
+        "_structural_stop_state_for_timeframe",
+        lambda _ctx, timeframe: (
+            h1_state if timeframe == crypt_ensemble_mod.Timeframe.H1 else SMCState()
+        ),
+    )
+    data = StrategyData(
+        primary=primary,
+        candles={"H1": primary, "H4": h4, "D1": d1},
+        extras={},
+        metadata={"symbol": "SOL-USDT-SWAP"},
+    )
+    strategy = CryptEnsembleStrategy(
+        {
+            "sl_atr_mult": 2.0,
+            "progress": False,
+            "timeframes": {
+                "context": ["1d"],
+                "setup": ["4h"],
+                "trigger": "1h",
+                "execution": "1h",
+            },
+        }
+    )
+    strategy._evaluate_context = lambda _ctx: _verdict("BUY", 0.5)  # type: ignore[method-assign]
+
+    result = strategy.generate(data)
+
+    assert list(result["signal"]) == [1]
+    assert list(result["sl_source_tf"]) == ["1h"]
+    assert list(result["sl_anchor_type"]) == ["pivot"]
+    assert list(result["sl_anchor_level"]) == [10.0]
+
+
+def test_crypt_ensemble_h1_mode_keeps_h4_stop_when_h1_is_wider(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    primary = _ohlcv_at(["2024-01-02 01:00:00"], closes=[10.5])
+    h4 = _ohlcv_at(["2024-01-01 20:00:00"], closes=[10.5])
+    d1 = _ohlcv_at(["2024-01-01 00:00:00"], closes=[12.0])
+    h1_state = SMCState(pivots=[_pivot("low", 8.5)])
+    monkeypatch.setattr(
+        crypt_ensemble_mod,
+        "_structural_stop_state_for_timeframe",
+        lambda _ctx, timeframe: (
+            h1_state if timeframe == crypt_ensemble_mod.Timeframe.H1 else SMCState()
+        ),
+    )
+    data = StrategyData(
+        primary=primary,
+        candles={"H1": primary, "H4": h4, "D1": d1},
+        extras={},
+        metadata={"symbol": "SOL-USDT-SWAP"},
+    )
+    strategy = CryptEnsembleStrategy(
+        {
+            "sl_atr_mult": 2.0,
+            "progress": False,
+            "timeframes": {
+                "context": ["1d"],
+                "setup": ["4h"],
+                "trigger": "1h",
+                "execution": "1h",
+            },
+        }
+    )
+    strategy._evaluate_context = lambda _ctx: _verdict("BUY", 0.5)  # type: ignore[method-assign]
+
+    result = strategy.generate(data)
+
+    assert list(result["signal"]) == [1]
+    assert list(result["sl_source_tf"]) == ["4h"]
+    assert list(result["sl_anchor_type"]) == ["pivot"]
+    assert list(result["sl_anchor_level"]) == [9.0]
+
+
 def test_crypt_ensemble_h1_mode_excludes_forming_h4_candle():
     primary = _ohlcv_at(["2024-01-02 05:00:00"], closes=[10.5])
     h4 = _ohlcv_at(["2024-01-02 00:00:00", "2024-01-02 04:00:00"])
@@ -527,6 +652,57 @@ def test_crypt_ensemble_h1_mode_excludes_forming_h4_candle():
 
     assert h4_lengths == [1]
     assert list(result["signal"]) == [1]
+
+
+def test_crypt_ensemble_h1_mode_excludes_forming_d1_candle():
+    primary = _ohlcv_at(["2024-01-02 01:00:00"], closes=[10.5])
+    h4 = _ohlcv_at(["2024-01-01 20:00:00"], closes=[10.5])
+    d1 = pd.DataFrame(
+        {
+            "open": [10.0, 10.0],
+            "high": [10.5, 13.0],
+            "low": [8.5, 9.5],
+            "close": [9.0, 12.5],
+            "volume": [10.0, 10.0],
+        },
+        index=pd.to_datetime(
+            ["2024-01-01 00:00:00", "2024-01-02 00:00:00"],
+            utc=True,
+        ),
+    )
+    data = StrategyData(
+        primary=primary,
+        candles={"H1": primary, "H4": h4, "D1": d1},
+        extras={},
+        metadata={"symbol": "SOL-USDT-SWAP"},
+    )
+    strategy = CryptEnsembleStrategy(
+        {
+            "sl_atr_mult": 2.0,
+            "progress": False,
+            "timeframes": {
+                "context": ["1d"],
+                "setup": ["4h"],
+                "trigger": "1h",
+                "execution": "1h",
+            },
+        }
+    )
+    d1_lengths: list[int] = []
+
+    def evaluate(ctx):
+        d1_frame = ctx.candles.get(crypt_ensemble_mod.Timeframe.D1)
+        d1_lengths.append(0 if d1_frame is None else len(d1_frame))
+        return _verdict("BUY", 0.5)
+
+    strategy._evaluate_context = evaluate  # type: ignore[method-assign]
+
+    result = strategy.generate(data)
+
+    assert d1_lengths == [1]
+    assert list(result["signal"]) == [0]
+    assert list(result["context_bias"]) == ["bearish"]
+    assert list(result["trigger_type"]) == ["context_opposite"]
 
 
 def test_crypt_ensemble_h1_mode_blocks_opposite_d1_context():
@@ -567,3 +743,115 @@ def test_crypt_ensemble_h1_mode_blocks_opposite_d1_context():
     assert list(result["signal"]) == [0]
     assert list(result["context_bias"]) == ["bearish"]
     assert list(result["trigger_type"]) == ["context_opposite"]
+
+
+def test_crypt_ensemble_h1_mode_ignores_future_known_h4_stop_anchor(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    primary = _ohlcv_at(["2024-01-02 01:00:00"], closes=[100.5])
+    h4 = _ohlcv_at(["2024-01-01 20:00:00"], closes=[100.5])
+    d1 = _ohlcv_at(["2024-01-01 00:00:00"], closes=[101.0])
+    tick_time = pd.Timestamp("2024-01-02 02:00:00", tz="UTC").to_pydatetime()
+    state = SMCState(
+        order_blocks=[
+            _order_block(
+                BULLISH,
+                low=95.0,
+                high=98.0,
+                known_at=tick_time + timedelta(hours=1),
+            )
+        ],
+        pivots=[_pivot("low", 90.0, known_at=tick_time)],
+    )
+    monkeypatch.setattr(
+        crypt_ensemble_mod, "_structural_stop_state", lambda _ctx: state
+    )
+    data = StrategyData(
+        primary=primary,
+        candles={"H1": primary, "H4": h4, "D1": d1},
+        extras={},
+        metadata={"symbol": "SOL-USDT-SWAP"},
+    )
+    strategy = CryptEnsembleStrategy(
+        {
+            "sl_atr_mult": 2.0,
+            "progress": False,
+            "timeframes": {
+                "context": ["1d"],
+                "setup": ["4h"],
+                "trigger": "1h",
+                "execution": "1h",
+            },
+        }
+    )
+    strategy._evaluate_context = lambda _ctx: _verdict("BUY", 0.5)  # type: ignore[method-assign]
+
+    result = strategy.generate(data)
+
+    assert list(result["signal"]) == [1]
+    assert list(result["sl_anchor_type"]) == ["pivot"]
+    assert list(result["sl_anchor_level"]) == [90.0]
+    assert result["sl_anchor_known_at"].iloc[0] == tick_time.isoformat()
+
+
+def test_crypt_ensemble_h1_signal_enters_next_h1_open_through_execution_sim(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    primary = _ohlcv_at(
+        [
+            "2024-01-02 01:00:00",
+            "2024-01-02 02:00:00",
+            "2024-01-02 03:00:00",
+        ],
+        closes=[100.5, 102.5, 103.5],
+    )
+    h4 = _ohlcv_at(["2024-01-01 20:00:00"], closes=[100.5])
+    d1 = _ohlcv_at(["2024-01-01 00:00:00"], closes=[101.0])
+    data = StrategyData(
+        primary=primary,
+        candles={"H1": primary, "H4": h4, "D1": d1},
+        extras={},
+        metadata={"symbol": "SOL-USDT-SWAP"},
+    )
+    tick_time = pd.Timestamp("2024-01-02 02:00:00", tz="UTC").to_pydatetime()
+    monkeypatch.setattr(
+        crypt_ensemble_mod,
+        "_structural_stop_state",
+        lambda _ctx: SMCState(pivots=[_pivot("low", 99.0, known_at=tick_time)]),
+    )
+    strategy = CryptEnsembleStrategy(
+        {
+            "sl_atr_mult": 2.0,
+            "progress": False,
+            "timeframes": {
+                "context": ["1d"],
+                "setup": ["4h"],
+                "trigger": "1h",
+                "execution": "1h",
+            },
+        }
+    )
+    verdicts = iter(
+        [_verdict("BUY", 0.5), _verdict("HOLD", 0.0), _verdict("HOLD", 0.0)]
+    )
+    strategy._evaluate_context = lambda _ctx: next(verdicts)  # type: ignore[method-assign]
+
+    signals = strategy.generate(data)
+    trades = ExecutionSim(
+        initial_capital=1000.0,
+        taker_fee=0.0,
+        maker_fee=0.0,
+        risk_percent=1.0,
+        rrr=1.0,
+        max_positions=1,
+        max_allowed_leverage=100.0,
+        min_net_exposure=0.0,
+        position_ttl_bars=1,
+    ).run(signals)
+
+    assert list(signals.index) == list(primary.index + pd.Timedelta(hours=1))
+    assert signals["entry_price"].isna().all()
+    assert len(trades) == 1
+    assert trades.iloc[0]["signal_time"] == signals.index[0]
+    assert trades.iloc[0]["entry_time"] == signals.index[1]
+    assert trades.iloc[0]["entry_price"] == primary["open"].iloc[1]

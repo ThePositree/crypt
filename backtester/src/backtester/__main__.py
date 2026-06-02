@@ -61,6 +61,18 @@ def cli():
     default="4h",
     help="Primary execution timeframe for crypt-parquet data.",
 )
+@click.option(
+    "--from",
+    "from_date",
+    default=None,
+    help="Inclusive crypt-parquet start date/time in UTC.",
+)
+@click.option(
+    "--to",
+    "to_date",
+    default=None,
+    help="Inclusive crypt-parquet end date/time in UTC.",
+)
 @click.option("--symbol", default="SYMBOL/USDT", help="Trading pair name (for report)")
 @click.option("--strategy", required=True, help="Strategy parameters file")
 @click.option("--output", default="results/backtesting", help="Folder to save results")
@@ -201,6 +213,8 @@ def run(
     parquet: str | None,
     data_dir: str | None,
     primary_timeframe: str,
+    from_date: str | None,
+    to_date: str | None,
     symbol: str,
     strategy: str,
     output: str,
@@ -259,6 +273,8 @@ def run(
             data_dir=data_dir,
             symbol=symbol,
             primary_timeframe=primary_timeframe,
+            start=from_date,
+            end=to_date,
             ts_col=ts_col,
             bingx_symbol=bingx_symbol,
             bingx_interval=bingx_interval,

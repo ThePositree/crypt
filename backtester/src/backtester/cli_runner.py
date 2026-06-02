@@ -272,6 +272,8 @@ def build_cli_data_loader(
     data_dir: str | None = None,
     symbol: str | None = None,
     primary_timeframe: str = "4h",
+    start: str | None = None,
+    end: str | None = None,
     ts_col: str = "timestamp",
     bingx_symbol: str | None = None,
     bingx_interval: str | None = None,
@@ -293,6 +295,10 @@ def build_cli_data_loader(
         ``\"crypt-parquet\"``.
     csv_path : str, optional
         Path to CSV file (required when data_source is ``\"csv\"``).
+    start : str, optional
+        Inclusive crypt-parquet start bound, parsed as UTC when timezone-naive.
+    end : str, optional
+        Inclusive crypt-parquet end bound, parsed as UTC when timezone-naive.
     ts_col : str, default \"timestamp\"
         Timestamp column name for CSV.
     bingx_symbol : str, optional
@@ -349,10 +355,14 @@ def build_cli_data_loader(
             raise ValueError(
                 f"crypt-parquet data source requires: {', '.join(missing)}"
             )
+        assert data_dir is not None
+        assert symbol is not None
         return CryptParquetDataLoader(
             data_dir=data_dir,
             symbol=symbol,
             primary_timeframe=primary_timeframe,
+            start=start,
+            end=end,
         )
     if source == "bingx":
         missing = []
