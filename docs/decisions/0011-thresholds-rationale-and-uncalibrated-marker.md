@@ -1,6 +1,7 @@
 # ADR-0011: Thresholds rationale and `[UNCALIBRATED]` marker policy
 
-- **Status**: accepted
+- **Status**: superseded by ADR-0020 for `ALERT_CONFIDENCE_THRESHOLD = 75`
+  rationale; accepted for the `[UNCALIBRATED]` marker policy
 - **Date**: 2026-05-15
 - **Owner**: agent
 

@@ -35,7 +35,8 @@ Anatomy:
   ADR-0011's flag flips off. Treat alerts as **informational** during
   this period. Do not size trades to them yet.
 - `Confidence` — 0..100. Below 75 alerts are suppressed (default
-  threshold); a 78 means "scraped through".
+  placeholder threshold); a 78 only means it passed the current alert gate,
+  not that it is a calibrated probability.
 - `Score` — weighted-sum across engines, in `[-1, +1]`. The sign matches
   the decision.
 - `Regime` — `TRENDING / RANGING / HIGH_VOL`. Decides which weight set
@@ -49,10 +50,9 @@ Anatomy:
 
 - **`[UNCALIBRATED]` is still on the message.** The numbers are not yet
   validated against history.
-- **`Regime: HIGH_VOL`** and `Confidence: 76–78`. The HIGH_VOL threshold
-  is intentionally higher than other regimes; a scrape-through alert in
-  HIGH_VOL is the noisiest possible alert. The system *prefers* to be
-  silent here.
+- **`Regime: HIGH_VOL`** and confidence only barely above the current alert
+  gate. The threshold is still a placeholder, and HIGH_VOL alerts have not
+  been validated.
 - **One engine alone is doing the work** (e.g. only `derivatives:
   strength=+0.9, weight=0.3` while trend and meanrev are neutral) —
   single-engine alerts have not been validated to be useful.

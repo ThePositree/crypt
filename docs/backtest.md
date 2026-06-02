@@ -1,5 +1,14 @@
 # Backtest harness (M2)
 
+> **Architecture note (2026-06-02):** ADR-0018 redirects future M2 work toward
+> the donor `backtester/` package as the canonical strategy/backtester
+> architecture. ADR-0021 tracks `backtester/` in this monorepo (not a nested
+> git repository). This document remains the contract for the existing
+> `src/crypt/backtest/` harness and useful reference material for
+> no-lookahead, labels, walk-forward validation, and report semantics. New
+> implementation work should start from `docs/backtester_migration.md` unless
+> the owner explicitly asks to extend the old harness.
+
 This document is the **contract** for the backtest harness that calibrates
 the weight set in `config/weights.yaml` and produces the M2 exit-criteria
 report. It is detailed on purpose: a future agent should be able to
@@ -572,10 +581,12 @@ report.
 
 ## 18. Reference implementation: `backtester/`
 
-There is a battle-tested backtester in `backtester/` (a separate git repo
-nested inside `crypt/`). The owner has run it in production and trusts it.
-**Do not reinvent anything that already exists there.** Port or adapt
-directly; add a comment citing the source file.
+There is a battle-tested backtester vendored at `backtester/` in this
+repository (ADR-0021). It was originally developed at
+`https://github.com/AuriumX/backtester` and is kept as its own Python package
+with a separate `pyproject.toml`. The owner has run it in production and
+trusts it. **Do not reinvent anything that already exists there.** Port or
+adapt directly; add a comment citing the source file.
 
 The backtester's architecture does not plug directly into crypt's pipeline
 (different entry point, BingX-centric data loader, strategy-based rather

@@ -99,6 +99,63 @@ PYTHONPATH=src uv run python -m crypt.backtest \
 
 Data lands in `data/<SYMBOL>/` (Parquet). Re-running is idempotent.
 
+## Donor backtester migration (experimental)
+
+ADR-0018 moves future M2 work toward the donor `backtester/` package.
+ADR-0021 tracks `backtester/` in this monorepo (same git history as
+`src/crypt/`; not a nested repository). The donor package is treated as a
+high-risk source-of-truth dependency: avoid rewriting its internals and prefer
+adapting `crypt_ensemble` to its existing strategy API.
+
+The current `crypt_ensemble` donor strategy runs the existing engines and
+aggregator over project Parquet data and emits donor-compatible `signal`,
+`entry_price`, structural SMC `sl_price`, and verdict metadata. Stop-losses are
+anchored to active order blocks, fresh liquidity sweeps, or confirmed pivots
+with an ATR buffer; if no structural anchor exists, the donor signal is
+neutralized by default instead of falling back to mechanical ATR-only stops.
+Donor execution exports `signal_time`, `risk_base_capital`, confidence, score,
+regime, rationale, stop diagnostics, and per-engine strengths into `trades.csv`
+for audit. It also writes `trade_diagnostics.csv`, a compact report for exit
+reason, side, PnL, and structural stop distance analysis. Per ADR-0019,
+`crypt_ensemble` sizes risk from the capital at the beginning of each calendar
+month (`risk_base_period = monthly`) instead of compounding every trade from
+current capital. Per ADR-0020, the live Telegram alert threshold of `75` is an
+arbitrary placeholder and is not the default donor entry gate; BUY/SELL
+verdicts are tradeable by default when a valid structural stop exists, while
+`min_confidence` remains available as an explicit diagnostic parameter. Full
+SOL smoke backtests are currently slow because each bar replays the whole
+ensemble; H1 MTF runs are especially expensive until the donor route gets a
+range limiter or parity-safe cache.
+
+```bash
+cd backtester
+
+PYTHONPATH=src:../src uv run --extra dev backtester run \
+    --data-source crypt-parquet \
+    --data-dir ../data \
+    --symbol SOL-USDT-SWAP \
+    --strategy strategies/crypt_ensemble.json \
+    --output results/crypt_ensemble_sol
+```
+
+Experimental H1 MTF mode keeps D1/H4 as context/setup but uses H1 as the
+primary execution frame:
+
+```bash
+PYTHONPATH=src:../src uv run --extra dev backtester run \
+    --data-source crypt-parquet \
+    --data-dir ../data \
+    --primary-timeframe 1h \
+    --symbol SOL-USDT-SWAP \
+    --strategy strategies/crypt_ensemble_h1.json \
+    --output results/crypt_ensemble_sol_h1
+```
+
+Expected current result: data loads, `crypt_ensemble` shows per-bar progress,
+and donor execution writes `trades.csv`, `trade_diagnostics.csv`,
+`metrics.csv`, `signals.csv`, and `signal_diagnostics.csv` when the full run
+completes. `equity_curve.csv` is written only when trades exist.
+
 ## Developer setup
 
 ```bash
@@ -146,17 +203,22 @@ crypt/
 ├── AGENTS.md                # agent operating manual
 ├── CHANGELOG.md             # session-by-session log
 ├── README.md                # this file
+├── backtester/              # donor M2 package (ADR-0018, ADR-0021; own pyproject.toml)
 ├── .cursor/rules/           # always-on rules for AI agents
 ├── docs/
 │   ├── architecture.md      # high-level design
 │   ├── backfill.md          # backfill CLI contract (OKX OHLCV + optional Rubik data)
 │   ├── backtest.md          # M2 backtest harness contract
+│   ├── backtester_migration.md
 │   ├── decisions/           # ADRs (one decision per file)
 │   ├── engines/             # per-engine specs (signal contracts, logic, thresholds)
 │   └── tasks/               # ROADMAP / BACKLOG / IN_PROGRESS / DONE
-├── src/crypt/               # source
-└── tests/                   # pytest
+├── src/crypt/               # live ensemble + legacy backtest harness
+└── tests/                   # pytest (crypt package)
 ```
+
+Donor tests run from `backtester/` (`uv run pytest` with
+`PYTHONPATH=src:../src`); they are not yet part of root CI.
 
 ## License
 

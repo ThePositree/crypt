@@ -54,6 +54,136 @@ priorities below are the BACKLOG view.
       in `pyproject.toml` (2026-05-29). `uv run pytest` now works without
       manual `PYTHONPATH=src`.
 
+### M2 architecture redirect — donor backtester migration
+
+ADR-0018 makes `backtester/` the canonical future M2 backtest architecture.
+ADR-0021 tracks it in this monorepo. Implementation details live in
+`docs/backtester_migration.md`.
+
+- [x] **Vend `backtester/` into crypt monorepo** — P1. Remove nested
+      `backtester/.git`; commit donor sources from the `crypt` root. ADR-0021;
+      docs shipped 2026-06-02. Owner completes the git add/commit after
+      removing `.git`.
+- [ ] **Run donor `backtester/` tests in root CI** — P2. `.github/workflows/ci.yml`
+      currently covers only `src/crypt/`; add `cd backtester && pytest` (and
+      optional ruff on donor paths) once the monorepo commit lands.
+
+- [x] **Add donor `StrategyData` contract** — P0. Extend the donor package
+      additively so strategies can receive either a plain `pd.DataFrame` or a
+      richer object with primary OHLCV, timeframe candles, extras, and
+      metadata. Existing donor strategies must keep working unchanged.
+      Shipped 2026-06-02.
+- [x] **Add `parquet` data source to donor CLI** — P0. Load one Parquet OHLCV
+      file, accepting both donor-style columns and project-style
+      `open_time`/`o`/`h`/`l`/`c`/`v` columns. Shipped 2026-06-02.
+- [x] **Add `crypt-parquet` data source to donor CLI** — P0. Load the existing
+      project Parquet layout for one symbol; H4 required, H1/D1/extras
+      optional and represented as empty DataFrames when unavailable. Shipped
+      2026-06-02.
+- [x] **Register `crypt_ensemble` donor strategy** — P0. First skeleton may
+      emit neutral/no-trade rows; final version adapts existing engines and
+      aggregator into donor `signal` + `sl_price` output. Neutral skeleton
+      shipped 2026-06-02.
+- [x] **Run donor-backed SOL neutral smoke backtest** — P0. `parquet` and
+      `crypt-parquet` modes loaded 5545 SOL H4 bars and wrote no-trades
+      reports with the neutral `crypt_ensemble` skeleton (2026-06-02).
+- [x] **Wire existing ensemble into `crypt_ensemble`** — P0. Adapt existing
+      engines and aggregator into donor `signal` + `sl_price` output while
+      preserving no-lookahead semantics and graceful missing-data behaviour.
+      First engine-wired slice shipped 2026-06-02.
+- [x] **Run first trade-producing donor-backed SOL smoke backtest** — P0. Use
+      one symbol, existing Parquet data, and engine-wired `crypt_ensemble`;
+      verify exported trades include enough verdict metadata before deleting or
+      deprecating old commands in README. First owner-completed run produced
+      1792 trades; donor export metadata was fixed afterward (2026-06-02).
+- [x] **Rerun SOL donor smoke after monthly risk-base sizing** — P0. ADR-0019
+      changed `crypt_ensemble` from per-trade current-capital sizing to
+      monthly window-base sizing and added trade metadata export. Rerun the
+      same SOL command and inspect `trades.csv` for `signal_time`,
+      `risk_base_capital`, confidence, score, regime, rationale, and
+      `strength_<engine>` columns. Completed 2026-06-02 at
+      `/tmp/crypt_donor_smoke/20260602_104522`; result was diagnostic only
+      because it exposed that donor entries ignored the live confidence
+      threshold.
+- [x] **Run diagnostic SOL donor smoke with `min_confidence = 75`** — P0.
+      Completed 2026-06-02 at `/tmp/crypt_donor_smoke/20260602_122510`:
+      0 trades, 1798 directional verdicts, max confidence 52, and 0 rows with
+      `confidence >= 75`. ADR-0020 records the owner correction: `75` was an
+      arbitrary placeholder, so this diagnostic should not block Optuna.
+- [x] **Audit confidence scale vs live threshold** — P0. Closed by ADR-0020:
+      do not search for a post-hoc rationale for `75`; it remains only a live
+      alert placeholder. Donor `crypt_ensemble` no longer defaults to
+      `min_confidence = 75`.
+- [x] **Rerun SOL donor smoke after removing default `min_confidence = 75`** —
+      P0. Owner-provided result reviewed at
+      `/tmp/crypt_donor_smoke/20260602_132627`: 1792 trades, final capital
+      6694.69 from 10000, `total_return_pct = -33.05`,
+      `profit_factor = 0.88`, max drawdown `-36.96`; long side remains the
+      main drag, shorts are slightly positive.
+- [ ] **Add donor signal diagnostics command/report** — P1. `signals.csv` and
+      `signal_diagnostics.csv` now exist, but operators still need a cheap
+      way to summarize decision/confidence/regime distributions without
+      rerunning the 15-minute SOL smoke.
+- [x] **Replace mechanical ATR SL with structural SMC SL** — P0. Implement
+      `docs/crypt_ensemble_structural_sl.md` before running another optimizer
+      or interpreting donor backtest metrics. Keep donor `ExecutionSim`
+      unchanged; compute only `crypt_ensemble`'s `sl_price` differently.
+      Shipped 2026-06-02.
+- [x] **Rerun SOL donor smoke after structural SMC SL** — P0. Use the current
+      `backtester/strategies/crypt_ensemble.json`, inspect `signals.csv`,
+      `signal_diagnostics.csv`, `trades.csv`, and metrics. Expect fewer trades
+      because BUY/SELL verdicts without valid structural stop anchors now emit
+      `signal = 0`. Completed 2026-06-02 at
+      `/tmp/crypt_donor_structural_sl_smoke/20260602_143827`: 1672 trades,
+      final capital 6683.68 from 10000, `total_return_pct = -33.16`,
+      `profit_factor = 0.84`, max drawdown `-35.38`; long side remains
+      materially negative while shorts remain slightly positive.
+- [ ] **Investigate structural order-block stop quality** — P1 before
+      trusting optimization output. Structural SL mostly selected order-block
+      anchors (1589/1672 trades) and did not improve SOL smoke metrics versus
+      the previous no-structural run; inspect whether OB stops are too wide,
+      stale, or weakly related to the entry premise before treating optimizer
+      improvements as robust.
+- [ ] **Implement unified MTF `crypt_ensemble` contract** — P0. Owner wants
+      top-down D1 context -> H4 setup -> H1 trigger/execution, with the design
+      generic enough for a future 15m trigger. Start from
+      `docs/crypt_ensemble_mtf.md`; preserve current H4 default mode, add
+      timeframe-role config, use H1 as primary only in the H1 strategy config,
+      and add no-lookahead tests before smoke runs. First additive code slice
+      shipped 2026-06-02; full H1 smoke remains open.
+- [ ] **Add donor smoke range limiter for project Parquet** — P0 before
+      rerunning full H1 MTF smoke. The attempted SOL H1 smoke loaded 21517 H1
+      bars and did not reach export during the session. Add `from`/`to` or
+      equivalent range selection for `crypt-parquet` so MTF contract smokes can
+      complete quickly before launching full-history long runs.
+- [ ] **Tune H4/H1 setup geometry before broad Optuna** — P0 before
+      interpreting MTF smokes or starting broad Optuna. Current structural SOL
+      H4 smoke closed 1496/1672 trades by `ttl_expired`; median TTL-expired
+      `sl_distance_atr` was 3.985, so with `rrr = 2` the TP is roughly 8 ATR
+      away while `ttl = 6` H4 bars allows only 24 hours. For H1, retune `ttl`,
+      `rrr`, and stop-distance caps instead of inheriting H4 values.
+- [ ] **Add minimal donor Optuna support for `crypt_ensemble` parameters** —
+      P0 after structural SL. Adapt the existing donor optimizer shape rather
+      than adding new donor-wide semantics. Register strategy parameters:
+      structural SL buffer, optional `min_confidence`, regime thresholds, and
+      active OHLCV engine weights. Do not add `folds`; keep `trials` as an
+      optional/defaulted run knob.
+- [ ] **Add risk/setup dimensions to donor Optuna** — P1. Later include `ttl`,
+      `rrr`, `risk_percent`, and `risk_base_period` only after the minimal
+      strategy-parameter optimizer works.
+- [ ] **Profile `crypt_ensemble` replay performance after parity tests** — P1.
+      The straightforward engine-wired donor strategy is slow on 5545 SOL H4
+      bars. Do not add caching/incremental shortcuts until tests prove outputs
+      are identical to the straightforward closed-candle replay and preserve
+      no-lookahead semantics.
+- [ ] **Compare risk-base periods out of sample** — P1. Monthly is the
+      current `crypt_ensemble` default, but `weekly` and `backtest` should be
+      compared in donor walk-forward/Optuna work before treating sizing mode
+      as calibrated.
+- [ ] **Retire or freeze `src/crypt/backtest/` after parity** — P1. Do not
+      delete before donor-backed SOL run works and the owner accepts the new
+      command/report shape.
+
 ---
 
 ## P1 — high value, schedule into M2 milestone

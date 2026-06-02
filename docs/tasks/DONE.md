@@ -4,6 +4,255 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-02 — `backtester/` vendored into crypt monorepo (docs)
+
+- Owner directed folding `backtester/` into the `crypt` repository (no nested
+  `.git`, no submodule).
+- Added `docs/decisions/0021-backtester-vendored-in-crypt-monorepo.md` with
+  one-time git migration steps and consequences.
+- Updated `README.md`, `docs/backtest.md`, `docs/backtester_migration.md`, and
+  ADR-0018 cross-references.
+- Git commit of `backtester/` file tree is owner-operated after
+  `rm -rf backtester/.git`.
+
+---
+
+## 2026-06-02 — First additive MTF `crypt_ensemble` code slice (session 24)
+
+- Added `primary_timeframe` support to donor `crypt-parquet` data loading and
+  CLI propagation while preserving H4 as the default primary timeframe.
+- Added timeframe-role parsing to `CryptEnsembleStrategy`:
+  `context`, `setup`, `trigger`, and `execution`.
+- Preserved the existing H4 default mode and added an H1 MTF mode with D1
+  context filtering, H4 setup verdict, H1 candle-confirm trigger, H1 execution
+  tick index, and MTF diagnostics.
+- Added `backtester/strategies/crypt_ensemble_h1.json` for the first H1
+  experiment (`ttl = 24`, `rrr = 1.5`, monthly risk base).
+- Added focused donor tests for H1 primary loader semantics, CLI propagation,
+  H1 execution diagnostics, H4 forming-candle exclusion, and D1
+  opposite-context blocking.
+- Attempted the full SOL H1 smoke; it loaded 21517 H1 bars and began replay,
+  but ended before export and produced no artifact. Full smoke remains open
+  behind a run-time limiter or performance pass.
+
+Verification: ruff clean on changed donor files; targeted donor pytest
+`41 passed`; full donor pytest `88 passed`, both with 3 existing pandas
+warnings.
+
+---
+
+## 2026-06-02 — Unified MTF `crypt_ensemble` handoff spec (session 23)
+
+- Added `docs/crypt_ensemble_mtf.md` for the next implementation pass.
+- Captured the owner-requested model: D1 context, H4 setup, H1
+  trigger/execution.
+- Required the design to be generic enough for future 15m trigger support via
+  timeframe-role config rather than a strategy rewrite.
+- Documented current gaps: the existing strategy is H4-primary, H1 has no
+  distinct trigger layer, and SMC age/TTL/ATR semantics are H4-oriented.
+- Documented implementation steps, required diagnostics, no-lookahead rules,
+  tests, first H1 smoke command, and future 15m path.
+
+Verification: docs-only; no tests run.
+
+---
+
+## 2026-06-02 — Donor TTL exit diagnostics for structural SOL smoke (session 22)
+
+- Added `trade_diagnostics.csv` export to donor `ResultsAnalyzer` for runs
+  with trades.
+- The diagnostic report summarizes exit reasons, side/exit counts, side and
+  exit-reason PnL, holding duration, trades per day, `sl_distance_atr` by exit
+  reason, and stop-anchor distance by anchor type.
+- Generated the report for
+  `/tmp/crypt_donor_structural_sl_smoke/20260602_143827`.
+- Diagnosed the TTL-heavy exits: 1496/1672 trades (`89.47%`) closed by
+  `ttl_expired`; with `ttl = 6` H4 bars, the holding window is only 24 hours.
+- TTL-expired trades had median `sl_distance_atr = 3.985`; with `rrr = 2`,
+  their TP is roughly 8 ATR away. The immediate issue is setup geometry
+  (wide structural stops plus distant TP inside a short TTL), not a donor
+  execution bug.
+- Checked local timeframe data availability: SOL and TON have long H1 history;
+  XPL has only a short H1 window.
+
+Verification: ruff clean on changed analyzer/test files; targeted donor pytest
+`6 passed`.
+
+---
+
+## 2026-06-02 — Structural SMC stop-loss for donor `crypt_ensemble` (session 21)
+
+- Replaced the default mechanical ATR-only donor stop with a structural SMC
+  stop hierarchy inside `crypt_ensemble`; donor `ExecutionSim` remains
+  unchanged.
+- Stop anchors are selected in order: active order block, fresh liquidity
+  sweep, confirmed pivot, then optional explicit ATR fallback.
+- Default strategy JSON disables ATR fallback, so BUY/SELL verdicts without a
+  valid structural stop are neutralized to donor `signal = 0` while keeping
+  verdict metadata for audit.
+- Added stop diagnostics: `sl_anchor_type`, `sl_anchor_level`,
+  `sl_anchor_known_at`, and `sl_distance_atr`.
+- Added synthetic tests for long/short order-block stops, sweep fallback,
+  pivot fallback, excessive-distance neutralization, no-anchor
+  neutralization, and no-lookahead `known_at <= tick_time`.
+- Reviewed structural SOL smoke at
+  `/tmp/crypt_donor_structural_sl_smoke/20260602_143827`: 1672 trades,
+  final capital 6683.68, `total_return_pct = -33.16`, `profit_factor = 0.84`,
+  max drawdown `-35.38`.
+- Compared against the prior no-structural run
+  `/tmp/crypt_donor_smoke/20260602_132627`: structural SL removed 120 trades
+  but did not improve aggregate return or profit factor; long-side trades
+  remain materially negative.
+
+Verification: ruff clean on changed donor strategy/test files; targeted donor
+pytest `14 passed`; full donor pytest `82 passed` with 3 existing pandas
+warnings.
+
+---
+
+## 2026-06-02 — ADR-0020 and donor confidence gate rollback (session 19)
+
+- ADR-0020 added: the live alert threshold `75` is an arbitrary placeholder,
+  not a calibrated confidence threshold and not the default donor entry gate.
+- ADR-0011 status updated so only its `75` rationale is superseded; the
+  `[UNCALIBRATED]` marker policy remains accepted.
+- `backtester/strategies/crypt_ensemble.json` no longer sets
+  `min_confidence = 75`; donor `crypt_ensemble` trades BUY/SELL verdicts by
+  default.
+- `min_confidence` remains available as an explicit optional diagnostic/Optuna
+  parameter.
+- `signal_diagnostics.csv` now reports confidence quantiles instead of a
+  hard-coded `confidence_ge_75` metric.
+- Reviewed owner-provided SOL smoke at
+  `/tmp/crypt_donor_smoke/20260602_132627`: 1792 trades, final capital 6694.69
+  from 10000, `total_return_pct = -33.05`, `profit_factor = 0.88`, max
+  drawdown `-36.96`; longs remain the main drag while shorts are slightly
+  profitable.
+
+Verification: ruff clean on changed donor files; targeted donor pytest
+`12 passed`; full donor pytest `75 passed` with 3 existing pandas warnings.
+
+---
+
+## 2026-06-02 — Threshold-correct donor SOL smoke diagnostics (session 18)
+
+- Added no-trade export diagnostics to the donor analyzer: `signals.csv`,
+  `signal_diagnostics.csv`, and non-empty `metrics.csv` are now written even
+  when execution opens zero trades.
+- Reran SOL donor smoke with `min_confidence = 75` at
+  `/tmp/crypt_donor_smoke/20260602_122510`.
+- Confirmed the no-trade result is expected under the live threshold:
+  5545 signal rows, 772 BUY verdicts, 1026 SELL verdicts, 3747 HOLD verdicts,
+  max confidence 52, and 0 rows with `confidence >= 75`.
+- Recorded that the full straightforward replay took about 15 minutes, so
+  Optuna should wait for confidence-scale review and replay profiling/parity
+  work.
+
+Verification: ruff clean on changed donor files; full donor pytest
+`74 passed` with 3 existing pandas warnings.
+
+---
+
+## 2026-06-02 — Donor `crypt_ensemble` confidence threshold (session 17)
+
+- Reviewed monthly-risk SOL donor smoke at
+  `/tmp/crypt_donor_smoke/20260602_104522`: 1792 trades, final capital 6694.69
+  from 10000 initial capital, `total_return_pct = -33.05`,
+  `profit_factor = 0.88`, max drawdown `-36.96`.
+- Confirmed the trade export now carries `signal_time`, `risk_base_capital`,
+  confidence, score, regime, decision, rationale, and `strength_<engine>`
+  columns.
+- Diagnosed the smoke as trading internal low-confidence verdicts: all trades
+  had `confidence <= 55`, below the live alert threshold of 75.
+- Added `min_confidence` to donor `crypt_ensemble` params and Optuna
+  suggestions; default strategy JSON value is `75`.
+- Low-confidence BUY/SELL verdicts now keep their metadata but emit donor
+  `signal = 0`.
+
+Verification: ruff clean on changed strategy/test files; targeted donor
+pytest `6 passed` with one existing pandas warning.
+
+---
+
+## 2026-06-02 — Donor trade metadata and monthly risk-base sizing (session 16)
+
+- Reviewed owner-completed SOL donor smoke at
+  `/tmp/crypt_donor_smoke/20260602_101119`: 1792 trades, final capital
+  6548.74 from 10000 initial capital, `total_return_pct = -34.51`,
+  `profit_factor = 0.88`; long trades were the main drag while short trades
+  were slightly positive.
+- Confirmed the run was a plain `backtester run`, not an optimizer run.
+- Fixed donor execution export so trade rows preserve `crypt_ensemble`
+  attribution metadata: `signal_time`, confidence, score, regime, decision,
+  rationale, and `strength_<engine>` columns.
+- Added `risk_base_period` to donor execution sizing with `trade`, `weekly`,
+  `monthly`, and `backtest` modes. The old per-trade current-capital behaviour
+  remains available as `trade`.
+- Set `backtester/strategies/crypt_ensemble.json` to monthly risk-base sizing
+  for M2 donor smokes, per ADR-0019.
+- Exported `risk_base_capital` on each trade row for audit.
+
+Verification: ruff clean on changed donor files; targeted donor pytest
+`39 passed`; full donor pytest `71 passed` with existing pandas warnings.
+
+## 2026-06-02 — Donor `crypt_ensemble` engine wiring (session 15)
+
+- `backtester/src/backtester/strategies/crypt_ensemble.py` — wired the donor
+  strategy to run the existing `crypt` volatility/regime/directional engines
+  and aggregator over `StrategyData`.
+- Donor output now includes `signal`, `entry_price`, ATR-based `sl_price`,
+  `confidence`, `score`, `regime`, `decision`, `rationale`, and
+  `strength_<engine>` columns.
+- Closed-candle replay semantics are preserved by evaluating each H4 row at
+  `open_time + 4h` and filtering H4/H1/D1 contexts to candles closed at or
+  before that tick.
+- Added visible per-bar progress for long `crypt_ensemble` runs and enabled it
+  in `backtester/strategies/crypt_ensemble.json`.
+- Fixed the project-Parquet `open_time` ambiguity where the timestamp was both
+  index name and column label.
+- Tests added/updated for signal mapping, ATR stop output, missing optional
+  frames, and `open_time`-named indexes.
+
+Verification: donor `pytest` → 67 passed; ruff clean on changed donor files.
+SOL `crypt-parquet` smoke loaded 5545 H4 bars and started replay with progress,
+but the full run was stopped before completion due duration.
+
+---
+
+## 2026-06-02 — Donor backtester Parquet loader and neutral strategy slice (session 14)
+
+- `backtester/src/backtester/data_contracts.py` — added `StrategyData` for
+  richer strategy input while keeping the old DataFrame strategy path.
+- `backtester/src/backtester/data_loader.py`, `cli_runner.py`,
+  `__main__.py` — added `parquet` and `crypt-parquet` CLI data sources.
+- `backtester/src/backtester/strategies/crypt_ensemble.py` and
+  `backtester/strategies/crypt_ensemble.json` — registered a neutral
+  `crypt_ensemble` skeleton.
+- Tests added for single-file Parquet loading, project-style Parquet columns,
+  `crypt-parquet` loader plumbing, CLI source selection, and the neutral
+  strategy skeleton.
+- Smoke: SOL `parquet` and `crypt-parquet` commands loaded 5545 H4 bars and
+  wrote no-trades reports.
+
+Verification: donor `pytest` → 65 passed; ruff clean on changed donor files.
+
+---
+
+## 2026-06-02 — Donor backtester migration decision (docs only — session 13)
+
+- `docs/decisions/0018-donor-backtester-canonical-m2.md` — accepted ADR:
+  future M2 work moves toward the donor `backtester/` package as the canonical
+  strategy/backtester architecture.
+- `docs/backtester_migration.md` — handoff spec for additive donor changes:
+  `StrategyData`, `parquet`, `crypt-parquet`, `crypt_ensemble`, one-symbol
+  smoke run, and later Optuna.
+- `docs/tasks/IN_PROGRESS.md` — next-agent implementation sequence recorded.
+- `docs/tasks/BACKLOG.md` — P0/P1 migration tasks added.
+
+Verification: docs-only; no tests run.
+
+---
+
 ## 2026-06-01 — M2 OHLCV backtest report review (session 12)
 
 - `reports/backtest_2026-06/` reviewed after the owner reran the SOL/TON
