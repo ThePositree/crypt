@@ -1,0 +1,18 @@
+{
+  "name": "dual_ma",
+  "description": "Dual MA Strategy",
+  "version": "1.1",
+  "params": {
+    "fast": 15,
+    "slow": 24,
+    "atr_window": 15,
+    "avg_atr_window": 35,
+    "min_atr_multiplier": 1.4125285936983865,
+    "sl_dist_mult": 0.9749566247260459,
+    "strategy": "long"
+  },
+  "backtest_args": {
+    "risk_percent": 2.0519548612841554,
+    "rrr": 3.8483348480754476
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "meta",
+  "description": "Meta Dual MA Strategy",
+  "version": "1.0",
+  "params": {
+    "strategy": "dual_ma",
+    "study_log": "dual_ma.log",
+    "study_name": "dual_ma",
+    "enough_max_min_per_month_return": -15,
+    "enough_min_total_return": 50
+  }
+}

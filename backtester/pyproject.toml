@@ -1,0 +1,86 @@
+[build-system]
+requires = ["hatchling", "versioningit"]
+build-backend = "hatchling.build"
+
+[project]
+name = "backtester"
+dynamic = ["version"]
+description = ''
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+keywords = []
+authors = [{ name = "hikitani", email = "kazbekmamakaev@mail.ru" }]
+classifiers = [
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = [
+  "pandas",
+  "numpy",
+  "requests",
+  "optuna",
+  "click",
+  "scikit-learn",
+  "lightgbm",
+  "pandas_ta",
+  "tqdm",
+  "matplotlib",
+  "seaborn",
+  "scipy",
+  "streamlit",
+  "plotly",
+  "loguru",
+  "pydantic",
+]
+
+[project.optional-dependencies]
+dev = [ "versioningit==3.3.0", "pytest" ]
+
+[project.scripts]
+backtester = "backtester.__main__:cli"
+
+[tool.hatch.version]
+source = "versioningit"
+
+[tool.versioningit]
+default-version = "0.0.0+unknown"
+
+[tool.versioningit.format]
+distance = "{next_version}.dev{distance}+{vcs}{rev}"
+dirty = "{base_version}+d{build_date:%Y%m%d}"
+
+[tool.hatch.envs.dev]
+python = "3.13"
+platforms = ["linux"]
+features = ["dev"]
+installer = "pip"
+
+[tool.hatch.envs.dev.scripts]
+backtester = "PYTHONPATH=src python src/backtester {args}"
+
+[tool.hatch.envs.hatch-static-analysis]
+config-path = "none"
+dependencies = ["ruff==0.14.11"]
+
+[tool.ruff]
+extend-exclude = ["coreruleset"]
+line-length = 88
+indent-width = 4
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+fixable = ["ALL"]
+
+[tool.ruff.format]
+indent-style = "space"
+quote-style = "double"
+
+[tool.ruff.lint.flake8-quotes]
+docstring-quotes = "double"
+
+[tool.pytest]
+testpaths = ["tests"]
+pythonpath = ["."]

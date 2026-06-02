@@ -1,0 +1,16 @@
+{
+    "name": "forest",
+    "description": "Forest Strategy",
+    "version": "1.0",
+    "params": {
+        "model_path": "data/forest/model.pkl",
+        "scaler_path": "data/forest/scaler_3.pkl",
+        "atr_window": 14,
+        "cooldown": 5,
+        "sl_mult": 2
+    },
+    "backtest_args": {
+        "risk_percent": 3,
+        "rrr": 3
+    }
+}

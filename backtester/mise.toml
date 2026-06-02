@@ -1,0 +1,5 @@
+min_version.soft = "2026.3.7"
+
+[tools]
+hatch = "1.16.5"
+python = "3.13.12"

@@ -1,0 +1,8 @@
+---
+alwaysApply: true
+description: "python documentation rule"
+---
+
+- numpy-style docstrings for all public functions/classes
+- Architecture Decision Records (ADRs) for major technical choices
+- Update documentation before merging code changes

@@ -1,0 +1,12 @@
+{
+  "name": "meta",
+  "description": "Meta Liquidity Hunter",
+  "version": "1.0",
+  "params": {
+    "strategy": "liq_hunter",
+    "study_log": "liq_hunter.log",
+    "study_name": "liq_hunter",
+    "enough_max_min_per_month_return": -10,
+    "enough_min_total_return": 5
+  }
+}

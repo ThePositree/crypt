@@ -1,0 +1,18 @@
+{
+    "name": "som",
+    "description": "SOM Strategy",
+    "version": "1.0",
+    "params": {
+        "som_path": "data/som/som_2.pkl",
+        "scaler_path": "data/som/scaler_2.pkl",
+        "dens_map_path": "data/som/dens_map_2.pkl",
+        "atr_window": 14,
+        "dens_threshold": 0.4,
+        "cooldown": 5,
+        "sl_mult": 2
+    },
+    "backtest_args": {
+        "risk_percent": 1,
+        "rrr": 3
+    }
+}

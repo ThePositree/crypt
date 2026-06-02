@@ -1,0 +1,22 @@
+---
+alwaysApply: true
+description: "commit style convention"
+---
+
+```
+git commit -m "type: brief description
+
+- Detailed bullet point 1
+- Detailed bullet point 2
+- Detailed bullet point 3
+
+Changelog:
+- file1.py: specific change description
+- file2.py: another change description"
+```
+
+- Types: feat, fix, refactor, test, docs, chore
+- English only for commit messages
+- Detailed body with bullet points explaining changes
+- Changelog section listing specific file changes
+- Conventional commits format for automated versioning

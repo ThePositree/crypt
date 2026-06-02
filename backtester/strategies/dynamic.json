@@ -1,0 +1,38 @@
+{
+  "name": "dynamic",
+  "description": "dynamic",
+  "version": "1.0",
+  "params": {
+    "n_long_conditions": 2,
+    "n_short_conditions": 3,
+    "long_threshold": 2.4654601759613057,
+    "short_threshold": 2.036785587508234,
+    "long_cond_idx_0": 3,
+    "long_ma_crossover_down_fast_len_0": 17,
+    "long_ma_crossover_down_slow_len_0": 33,
+    "long_weight_0": 1.6486486993548561,
+    "long_cond_idx_1": 7,
+    "long_adx_strong_threshold_1": 34,
+    "long_adx_strong_length_1": 12,
+    "long_weight_1": 0.9693407635614462,
+    "short_cond_idx_0": 6,
+    "short_volume_spike_multiplier_0": 1.6537181018745144,
+    "short_volume_spike_ma_length_0": 25,
+    "short_weight_0": 0.18795001320833987,
+    "short_cond_idx_1": 6,
+    "short_volume_spike_multiplier_1": 2.546611825302702,
+    "short_volume_spike_ma_length_1": 25,
+    "short_weight_1": 0.826512938439431,
+    "short_cond_idx_2": 1,
+    "short_rsi_overbought_threshold_2": 90,
+    "short_rsi_overbought_lookback_2": 7,
+    "short_weight_2": 1.360536334441458,
+    "sl_method": 1,
+    "sl_atr_length": 18,
+    "sl_atr_multiplier": 3.1239717108118916
+  },
+  "backtest_args": {
+    "risk_percent": 8.29926627750941,
+    "rrr": 3.9450135622603852
+  }
+}

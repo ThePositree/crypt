@@ -1,0 +1,12 @@
+{
+  "name": "meta",
+  "description": "Meta Micro Imba",
+  "version": "1.0",
+  "params": {
+    "strategy": "micro_imba",
+    "study_log": "micro_imba.log",
+    "study_name": "micro_imba",
+    "enough_max_min_per_month_return": -5,
+    "enough_min_total_return": 10
+  }
+}

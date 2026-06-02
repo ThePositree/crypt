@@ -1,0 +1,748 @@
+from __future__ import annotations
+
+from crypt.aggregator.ensemble import aggregate
+from crypt.aggregator.weights import SCORING_ENGINES, WeightsConfig
+from crypt.data.context import _df_to_ls_ratio, _df_to_oi, _df_to_taker_volume
+from crypt.engines.derivatives import DerivativesEngine
+from crypt.engines.meanrev import MeanRevEngine
+from crypt.engines.regime import RegimeEngine
+from crypt.engines.smc_liquidity import SMCLiquidityEngine
+from crypt.engines.smc_order_blocks import SMCOrderBlocksEngine
+from crypt.engines.smc_structure import SMCStructureEngine
+from crypt.engines.trend import TrendEngine
+from crypt.engines.volatility import VolatilityEngine
+from crypt.models import (
+    EvaluationContext,
+    Regime,
+    Signal,
+    Timeframe,
+    Verdict,
+    VolRegime,
+)
+from crypt.structure.smc import (
+    BEARISH,
+    BULLISH,
+    SMCOrderBlock,
+    SMCPivot,
+    SMCState,
+    analyse_smc_cached,
+)
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Literal
+
+import numpy as np
+import optuna
+import pandas as pd
+from tqdm import tqdm
+
+from backtester.data_contracts import StrategyData, StrategyInput
+from backtester.strategy import BaseStrategy
+
+_TIMEFRAME_CLOSE_DELTA = {
+    Timeframe.M15: timedelta(minutes=15),
+    Timeframe.H1: timedelta(hours=1),
+    Timeframe.H4: timedelta(hours=4),
+    Timeframe.D1: timedelta(days=1),
+}
+_CANDLE_LIMIT = 250
+_OI_LIMIT = 200
+_LS_LIMIT = 100
+_TAKER_LIMIT = 100
+_DEFAULT_SL_ATR_MULT = 2.0
+_DEFAULT_SL_ATR_BUFFER_MULT = 0.10
+_DEFAULT_ALLOW_ATR_SL_FALLBACK = False
+_DEFAULT_MIN_CONFIDENCE: int | None = None
+_H4 = timedelta(hours=4)
+_MAX_SWEEP_AGE_BARS = 3
+_MAX_SL_DISTANCE_ATR = 8.0
+
+_StopAnchorType = Literal[
+    "order_block", "liquidity_sweep", "pivot", "atr_fallback", "none"
+]
+
+
+@dataclass(frozen=True)
+class TimeframeRoleConfig:
+    context: tuple[Timeframe, ...]
+    setup: tuple[Timeframe, ...]
+    trigger: Timeframe
+    execution: Timeframe
+
+
+@dataclass(frozen=True)
+class _MTFDecision:
+    verdict: Verdict
+    signal_override: int | None
+    trigger_type: str
+    context_bias: str
+    setup_direction: str
+    rationale_suffix: str | None = None
+
+
+@dataclass(frozen=True)
+class _StopPlan:
+    signal: int
+    sl_price: float
+    anchor_type: _StopAnchorType
+    anchor_level: float | None
+    anchor_known_at: datetime | None
+    distance_atr: float | None
+    rationale_suffix: str | None = None
+
+
+class CryptEnsembleStrategy(BaseStrategy):
+    """Donor adapter that runs the existing crypt ensemble as one strategy."""
+
+    def __init__(self, params: dict[str, Any]):
+        super().__init__(params)
+        self.sl_atr_mult = float(params.get("sl_atr_mult", _DEFAULT_SL_ATR_MULT))
+        self.sl_atr_buffer_mult = float(
+            params.get("sl_atr_buffer_mult", _DEFAULT_SL_ATR_BUFFER_MULT)
+        )
+        self.allow_atr_sl_fallback = bool(
+            params.get("allow_atr_sl_fallback", _DEFAULT_ALLOW_ATR_SL_FALLBACK)
+        )
+        self.min_confidence = _optional_int(
+            params.get("min_confidence", _DEFAULT_MIN_CONFIDENCE)
+        )
+        self.timeframes = _timeframe_role_config(params.get("timeframes"))
+        self.progress = bool(params.get("progress", True))
+        self.weights = WeightsConfig.load(_weights_path(params.get("weights_path")))
+        self._trend = TrendEngine()
+        self._meanrev = MeanRevEngine()
+        self._derivatives = DerivativesEngine()
+        self._smc_structure = SMCStructureEngine()
+        self._smc_order_blocks = SMCOrderBlocksEngine()
+        self._smc_liquidity = SMCLiquidityEngine()
+        self._volatility = VolatilityEngine()
+        self._regime = RegimeEngine()
+
+    def generate(self, data: StrategyInput) -> pd.DataFrame:
+        strategy_data = _coerce_strategy_data(data)
+        primary = strategy_data.primary.sort_index().copy()
+        out = primary.copy()
+        tick_index = _tick_index_from_open_index(primary.index, self.timeframes.execution)
+        out.index = tick_index
+        out.index.name = "tick_time"
+
+        crypt_candles = {
+            tf: _to_crypt_candles(_candle_frame(strategy_data, tf))
+            for tf in (Timeframe.H4, Timeframe.H1, Timeframe.D1, Timeframe.M15)
+        }
+        if self.timeframes.execution == Timeframe.H4 and crypt_candles[Timeframe.H4].empty:
+            crypt_candles[Timeframe.H4] = _to_crypt_candles(primary)
+        extras = strategy_data.extras
+        symbol = str(strategy_data.metadata.get("symbol", "UNKNOWN"))
+        atr = _atr14_from_donor_frame(primary).reindex(primary.index)
+
+        rows: list[dict[str, object]] = []
+        bars = zip(primary.index, tick_index, strict=True)
+        for open_time, tick_time in tqdm(
+            bars,
+            total=len(primary),
+            desc="crypt_ensemble",
+            unit="bar",
+            disable=not self.progress,
+        ):
+            try:
+                ctx = _build_context(
+                    symbol=symbol,
+                    tick_time=tick_time.to_pydatetime(),
+                    candles=crypt_candles,
+                    extras=extras,
+                )
+                mtf = self._mtf_decision(ctx, primary.loc[open_time])
+                stop_state = _structural_stop_state(ctx)
+                sl_source_tf = Timeframe.H4
+                rows.append(
+                    _row_from_verdict(
+                        mtf.verdict,
+                        primary.loc[open_time],
+                        atr.loc[open_time],
+                        self.sl_atr_mult,
+                        self.sl_atr_buffer_mult,
+                        self.allow_atr_sl_fallback,
+                        self.min_confidence,
+                        stop_state,
+                        tick_time.to_pydatetime(),
+                        signal_override=mtf.signal_override,
+                        rationale_suffix=mtf.rationale_suffix,
+                        context_tf=",".join(tf.value for tf in self.timeframes.context),
+                        setup_tf=",".join(tf.value for tf in self.timeframes.setup),
+                        trigger_tf=self.timeframes.trigger.value,
+                        context_bias=mtf.context_bias,
+                        setup_direction=mtf.setup_direction,
+                        trigger_type=mtf.trigger_type,
+                        trigger_known_at=tick_time.to_pydatetime(),
+                        sl_source_tf=sl_source_tf.value,
+                    )
+                )
+            except Exception as exc:
+                rows.append(
+                    _neutral_row(f"crypt_ensemble error: {exc}", primary.loc[open_time])
+                )
+
+        signal_df = pd.DataFrame(rows, index=tick_index)
+        for col in signal_df.columns:
+            out.loc[:, col] = signal_df[col].to_numpy()
+        return out
+
+    def _evaluate_context(self, ctx: EvaluationContext) -> Verdict:
+        vol_signal: Signal = self._volatility.evaluate(ctx)
+        vol_regime: VolRegime = str(vol_signal.meta.get("vol_regime", "normal"))  # type: ignore[assignment]
+        ctx.vol_regime = vol_regime
+
+        regime_signal: Signal = self._regime.evaluate(ctx)
+        regime_str = str(regime_signal.meta.get("regime", Regime.RANGING.value))
+        regime = Regime(regime_str)
+
+        all_signals = [
+            self._trend.evaluate(ctx),
+            self._meanrev.evaluate(ctx),
+            self._derivatives.evaluate(ctx),
+            self._smc_structure.evaluate(ctx),
+            self._smc_order_blocks.evaluate(ctx),
+            self._smc_liquidity.evaluate(ctx),
+            vol_signal,
+            regime_signal,
+        ]
+        verdict = aggregate(
+            signals=all_signals,
+            regime=regime,
+            weights_cfg=self.weights,
+            symbol=ctx.symbol,
+            vol_regime=vol_regime,
+        )
+        return verdict.model_copy(update={"produced_at": ctx.tick_time})
+
+    def _mtf_decision(self, ctx: EvaluationContext, price_row: pd.Series) -> _MTFDecision:
+        verdict = self._evaluate_context(ctx)
+        setup_direction = verdict.decision
+        context_bias = _context_bias(ctx)
+        if self.timeframes.execution == Timeframe.H4:
+            return _MTFDecision(
+                verdict=verdict,
+                signal_override=None,
+                trigger_type="h4_close",
+                context_bias=context_bias,
+                setup_direction=setup_direction,
+            )
+
+        signal = {"BUY": 1, "SELL": -1, "HOLD": 0}.get(verdict.decision, 0)
+        if signal == 0:
+            return _MTFDecision(
+                verdict=verdict,
+                signal_override=0,
+                trigger_type="setup_neutral",
+                context_bias=context_bias,
+                setup_direction=setup_direction,
+                rationale_suffix="MTF neutralized: H4 setup is neutral",
+            )
+        if _context_opposes_signal(context_bias, signal):
+            return _MTFDecision(
+                verdict=verdict,
+                signal_override=0,
+                trigger_type="context_opposite",
+                context_bias=context_bias,
+                setup_direction=setup_direction,
+                rationale_suffix="MTF neutralized: D1 context is opposite",
+            )
+        if not _trigger_candle_confirms(price_row, signal):
+            return _MTFDecision(
+                verdict=verdict,
+                signal_override=0,
+                trigger_type="trigger_rejected",
+                context_bias=context_bias,
+                setup_direction=setup_direction,
+                rationale_suffix="MTF neutralized: trigger candle did not confirm setup",
+            )
+        return _MTFDecision(
+            verdict=verdict,
+            signal_override=signal,
+            trigger_type=f"{self.timeframes.trigger.value}_candle_confirm",
+            context_bias=context_bias,
+            setup_direction=setup_direction,
+        )
+
+    def suggest_params(self, trial: optuna.Trial) -> dict[str, Any]:
+        return {
+            "sl_atr_mult": trial.suggest_float("sl_atr_mult", 1.0, 3.5),
+            "sl_atr_buffer_mult": trial.suggest_float("sl_atr_buffer_mult", 0.05, 0.30),
+            "min_confidence": trial.suggest_int("min_confidence", 0, 75, step=5),
+        }
+
+
+def _weights_path(value: object) -> Path:
+    if value is not None:
+        return Path(str(value))
+    repo_root = Path(__file__).resolve().parents[4]
+    return repo_root / "config" / "weights.yaml"
+
+
+def _optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    if not isinstance(value, int | float | str | bytes | bytearray):
+        raise TypeError(f"min_confidence must be int-compatible, got {type(value).__name__}")
+    return int(value)
+
+
+def _timeframe_role_config(value: object) -> TimeframeRoleConfig:
+    if value is None:
+        return TimeframeRoleConfig(
+            context=(Timeframe.D1,),
+            setup=(Timeframe.H4,),
+            trigger=Timeframe.H4,
+            execution=Timeframe.H4,
+        )
+    if not isinstance(value, dict):
+        raise TypeError("timeframes must be an object")
+    context_raw = value.get("context", [Timeframe.D1.value])
+    setup_raw = value.get("setup", [Timeframe.H4.value])
+    return TimeframeRoleConfig(
+        context=tuple(_parse_timeframe(item) for item in _as_list(context_raw)),
+        setup=tuple(_parse_timeframe(item) for item in _as_list(setup_raw)),
+        trigger=_parse_timeframe(value.get("trigger", Timeframe.H4.value)),
+        execution=_parse_timeframe(value.get("execution", value.get("trigger", Timeframe.H4.value))),
+    )
+
+
+def _as_list(value: object) -> list[object]:
+    if isinstance(value, list | tuple):
+        return list(value)
+    return [value]
+
+
+def _parse_timeframe(value: object) -> Timeframe:
+    text = str(value).strip().lower()
+    aliases = {
+        "m15": Timeframe.M15,
+        "15m": Timeframe.M15,
+        "h1": Timeframe.H1,
+        "1h": Timeframe.H1,
+        "h4": Timeframe.H4,
+        "4h": Timeframe.H4,
+        "d1": Timeframe.D1,
+        "1d": Timeframe.D1,
+    }
+    if text not in aliases:
+        raise ValueError(f"unsupported timeframe: {value!r}")
+    return aliases[text]
+
+
+def _coerce_strategy_data(data: StrategyInput) -> StrategyData:
+    if isinstance(data, StrategyData):
+        return data
+    return StrategyData(
+        primary=data,
+        candles={Timeframe.H4.name: data},
+        extras={},
+        metadata={"symbol": "UNKNOWN", "exchange": "unknown"},
+    )
+
+
+def _candle_frame(data: StrategyData, timeframe: Timeframe) -> pd.DataFrame:
+    return data.candles.get(
+        timeframe.name, data.candles.get(timeframe.value, pd.DataFrame())
+    )
+
+
+def _tick_index_from_open_index(
+    index: pd.Index, timeframe: Timeframe
+) -> pd.DatetimeIndex:
+    dt_index = pd.to_datetime(index, utc=True)
+    return pd.DatetimeIndex(dt_index + _TIMEFRAME_CLOSE_DELTA[timeframe])
+
+
+def _to_crypt_candles(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return pd.DataFrame(columns=["open_time", "o", "h", "l", "c", "volume"])
+    frame = df.copy()
+    if "open_time" not in frame.columns:
+        frame.loc[:, "open_time"] = pd.to_datetime(frame.index, utc=True)
+    else:
+        frame.loc[:, "open_time"] = pd.to_datetime(frame["open_time"], utc=True)
+
+    rename = {
+        "open": "o",
+        "high": "h",
+        "low": "l",
+        "close": "c",
+    }
+    frame = frame.rename(columns=rename)
+    required = ["open_time", "o", "h", "l", "c", "volume"]
+    missing = [col for col in required if col not in frame.columns]
+    if missing:
+        return pd.DataFrame(columns=required)
+    result = frame.loc[:, required].copy()
+    result.index.name = None
+    for col in ("o", "h", "l", "c", "volume"):
+        result.loc[:, col] = result[col].astype(float)
+    return result.sort_values("open_time").reset_index(drop=True)
+
+
+def _closed_candles(
+    df: pd.DataFrame, timeframe: Timeframe, tick_time: datetime
+) -> pd.DataFrame:
+    if df.empty:
+        return df
+    open_time = pd.to_datetime(df["open_time"], utc=True)
+    tick = pd.Timestamp(tick_time)
+    if tick.tzinfo is None:
+        tick = tick.tz_localize("UTC")
+    close_time = open_time + _TIMEFRAME_CLOSE_DELTA[timeframe]
+    return df.loc[close_time <= tick].tail(_CANDLE_LIMIT).reset_index(drop=True)
+
+
+def _filter_ts(df: pd.DataFrame, tick_time: datetime, limit: int) -> pd.DataFrame:
+    if df.empty or "ts" not in df.columns:
+        return pd.DataFrame()
+    tick = pd.Timestamp(tick_time)
+    if tick.tzinfo is None:
+        tick = tick.tz_localize("UTC")
+    frame = df.copy()
+    frame.loc[:, "ts"] = pd.to_datetime(frame["ts"], utc=True)
+    return frame.loc[frame["ts"] < tick].tail(limit).reset_index(drop=True)
+
+
+def _build_context(
+    *,
+    symbol: str,
+    tick_time: datetime,
+    candles: dict[Timeframe, pd.DataFrame],
+    extras: dict[str, pd.DataFrame],
+) -> EvaluationContext:
+    closed = {
+        tf: frame
+        for tf, df in candles.items()
+        if not (frame := _closed_candles(df, tf, tick_time)).empty
+    }
+    oi_df = _filter_ts(extras.get("oi", pd.DataFrame()), tick_time, _OI_LIMIT)
+    ls_df = _filter_ts(extras.get("ls_ratio", pd.DataFrame()), tick_time, _LS_LIMIT)
+    taker_df = _filter_ts(
+        extras.get("taker_volume", pd.DataFrame()), tick_time, _TAKER_LIMIT
+    )
+    return EvaluationContext(
+        symbol=symbol,
+        tick_time=tick_time,
+        candles=closed,
+        oi=_df_to_oi(oi_df, symbol),
+        ls_ratio=_df_to_ls_ratio(ls_df, symbol),
+        taker_volume=_df_to_taker_volume(taker_df, symbol),
+    )
+
+
+def _context_bias(ctx: EvaluationContext) -> str:
+    d1 = ctx.candles.get(Timeframe.D1)
+    if d1 is None or d1.empty:
+        return "neutral"
+    state = analyse_smc_cached(d1, tick_time=ctx.tick_time)
+    if BEARISH in (state.swing_bias, state.internal_bias):
+        return "bearish"
+    if BULLISH in (state.swing_bias, state.internal_bias):
+        return "bullish"
+    last = d1.iloc[-1]
+    close = float(last["c"])
+    open_price = float(last["o"])
+    if close > open_price:
+        return "bullish"
+    if close < open_price:
+        return "bearish"
+    return "neutral"
+
+
+def _context_opposes_signal(context_bias: str, signal: int) -> bool:
+    return (signal == 1 and context_bias == "bearish") or (
+        signal == -1 and context_bias == "bullish"
+    )
+
+
+def _trigger_candle_confirms(price_row: pd.Series, signal: int) -> bool:
+    close = float(price_row["close"])
+    open_price = float(price_row["open"])
+    if signal == 1:
+        return close > open_price
+    if signal == -1:
+        return close < open_price
+    return False
+
+
+def _atr14_from_donor_frame(df: pd.DataFrame) -> pd.Series:
+    high = df["high"].astype(float)
+    low = df["low"].astype(float)
+    close = df["close"].astype(float)
+    prev_close = close.shift(1)
+    tr = pd.concat(
+        [high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1
+    ).max(axis=1)
+    return tr.rolling(14, min_periods=1).mean()
+
+
+def _structural_stop_state(ctx: EvaluationContext) -> SMCState:
+    h4 = ctx.candles.get(Timeframe.H4)
+    if h4 is None or h4.empty:
+        return SMCState()
+    return analyse_smc_cached(h4, tick_time=ctx.tick_time)
+
+
+def _row_from_verdict(
+    verdict: Verdict,
+    price_row: pd.Series,
+    atr: float,
+    sl_atr_mult: float,
+    sl_atr_buffer_mult: float,
+    allow_atr_sl_fallback: bool,
+    min_confidence: int | None,
+    stop_state: SMCState,
+    tick_time: datetime,
+    *,
+    signal_override: int | None = None,
+    rationale_suffix: str | None = None,
+    context_tf: str = "1d",
+    setup_tf: str = "4h",
+    trigger_tf: str = "4h",
+    context_bias: str = "neutral",
+    setup_direction: str = "HOLD",
+    trigger_type: str = "h4_close",
+    trigger_known_at: datetime | None = None,
+    sl_source_tf: str = "4h",
+) -> dict[str, object]:
+    signal = {"BUY": 1, "SELL": -1, "HOLD": 0}.get(verdict.decision, 0)
+    if signal_override is not None:
+        signal = signal_override
+    if min_confidence is not None and verdict.confidence < min_confidence:
+        signal = 0
+    close = float(price_row["close"])
+    atr_value = float(atr) if np.isfinite(atr) else 0.0
+    stop = _plan_structural_stop(
+        signal=signal,
+        entry=close,
+        atr=atr_value,
+        sl_atr_mult=sl_atr_mult,
+        sl_atr_buffer_mult=sl_atr_buffer_mult,
+        allow_atr_sl_fallback=allow_atr_sl_fallback,
+        state=stop_state,
+        tick_time=tick_time,
+    )
+    row: dict[str, object] = {
+        "signal": stop.signal,
+        "sl_price": float(stop.sl_price),
+        "entry_price": close,
+        "confidence": verdict.confidence,
+        "score": verdict.score,
+        "regime": verdict.regime.value,
+        "decision": verdict.decision,
+        "rationale": _append_rationale(
+            _append_rationale(verdict.rationale, rationale_suffix),
+            stop.rationale_suffix,
+        ),
+        "sl_anchor_type": stop.anchor_type,
+        "sl_anchor_level": stop.anchor_level,
+        "sl_anchor_known_at": (
+            stop.anchor_known_at.isoformat() if stop.anchor_known_at is not None else None
+        ),
+        "sl_distance_atr": stop.distance_atr,
+        "context_tf": context_tf,
+        "setup_tf": setup_tf,
+        "trigger_tf": trigger_tf,
+        "context_bias": context_bias,
+        "setup_direction": setup_direction,
+        "trigger_type": trigger_type,
+        "trigger_known_at": (
+            trigger_known_at.isoformat() if trigger_known_at is not None else None
+        ),
+        "sl_source_tf": sl_source_tf,
+    }
+    strengths = {
+        signal_obj.engine: signal_obj.strength
+        for signal_obj in verdict.breakdown
+        if signal_obj.engine in SCORING_ENGINES
+    }
+    for engine in sorted(SCORING_ENGINES):
+        row[f"strength_{engine}"] = strengths.get(engine)
+    return row
+
+
+def _plan_structural_stop(
+    *,
+    signal: int,
+    entry: float,
+    atr: float,
+    sl_atr_mult: float,
+    sl_atr_buffer_mult: float,
+    allow_atr_sl_fallback: bool,
+    state: SMCState,
+    tick_time: datetime,
+) -> _StopPlan:
+    if signal == 0:
+        return _StopPlan(0, entry, "none", None, None, None)
+    if not np.isfinite(entry) or entry <= 0:
+        return _neutral_stop(entry, "invalid entry price")
+    if not np.isfinite(atr) or atr <= 0:
+        return _neutral_stop(entry, "ATR unavailable for structural stop validation")
+
+    anchor = (
+        _order_block_anchor(state, signal, entry, tick_time)
+        or _liquidity_sweep_anchor(state, signal, entry, tick_time)
+        or _pivot_anchor(state, signal, entry, tick_time)
+    )
+    if anchor is None:
+        if allow_atr_sl_fallback:
+            sl_price = entry - sl_atr_mult * atr if signal == 1 else entry + sl_atr_mult * atr
+            return _validated_stop(
+                signal=signal,
+                entry=entry,
+                sl_price=sl_price,
+                atr=atr,
+                anchor_type="atr_fallback",
+                anchor_level=None,
+                anchor_known_at=None,
+            )
+        return _neutral_stop(entry, "no structural stop anchor")
+
+    anchor_type, level, known_at = anchor
+    buffer = max(0.0, sl_atr_buffer_mult) * atr
+    sl_price = level - buffer if signal == 1 else level + buffer
+    return _validated_stop(
+        signal=signal,
+        entry=entry,
+        sl_price=sl_price,
+        atr=atr,
+        anchor_type=anchor_type,
+        anchor_level=level,
+        anchor_known_at=known_at,
+    )
+
+
+def _order_block_anchor(
+    state: SMCState, signal: int, entry: float, tick_time: datetime
+) -> tuple[_StopAnchorType, float, datetime] | None:
+    direction = BULLISH if signal == 1 else BEARISH
+    candidates = [
+        block
+        for block in state.order_blocks
+        if block.active
+        and block.direction == direction
+        and block.known_at <= tick_time
+        and ((signal == 1 and block.low < entry) or (signal == -1 and block.high > entry))
+    ]
+    if not candidates:
+        return None
+
+    def key(block: SMCOrderBlock) -> tuple[int, int, datetime]:
+        bias_aligned = direction in (state.swing_bias, state.internal_bias)
+        swing_kind = block.kind == "swing"
+        return (1 if bias_aligned else 0, 1 if swing_kind else 0, block.known_at)
+
+    block = max(candidates, key=key)
+    return ("order_block", block.low if signal == 1 else block.high, block.known_at)
+
+
+def _liquidity_sweep_anchor(
+    state: SMCState, signal: int, entry: float, tick_time: datetime
+) -> tuple[_StopAnchorType, float, datetime] | None:
+    protective_side = "low" if signal == 1 else "high"
+    candidates = [
+        sweep
+        for sweep in state.liquidity_sweeps
+        if sweep.side == protective_side
+        and sweep.known_at <= tick_time
+        and max(0.0, (tick_time - sweep.known_at) / _H4) <= _MAX_SWEEP_AGE_BARS
+        and ((signal == 1 and sweep.level < entry) or (signal == -1 and sweep.level > entry))
+    ]
+    if not candidates:
+        return None
+    sweep = max(candidates, key=lambda item: (item.known_at, item.level_type == "swing"))
+    return ("liquidity_sweep", sweep.level, sweep.known_at)
+
+
+def _pivot_anchor(
+    state: SMCState, signal: int, entry: float, tick_time: datetime
+) -> tuple[_StopAnchorType, float, datetime] | None:
+    protective_side = "low" if signal == 1 else "high"
+    candidates = [
+        pivot
+        for pivot in state.pivots
+        if pivot.side == protective_side
+        and pivot.known_at <= tick_time
+        and ((signal == 1 and pivot.level < entry) or (signal == -1 and pivot.level > entry))
+    ]
+    if not candidates:
+        return None
+
+    def key(pivot: SMCPivot) -> tuple[int, datetime, float]:
+        return (1 if pivot.kind == "swing" else 0, pivot.known_at, -abs(entry - pivot.level))
+
+    pivot = max(candidates, key=key)
+    return ("pivot", pivot.level, pivot.known_at)
+
+
+def _validated_stop(
+    *,
+    signal: int,
+    entry: float,
+    sl_price: float,
+    atr: float,
+    anchor_type: _StopAnchorType,
+    anchor_level: float | None,
+    anchor_known_at: datetime | None,
+) -> _StopPlan:
+    if not np.isfinite(sl_price):
+        return _neutral_stop(entry, "invalid structural stop")
+    if signal == 1 and sl_price >= entry:
+        return _neutral_stop(entry, "structural stop is not below long entry")
+    if signal == -1 and sl_price <= entry:
+        return _neutral_stop(entry, "structural stop is not above short entry")
+
+    distance_atr = abs(entry - sl_price) / atr
+    if distance_atr <= 0 or distance_atr > _MAX_SL_DISTANCE_ATR:
+        return _neutral_stop(entry, "structural stop distance outside ATR guard")
+    return _StopPlan(
+        signal,
+        sl_price,
+        anchor_type,
+        anchor_level,
+        anchor_known_at,
+        round(distance_atr, 4),
+    )
+
+
+def _neutral_stop(entry: float, reason: str) -> _StopPlan:
+    return _StopPlan(0, entry, "none", None, None, None, f"SL neutralized: {reason}")
+
+
+def _append_rationale(rationale: str, suffix: str | None) -> str:
+    if suffix is None:
+        return rationale
+    return f"{rationale}; {suffix}"
+
+
+def _neutral_row(reason: str, price_row: pd.Series) -> dict[str, object]:
+    close = float(price_row["close"])
+    row: dict[str, object] = {
+        "signal": 0,
+        "sl_price": close,
+        "entry_price": close,
+        "confidence": 0,
+        "score": 0.0,
+        "regime": Regime.RANGING.value,
+        "decision": "HOLD",
+        "rationale": reason,
+        "sl_anchor_type": "none",
+        "sl_anchor_level": None,
+        "sl_anchor_known_at": None,
+        "sl_distance_atr": None,
+        "context_tf": "1d",
+        "setup_tf": "4h",
+        "trigger_tf": "4h",
+        "context_bias": "neutral",
+        "setup_direction": "HOLD",
+        "trigger_type": "error",
+        "trigger_known_at": None,
+        "sl_source_tf": "4h",
+    }
+    for engine in sorted(SCORING_ENGINES):
+        row[f"strength_{engine}"] = None
+    return row

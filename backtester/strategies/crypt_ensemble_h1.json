@@ -1,0 +1,23 @@
+{
+  "name": "crypt_ensemble",
+  "version": "0.2.0-mtf-h1",
+  "params": {
+    "sl_atr_mult": 2.0,
+    "sl_atr_buffer_mult": 0.1,
+    "allow_atr_sl_fallback": false,
+    "progress": true,
+    "timeframes": {
+      "context": ["1d"],
+      "setup": ["4h"],
+      "trigger": "1h",
+      "execution": "1h"
+    },
+    "trigger_rules": ["h1_candle_confirm"]
+  },
+  "backtest_args": {
+    "ttl": 24,
+    "rrr": 1.5,
+    "risk_percent": 1.0,
+    "risk_base_period": "monthly"
+  }
+}

@@ -1,0 +1,17 @@
+{
+    "name": "fvg_imbalance",
+    "description": "FVG Imbalance Strategy",
+    "version": "1.0",
+    "params": {
+        "lookback_hours": 30,
+        "sl_buffer_pct": 0,
+        "min_fvg_range": 0.7,
+        "structure_timeframe": 30,
+        "max_fvg_count": 1,
+        "risk_reward_ratio_threshold": 2.0
+    },
+    "backtest_args": {
+        "risk_percent": 1.1,
+        "rrr": 4.7
+    }
+}

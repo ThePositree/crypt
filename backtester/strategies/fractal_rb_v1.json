@@ -1,0 +1,26 @@
+{
+    "name": "fractal_rb",
+    "version": "1.0",
+    "params": {
+        "fractal_bars": 5,
+        "min_wick_pips": 775.0,
+        "pips_scale": 2000
+    },
+    "description": "Port of TradingView Fractal+RB strategy. Uses fractal levels and two-bar rejection blocks with wick-based filters. Daily profit/loss limits and session filters are handled by the execution simulator, not in the strategy.",
+    "backtest_args": {
+        "capital": 10000,
+        "is_isolated_futures": true,
+        "ttl": 40,
+        "max_positions": 1,
+        "max_allowed_leverage": 100,
+        "taker_fee": 0.001,
+        "maker_fee": 0.0002,
+        "risk_percent": 0.5,
+        "rrr": 2.0,
+        "max_daily_profit": 2,
+        "max_daily_loss": 1,
+        "trading_begin": 17,
+        "trading_end": 23
+    }
+}
+

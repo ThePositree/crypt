@@ -1,0 +1,46 @@
+{
+    "name": "phase_routed",
+    "version": "1.0",
+    "params": {
+        "model_bull": {
+            "fractal_bars": 5,
+            "min_wick_pips": 850.0,
+            "pips_scale": 15000
+        },
+        "model_flat": {
+            "fractal_bars": 5,
+            "min_wick_pips": 625.0,
+            "pips_scale": 1000
+        },
+        "model_bear": {
+            "fractal_bars": 3,
+            "min_wick_pips": 400.0,
+            "pips_scale": 3000
+        },
+        "timeframe": 30,
+        "trend": {
+            "atr_period": 10,
+            "multiplier": 1.2,
+            "adx_period": 10,
+            "adx_thresh": 30.0,
+            "use_adx_filter": true
+        }
+    },
+    "description": "Phase Routed Strategy that uses fractal levels and two-bar rejection blocks with wick-based filters. Daily profit/loss limits and session filters are handled by the execution simulator, not in the strategy.",
+    "backtest_args": {
+        "capital": 10000,
+        "is_isolated_futures": true,
+        "ttl": 30,
+        "max_positions": 1,
+        "max_allowed_leverage": 25,
+        "taker_fee": 0.001,
+        "maker_fee": 0.0002,
+        "risk_percent": 0.5,
+        "rrr": 4.0,
+        "max_daily_profit": 10,
+        "max_daily_loss": 4,
+        "trading_begin": 19,
+        "trading_end": 23
+    }
+}
+
