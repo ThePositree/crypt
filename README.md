@@ -142,7 +142,17 @@ Experimental H1 MTF mode keeps D1/H4 as context/setup but uses H1 as the
 primary execution frame. The current diagnostic H1 config uses
 `max_sl_distance_atr = 4.0` to reject structural stops wider than 4 execution
 ATR; this is an explicit setup-geometry tuning knob, not a calibrated final
-parameter.
+parameter. The H1 diagnostic config also enables `optimized_windows`, a
+reference-vs-optimized parity-tested cache for closed candle/extras window
+selection; set it to `false` in the strategy params to force the original
+per-bar reference path. Per ADR-0022, H1 MTF mode also treats the H4 setup
+verdict as a snapshot at the latest closed H4 setup time and reuses it across
+H1 trigger bars until the next H4 close. The donor optimizer can now cache
+generated `crypt_ensemble` signal frames, so repeated execution-only
+`rrr`/`ttl` trials avoid rerunning the full ensemble. The optimizer CLI also
+reuses the cached best signal frame when exporting `best_run/`, so
+execution-only runs should pay for only one signal build per strategy-param
+set.
 
 ```bash
 PYTHONPATH=src:../src uv run --extra dev backtester run \
@@ -154,6 +164,51 @@ PYTHONPATH=src:../src uv run --extra dev backtester run \
     --to 2025-02-01 \
     --strategy strategies/crypt_ensemble_h1.json \
     --output results/crypt_ensemble_sol_h1
+```
+
+Bounded H1 setup tuning can use the donor optimizer directly:
+
+```bash
+MPLCONFIGDIR=/tmp/matplotlib \
+PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache \
+uv run --extra dev backtester optimize \
+    --data-source crypt-parquet \
+    --data-dir ../data \
+    --primary-timeframe 1h \
+    --symbol SOL-USDT-SWAP \
+    --from 2025-01-01 \
+    --to 2025-02-01 \
+    --strategy strategies/crypt_ensemble_h1.json \
+    --output results/crypt_ensemble_sol_h1_optuna \
+    --trials 25 \
+    --target total_return_pct \
+    --rrr-low 1.0 --rrr-high 2.0 --rrr-step 0.25 \
+    --ttl-low 18 --ttl-high 42 --ttl-step 6 \
+    --risk-percent 1.0 \
+    --no-strategy-param-search \
+    --no-daily-limit-search \
+    --no-trading-window-search \
+    --export-best-run
+```
+
+The optimizer writes `trials.csv`, `best_trial.json`, the Optuna journal log,
+and donor `best_run/` diagnostics under a timestamped output directory.
+
+For cheaper fixed-candidate checks across several bounded windows, use
+`compare-fixed`. With no `--window` options it compares SOL January/February/
+March 2025 and TON January/February 2025 using the fixed execution candidate
+(`rrr = 1.25`, `ttl = 36`, `risk_percent = 1.0`) and writes `windows.csv`,
+`windows.md`, and per-window donor run artifacts under `runs/<label>/`.
+
+```bash
+PYTHONPATH=src:../src uv run --extra dev backtester compare-fixed \
+    --data-dir ../data \
+    --primary-timeframe 1h \
+    --strategy strategies/crypt_ensemble_h1.json \
+    --output results/crypt_ensemble_h1_fixed \
+    --rrr 1.25 \
+    --ttl 36 \
+    --risk-percent 1.0
 ```
 
 Use `--from` / `--to` for bounded donor `crypt-parquet` smokes before running

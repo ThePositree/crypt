@@ -55,6 +55,7 @@ _DEFAULT_SL_ATR_BUFFER_MULT = 0.10
 _DEFAULT_ALLOW_ATR_SL_FALLBACK = False
 _DEFAULT_MIN_CONFIDENCE: int | None = None
 _DEFAULT_MAX_SL_DISTANCE_ATR = 8.0
+_DEFAULT_OPTIMIZED_SETUP_SNAPSHOTS = True
 _H4 = timedelta(hours=4)
 _MAX_SWEEP_AGE_BARS = 3
 
@@ -112,6 +113,10 @@ class CryptEnsembleStrategy(BaseStrategy):
         )
         self.timeframes = _timeframe_role_config(params.get("timeframes"))
         self.progress = bool(params.get("progress", True))
+        self.optimized_windows = bool(params.get("optimized_windows", False))
+        self.optimized_setup_snapshots = bool(
+            params.get("optimized_setup_snapshots", _DEFAULT_OPTIMIZED_SETUP_SNAPSHOTS)
+        )
         self.weights = WeightsConfig.load(_weights_path(params.get("weights_path")))
         self._trend = TrendEngine()
         self._meanrev = MeanRevEngine()
@@ -144,8 +149,14 @@ class CryptEnsembleStrategy(BaseStrategy):
         extras = strategy_data.extras
         symbol = str(strategy_data.metadata.get("symbol", "UNKNOWN"))
         atr = _atr14_from_donor_frame(primary).reindex(primary.index)
+        window_cache = (
+            _ContextWindowCache(candles=crypt_candles, extras=extras)
+            if self.optimized_windows
+            else None
+        )
 
         rows: list[dict[str, object]] = []
+        setup_snapshot_cache: dict[tuple[str, datetime, datetime | None], Verdict] = {}
         bars = zip(primary.index, tick_index, strict=True)
         for open_time, tick_time in tqdm(
             bars,
@@ -155,13 +166,54 @@ class CryptEnsembleStrategy(BaseStrategy):
             disable=not self.progress,
         ):
             try:
-                ctx = _build_context(
-                    symbol=symbol,
-                    tick_time=tick_time.to_pydatetime(),
-                    candles=crypt_candles,
-                    extras=extras,
-                )
-                mtf = self._mtf_decision(ctx, primary.loc[open_time])
+                tick_dt = tick_time.to_pydatetime()
+                if window_cache is None:
+                    ctx = _build_context(
+                        symbol=symbol,
+                        tick_time=tick_dt,
+                        candles=crypt_candles,
+                        extras=extras,
+                    )
+                else:
+                    ctx = window_cache.build_context(symbol=symbol, tick_time=tick_dt)
+                if self._use_setup_snapshots():
+                    setup_time = _latest_closed_time(
+                        crypt_candles[Timeframe.H4],
+                        timeframe=Timeframe.H4,
+                        tick_time=tick_dt,
+                    )
+                    setup_ctx = ctx
+                    if setup_time is not None:
+                        setup_ctx = (
+                            _build_context(
+                                symbol=symbol,
+                                tick_time=setup_time,
+                                candles=crypt_candles,
+                                extras=extras,
+                            )
+                            if window_cache is None
+                            else window_cache.build_context(
+                                symbol=symbol, tick_time=setup_time
+                            )
+                        )
+                    setup_key = (
+                        symbol,
+                        setup_time or tick_dt,
+                        _latest_closed_time(
+                            crypt_candles[Timeframe.D1],
+                            timeframe=Timeframe.D1,
+                            tick_time=setup_time or tick_dt,
+                        ),
+                    )
+                    verdict = setup_snapshot_cache.get(setup_key)
+                    if verdict is None:
+                        verdict = self._evaluate_context(setup_ctx)
+                        setup_snapshot_cache[setup_key] = verdict
+                    mtf = self._mtf_decision_from_verdict(
+                        verdict, setup_ctx, primary.loc[open_time]
+                    )
+                else:
+                    mtf = self._mtf_decision(ctx, primary.loc[open_time])
                 signal = _signal_from_verdict(
                     mtf.verdict,
                     signal_override=mtf.signal_override,
@@ -231,10 +283,22 @@ class CryptEnsembleStrategy(BaseStrategy):
         )
         return verdict.model_copy(update={"produced_at": ctx.tick_time})
 
+    def _use_setup_snapshots(self) -> bool:
+        return (
+            self.optimized_setup_snapshots
+            and self.timeframes.execution != Timeframe.H4
+            and Timeframe.H4 in self.timeframes.setup
+        )
+
     def _mtf_decision(
         self, ctx: EvaluationContext, price_row: pd.Series
     ) -> _MTFDecision:
         verdict = self._evaluate_context(ctx)
+        return self._mtf_decision_from_verdict(verdict, ctx, price_row)
+
+    def _mtf_decision_from_verdict(
+        self, verdict: Verdict, ctx: EvaluationContext, price_row: pd.Series
+    ) -> _MTFDecision:
         setup_direction = verdict.decision
         context_bias = _context_bias(ctx)
         if self.timeframes.execution == Timeframe.H4:
@@ -417,6 +481,20 @@ def _closed_candles(
     return df.loc[close_time <= tick].tail(_CANDLE_LIMIT).reset_index(drop=True)
 
 
+def _latest_closed_time(
+    df: pd.DataFrame, *, timeframe: Timeframe, tick_time: datetime
+) -> datetime | None:
+    if df.empty:
+        return None
+    open_time = pd.to_datetime(df["open_time"], utc=True)
+    tick = _utc_timestamp(tick_time)
+    close_time = pd.DatetimeIndex(open_time + _TIMEFRAME_CLOSE_DELTA[timeframe])
+    end = int(close_time.searchsorted(tick, side="right"))
+    if end <= 0:
+        return None
+    return close_time[end - 1].to_pydatetime()
+
+
 def _filter_ts(df: pd.DataFrame, tick_time: datetime, limit: int) -> pd.DataFrame:
     if df.empty or "ts" not in df.columns:
         return pd.DataFrame()
@@ -426,6 +504,92 @@ def _filter_ts(df: pd.DataFrame, tick_time: datetime, limit: int) -> pd.DataFram
     frame = df.copy()
     frame.loc[:, "ts"] = pd.to_datetime(frame["ts"], utc=True)
     return frame.loc[frame["ts"] < tick].tail(limit).reset_index(drop=True)
+
+
+class _ContextWindowCache:
+    """Pre-index closed candle and extras windows without changing semantics."""
+
+    def __init__(
+        self,
+        *,
+        candles: dict[Timeframe, pd.DataFrame],
+        extras: dict[str, pd.DataFrame],
+    ) -> None:
+        self._candles: dict[Timeframe, pd.DataFrame] = {}
+        self._candle_close_times: dict[Timeframe, pd.DatetimeIndex] = {}
+        for timeframe, frame in candles.items():
+            self._candles[timeframe] = frame
+            if frame.empty or "open_time" not in frame.columns:
+                self._candle_close_times[timeframe] = pd.DatetimeIndex([], tz="UTC")
+                continue
+            open_time = pd.to_datetime(frame["open_time"], utc=True)
+            close_time = pd.DatetimeIndex(open_time + _TIMEFRAME_CLOSE_DELTA[timeframe])
+            self._candle_close_times[timeframe] = close_time
+
+        self._extras: dict[str, pd.DataFrame] = {}
+        self._extra_times: dict[str, pd.DatetimeIndex] = {}
+        for name, frame in extras.items():
+            if frame.empty or "ts" not in frame.columns:
+                self._extras[name] = pd.DataFrame()
+                self._extra_times[name] = pd.DatetimeIndex([], tz="UTC")
+                continue
+            converted = frame.copy()
+            converted.loc[:, "ts"] = pd.to_datetime(converted["ts"], utc=True)
+            self._extras[name] = converted
+            self._extra_times[name] = pd.DatetimeIndex(converted["ts"])
+
+    def build_context(self, *, symbol: str, tick_time: datetime) -> EvaluationContext:
+        closed = {
+            timeframe: frame
+            for timeframe in self._candles
+            if not (
+                frame := self.closed_candles(timeframe=timeframe, tick_time=tick_time)
+            ).empty
+        }
+        oi_df = self.filter_extra(name="oi", tick_time=tick_time, limit=_OI_LIMIT)
+        ls_df = self.filter_extra(name="ls_ratio", tick_time=tick_time, limit=_LS_LIMIT)
+        taker_df = self.filter_extra(
+            name="taker_volume", tick_time=tick_time, limit=_TAKER_LIMIT
+        )
+        return EvaluationContext(
+            symbol=symbol,
+            tick_time=tick_time,
+            candles=closed,
+            oi=_df_to_oi(oi_df, symbol),
+            ls_ratio=_df_to_ls_ratio(ls_df, symbol),
+            taker_volume=_df_to_taker_volume(taker_df, symbol),
+        )
+
+    def closed_candles(
+        self, *, timeframe: Timeframe, tick_time: datetime
+    ) -> pd.DataFrame:
+        frame = self._candles.get(timeframe, pd.DataFrame())
+        if frame.empty:
+            return frame
+        close_times = self._candle_close_times[timeframe]
+        tick = _utc_timestamp(tick_time)
+        end = int(close_times.searchsorted(tick, side="right"))
+        start = max(0, end - _CANDLE_LIMIT)
+        return frame.iloc[start:end].reset_index(drop=True)
+
+    def filter_extra(
+        self, *, name: str, tick_time: datetime, limit: int
+    ) -> pd.DataFrame:
+        frame = self._extras.get(name, pd.DataFrame())
+        if frame.empty or name not in self._extra_times:
+            return pd.DataFrame()
+        times = self._extra_times[name]
+        tick = _utc_timestamp(tick_time)
+        end = int(times.searchsorted(tick, side="left"))
+        start = max(0, end - limit)
+        return frame.iloc[start:end].reset_index(drop=True)
+
+
+def _utc_timestamp(value: datetime) -> pd.Timestamp:
+    timestamp = pd.Timestamp(value)
+    if timestamp.tzinfo is None:
+        return timestamp.tz_localize("UTC")
+    return timestamp.tz_convert("UTC")
 
 
 def _build_context(

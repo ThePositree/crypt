@@ -60,6 +60,74 @@ ADR-0018 makes `backtester/` the canonical future M2 backtest architecture.
 ADR-0021 tracks it in this monorepo. Implementation details live in
 `docs/backtester_migration.md`.
 
+### Urgent owner-limited profitability sprint
+
+The owner has about 2-3 Codex sessions left before usage limits reset. For
+those sessions, prioritize tasks that can produce a profitable bounded
+candidate and an owner-run long backtest command. Defer low-leverage
+engineering polish unless it directly supports that outcome.
+
+- [x] **Build fixed-candidate H1 comparison across windows** — P0. Compare the
+      fixed candidate `rrr = 1.25`, `position_ttl_bars = 36`,
+      `risk_percent = 1.0`, H1 diagnostic strategy config
+      `max_sl_distance_atr = 4.0`, with strategy-param, daily-limit, and
+      trading-window search disabled. Cover completed windows (SOL January
+      2025, SOL February 2025, TON January 2025) plus at least SOL March 2025
+      and TON February 2025. Produce one table with return, profit factor, max
+      drawdown, trades, long PnL, short PnL, exit distribution, and signal
+      side counts. This may be a small tested report script/CLI if faster than
+      manual artifact stitching. Completed 2026-06-03 with
+      `backtester compare-fixed`; artifacts:
+      `/tmp/crypt_fixed_candidate_h1/20260603_134312`.
+- [x] **Select first long-run candidate from bounded evidence** — P0. If the
+      fixed candidate is positive or near break-even across most windows,
+      freeze it as candidate A. If it fails, run a tiny execution-only grid
+      over `rrr = 1.0, 1.25, 1.5` and `position_ttl_bars = 30, 36, 42` on the
+      same windows. Do not enable `--strategy-param-search` for this step.
+      Acceptance for "worth a long local run" is not final profitability; it
+      is a bounded profile with positive total return on multiple windows,
+      profit factor above 1 on most windows, drawdown not exploding, and no
+      obvious single-window overfit. Completed 2026-06-03: candidate A is the
+      fixed `rrr = 1.25`, `ttl = 36`, `risk_percent = 1.0` H1 diagnostic
+      profile. It is positive on 4/5 bounded windows but failed SOL March
+      2025; this makes it worth a long diagnostic run, not accepted
+      calibration.
+- [x] **Run minimal side-skew attribution before adding filters** — P0. For
+      the same windows, summarize H4 setup verdict side counts, H1 tradeable
+      signal side counts, structural-stop availability by side, and realized
+      PnL by side. Only if longs remain consistently harmful should the next
+      agent add an explicit side filter such as `allowed_sides = short`; that
+      change must update `docs/crypt_ensemble_mtf.md` first and include
+      focused tests. Completed 2026-06-03 at the bounded-report level:
+      `compare-fixed` exports setup verdict counts, tradeable signal side
+      counts, and realized PnL by side. Result: all windows except SOL January
+      are short-only after structural-stop/trigger filtering.
+- [x] **Prepare owner-run long backtest/Optuna command** — P0. End the sprint
+      with a single command the owner can run unattended for the 5-day limit
+      reset window. Prefer full-history execution-only evaluation of frozen
+      strategy parameters, or a bounded walk-forward batch, over broad
+      full-history strategy-param Optuna. Document expected output files,
+      monitoring commands, and how to interpret `trials.csv`, `best_trial.json`,
+      `best_run/metrics.csv`, `trade_diagnostics.csv`, and
+      `signal_diagnostics.csv`. Completed 2026-06-03: use the documented
+      `compare-fixed` command with explicit full-history `--window` entries for
+      SOL/TON to evaluate candidate A without strategy-param search.
+- [x] **Avoid broad full-history strategy-param Optuna during Codex time** —
+      P0. A curiosity run started on 2026-06-03 with full-history SOL H1,
+      `--trials 100`, `--strategy-param-search`, daily-limit search, and
+      trading-window search. Trial 0 alone took about 1h48m and returned
+      `total_return_pct = -9.47`, `max_drawdown = -24.75`, `total_trades =
+      482`. Treat this as evidence that broad full-history strategy-param
+      search is too expensive until a smaller candidate is already justified.
+      Guardrail documented 2026-06-03.
+
+- [ ] **Run tiny execution-only grid around candidate A if SOL March remains
+      the blocker** — P1. If the owner-run full-history check or the next
+      bounded pass confirms that SOL March is the main failure mode, compare
+      `rrr = 1.0, 1.25, 1.5` and `ttl = 30, 36, 42` with
+      `--no-strategy-param-search`, no daily-limit search, and no
+      trading-window search before touching strategy params or side filters.
+
 - [x] **Vend `backtester/` into crypt monorepo** — P1. Remove nested
       `backtester/.git`; commit donor sources from the `crypt` root. ADR-0021;
       docs shipped 2026-06-02. Owner completes the git add/commit after
@@ -196,24 +264,74 @@ ADR-0021 tracks it in this monorepo. Implementation details live in
       TTL exits and `profit_factor = 0.66`. A first tighter H1
       `max_sl_distance_atr = 4.0` diagnostic reduced the same January slice to
       98 trades, 37.8% TTL exits, `profit_factor = 0.97`, and
-      `total_return_pct = -0.53`; continue with `ttl` / `rrr` / trigger and
-      side-filter grids before accepting H1 metrics.
+      `total_return_pct = -0.53`. A parity-safe optimized-window rerun on
+      2026-06-03 preserved the same key metrics and reduced bounded runtime to
+      about 5 minutes 3 seconds. ADR-0022 and the optimizer signal cache now
+      make execution-only `rrr` / `ttl` Optuna trials fast after the first
+      signal build; continue with bounded optimizer diagnostics instead of
+      manual grids before accepting H1 metrics. First operator-facing SOL H1
+      12-trial slice completed 2026-06-03 at
+      `/tmp/crypt_donor_h1_mtf_optuna_cli/20260603_102446`: best in-sample
+      diagnostic was `rrr = 1.25`, `position_ttl_bars = 30`,
+      `total_return_pct = 2.46`, `profit_factor = 1.14`, max drawdown `-5.7`;
+      this must be checked on adjacent windows and non-SOL symbols before any
+      calibration acceptance. First adjacent/non-SOL pass completed
+      2026-06-03: SOL February best was `rrr = 1.25`, `ttl = 36`,
+      `total_return_pct = 13.82`, `profit_factor = 5.40`, max drawdown
+      `-1.90`, 53 short-only trades; TON January best was `rrr = 1.50`,
+      `ttl = 36`, `total_return_pct = 1.95`, `profit_factor = 1.12`, max
+      drawdown `-5.51`, 86 short-only trades. This is encouraging but not
+      accepted calibration because the side profile is unstable across
+      windows.
+- [x] **Add operator-facing bounded optimizer command for `crypt_ensemble`** —
+      P0 before broad tuning. Shipped 2026-06-03 as `backtester optimize`.
+      The command loads bounded `crypt-parquet`, preserves strategy JSON
+      params, writes `trials.csv`, `best_trial.json`, the Optuna journal log,
+      and donor `best_run/` diagnostics, and reuses cached best signals for
+      execution-only best-run export.
+- [x] **Run adjacent-window H1 optimizer diagnostics** — P0 before trusting
+      the January SOL slice. Reuse `backtester optimize` with
+      strategy-param search disabled on adjacent SOL windows and at least one
+      non-SOL symbol; compare side PnL, exit distribution, drawdown, and
+      whether the `rrr = 1.25` / `ttl = 30` result is stable. Completed first
+      pass 2026-06-03 with SOL February and TON January; XPL intentionally
+      skipped because H1 history is shorter.
+- [ ] **Run broader out-of-sample H1 optimizer diagnostics** — P0 before
+      enabling strategy-param search. Run at least SOL March 2025 and TON
+      February 2025 with strategy-param, daily-limit, and trading-window
+      search disabled. Compare each per-window Optuna best against the fixed
+      candidate `rrr = 1.25`, `position_ttl_bars = 36` so calibration is not
+      based only on in-sample best trials.
+- [ ] **Investigate H1 short-only side skew before adding filters** — P0.
+      SOL February and TON January best runs were short-only, while SOL
+      January mixed longs and shorts. Inspect whether the skew comes from H4
+      setup verdicts, D1 context filtering, structural-stop availability, or
+      the single `1h_candle_confirm` trigger before adding side-specific
+      filters.
 - [ ] **Add minimal donor Optuna support for `crypt_ensemble` parameters** —
       P0 after structural SL. Adapt the existing donor optimizer shape rather
       than adding new donor-wide semantics. Register strategy parameters:
       structural SL buffer, optional `min_confidence`, regime thresholds, and
       active OHLCV engine weights. Do not add `folds`; keep `trials` as an
       optional/defaulted run knob.
-- [ ] **Add risk/setup dimensions to donor Optuna** — P1. Later include `ttl`,
-      `rrr`, `risk_percent`, and `risk_base_period` only after the minimal
-      strategy-parameter optimizer works.
+- [x] **Add risk/setup dimensions to donor Optuna** — P1. Existing
+      `ParameterOptimizer` now supports configurable `rrr`, Optuna-controlled
+      `position_ttl_bars`, fixed or searched `risk_percent`, and preserved
+      `risk_base_period` (2026-06-03).
 - [ ] **Profile `crypt_ensemble` replay performance after parity tests** — P1.
       The straightforward engine-wired donor strategy is slow on 5545 SOL H4
       bars. Do not add caching/incremental shortcuts until tests prove outputs
       are identical to the straightforward closed-candle replay and preserve
       no-lookahead semantics. H1 stop-source selection added a second SMC pass
-      per H1 tick; the bounded January smoke now takes about 6 minutes 35
-      seconds for 745 H1 bars.
+      per H1 tick. A first parity-safe closed-window cache is implemented and
+      enabled only in the H1 diagnostic config; it reduced the bounded January
+      smoke from about 6 minutes 35 seconds to about 5 minutes 3 seconds for
+      745 H1 bars. ADR-0022 then introduced H4 setup snapshots for H1 MTF:
+      the first 745-bar signal build still took about 226.9 seconds, but
+      subsequent execution-only Optuna trials reused cached signals and
+      completed in about 0.05 seconds each. Further speedups should target the
+      first signal build, likely via indicator precomputation or more
+      granular SMC state caching.
 - [ ] **Compare risk-base periods out of sample** — P1. Monthly is the
       current `crypt_ensemble` default, but `weekly` and `backtest` should be
       compared in donor walk-forward/Optuna work before treating sizing mode

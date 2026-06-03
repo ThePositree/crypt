@@ -4,6 +4,7 @@ import os
 import click
 
 from backtester.cli_runner import (
+    OptimizerSearchArgs,
     build_backtest_args,
     build_cli_data_loader,
     build_strategy_instance,
@@ -14,6 +15,12 @@ from backtester.cli_runner import (
     make_output_folder,
     parse_utc_datetime_to_ms,
     run_backtest,
+    run_parameter_optimization,
+)
+from backtester.fixed_candidate_report import (
+    FixedCandidateParams,
+    parse_window_specs,
+    run_fixed_candidate_comparison,
 )
 
 log_level = logging.getLevelNamesMapping().get(
@@ -279,9 +286,7 @@ def run(
             bingx_symbol=bingx_symbol,
             bingx_interval=bingx_interval,
             bingx_start_time_ms=(
-                parse_utc_datetime_to_ms(bingx_start_time)
-                if bingx_start_time
-                else None
+                parse_utc_datetime_to_ms(bingx_start_time) if bingx_start_time else None
             ),
             bingx_end_time_ms=(
                 parse_utc_datetime_to_ms(bingx_end_time) if bingx_end_time else None
@@ -339,6 +344,313 @@ def run(
         create_dashboard=create_dashboard,
         logger=logger,
     )
+
+
+@cli.command()
+@click.option(
+    "--data-source",
+    type=click.Choice(["csv", "parquet", "crypt-parquet"], case_sensitive=False),
+    default="crypt-parquet",
+    help="Data source: csv, parquet, or crypt-parquet.",
+)
+@click.option("--csv", default=None, help="Path to OHLCV CSV file.")
+@click.option("--parquet", default=None, help="Path to OHLCV Parquet file.")
+@click.option("--data-dir", default=None, help="Project data directory.")
+@click.option(
+    "--primary-timeframe",
+    type=click.Choice(["1h", "4h", "1d"], case_sensitive=False),
+    default="4h",
+    help="Primary execution timeframe for crypt-parquet data.",
+)
+@click.option("--from", "from_date", default=None, help="Inclusive start UTC.")
+@click.option("--to", "to_date", default=None, help="Inclusive end UTC.")
+@click.option("--symbol", default="SYMBOL/USDT", help="Trading pair name.")
+@click.option("--strategy", required=True, help="Strategy parameters file.")
+@click.option("--output", default="results/optimization", help="Folder for results.")
+@click.option("--capital", type=float, default=10000.0, help="Initial capital.")
+@click.option("--maker-fee", type=float, default=0.0002, help="Maker fee.")
+@click.option("--taker-fee", type=float, default=0.0005, help="Taker fee.")
+@click.option("--ttl", type=int, default=20, help="Fixed TTL if no TTL range.")
+@click.option(
+    "--max-positions", type=int, default=0, help="Max simultaneous positions."
+)
+@click.option(
+    "--max-allowed-leverage", type=float, default=25.0, help="Max allowed leverage."
+)
+@click.option("--max-allowed-margin", type=float, default=1.0, help="Max margin.")
+@click.option(
+    "--risk-base-period",
+    type=click.Choice(["trade", "weekly", "monthly", "backtest"], case_sensitive=False),
+    default="trade",
+    help="Capital window used for risk sizing.",
+)
+@click.option("--ts-col", type=str, default="timestamp", help="timestamp column name")
+@click.option("--trials", type=int, default=25, help="Number of Optuna trials.")
+@click.option("--study-name", default="optimization", help="Optuna study/log name.")
+@click.option(
+    "--target",
+    type=click.Choice(
+        ["total_return_pct", "profit_factor", "sharpe_ratio", "max_drawdown"],
+        case_sensitive=False,
+    ),
+    default="total_return_pct",
+    help="Objective metric.",
+)
+@click.option("--rrr-low", type=float, default=1.0, help="RRR search low bound.")
+@click.option("--rrr-high", type=float, default=3.0, help="RRR search high bound.")
+@click.option("--rrr-step", type=float, default=0.25, help="RRR search step.")
+@click.option("--ttl-low", type=int, default=None, help="TTL search low bound.")
+@click.option("--ttl-high", type=int, default=None, help="TTL search high bound.")
+@click.option("--ttl-step", type=int, default=1, help="TTL search step.")
+@click.option(
+    "--risk-percent",
+    type=float,
+    default=1.0,
+    help="Fixed risk percent when risk search is disabled.",
+)
+@click.option("--risk-percent-low", type=float, default=None, help="Risk search low.")
+@click.option("--risk-percent-high", type=float, default=None, help="Risk search high.")
+@click.option("--risk-percent-step", type=float, default=0.1, help="Risk search step.")
+@click.option(
+    "--strategy-param-search/--no-strategy-param-search",
+    default=False,
+    help="Allow strategy.suggest_params() during optimization.",
+)
+@click.option(
+    "--daily-limit-search/--no-daily-limit-search",
+    default=False,
+    help="Optimize max daily profit/loss limits.",
+)
+@click.option(
+    "--trading-window-search/--no-trading-window-search",
+    default=False,
+    help="Optimize trading window hours.",
+)
+@click.option(
+    "--progress/--no-progress",
+    default=True,
+    help="Show Optuna progress bar.",
+)
+@click.option(
+    "--export-best-run/--no-export-best-run",
+    default=True,
+    help="Export best-run diagnostics after optimization.",
+)
+@click.option("--is-isolated-futures", is_flag=True, help="Enable isolated futures.")
+def optimize(
+    data_source: str,
+    csv: str | None,
+    parquet: str | None,
+    data_dir: str | None,
+    primary_timeframe: str,
+    from_date: str | None,
+    to_date: str | None,
+    symbol: str,
+    strategy: str,
+    output: str,
+    capital: float,
+    maker_fee: float,
+    taker_fee: float,
+    ttl: int,
+    max_positions: int,
+    max_allowed_leverage: float,
+    max_allowed_margin: float,
+    risk_base_period: str,
+    ts_col: str,
+    trials: int,
+    study_name: str,
+    target: str,
+    rrr_low: float,
+    rrr_high: float,
+    rrr_step: float,
+    ttl_low: int | None,
+    ttl_high: int | None,
+    ttl_step: int,
+    risk_percent: float,
+    risk_percent_low: float | None,
+    risk_percent_high: float | None,
+    risk_percent_step: float,
+    strategy_param_search: bool,
+    daily_limit_search: bool,
+    trading_window_search: bool,
+    progress: bool,
+    export_best_run: bool,
+    is_isolated_futures: bool,
+):
+    """Run bounded parameter optimization via the donor ParameterOptimizer."""
+    logger.info("🚀 Starting optimization via CLI...")
+    cfg = load_strategy_config(strategy, logger)
+    if cfg is None:
+        return
+    log_strategy_info(cfg, logger)
+
+    try:
+        loader = build_cli_data_loader(
+            data_source,
+            csv_path=csv,
+            parquet_path=parquet,
+            data_dir=data_dir,
+            symbol=symbol,
+            primary_timeframe=primary_timeframe,
+            start=from_date,
+            end=to_date,
+            ts_col=ts_col,
+        )
+    except ValueError as e:
+        logger.error("❌ %s", e)
+        return
+
+    df = load_ohlcv_via_loader(loader, logger=logger)
+    if df is None:
+        return
+
+    backtest_args = build_backtest_args(
+        cfg,
+        capital=capital,
+        risk_percent=risk_percent,
+        rrr=rrr_low,
+        maker_fee=maker_fee,
+        taker_fee=taker_fee,
+        ttl=ttl,
+        max_positions=max_positions,
+        max_allowed_leverage=max_allowed_leverage,
+        is_isolated_futures=is_isolated_futures,
+        max_allowed_margin=max_allowed_margin,
+        risk_base_period=risk_base_period,
+        max_daily_profit=None,
+        max_daily_loss=None,
+        trading_begin=None,
+        trading_end=None,
+    )
+    if risk_percent_low is None or risk_percent_high is None:
+        risk_percent_range = None
+    else:
+        risk_percent_range = (
+            risk_percent_low,
+            risk_percent_high,
+            risk_percent_step,
+        )
+    if ttl_low is None or ttl_high is None:
+        ttl_range = None
+    else:
+        ttl_range = (ttl_low, ttl_high, ttl_step)
+
+    output_folder = make_output_folder(output)
+    run_parameter_optimization(
+        df=df,
+        cfg=cfg,
+        backtest_args=backtest_args,
+        optimizer_args=OptimizerSearchArgs(
+            trials=trials,
+            study_name=study_name,
+            target=target,
+            show_progress=progress,
+            optimize_strategy_params=strategy_param_search,
+            risk_percent_range=risk_percent_range,
+            rrr_range=(rrr_low, rrr_high, rrr_step),
+            position_ttl_bars_range=ttl_range,
+            optimize_daily_limits=daily_limit_search,
+            optimize_trading_window=trading_window_search,
+            export_best_run=export_best_run,
+        ),
+        output_folder=output_folder,
+        logger=logger,
+    )
+
+
+@cli.command("compare-fixed")
+@click.option("--data-dir", required=True, help="Project data directory.")
+@click.option(
+    "--primary-timeframe",
+    type=click.Choice(["1h", "4h", "1d"], case_sensitive=False),
+    default="1h",
+    help="Primary execution timeframe for crypt-parquet data.",
+)
+@click.option("--strategy", required=True, help="Strategy parameters file.")
+@click.option(
+    "--window",
+    "windows",
+    multiple=True,
+    help=(
+        "Window as label:SYMBOL:YYYY-MM-DD:YYYY-MM-DD. "
+        "May be repeated; defaults to SOL Jan/Feb/Mar and TON Jan/Feb 2025."
+    ),
+)
+@click.option("--output", default="results/fixed_candidate", help="Folder for results.")
+@click.option("--capital", type=float, default=10000.0, help="Initial capital.")
+@click.option("--risk-percent", type=float, default=1.0, help="Fixed risk percent.")
+@click.option("--rrr", type=float, default=1.25, help="Fixed reward/risk ratio.")
+@click.option("--ttl", type=int, default=36, help="Fixed position TTL in bars.")
+@click.option("--maker-fee", type=float, default=0.0002, help="Maker fee.")
+@click.option("--taker-fee", type=float, default=0.0005, help="Taker fee.")
+@click.option(
+    "--max-positions", type=int, default=0, help="Max simultaneous positions."
+)
+@click.option(
+    "--max-allowed-leverage", type=float, default=25.0, help="Max allowed leverage."
+)
+@click.option("--max-allowed-margin", type=float, default=1.0, help="Max margin.")
+@click.option(
+    "--risk-base-period",
+    type=click.Choice(["trade", "weekly", "monthly", "backtest"], case_sensitive=False),
+    default="monthly",
+    help="Capital window used for risk sizing.",
+)
+@click.option("--is-isolated-futures", is_flag=True, help="Enable isolated futures.")
+def compare_fixed(
+    data_dir: str,
+    primary_timeframe: str,
+    strategy: str,
+    windows: tuple[str, ...],
+    output: str,
+    capital: float,
+    risk_percent: float,
+    rrr: float,
+    ttl: int,
+    maker_fee: float,
+    taker_fee: float,
+    max_positions: int,
+    max_allowed_leverage: float,
+    max_allowed_margin: float,
+    risk_base_period: str,
+    is_isolated_futures: bool,
+):
+    """Run fixed candidate backtests across bounded windows and summarize them."""
+    logger.info("🚀 Starting fixed-candidate comparison...")
+    cfg = load_strategy_config(strategy, logger)
+    if cfg is None:
+        return
+    log_strategy_info(cfg, logger)
+    try:
+        window_specs = parse_window_specs(windows)
+    except ValueError as e:
+        logger.error("❌ %s", e)
+        return
+
+    output_folder = make_output_folder(output)
+    summary = run_fixed_candidate_comparison(
+        windows=window_specs,
+        cfg=cfg,
+        params=FixedCandidateParams(
+            capital=capital,
+            risk_percent=risk_percent,
+            rrr=rrr,
+            ttl=ttl,
+            maker_fee=maker_fee,
+            taker_fee=taker_fee,
+            max_positions=max_positions,
+            max_allowed_leverage=max_allowed_leverage,
+            max_allowed_margin=max_allowed_margin,
+            risk_base_period=risk_base_period,
+            is_isolated_futures=is_isolated_futures,
+        ),
+        data_dir=data_dir,
+        primary_timeframe=primary_timeframe,
+        output_folder=output_folder,
+        logger=logger,
+    )
+    logger.info("Completed %d fixed-candidate windows", len(summary))
+
 
 if __name__ == "__main__":
     cli()

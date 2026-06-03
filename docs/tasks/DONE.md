@@ -4,6 +4,150 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-03 — Fixed H1 candidate A comparison
+
+- Added `backtester compare-fixed`, a bounded fixed-candidate comparison CLI
+  that runs one fixed execution profile across default SOL/TON H1 diagnostic
+  windows and exports `windows.csv`, `windows.md`, and donor per-window run
+  artifacts.
+- Ran candidate A (`rrr = 1.25`, `ttl = 36`, `risk_percent = 1.0`, current H1
+  diagnostic strategy config) across SOL January/February/March 2025 and TON
+  January/February 2025 at
+  `/tmp/crypt_fixed_candidate_h1/20260603_134312`.
+- Result: candidate A is positive on 4/5 bounded windows but fails SOL March
+  2025. It is worth a long owner-run diagnostic, not accepted calibration.
+- Prepared the owner-run full-history SOL/TON `compare-fixed` command in
+  `IN_PROGRESS.md`.
+
+Verification: targeted donor pytest `2 passed`; ruff check and format clean on
+the new compare/report command files; bounded fixed-candidate CLI completed.
+
+## 2026-06-03 — Urgent profitability sprint handoff
+
+- Captured the owner's remaining-limit constraint: roughly 2-3 Codex sessions
+  before limits reset, so the next sessions should prioritize a bounded
+  profitable candidate and a long owner-run local backtest command.
+- Added a top `IN_PROGRESS.md` handoff with next-session priorities:
+  fixed-candidate H1 comparisons, tiny execution-only grid only if needed,
+  side-skew attribution, and owner-run long-run preparation.
+- Added P0 backlog items for the same sprint and documented why broad
+  full-history SOL H1 `--strategy-param-search` Optuna is too expensive during
+  Codex time.
+
+Verification: documentation-only update; `git diff --check` passed.
+
+## 2026-06-03 — First adjacent H1 optimizer diagnostics
+
+- Inspected the SOL January optimizer best-run artifacts from
+  `/tmp/crypt_donor_h1_mtf_optuna_cli/20260603_102446`. The best trial
+  (`rrr = 1.25`, `ttl = 30`) was only mildly positive: `total_return_pct =
+  2.46`, `profit_factor = 1.14`, max drawdown `-5.7`, 97 trades; longs
+  contributed `+304.88` while shorts contributed `-58.48`.
+- Ran the same bounded execution-only optimizer search on adjacent SOL
+  February 2025:
+  `/tmp/crypt_donor_h1_mtf_optuna_sol_feb/20260603_104255`. Best trial:
+  `rrr = 1.25`, `ttl = 36`, `total_return_pct = 13.82`, `profit_factor =
+  5.40`, max drawdown `-1.90`, 53 trades, short-only.
+- Ran the same bounded execution-only optimizer search on TON January 2025:
+  `/tmp/crypt_donor_h1_mtf_optuna_ton_jan/20260603_104642`. Best trial:
+  `rrr = 1.50`, `ttl = 36`, `total_return_pct = 1.95`, `profit_factor =
+  1.12`, max drawdown `-5.51`, 86 trades, short-only.
+- Skipped XPL for this pass because its H1 history is shorter and less useful
+  for adjacent-window diagnostics.
+- Result: the first adjacent/non-SOL pass is complete, but calibration is not
+  accepted. The profile shifts from mixed long/short in SOL January to
+  short-only in SOL February and TON January.
+
+Verification: donor ruff check and format clean on changed optimizer/strategy
+paths; targeted donor pytest `29 passed`; full donor pytest `102 passed` with
+2 existing pandas warnings; SOL February and TON January bounded optimizer
+diagnostics completed and exported `best_run/` artifacts.
+
+## 2026-06-03 — Operator-facing H1 optimizer CLI
+
+- Added `backtester optimize`, an operator-facing CLI around the existing donor
+  `ParameterOptimizer`.
+- The command supports bounded `crypt-parquet` input, preserves strategy JSON
+  params, exposes `rrr`, `position_ttl_bars`, fixed/ranged `risk_percent`,
+  daily-limit, trading-window, and strategy-param search controls, and exports
+  `trials.csv`, `best_trial.json`, the Optuna journal log, and donor
+  `best_run/` diagnostics.
+- Fixed fixed-risk handling in `ParameterOptimizer` so
+  `risk_percent_range = None` uses the configured fixed `risk_percent`.
+- Added a cached-signal accessor and made `best_run/` export reuse the cached
+  best signal frame for execution-only searches instead of rerunning
+  `crypt_ensemble.generate()`.
+- Ran a bounded SOL H1 12-trial optimizer diagnostic at
+  `/tmp/crypt_donor_h1_mtf_optuna_cli/20260603_102446`: first 745-bar signal
+  build took about 3 minutes 59 seconds; cached trials took about 0.05 seconds
+  each; best tiny in-sample result was `rrr = 1.25`,
+  `position_ttl_bars = 30`, `total_return_pct = 2.46`, `profit_factor = 1.14`,
+  max drawdown `-5.7`, 97 trades.
+- Ran a short cache smoke at
+  `/tmp/crypt_donor_h1_mtf_optuna_cli_cache_smoke/20260603_103348` confirming
+  `best_run/` export no longer shows a second `crypt_ensemble` progress build.
+
+Verification: ruff check and format clean on changed CLI/optimizer/test files;
+targeted donor pytest `3 passed`; full donor pytest `102 passed` with 2
+existing pandas warnings; bounded SOL H1 optimizer CLI diagnostics completed.
+
+## 2026-06-03 — Existing optimizer made usable for H1 setup tuning
+
+- Switched the next H1 setup-geometry step from manual grid thinking to the
+  existing donor `ParameterOptimizer`.
+- Extended `ParameterOptimizer` additively so it can tune execution parameters
+  needed by `crypt_ensemble`: configurable `rrr` range/step,
+  `position_ttl_bars` search, preserved `risk_base_period`, baseline
+  `strategy_params`, optional disabling of daily/trading-window knobs, and an
+  `optimize_strategy_params` switch.
+- Added signal-frame caching inside `ParameterOptimizer`, keyed by strategy
+  params. Pure `rrr`/`ttl` trials now reuse the generated
+  `crypt_ensemble` signal frame instead of rerunning the ensemble every trial.
+- Added ADR-0022 and updated `docs/crypt_ensemble_mtf.md`: in H1 MTF mode, H4
+  setup verdicts are snapshots at the latest closed H4 setup time and are
+  reused across H1 trigger bars until the next H4 close.
+- Added tests for H4 setup snapshot reuse/invalidation and optimizer signal
+  cache reuse.
+- Ran a bounded SOL H1 Optuna speed check at
+  `/tmp/crypt_donor_h1_mtf_optuna_speed_check`: first 745-bar signal build
+  took about 226.9 seconds; the next two `rrr`/`ttl` trials reused cached
+  signals and completed in about 0.05 seconds each. Best tiny diagnostic trial
+  was `rrr = 1.75`, `position_ttl_bars = 30`, `total_return_pct = 0.18`.
+
+Verification: ruff check and format clean on changed donor optimizer/strategy
+files and tests; targeted donor pytest `28 passed`; full donor pytest
+`101 passed` with 3 existing pandas warnings.
+
+## 2026-06-03 — Parity-safe `crypt_ensemble` window cache
+
+- Added a reference-vs-optimized parity contract to
+  `docs/crypt_ensemble_mtf.md` before changing strategy code.
+- Added `optimized_windows` as an explicit donor `crypt_ensemble` parameter.
+  The default remains `false`, preserving the original per-bar reference path
+  unless a strategy config opts in.
+- Implemented `_ContextWindowCache` for closed candle and timestamp-bounded
+  extras window selection only. It preserves `open_time + timeframe <=
+  tick_time` for candles and `ts < tick_time` for extras.
+- Added reference-vs-optimized parity tests covering context-window equality
+  and H1 MTF `generate()` output across signal, stop, trigger, rationale,
+  metadata, and per-engine strength columns.
+- Enabled `optimized_windows = true` in
+  `backtester/strategies/crypt_ensemble_h1.json` for the H1 diagnostic config.
+- Reran bounded SOL H1 MTF smoke with optimized windows:
+  `/tmp/crypt_donor_h1_mtf_smoke_optimized_windows/20260603_083245`.
+- Smoke produced the same key diagnostic result as the prior max-4 run:
+  745 H1 signal rows, 98 trades, final capital 9947.0,
+  `total_return_pct = -0.53`, `profit_factor = 0.97`, max drawdown `-7.41`,
+  exit distribution 37 `ttl_expired`, 35 `stop_loss`, 26 `take_profit`.
+  Runtime improved from about 6 minutes 35 seconds to about 5 minutes
+  3 seconds on the bounded January SOL slice.
+
+Verification: ruff check and format clean on changed donor strategy/test
+files; targeted donor pytest `25 passed`; full donor pytest `98 passed` with
+3 existing pandas warnings; bounded SOL H1 optimized-window smoke completed.
+
+---
+
 ## 2026-06-02 — H1 setup stop-distance cap diagnostic
 
 - Added `max_sl_distance_atr` as an explicit donor `crypt_ensemble` strategy

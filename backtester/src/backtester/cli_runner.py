@@ -11,6 +11,7 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -23,6 +24,7 @@ from backtester.data_loader import (
     CsvDataLoader,
     ParquetDataLoader,
 )
+from backtester.optimizer import ParameterOptimizer, TargetFunction
 from backtester.registry import STRATEGIES
 from backtester.results_analyzer import ResultsAnalyzer
 from backtester.strategy import BaseStrategy
@@ -112,6 +114,23 @@ class BacktestArgs:
     trading_end: int | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class OptimizerSearchArgs:
+    """Search-space and execution controls for ParameterOptimizer."""
+
+    trials: int
+    study_name: str
+    target: str
+    show_progress: bool
+    optimize_strategy_params: bool
+    risk_percent_range: tuple[float, float, float] | None
+    rrr_range: tuple[float, float, float] | None
+    position_ttl_bars_range: tuple[int, int, int] | None
+    optimize_daily_limits: bool
+    optimize_trading_window: bool
+    export_best_run: bool
+
+
 def load_strategy_config(path: str, logger: logging.Logger) -> StrategyConfig | None:
     """Load and validate a strategy JSON config.
 
@@ -193,9 +212,7 @@ _BACKTEST_ARG_KEYS = frozenset(
 )
 
 
-def build_backtest_args(
-    cfg: StrategyConfig | None, **cli_kwargs: Any
-) -> BacktestArgs:
+def build_backtest_args(cfg: StrategyConfig | None, **cli_kwargs: Any) -> BacktestArgs:
     """Build BacktestArgs from CLI kwargs, with strategy ``backtest_args`` overrides.
 
     Any key present in the strategy JSON ``backtest_args`` overrides the
@@ -379,9 +396,7 @@ def build_cli_data_loader(
         if not bingx_api_secret:
             missing.append("--bingx-api-secret")
         if missing:
-            raise ValueError(
-                f"BingX data source requires: {', '.join(missing)}"
-            )
+            raise ValueError(f"BingX data source requires: {', '.join(missing)}")
         return BingxApiDataLoader(
             symbol=bingx_symbol,
             interval=bingx_interval,
@@ -447,6 +462,175 @@ def run_backtest(*, df: StrategyInput, strategy: BaseStrategy, args: BacktestArg
         trading_begin=args.trading_begin,
         trading_end=args.trading_end,
     )
+
+
+def _target_function(name: str) -> TargetFunction:
+    target_name = name.lower().replace("-", "_")
+    if target_name == "total_return_pct":
+        return TargetFunction(
+            fn=lambda results: float(results.metrics.get("total_return_pct", -100.0)),
+            direction="maximize",
+        )
+    if target_name == "profit_factor":
+        return TargetFunction(
+            fn=lambda results: float(results.metrics.get("profit_factor", 0.0)),
+            direction="maximize",
+        )
+    if target_name == "sharpe_ratio":
+        return TargetFunction(
+            fn=lambda results: float(results.metrics.get("sharpe_ratio", -999.0)),
+            direction="maximize",
+        )
+    if target_name == "max_drawdown":
+        return TargetFunction(
+            fn=lambda results: float(results.metrics.get("max_drawdown", -100.0)),
+            direction="maximize",
+        )
+    raise ValueError(f"Unsupported optimizer target: {name!r}")
+
+
+_OPTIMIZER_BACKTEST_PARAM_KEYS = frozenset(
+    {
+        "risk_percent",
+        "rrr",
+        "position_ttl_bars",
+        "max_daily_profit",
+        "max_daily_loss",
+        "trading_begin",
+        "trading_end",
+    }
+)
+
+
+def _best_strategy_params(
+    *, cfg: StrategyConfig, best_params: dict[str, Any]
+) -> dict[str, Any]:
+    searched_strategy_params = {
+        key: value
+        for key, value in best_params.items()
+        if key not in _OPTIMIZER_BACKTEST_PARAM_KEYS
+    }
+    return {**cfg.params, **searched_strategy_params}
+
+
+def _best_backtest_args(
+    *, base: BacktestArgs, best_params: dict[str, Any]
+) -> BacktestArgs:
+    kwargs = {
+        "capital": base.capital,
+        "risk_percent": best_params.get("risk_percent", base.risk_percent),
+        "rrr": best_params.get("rrr", base.rrr),
+        "maker_fee": base.maker_fee,
+        "taker_fee": base.taker_fee,
+        "ttl": best_params.get("position_ttl_bars", base.ttl),
+        "max_positions": base.max_positions,
+        "max_allowed_leverage": base.max_allowed_leverage,
+        "is_isolated_futures": base.is_isolated_futures,
+        "max_allowed_margin": base.max_allowed_margin,
+        "risk_base_period": base.risk_base_period,
+        "max_daily_profit": best_params.get("max_daily_profit", base.max_daily_profit),
+        "max_daily_loss": best_params.get("max_daily_loss", base.max_daily_loss),
+        "trading_begin": best_params.get("trading_begin", base.trading_begin),
+        "trading_end": best_params.get("trading_end", base.trading_end),
+    }
+    return BacktestArgs(**kwargs)
+
+
+def run_parameter_optimization(
+    *,
+    df: StrategyInput,
+    cfg: StrategyConfig,
+    backtest_args: BacktestArgs,
+    optimizer_args: OptimizerSearchArgs,
+    output_folder: str,
+    logger: logging.Logger,
+) -> None:
+    """Run ParameterOptimizer and export trials plus best-run diagnostics."""
+
+    if cfg.name not in STRATEGIES:
+        available = ", ".join(sorted(STRATEGIES.keys()))
+        raise ValueError(f"Unknown strategy '{cfg.name}'. Available: {available}")
+
+    output_path = Path(output_folder)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    strategy_cls = STRATEGIES[cfg.name]
+    optimizer = ParameterOptimizer(
+        df=df,
+        strategy_class=strategy_cls,
+        target=_target_function(optimizer_args.target),
+        initial_capital=backtest_args.capital,
+        taker_fee=backtest_args.taker_fee,
+        maker_fee=backtest_args.maker_fee,
+        max_positions=backtest_args.max_positions,
+        position_ttl_bars=backtest_args.ttl,
+        is_isolated_futures=backtest_args.is_isolated_futures,
+        max_allowed_margin=backtest_args.max_allowed_margin,
+        risk_base_period=backtest_args.risk_base_period,
+        strategy_params=cfg.params,
+        optimize_strategy_params=optimizer_args.optimize_strategy_params,
+        risk_percent=backtest_args.risk_percent,
+        risk_percent_range=optimizer_args.risk_percent_range,
+        rrr_range=optimizer_args.rrr_range,
+        position_ttl_bars_range=optimizer_args.position_ttl_bars_range,
+        optimize_daily_limits=optimizer_args.optimize_daily_limits,
+        optimize_trading_window=optimizer_args.optimize_trading_window,
+    )
+
+    study_path = output_path / optimizer_args.study_name
+    best_params, study = optimizer.optimize(
+        n_trials=optimizer_args.trials,
+        show_progress=optimizer_args.show_progress,
+        name=str(study_path),
+    )
+
+    trials_path = output_path / "trials.csv"
+    study.trials_dataframe().to_csv(trials_path, index=False)
+    logger.info("Optimizer trials saved to: %s", trials_path)
+
+    best_trial = study.best_trial
+    best_payload = {
+        "number": best_trial.number,
+        "value": best_trial.value,
+        "params": best_params,
+        "user_attrs": dict(best_trial.user_attrs),
+    }
+    best_path = output_path / "best_trial.json"
+    best_path.write_text(json.dumps(best_payload, indent=2, sort_keys=True))
+    logger.info("Best trial saved to: %s", best_path)
+
+    if not optimizer_args.export_best_run:
+        return
+
+    best_strategy_params = _best_strategy_params(cfg=cfg, best_params=best_params)
+    cached_best_signals = optimizer.cached_signals_for_params(best_strategy_params)
+    best_args = _best_backtest_args(base=backtest_args, best_params=best_params)
+    if cached_best_signals is None:
+        best_strategy = strategy_cls(best_strategy_params)
+        best_results = run_backtest(df=df, strategy=best_strategy, args=best_args)
+    else:
+        best_results = Backtester(df, lambda _df: cached_best_signals.copy()).run(
+            initial_capital=best_args.capital,
+            taker_fee=best_args.taker_fee,
+            maker_fee=best_args.maker_fee,
+            risk_percent=best_args.risk_percent,
+            rrr=best_args.rrr,
+            max_positions=best_args.max_positions,
+            position_ttl_bars=best_args.ttl,
+            max_allowed_leverage=best_args.max_allowed_leverage,
+            is_isolated_futures=best_args.is_isolated_futures,
+            max_allowed_margin=best_args.max_allowed_margin,
+            risk_base_period=best_args.risk_base_period,
+            max_daily_profit=best_args.max_daily_profit,
+            max_daily_loss=best_args.max_daily_loss,
+            trading_begin=best_args.trading_begin,
+            trading_end=best_args.trading_end,
+        )
+    best_results.export_results(
+        str(output_path / "best_run"),
+        ohlcv_df=df.primary if isinstance(df, StrategyData) else df,
+    )
+    logger.info("Best-run diagnostics saved to: %s", output_path / "best_run")
 
 
 def make_output_folder(base: str) -> str:

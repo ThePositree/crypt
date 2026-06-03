@@ -22,9 +22,11 @@ Read in this order, fully:
 5. `docs/tasks/IN_PROGRESS.md` — what the previous agent was doing. If it is
    non-empty and not yours, assume the previous session was interrupted and
    continue from where it left off, unless the owner says otherwise.
-6. `docs/tasks/BACKLOG.md` — what is queued next.
-7. The 2 most recent entries in `CHANGELOG.md`.
-8. Any ADR in `docs/decisions/` whose subject is relevant to the task.
+6. `docs/tasks/IDEAS.md` — owner ideas saved for later. These are not
+   approved tasks.
+7. `docs/tasks/BACKLOG.md` — what is queued next.
+8. The 2 most recent entries in `CHANGELOG.md`.
+9. Any ADR in `docs/decisions/` whose subject is relevant to the task.
 
 If any of these files contradict each other, stop and ask the owner.
 
@@ -37,6 +39,24 @@ If any of these files contradict each other, stop and ask the owner.
 The owner intentionally does not write implementation plans. You build the
 local task plan yourself. If the task is non-trivial, use the todo-list tool
 and keep it updated as you go.
+
+### Preserve owner ideas for later
+
+The owner may explicitly say that something is an idea for later / "прозапас"
+and not for implementation now. Record those ideas in
+`docs/tasks/IDEAS.md`, not in `BACKLOG.md`, unless the owner explicitly
+approves turning the idea into work.
+
+Ideas in `IDEAS.md` are reminders, not tasks. Agents must:
+
+- read `IDEAS.md` at session start;
+- briefly remind the owner about relevant saved ideas when they fit the
+  current work;
+- say whether the timing looks good now or whether the idea should wait;
+- ask for explicit owner approval before writing a spec, moving the idea to
+  `BACKLOG.md`, or implementing code.
+
+Agents must not implement saved ideas just because they are relevant.
 
 ### Write the spec before the code
 

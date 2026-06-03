@@ -1,4 +1,4 @@
-from crypt.models import Regime, Signal, Verdict
+from crypt.models import Regime, Signal, Timeframe, Verdict
 from crypt.structure.smc import (
     BEARISH,
     BULLISH,
@@ -12,12 +12,42 @@ from datetime import timedelta
 
 import pandas as pd
 import pytest
+from pandas.testing import assert_frame_equal
 
 from backtester.data_contracts import StrategyData
 from backtester.execution_sim import ExecutionSim
 from backtester.registry import STRATEGIES
 from backtester.strategies import crypt_ensemble as crypt_ensemble_mod
 from backtester.strategies.crypt_ensemble import CryptEnsembleStrategy
+
+_PARITY_COLUMNS = [
+    "signal",
+    "sl_price",
+    "entry_price",
+    "confidence",
+    "score",
+    "regime",
+    "decision",
+    "rationale",
+    "sl_anchor_type",
+    "sl_anchor_level",
+    "sl_anchor_known_at",
+    "sl_distance_atr",
+    "context_tf",
+    "setup_tf",
+    "trigger_tf",
+    "context_bias",
+    "setup_direction",
+    "trigger_type",
+    "trigger_known_at",
+    "sl_source_tf",
+    "strength_derivatives",
+    "strength_meanrev",
+    "strength_smc_liquidity",
+    "strength_smc_order_blocks",
+    "strength_smc_structure",
+    "strength_trend",
+]
 
 
 def _ohlcv() -> pd.DataFrame:
@@ -150,6 +180,23 @@ def _state_with_protective_pivots() -> SMCState:
             _pivot("low", 9.0),
             _pivot("high", 14.0),
         ]
+    )
+
+
+def _assert_strategy_parity(reference: pd.DataFrame, optimized: pd.DataFrame) -> None:
+    assert list(reference.index) == list(optimized.index)
+    missing = [
+        col
+        for col in _PARITY_COLUMNS
+        if col not in reference.columns or col not in optimized.columns
+    ]
+    assert missing == []
+    assert_frame_equal(
+        reference.loc[:, _PARITY_COLUMNS],
+        optimized.loc[:, _PARITY_COLUMNS],
+        check_exact=False,
+        rtol=1e-12,
+        atol=1e-12,
     )
 
 
@@ -532,6 +579,239 @@ def test_crypt_ensemble_h1_mode_uses_h1_execution_index_and_diagnostics():
     assert set(result["trigger_tf"]) == {"1h"}
     assert set(result["trigger_type"]) == {"1h_candle_confirm"}
     assert set(result["sl_source_tf"]) == {"4h"}
+
+
+def test_context_window_cache_matches_reference_builder():
+    primary = _ohlcv_at(
+        [
+            "2024-01-02 01:00:00",
+            "2024-01-02 02:00:00",
+            "2024-01-02 03:00:00",
+        ]
+    )
+    h4 = _ohlcv_at(
+        [
+            "2024-01-01 20:00:00",
+            "2024-01-02 00:00:00",
+            "2024-01-02 04:00:00",
+        ]
+    )
+    d1 = _ohlcv_at(["2024-01-01 00:00:00", "2024-01-02 00:00:00"])
+    extras = {
+        "oi": pd.DataFrame(
+            {
+                "ts": pd.to_datetime(
+                    [
+                        "2024-01-02 01:00:00",
+                        "2024-01-02 02:00:00",
+                        "2024-01-02 03:00:00",
+                    ],
+                    utc=True,
+                ),
+                "oi": [100.0, 101.0, 102.0],
+            }
+        ),
+        "ls_ratio": pd.DataFrame(
+            {
+                "ts": pd.to_datetime(
+                    ["2024-01-02 01:00:00", "2024-01-02 03:00:00"], utc=True
+                ),
+                "long_ratio": [0.51, 0.52],
+                "short_ratio": [0.49, 0.48],
+            }
+        ),
+        "taker_volume": pd.DataFrame(
+            {
+                "ts": pd.to_datetime(["2024-01-02 02:00:00"], utc=True),
+                "buy_vol": [10.0],
+                "sell_vol": [8.0],
+            }
+        ),
+    }
+    candles = {
+        Timeframe.H1: crypt_ensemble_mod._to_crypt_candles(primary),
+        Timeframe.H4: crypt_ensemble_mod._to_crypt_candles(h4),
+        Timeframe.D1: crypt_ensemble_mod._to_crypt_candles(d1),
+    }
+    tick_time = pd.Timestamp("2024-01-02 05:00:00", tz="UTC").to_pydatetime()
+
+    reference = crypt_ensemble_mod._build_context(
+        symbol="SOL-USDT-SWAP",
+        tick_time=tick_time,
+        candles=candles,
+        extras=extras,
+    )
+    optimized = crypt_ensemble_mod._ContextWindowCache(
+        candles=candles, extras=extras
+    ).build_context(symbol="SOL-USDT-SWAP", tick_time=tick_time)
+
+    assert {
+        timeframe: len(frame) for timeframe, frame in reference.candles.items()
+    } == {timeframe: len(frame) for timeframe, frame in optimized.candles.items()}
+    assert len(reference.candles[Timeframe.H1]) == 3
+    assert len(reference.candles[Timeframe.H4]) == 2
+    assert len(reference.candles[Timeframe.D1]) == 1
+    assert [item.oi for item in reference.oi or []] == [
+        item.oi for item in optimized.oi or []
+    ]
+    assert [item.long_ratio for item in reference.ls_ratio or []] == [
+        item.long_ratio for item in optimized.ls_ratio or []
+    ]
+    assert [item.buy_vol for item in reference.taker_volume or []] == [
+        item.buy_vol for item in optimized.taker_volume or []
+    ]
+
+
+def test_crypt_ensemble_optimized_windows_match_reference_h1_output(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    primary = pd.DataFrame(
+        {
+            "open": [10.0, 11.0, 12.0, 13.0],
+            "high": [11.0, 11.5, 12.5, 14.0],
+            "low": [9.5, 10.0, 11.0, 12.0],
+            "close": [10.5, 10.5, 12.0, 13.5],
+            "volume": [10.0, 20.0, 30.0, 40.0],
+        },
+        index=pd.to_datetime(
+            [
+                "2024-01-02 01:00:00",
+                "2024-01-02 02:00:00",
+                "2024-01-02 03:00:00",
+                "2024-01-02 04:00:00",
+            ],
+            utc=True,
+        ),
+    )
+    h4 = _ohlcv_at(["2024-01-01 20:00:00", "2024-01-02 00:00:00"])
+    d1 = pd.DataFrame(
+        {
+            "open": [10.0],
+            "high": [11.0],
+            "low": [9.0],
+            "close": [10.0],
+            "volume": [10.0],
+        },
+        index=pd.to_datetime(["2024-01-01 00:00:00"], utc=True),
+    )
+    data = StrategyData(
+        primary=primary,
+        candles={"H1": primary, "H4": h4, "D1": d1},
+        extras={},
+        metadata={"symbol": "SOL-USDT-SWAP"},
+    )
+    params = {
+        "sl_atr_mult": 2.0,
+        "progress": False,
+        "optimized_setup_snapshots": False,
+        "timeframes": {
+            "context": ["1d"],
+            "setup": ["4h"],
+            "trigger": "1h",
+            "execution": "1h",
+        },
+    }
+
+    def evaluate(ctx):
+        hour = pd.Timestamp(ctx.tick_time).hour
+        if hour == 2:
+            return _verdict("BUY", 0.5)
+        if hour == 3:
+            return _verdict("SELL", -0.5)
+        if hour == 4:
+            return _verdict("HOLD", 0.0)
+        return _verdict("BUY", 0.4)
+
+    monkeypatch.setattr(
+        crypt_ensemble_mod,
+        "_structural_stop_state_for_timeframe",
+        lambda _ctx, _timeframe: SMCState(),
+    )
+    reference_strategy = CryptEnsembleStrategy({**params, "optimized_windows": False})
+    optimized_strategy = CryptEnsembleStrategy({**params, "optimized_windows": True})
+    reference_strategy._evaluate_context = evaluate  # type: ignore[method-assign]
+    optimized_strategy._evaluate_context = evaluate  # type: ignore[method-assign]
+
+    reference = reference_strategy.generate(data)
+    optimized = optimized_strategy.generate(data)
+
+    _assert_strategy_parity(reference, optimized)
+
+
+def test_crypt_ensemble_h1_setup_snapshot_reuses_h4_verdict_until_next_h4_close(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    primary = pd.DataFrame(
+        {
+            "open": [10.0, 10.0, 10.0, 10.0, 10.0],
+            "high": [11.0, 11.0, 11.0, 11.0, 11.0],
+            "low": [9.0, 9.0, 9.0, 9.0, 9.0],
+            "close": [10.5, 9.5, 10.5, 10.5, 9.5],
+            "volume": [10.0, 10.0, 10.0, 10.0, 10.0],
+        },
+        index=pd.to_datetime(
+            [
+                "2024-01-02 04:00:00",
+                "2024-01-02 05:00:00",
+                "2024-01-02 06:00:00",
+                "2024-01-02 07:00:00",
+                "2024-01-02 08:00:00",
+            ],
+            utc=True,
+        ),
+    )
+    h4 = _ohlcv_at(
+        [
+            "2024-01-01 20:00:00",
+            "2024-01-02 00:00:00",
+            "2024-01-02 04:00:00",
+        ]
+    )
+    d1 = _ohlcv_at(["2024-01-01 00:00:00"])
+    monkeypatch.setattr(
+        crypt_ensemble_mod,
+        "_structural_stop_state_for_timeframe",
+        lambda _ctx, _timeframe: SMCState(pivots=[_pivot("low", 9.0)]),
+    )
+    data = StrategyData(
+        primary=primary,
+        candles={"H1": primary, "H4": h4, "D1": d1},
+        extras={},
+        metadata={"symbol": "SOL-USDT-SWAP"},
+    )
+    strategy = CryptEnsembleStrategy(
+        {
+            "sl_atr_mult": 2.0,
+            "progress": False,
+            "timeframes": {
+                "context": ["1d"],
+                "setup": ["4h"],
+                "trigger": "1h",
+                "execution": "1h",
+            },
+        }
+    )
+    setup_times: list[pd.Timestamp] = []
+
+    def evaluate(ctx):
+        setup_times.append(pd.Timestamp(ctx.tick_time))
+        return _verdict("BUY", 0.5)
+
+    strategy._evaluate_context = evaluate  # type: ignore[method-assign]
+
+    result = strategy.generate(data)
+
+    assert setup_times == [
+        pd.Timestamp("2024-01-02 04:00:00", tz="UTC"),
+        pd.Timestamp("2024-01-02 08:00:00", tz="UTC"),
+    ]
+    assert list(result["trigger_type"]) == [
+        "1h_candle_confirm",
+        "trigger_rejected",
+        "1h_candle_confirm",
+        "1h_candle_confirm",
+        "trigger_rejected",
+    ]
 
 
 def test_crypt_ensemble_h1_mode_uses_closer_h1_structural_stop(

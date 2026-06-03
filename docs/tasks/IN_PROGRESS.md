@@ -1,5 +1,385 @@
 # In progress
 
+## Status as of 2026-06-03 (session 35)
+
+**Active work:** candidate A is now defined for an owner-run long diagnostic,
+but it is not accepted calibration.
+
+Completed this session:
+
+- Added `backtester compare-fixed`, a cheap fixed-candidate comparison CLI for
+  bounded H1 windows.
+- The command defaults to SOL January/February/March 2025 and TON
+  January/February 2025, runs one fixed execution profile per window, and
+  writes `windows.csv`, `windows.md`, plus normal donor artifacts under
+  `runs/<label>/`.
+- Added focused tests for window parsing and report aggregation.
+- Ran the fixed H1 candidate comparison at
+  `/tmp/crypt_fixed_candidate_h1/20260603_134312`.
+
+Fixed candidate A:
+
+- Strategy config: `backtester/strategies/crypt_ensemble_h1.json`.
+- Strategy params: current H1 diagnostic profile, including
+  `max_sl_distance_atr = 4.0`, `optimized_windows = true`, H4 setup snapshots,
+  and structural stops.
+- Execution params: `rrr = 1.25`, `position_ttl_bars = 36`,
+  `risk_percent = 1.0`, `risk_base_period = monthly`.
+
+Bounded fixed-candidate result:
+
+| Slice | Return | Profit factor | Max DD | Trades | Side profile |
+|-------|--------|---------------|--------|--------|--------------|
+| SOL Jan 2025 | `+1.99%` | `1.12` | `-5.68%` | 93 | long `+248.10`, short `-49.49` |
+| SOL Feb 2025 | `+13.82%` | `5.40` | `-1.90%` | 53 | short-only `+1381.77` |
+| SOL Mar 2025 | `-6.52%` | `0.66` | `-10.63%` | 63 | short-only `-651.92` |
+| TON Jan 2025 | `+1.19%` | `1.07` | `-4.61%` | 87 | short-only `+118.50` |
+| TON Feb 2025 | `+2.76%` | `1.18` | `-10.95%` | 95 | short-only `+275.53` |
+
+Interpretation:
+
+- Candidate A is positive on 4/5 bounded windows and is worth a longer local
+  diagnostic run while the owner waits for limits to reset.
+- It is not accepted calibration. SOL March 2025 is a material failure and
+  TON February drawdown is large relative to its return.
+- The side profile is heavily short-only after structural-stop/trigger
+  filtering. Do not add an `allowed_sides` filter yet; there is no evidence
+  that longs are consistently harmful across actual tradeable signals because
+  four of five bounded windows had no long trades.
+- Do not restart broad full-history `--strategy-param-search` during Codex
+  time. Use candidate A full-history evaluation or a tiny execution-only grid
+  around SOL March instead.
+
+Owner-run command for the 5-day wait:
+
+```bash
+cd backtester
+PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache MPLCONFIGDIR=/tmp/matplotlib \
+uv run --extra dev backtester compare-fixed \
+    --data-dir ../data \
+    --primary-timeframe 1h \
+    --strategy strategies/crypt_ensemble_h1.json \
+    --output results/crypt_ensemble_h1_candidate_a_full \
+    --rrr 1.25 \
+    --ttl 36 \
+    --risk-percent 1.0 \
+    --window sol_full:SOL-USDT-SWAP:2024-06-01:2026-06-01 \
+    --window ton_full:TON-USDT-SWAP:2024-06-01:2026-06-01
+```
+
+Expected outputs:
+
+- `results/crypt_ensemble_h1_candidate_a_full/<timestamp>/windows.csv`
+- `results/crypt_ensemble_h1_candidate_a_full/<timestamp>/windows.md`
+- per-window `runs/<label>/metrics.csv`, `trades.csv`,
+  `trade_diagnostics.csv`, `signals.csv`, and `signal_diagnostics.csv`.
+
+Next steps:
+
+1. If the owner-run full-history candidate A check is positive or near
+   break-even with tolerable drawdown, run a bounded walk-forward expansion
+   across more SOL/TON months before touching strategy params.
+2. If SOL March remains the obvious blocker, run a tiny execution-only grid
+   around `rrr = 1.0, 1.25, 1.5` and `ttl = 30, 36, 42`; keep
+   `--no-strategy-param-search`, no daily-limit search, and no trading-window
+   search.
+3. Only after execution geometry is stable should a future agent consider a
+   side filter or strategy-param search, and any side-filter change must update
+   `docs/crypt_ensemble_mtf.md` first with focused tests.
+
+Verification:
+
+- `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check backtester/src/backtester/__main__.py backtester/src/backtester/fixed_candidate_report.py backtester/tests/test_fixed_candidate_report.py`
+  -> clean.
+- `UV_CACHE_DIR=/tmp/uv-cache uv run ruff format --check backtester/src/backtester/__main__.py backtester/src/backtester/fixed_candidate_report.py backtester/tests/test_fixed_candidate_report.py`
+  -> clean.
+- `PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache uv run --extra dev pytest tests/test_fixed_candidate_report.py -q`
+  in `backtester/` -> 2 passed.
+- Fixed-candidate comparison command above with default bounded windows
+  completed and exported artifacts.
+
+---
+
+## Status as of 2026-06-03 (session 34)
+
+**Active work:** urgent M2 profitability sprint handoff. The owner has only
+about 2-3 Codex sessions left before limits reset, so the next agents should
+prefer high-impact, end-to-end tasks that can produce a candidate worth a long
+unattended local backtest over broad architecture work.
+
+Owner direction:
+
+- Work in Russian chat, but keep code and docs in English.
+- Maximize useful progress per session. Do not spend the remaining sessions on
+  low-leverage refactors, dashboards, CI niceties, or broad exploratory
+  changes unless they directly unblock the profitability run.
+- The target outcome before limits run out is not a fully accepted strategy.
+  The target is a defensible, documented candidate that is profitable on
+  bounded/out-of-sample checks and can be launched by the owner as a long
+  full-history or multi-day Optuna/backtest run while waiting for limits to
+  refresh.
+
+Process note from this session:
+
+- The owner started a curiosity run:
+  `backtester optimize --data-source crypt-parquet --data-dir ../data --primary-timeframe 1h --symbol SOL-USDT-SWAP --strategy strategies/crypt_ensemble_h1.json --output results/sol_h1_full_all_optuna --trials 100 --study-name sol_h1_full_all --target total_return_pct --rrr-low 1.0 --rrr-high 3.0 --rrr-step 0.25 --ttl-low 12 --ttl-high 48 --ttl-step 6 --risk-percent-low 0.5 --risk-percent-high 2.0 --risk-percent-step 0.25 --strategy-param-search --daily-limit-search --trading-window-search --export-best-run`.
+- It was still alive after about 2h23m, using 100% CPU. Output directory:
+  `backtester/results/sol_h1_full_all_optuna/20260603_110457`.
+- Trial 0 ran from `2026-06-03 14:04:57` to `15:53:00` MSK and completed with
+  `total_return_pct = -9.47`, `max_drawdown = -24.75`, `total_trades = 482`,
+  `sharpe_ratio = -0.5945`. Trial 1 had started but had not completed when
+  inspected.
+- The owner said they would stop this run. Treat any partial artifacts as a
+  curiosity diagnostic, not as accepted calibration. It confirms that
+  full-history H1 `--strategy-param-search` is too expensive for the remaining
+  Codex budget because each strategy-param trial rebuilds signals.
+
+### Next-session priority order
+
+1. **Build a cheap fixed-candidate comparison harness/report before more
+   broad Optuna.** Compare fixed `rrr = 1.25`, `position_ttl_bars = 36`,
+   `risk_percent = 1.0`, `max_sl_distance_atr = 4.0`, no daily-limit search,
+   no trading-window search, no strategy-param search across already completed
+   windows and at least SOL March 2025 + TON February 2025. If this can be done
+   by a small script or CLI subcommand, implement it with tests; otherwise run
+   explicit commands and summarize artifacts.
+2. **Find the fastest profitable candidate, not the most general optimizer.**
+   If fixed `rrr = 1.25` / `ttl = 36` is positive across most windows, freeze
+   it as the first long-run candidate. If it fails, try a very small
+   execution-only grid around `rrr = 1.0, 1.25, 1.5` and `ttl = 30, 36, 42`.
+   Keep strategy-param search disabled until there is a stable execution
+   baseline.
+3. **Attack side skew only if it directly improves the candidate.** SOL
+   February and TON January best runs were short-only, while SOL January was
+   mixed. The shortest useful investigation is to summarize H4 setup verdict
+   side counts, tradeable signal side counts, structural stop availability,
+   and PnL by side for each bounded window. If long trades are consistently
+   harmful, test an explicit diagnostic `allowed_sides = short` or equivalent
+   strategy param only after writing/updating the MTF spec and adding focused
+   tests.
+4. **Prepare an owner-run command for the 5-day wait.** Before handing back,
+   provide a single command the owner can launch locally for a long run,
+   plus expected output files and how to monitor progress. Prefer either
+   execution-only full-history with frozen strategy params, or bounded
+   walk-forward windows, over broad full-history strategy-param Optuna.
+5. **Document every result immediately.** Update `IN_PROGRESS.md`,
+   `BACKLOG.md`, `DONE.md`, and `CHANGELOG.md` at the end of each session so
+   the next agent can continue without rediscovery.
+
+Guardrails for the next agent:
+
+- Do not silently rewrite `docs/tasks/ROADMAP.md`.
+- Do not accept any candidate based only on one in-sample Optuna best.
+- Do not run full-history broad `--strategy-param-search` during a Codex
+  session unless the owner explicitly asks; it can consume hours per trial.
+- If adding side filters or new strategy parameters, update
+  `docs/crypt_ensemble_mtf.md` first and add tests before interpreting PnL.
+
+---
+
+## Status as of 2026-06-03 (session 33)
+
+**Active work:** continue M2 donor H1 setup-geometry validation after the
+first adjacent-window and non-SOL optimizer diagnostics.
+
+Completed this session:
+
+- Inspected the existing SOL January optimizer best-run artifacts at
+  `/tmp/crypt_donor_h1_mtf_optuna_cli/20260603_102446`.
+- Confirmed the January result is mixed-side and fragile: 39 long trades
+  produced `+304.88`, while 58 short trades produced `-58.48`; all tradeable
+  signals used `trigger_type = 1h_candle_confirm` and `sl_source_tf = 1h`.
+- Ran the same 12-trial execution-only bounded optimizer slice on adjacent
+  SOL February 2025 at
+  `/tmp/crypt_donor_h1_mtf_optuna_sol_feb/20260603_104255`.
+- Ran the same 12-trial execution-only bounded optimizer slice on TON January
+  2025 at `/tmp/crypt_donor_h1_mtf_optuna_ton_jan/20260603_104642`.
+- Skipped XPL for this pass; its H1 history is shorter and already flagged as
+  less suitable for long H1 diagnostics.
+
+Current bounded optimizer diagnostics:
+
+| Slice | Best params | Return | Profit factor | Max DD | Trades | Side profile |
+|-------|-------------|--------|---------------|--------|--------|--------------|
+| SOL Jan 2025 | `rrr = 1.25`, `ttl = 30` | `+2.46%` | `1.14` | `-5.70%` | 97 | long `+304.88`, short `-58.48` |
+| SOL Feb 2025 | `rrr = 1.25`, `ttl = 36` | `+13.82%` | `5.40` | `-1.90%` | 53 | short-only `+1381.77` |
+| TON Jan 2025 | `rrr = 1.50`, `ttl = 36` | `+1.95%` | `1.12` | `-5.51%` | 86 | short-only `+194.85` |
+
+Interpretation:
+
+- `ttl = 36` appears in the adjacent SOL and TON best trials, but this is not
+  enough to accept it as calibrated.
+- The profile is not stable: SOL January needed mixed long/short trades, while
+  SOL February and TON January were short-only.
+- The TON result is only marginally positive with drawdown similar to SOL
+  January, so setup geometry should still be treated as diagnostic.
+- Do not enable broader strategy-param search yet. More out-of-sample windows
+  are needed before spending cache misses on `max_sl_distance_atr`, SL buffer,
+  or confidence/filter search.
+
+Verification:
+
+- `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check backtester/src/backtester/__main__.py backtester/src/backtester/cli_runner.py backtester/src/backtester/optimizer.py backtester/src/backtester/strategies/crypt_ensemble.py backtester/tests/test_optimizer.py backtester/tests/test_crypt_ensemble_strategy.py`
+  -> clean.
+- `UV_CACHE_DIR=/tmp/uv-cache uv run ruff format --check backtester/src/backtester/__main__.py backtester/src/backtester/cli_runner.py backtester/src/backtester/optimizer.py backtester/src/backtester/strategies/crypt_ensemble.py backtester/tests/test_optimizer.py backtester/tests/test_crypt_ensemble_strategy.py`
+  -> clean.
+- `PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache uv run --extra dev pytest tests/test_optimizer.py tests/test_crypt_ensemble_strategy.py -q`
+  in `backtester/` -> 29 passed.
+- `PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache uv run --extra dev pytest tests -q`
+  in `backtester/` -> 102 passed, 2 existing pandas warnings.
+- SOL February and TON January bounded optimizer CLI diagnostics completed and
+  exported `trials.csv`, `best_trial.json`, and `best_run/` diagnostics.
+
+### Next steps
+
+1. Run at least two more out-of-sample H1 optimizer diagnostics before
+   accepting any setup geometry: SOL March 2025 and TON February 2025 are the
+   next most direct adjacent windows.
+2. Compare all completed windows with a fixed candidate (`rrr = 1.25`,
+   `ttl = 36`) in addition to per-window Optuna bests, so the next decision is
+   not based only on each slice's in-sample best trial.
+3. Investigate the short-only skew in SOL February and TON January before
+   adding long/short filters. The current trigger is still the single
+   `1h_candle_confirm` rule, so side skew may be coming from H4 setup verdicts
+   or structural-stop availability rather than trigger logic.
+4. Keep first-signal-build performance in scope: SOL February took about
+   3 minutes 30 seconds for 673 H1 bars; TON January took about 3 minutes
+   58 seconds for 745 H1 bars. Cached execution trials remain fast.
+
+---
+
+## Status as of 2026-06-03 (session 32)
+
+**Active work:** continue M2 donor H1 setup-geometry tuning after the first
+operator-facing bounded optimizer slice.
+
+Completed this session:
+
+- Added `backtester optimize`, an operator-facing CLI around the existing donor
+  `ParameterOptimizer`.
+- The command reuses donor strategy JSON params, supports bounded
+  `crypt-parquet` input with `--from` / `--to`, exposes execution-only search
+  knobs for `rrr`, `position_ttl_bars`, fixed or ranged `risk_percent`, daily
+  limits, trading windows, and strategy-param search, and writes `trials.csv`,
+  `best_trial.json`, the Optuna journal log, and donor `best_run/` diagnostics.
+- Fixed fixed-risk handling in `ParameterOptimizer`: when
+  `risk_percent_range = None`, it now uses the configured fixed
+  `risk_percent` instead of always falling back to `1.0`.
+- Added a public cached-signal accessor and made `best_run/` export reuse the
+  cached best signal frame when possible. The best-run export no longer pays
+  for a second `crypt_ensemble.generate()` in execution-only searches.
+- Updated README and `docs/crypt_ensemble_mtf.md` with the optimizer command,
+  artifact contract, cache behaviour, and bounded diagnostic result.
+- Ran a real bounded SOL H1 optimizer slice at
+  `/tmp/crypt_donor_h1_mtf_optuna_cli/20260603_102446`.
+
+Current bounded optimizer diagnostic:
+
+- Slice: SOL H1 `2025-01-01` to `2025-02-01`, 745 signal rows.
+- Search: 12 execution-only trials over `rrr = 1.0..2.0 step 0.25` and
+  `position_ttl_bars = 18..42 step 6`; strategy-param, daily-limit, and
+  trading-window search disabled.
+- First signal build: about 3 minutes 59 seconds.
+- Cached trials after the first build: about 0.05 seconds each.
+- `signal_cache_size = 1`.
+- Best tiny in-sample diagnostic: `rrr = 1.25`, `position_ttl_bars = 30`,
+  `total_return_pct = 2.46`, `profit_factor = 1.14`, max drawdown `-5.7`,
+  97 trades.
+- Signal distribution: 39 long, 66 short, 640 neutral.
+- Exit distribution: 38 stop-loss, 35 take-profit, 24 TTL-expired.
+- Side PnL: long `+304.88`, short `-58.48`.
+
+Verification:
+
+- `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check backtester/src/backtester/__main__.py backtester/src/backtester/cli_runner.py backtester/src/backtester/optimizer.py backtester/tests/test_optimizer.py`
+  -> clean.
+- `UV_CACHE_DIR=/tmp/uv-cache uv run ruff format --check backtester/src/backtester/__main__.py backtester/src/backtester/cli_runner.py backtester/src/backtester/optimizer.py backtester/tests/test_optimizer.py`
+  -> clean.
+- `PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache uv run --extra dev pytest tests/test_optimizer.py -q`
+  in `backtester/` -> 3 passed.
+- `PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache uv run --extra dev pytest tests -q`
+  in `backtester/` -> 102 passed, 2 existing pandas warnings.
+- `PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache MPLCONFIGDIR=/tmp/matplotlib uv run --extra dev backtester optimize ...`
+  bounded SOL H1 12-trial slice -> completed and exported diagnostics.
+- Short cache smoke at
+  `/tmp/crypt_donor_h1_mtf_optuna_cli_cache_smoke/20260603_103348` confirmed
+  `best_run/` export reuses cached signals and does not show a second
+  `crypt_ensemble` progress build.
+
+### Next steps
+
+1. Do not treat the `2.46%` January SOL result as accepted calibration. It is
+   an in-sample bounded setup-geometry diagnostic only.
+2. Inspect `best_run/trades.csv`, `trade_diagnostics.csv`, and
+   `signal_diagnostics.csv` from
+   `/tmp/crypt_donor_h1_mtf_optuna_cli/20260603_102446`, especially why shorts
+   remain negative while longs flipped positive in this bounded slice.
+3. Run the same bounded optimizer command on adjacent SOL windows and at least
+   one non-SOL symbol before widening strategy-param search.
+4. After execution-only diagnostics across windows, decide whether to enable
+   strategy-param search (`max_sl_distance_atr`, SL buffer, optional
+   `min_confidence`). These will create new signal-cache keys and be slower.
+5. Keep first-signal-build performance in scope: one 745-bar H1 signal build
+   is still about 4 minutes even though repeated execution trials are fast.
+
+---
+
+## Status as of 2026-06-03 (session 30)
+
+**Active work:** proceed to focused H1 setup-geometry grids after the first
+parity-safe performance pass.
+
+Completed this session:
+
+- Added the `crypt_ensemble` reference-vs-optimized performance contract to
+  the MTF spec before code changes.
+- Added `optimized_windows` as an explicit strategy parameter. Default is
+  `false`; `backtester/strategies/crypt_ensemble_h1.json` opts in with
+  `true`.
+- Implemented a closed-window context cache for candles/extras only. It does
+  not cache verdicts, SMC states, trigger decisions, or stops across bars.
+- Added parity tests for cached context windows and H1 MTF strategy output.
+- Reran bounded SOL H1 optimized-window smoke:
+  `/tmp/crypt_donor_h1_mtf_smoke_optimized_windows/20260603_083245`.
+
+Current bounded optimized-window diagnostic:
+
+- Runtime: about 5 minutes 3 seconds for 745 H1 bars, improved from the
+  previous max-4 reference smoke at about 6 minutes 35 seconds.
+- 98 trades, final capital 9947.0, `total_return_pct = -0.53`,
+  `profit_factor = 0.97`, max drawdown `-7.41`.
+- Exit distribution: 37 `ttl_expired`, 35 `stop_loss`, 26 `take_profit`.
+- Long PnL -45.67, short PnL -7.33. Both sides remain slightly negative in
+  this bounded window.
+
+Verification:
+
+- `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check backtester/src/backtester/strategies/crypt_ensemble.py backtester/tests/test_crypt_ensemble_strategy.py`
+  -> clean.
+- `UV_CACHE_DIR=/tmp/uv-cache uv run ruff format --check backtester/src/backtester/strategies/crypt_ensemble.py backtester/tests/test_crypt_ensemble_strategy.py`
+  -> clean.
+- `PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache uv run --extra dev pytest tests/test_crypt_ensemble_strategy.py -q`
+  in `backtester/` -> 25 passed, 1 existing pandas warning.
+- `PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache uv run --extra dev pytest tests -q`
+  in `backtester/` -> 98 passed, 3 existing pandas warnings.
+- Bounded optimized smoke command:
+  `PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_INSTALL_DIR=/tmp/uv-python uv run --extra dev backtester run --data-source crypt-parquet --data-dir ../data --primary-timeframe 1h --symbol SOL-USDT-SWAP --from 2025-01-01 --to 2025-02-01 --strategy strategies/crypt_ensemble_h1.json --output /tmp/crypt_donor_h1_mtf_smoke_optimized_windows`
+  -> completed.
+
+### Next steps
+
+1. Start the focused H1 setup grid on the same bounded SOL slice, using the
+   optimized H1 config: compare `ttl` 24, 36, 48; `rrr` 1.0, 1.25, 1.5; keep
+   `max_sl_distance_atr = 4.0` for the first 9-run slice.
+2. Inspect side/trigger diagnostics after each slice. The optimized-window run
+   kept the same near-break-even total result, but long and short PnL remain
+   slightly negative.
+3. Do not add verdict, SMC, or cross-bar decision caching before writing a
+   separate parity contract and tests for event-age/freshness behaviour.
+4. Do not run full-history H1 acceptance until setup geometry is clearer.
+
+---
+
 ## Status as of 2026-06-02 (session 29)
 
 **Active work:** continue M2 donor H1 MTF setup-geometry tuning after the

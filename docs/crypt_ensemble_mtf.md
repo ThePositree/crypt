@@ -198,6 +198,7 @@ Expected config shape:
     "trigger_rules": ["h1_structure_confirm"],
     "min_context_confidence": 0.0,
     "min_setup_confidence": 0.0,
+    "optimized_windows": true,
     "progress": true
   },
   "backtest_args": {
@@ -297,7 +298,156 @@ Retune at minimum:
   drag.
 
 Do not run broad Optuna until the MTF data contract and diagnostics are
-stable. First use small smoke grids and inspect exported diagnostics.
+stable. First use bounded optimizer slices with strategy-param search disabled
+and inspect exported diagnostics.
+
+Current operator command for bounded execution-only H1 tuning:
+
+```bash
+cd backtester
+MPLCONFIGDIR=/tmp/matplotlib \
+PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache \
+uv run --extra dev backtester optimize \
+    --data-source crypt-parquet \
+    --data-dir ../data \
+    --primary-timeframe 1h \
+    --symbol SOL-USDT-SWAP \
+    --from 2025-01-01 \
+    --to 2025-02-01 \
+    --strategy strategies/crypt_ensemble_h1.json \
+    --output /tmp/crypt_donor_h1_mtf_optuna_cli \
+    --trials 12 \
+    --study-name sol_h1_rrr_ttl \
+    --target total_return_pct \
+    --rrr-low 1.0 --rrr-high 2.0 --rrr-step 0.25 \
+    --ttl-low 18 --ttl-high 42 --ttl-step 6 \
+    --risk-percent 1.0 \
+    --no-strategy-param-search \
+    --no-daily-limit-search \
+    --no-trading-window-search \
+    --export-best-run
+```
+
+The command writes:
+
+- `trials.csv`;
+- `best_trial.json`;
+- the Optuna journal log;
+- `best_run/` with normal donor exports (`trades.csv`, `metrics.csv`,
+  `trade_diagnostics.csv`, `signals.csv`, `signal_diagnostics.csv`,
+  `equity_curve.csv` when trades exist, and `trade_candles/`).
+
+When only execution parameters (`rrr`, `position_ttl_bars`, fixed risk and
+execution filters) are searched, `ParameterOptimizer` caches the generated
+`crypt_ensemble` signal frame by strategy params. Repeated trials and
+`best_run/` export must reuse that frame instead of rerunning the ensemble.
+Changing strategy params such as `max_sl_distance_atr`, SL buffer, or
+`min_confidence` creates new signal-cache keys and is expected to be slower.
+
+Bounded SOL H1 diagnostic on 2026-06-03:
+
+- slice: `2025-01-01` to `2025-02-01`, 745 H1 signal rows;
+- trials: 12 execution-only Optuna trials over `rrr = 1.0..2.0` and
+  `ttl = 18..42`;
+- first signal build: about 3 minutes 59 seconds;
+- cached trial runtime after the first build: about 0.05 seconds each;
+- `signal_cache_size = 1`;
+- best tiny diagnostic: `rrr = 1.25`, `position_ttl_bars = 30`,
+  `total_return_pct = 2.46`, `profit_factor = 1.14`,
+  `max_drawdown = -5.7`, 97 trades;
+- signal distribution: 39 long, 66 short, 640 neutral;
+- exit distribution: 38 stop-loss, 35 take-profit, 24 TTL-expired;
+- long PnL `+304.88`, short PnL `-58.48`.
+
+This is still a bounded in-sample setup-geometry diagnostic, not accepted
+calibration.
+
+## Performance optimization contract
+
+Optimization work normally must preserve the current strategy semantics. The
+safe first target is data preparation, not trading logic:
+
+- keep the existing per-bar `CryptEnsembleStrategy.generate()` semantics as the
+  reference implementation;
+- add optimized helpers only for selecting already-closed candle windows and
+  timestamp-bounded extras;
+- preserve the rule `open_time + timeframe <= tick_time` for candles and
+  `ts < tick_time` for extras;
+- keep `EvaluationContext`, engine calls, aggregation, trigger rules,
+  structural stop planning, and donor execution output unchanged;
+- do not cache H4 verdicts across H1 bars in the H4 default mode;
+- do not change `analyse_smc_cached` keying or SMC internals without dedicated
+  no-lookahead and parity tests for future-known structural objects.
+
+Every optimized path must have a reference-vs-optimized parity harness before
+it is used for tuning or Optuna. The harness compares the old reference path
+against the optimized path on the same `StrategyData`, strategy parameters, and
+monkeypatched deterministic verdicts or real bounded data.
+
+Required parity columns:
+
+- `signal`;
+- `sl_price`;
+- `entry_price`;
+- `confidence`;
+- `score`;
+- `regime`;
+- `decision`;
+- `rationale`;
+- `sl_anchor_type`;
+- `sl_anchor_level`;
+- `sl_anchor_known_at`;
+- `sl_distance_atr`;
+- `context_tf`;
+- `setup_tf`;
+- `trigger_tf`;
+- `context_bias`;
+- `setup_direction`;
+- `trigger_type`;
+- `trigger_known_at`;
+- `sl_source_tf`;
+- all `strength_<engine>` columns exported from the verdict breakdown.
+
+Floating values should be compared with exact equality where possible and
+otherwise with a tight numerical tolerance. Any mismatch in `signal`,
+`decision`, stop source/type, trigger type, or known-at fields is a hard
+failure. Bounded SOL H1 smokes may be used as runtime diagnostics, but unit
+parity is the acceptance gate for code-level performance changes.
+
+## H4 setup snapshot cache
+
+ADR-0022 changes the H1 MTF execution semantics deliberately: the H4 setup
+verdict is a snapshot known at the latest closed H4 candle, not a verdict that
+is recomputed on every H1 trigger bar with a different H1 `tick_time`.
+
+For an H1 execution tick `T`:
+
+- find `setup_time = max(H4 close_time <= T)`;
+- build the H4 setup context at `setup_time`;
+- evaluate the ensemble once for that H4 setup snapshot;
+- reuse that verdict for all H1 execution ticks until the next H4 candle
+  closes;
+- keep H1 trigger, H1 structural stop selection, and H1 execution-bar timing
+  evaluated at the actual H1 `T`.
+
+The cache key must include at least:
+
+- symbol;
+- setup timeframe;
+- `setup_time`;
+- closed H4 candle boundary;
+- closed D1 context boundary used by the H4 setup context.
+
+The H4 setup snapshot cache is not required to match the old per-H1 verdict
+path byte-for-byte, because the old path let H4 SMC age/freshness drift inside
+an H4 setup window. Required tests instead prove the new contract:
+
+- repeated H1 ticks inside one H4 setup window call `_evaluate_context()` only
+  once;
+- H1 trigger decisions can still differ by H1 candle;
+- H1 structural stops are still selected using the actual H1 tick context;
+- the next H4 close invalidates the setup snapshot and evaluates a new H4
+  verdict.
 
 ## Tests required
 
@@ -388,6 +538,40 @@ Latest bounded SOL result as of 2026-06-02 after adding
 - `ttl_expired` share improved from 50.0% to 37.8%, and trade frequency fell
   from 6.27 to 3.89 trades/day. This is still one bounded SOL diagnostic
   slice; do not treat it as full-history H1 acceptance or final calibration.
+
+As of 2026-06-03, the H1 diagnostic config also sets
+`optimized_windows = true`. This enables the parity-tested closed-window cache
+for context preparation only. It does not cache verdicts, SMC states, trigger
+decisions, or structural stops across bars. The reference path remains
+available by setting `optimized_windows = false`.
+
+Bounded SOL result after enabling `optimized_windows`:
+
+- artifact:
+  `/tmp/crypt_donor_h1_mtf_smoke_optimized_windows/20260603_083245`;
+- runtime: about 5 minutes 3 seconds for 745 H1 bars, versus about 6 minutes
+  35 seconds for the previous max-4 reference smoke;
+- 98 trades, final capital 9947.0, `total_return_pct = -0.53`,
+  `profit_factor = 0.97`, max drawdown `-7.41`;
+- exit distribution: 37 `ttl_expired`, 35 `stop_loss`, 26 `take_profit`;
+- long PnL -45.67, short PnL -7.33. This remains a bounded diagnostic, not
+  H1 acceptance.
+
+Bounded SOL Optuna speed check after ADR-0022 H4 setup snapshots and
+`ParameterOptimizer` signal caching:
+
+- artifact:
+  `/tmp/crypt_donor_h1_mtf_optuna_speed_check`;
+- 3 execution-only trials over the same SOL H1 bounded slice with
+  `optimize_strategy_params = false`;
+- first trial built the 745-row `crypt_ensemble` signal frame in about
+  226.9 seconds;
+- the next two `rrr` / `position_ttl_bars` trials reused the cached signal
+  frame and completed in about 0.05 seconds each;
+- tiny diagnostic best: `rrr = 1.75`, `position_ttl_bars = 30`,
+  `total_return_pct = 0.18`;
+- this proves the optimizer speed path for execution-only tuning, not final
+  calibration.
 
 Inspect:
 
