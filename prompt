@@ -1,0 +1,166 @@
+AGENTS.md что делаем дальше? лимиты закончились, просто дай команды которые мне стоит запустить, потому чт олимиты востановятся через 5 дней только, так что мой пк свободен целых 5 дней,
+  можешь прям дать команду для запуска полного аптюна, кароче любые команды и помледовательность их выполнения
+
+
+• Сначала быстро прочитаю текущее состояние задач и последние записи, чтобы команды были привязаны к реальному проекту, а не к догадкам.
+
+• Ran pwd
+  └ /home/nik/crypt
+
+• Explored
+  └ Read README.md
+    List rules
+    Read AGENTS.md
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+• Вижу по README, что активная ветка работы сейчас M2: донорский backtester, H1 MTF, оптимизация rrr/ttl и smoke acceptance. Дочитаю task-файлы и последние changelog, затем дам готовую
+  последовательность команд на несколько дней.
+
+• Explored
+  └ Read IN_PROGRESS.md, BACKLOG.md, ROADMAP.md, IDEAS.md, CHANGELOG.md, coding-standards.mdc, project-context.mdc, ai-first-workflow.mdc
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+• Ключевой вывод: сейчас полезнее не запускать широкую Optuna-оптимизацию на 5 дней. Она уже показала, что один full-history strategy trial может занимать почти 2 часа; лучше прогнать
+  длинные fixed/diagnostic runs и собрать артефакты для следующей сессии.
+
+• Explored
+  └ Read crypt_ensemble_mtf.md, README.md
+    Search compare-fixed|compare-grid|owner-run|full-history|window in README.md
+    Read backtest.md
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+• Проверю локальные данные и точные доступные таймфреймы, чтобы команды не упали из-за отсутствующего XPL/старых свечей.
+
+• Explored
+  └ List strategies
+
+• Ran du -sh data backtester/results 2>/dev/null
+  └ 192K    data
+
+• Explored
+  └ List data
+    Read IN_PROGRESS.md, backfill.md
+    Search data-types|timeframe|1h|4h|1d|ohlcv in backfill.py
+    List crypt
+    Search backfill|parquet|store
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+• Локально сейчас вижу только SOL-USDT-SWAP в data/, поэтому команда из handoff для SOL+TON сначала требует добить TON. Ниже дам порядок: подготовка, backfill, длинный fixed candidate run,
+  затем расширенная сетка, которую можно оставить на ночь/дни.
+
+• Explored
+  └ Read crypt_ensemble_h1.json, __main__.py
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+• Также важно: сохранённая идея про cap сверхприбыльных месяцев пока только “на потом”; её не стоит включать в эти прогоны, иначе результаты будут несопоставимы с текущими артефактами.
+
+• Explored
+  └ Read __main__.py, fixed_candidate_report.py
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+• Подготовил финальную последовательность. В ней первые команды проверяют окружение и данные; главная команда — compare-fixed full SOL/TON; потом, если ПК всё ещё свободен, расширенный
+  compare-grid по месяцам, без опасного broad strategy-param search.
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+• Да. По текущему AGENTS.md / IN_PROGRESS.md дальше надо собрать длинные диагностические артефакты для M2 H1 candidate A. Не запускай broad full-history --strategy-param-search: он уже был
+  слишком дорогой и малоинформативный.
+
+  Сначала из корня проекта:
+
+  cd /home/nik/crypt
+  uv sync --all-extras
+
+  Сейчас локально вижу данные только для SOL-USDT-SWAP, поэтому добей TON:
+
+  cd /home/nik/crypt
+  PYTHONPATH=src UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_INSTALL_DIR=/tmp/uv-python \
+  uv run python -m crypt.backfill \
+    --symbol TON-USDT-SWAP \
+    --from 2024-02-01 \
+    --to 2026-06-01 \
+    --data-types ohlcv \
+    --data-dir data
+
+  Проверь, что данные появились:
+
+  find data -maxdepth 2 -type f | sort
+
+  Главный unattended run на 5 дней:
+
+  cd /home/nik/crypt/backtester
+  mkdir -p results/logs
+
+  env PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_INSTALL_DIR=/tmp/uv-python MPLCONFIGDIR=/tmp/matplotlib \
+  uv run --extra dev backtester compare-fixed \
+    --data-dir ../data \
+    --primary-timeframe 1h \
+    --strategy strategies/crypt_ensemble_h1.json \
+    --output results/crypt_ensemble_h1_candidate_a_full \
+    --rrr 1.25 \
+    --ttl 36 \
+    --risk-percent 1.0 \
+    --jobs 2 \
+    --window sol_full:SOL-USDT-SWAP:2024-06-01:2026-06-01 \
+    --window ton_full:TON-USDT-SWAP:2024-06-01:2026-06-01 \
+    2>&1 | tee results/logs/candidate_a_full.log
+
+  Когда закончится, посмотри результат:
+
+  cd /home/nik/crypt/backtester
+  LATEST=$(ls -td results/crypt_ensemble_h1_candidate_a_full/* | head -1)
+  echo "$LATEST"
+  cat "$LATEST/windows.md"
+
+  Если ПК ещё свободен, запускай расширенную execution-only сетку по месяцам. Она полезнее, чем Optuna, потому что уже переиспользует precomputed signals внутри окна:
+
+  cd /home/nik/crypt/backtester
+  mkdir -p results/logs
+
+  env PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_INSTALL_DIR=/tmp/uv-python MPLCONFIGDIR=/tmp/matplotlib \
+  uv run --extra dev backtester compare-grid \
+    --data-dir ../data \
+    --primary-timeframe 1h \
+    --strategy strategies/crypt_ensemble_h1.json \
+    --output results/crypt_ensemble_h1_grid_2025_h1 \
+    --rrr-values 0.75,1.0,1.25,1.5,1.75,2.0 \
+    --ttl-values 24,30,36,42,48,60 \
+    --risk-percent 1.0 \
+    --jobs 4 \
+    --window sol_2025_01:SOL-USDT-SWAP:2025-01-01:2025-02-01 \
+    --window sol_2025_02:SOL-USDT-SWAP:2025-02-01:2025-03-01 \
+    --window sol_2025_03:SOL-USDT-SWAP:2025-03-01:2025-04-01 \
+    --window sol_2025_04:SOL-USDT-SWAP:2025-04-01:2025-05-01 \
+    --window sol_2025_05:SOL-USDT-SWAP:2025-05-01:2025-06-01 \
+    --window sol_2025_06:SOL-USDT-SWAP:2025-06-01:2025-07-01 \
+    --window ton_2025_01:TON-USDT-SWAP:2025-01-01:2025-02-01 \
+    --window ton_2025_02:TON-USDT-SWAP:2025-02-01:2025-03-01 \
+    --window ton_2025_03:TON-USDT-SWAP:2025-03-01:2025-04-01 \
+    --window ton_2025_04:TON-USDT-SWAP:2025-04-01:2025-05-01 \
+    --window ton_2025_05:TON-USDT-SWAP:2025-05-01:2025-06-01 \
+    --window ton_2025_06:TON-USDT-SWAP:2025-06-01:2025-07-01 \
+    2>&1 | tee results/logs/grid_2025_h1.log
+
+  И посмотреть итог:
+
+  cd /home/nik/crypt/backtester
+  LATEST=$(ls -td results/crypt_ensemble_h1_grid_2025_h1/* | head -1)
+  echo "$LATEST"
+  cat "$LATEST/grid.md"
+
+  Мониторинг во время долгого запуска:
+
+  tail -f /home/nik/crypt/backtester/results/logs/candidate_a_full.log
+
+  Или для сетки:
+
+  tail -f /home/nik/crypt/backtester/results/logs/grid_2025_h1.log
+
+  Сохрани для следующей Codex-сессии пути к папкам results/crypt_ensemble_h1_candidate_a_full/<timestamp> и results/crypt_ensemble_h1_grid_2025_h1/<timestamp>. Там главное: windows.md /
+  grid.md, metrics.csv, trades.csv, trade_diagnostics.csv, signals.csv, signal_diagnostics.csv.

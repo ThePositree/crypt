@@ -121,12 +121,65 @@ engineering polish unless it directly supports that outcome.
       search is too expensive until a smaller candidate is already justified.
       Guardrail documented 2026-06-03.
 
-- [ ] **Run tiny execution-only grid around candidate A if SOL March remains
+- [x] **Run tiny execution-only grid around candidate A if SOL March remains
       the blocker** — P1. If the owner-run full-history check or the next
       bounded pass confirms that SOL March is the main failure mode, compare
       `rrr = 1.0, 1.25, 1.5` and `ttl = 30, 36, 42` with
       `--no-strategy-param-search`, no daily-limit search, and no
       trading-window search before touching strategy params or side filters.
+      Completed 2026-06-03 with `backtester compare-grid` at
+      `/tmp/crypt_execution_grid_sol_mar/20260603_153612`: all 9 candidates
+      remained negative on SOL March; best was `rrr = 1.0`, `ttl = 30`,
+      `total_return_pct = -6.15`, `profit_factor = 0.66`, max drawdown
+      `-11.20`, 64 short-only trades. This confirms the blocker is not just
+      the fixed candidate's `rrr = 1.25` / `ttl = 36` geometry.
+
+- [x] **Parallelize fixed-window `compare-fixed` before broad Optuna** — P1.
+      Added `compare-fixed --jobs N` on 2026-06-03. It parallelizes independent
+      windows at the process level, preserves deterministic `windows.csv` /
+      `windows.md` row order, rejects duplicate labels that would overwrite
+      run artifacts, and leaves the default serial (`--jobs 1`).
+- [x] **Parallelize tiny execution grids before broad Optuna** — P1. After a
+      tiny execution-only grid runner exists, add bounded `--jobs` at the
+      window/candidate level. Do not turn on broad full-history
+      `strategy-param-search` parallelism for this. Acceptance: default remains
+      serial/reproducible, `--jobs > 1` writes one timestamped report with
+      deterministic aggregation, and worker failures are surfaced clearly.
+      Completed 2026-06-03 as `backtester compare-grid --jobs N`; the SOL
+      March grid completed with `--jobs 3` and deterministic `grid.csv` row
+      order. Follow-up session 39 changed `compare-grid` to reuse one
+      precomputed signal frame per window, so `--jobs` now parallelizes
+      independent windows rather than candidates inside the same window.
+- [ ] **Add disk-backed `crypt_ensemble` signal cache for optimizer workers**
+      — P1 before multi-process strategy-param search. Current optimizer
+      signal caching is in-memory per `ParameterOptimizer`, so multiple
+      workers would rebuild the same expensive signal frames. Add a Parquet
+      cache keyed by strategy params, symbol, primary timeframe, from/to
+      window, strategy/cache schema version, and relevant config. Acceptance:
+      cache hits are visible in trial/user attrs or logs, cache writes are
+      atomic enough for concurrent workers, stale schema versions miss safely,
+      and no-lookahead parity tests still pass.
+- [ ] **Add guarded optimizer parallelism (`--jobs`) only for safe modes** —
+      P1 after the fixed-window/grid parallel runner. Optuna supports
+      `study.optimize(..., n_jobs=N)` and multiple processes sharing storage,
+      but this project should expose it only with guardrails. Acceptance:
+      `--jobs > 1` is allowed for execution-only search with precomputed or
+      disk-cached signals; broad `--strategy-param-search` with `--jobs > 1`
+      is rejected or requires the disk signal cache; Optuna journal/RDB
+      storage choice is documented; progress output remains readable.
+- [x] **Precompute signals explicitly for execution-only optimization** —
+      P1. Add an execution-only path that builds `crypt_ensemble` signals once
+      for a fixed strategy config, then runs `rrr`/`ttl`/`risk_percent`
+      candidates against the precomputed signal frame. This can be a dedicated
+      helper behind `compare-fixed`/optimizer rather than a second broad
+      optimizer. Acceptance: first signal build happens once per
+      symbol/window/strategy config, every execution candidate reuses the same
+      signal frame, and best-run export does not regenerate signals. Completed
+      2026-06-03 for `compare-grid`: candidates are grouped by window, one
+      signal frame is generated per window, execution candidates reuse it, and
+      a tiny SOL smoke confirmed byte-identical `signals.csv` exports across
+      two `rrr` candidates. Existing optimizer best-run cached-signal reuse
+      remains in place; disk-backed worker sharing is tracked separately.
 
 - [x] **Vend `backtester/` into crypt monorepo** — P1. Remove nested
       `backtester/.git`; commit donor sources from the `crypt` root. ADR-0021;

@@ -19,7 +19,10 @@ from backtester.cli_runner import (
 )
 from backtester.fixed_candidate_report import (
     FixedCandidateParams,
+    parse_float_values,
+    parse_int_values,
     parse_window_specs,
+    run_execution_grid_comparison,
     run_fixed_candidate_comparison,
 )
 
@@ -581,6 +584,13 @@ def optimize(
 @click.option("--risk-percent", type=float, default=1.0, help="Fixed risk percent.")
 @click.option("--rrr", type=float, default=1.25, help="Fixed reward/risk ratio.")
 @click.option("--ttl", type=int, default=36, help="Fixed position TTL in bars.")
+@click.option(
+    "--jobs",
+    type=click.IntRange(min=1),
+    default=1,
+    show_default=True,
+    help="Parallel fixed-window workers.",
+)
 @click.option("--maker-fee", type=float, default=0.0002, help="Maker fee.")
 @click.option("--taker-fee", type=float, default=0.0005, help="Taker fee.")
 @click.option(
@@ -607,6 +617,7 @@ def compare_fixed(
     risk_percent: float,
     rrr: float,
     ttl: int,
+    jobs: int,
     maker_fee: float,
     taker_fee: float,
     max_positions: int,
@@ -647,9 +658,127 @@ def compare_fixed(
         data_dir=data_dir,
         primary_timeframe=primary_timeframe,
         output_folder=output_folder,
+        jobs=jobs,
         logger=logger,
     )
     logger.info("Completed %d fixed-candidate windows", len(summary))
+
+
+@cli.command("compare-grid")
+@click.option("--data-dir", required=True, help="Project data directory.")
+@click.option(
+    "--primary-timeframe",
+    type=click.Choice(["1h", "4h", "1d"], case_sensitive=False),
+    default="1h",
+    help="Primary execution timeframe for crypt-parquet data.",
+)
+@click.option("--strategy", required=True, help="Strategy parameters file.")
+@click.option(
+    "--window",
+    "windows",
+    multiple=True,
+    help=(
+        "Window as label:SYMBOL:YYYY-MM-DD:YYYY-MM-DD. "
+        "May be repeated; defaults to SOL Jan/Feb/Mar and TON Jan/Feb 2025."
+    ),
+)
+@click.option("--output", default="results/execution_grid", help="Folder for results.")
+@click.option("--capital", type=float, default=10000.0, help="Initial capital.")
+@click.option("--risk-percent", type=float, default=1.0, help="Fixed risk percent.")
+@click.option(
+    "--rrr-values",
+    default="1.0,1.25,1.5",
+    show_default=True,
+    help="Comma-separated reward/risk values.",
+)
+@click.option(
+    "--ttl-values",
+    default="30,36,42",
+    show_default=True,
+    help="Comma-separated position TTL values in bars.",
+)
+@click.option(
+    "--jobs",
+    type=click.IntRange(min=1),
+    default=1,
+    show_default=True,
+    help="Parallel grid workers.",
+)
+@click.option("--maker-fee", type=float, default=0.0002, help="Maker fee.")
+@click.option("--taker-fee", type=float, default=0.0005, help="Taker fee.")
+@click.option(
+    "--max-positions", type=int, default=0, help="Max simultaneous positions."
+)
+@click.option(
+    "--max-allowed-leverage", type=float, default=25.0, help="Max allowed leverage."
+)
+@click.option("--max-allowed-margin", type=float, default=1.0, help="Max margin.")
+@click.option(
+    "--risk-base-period",
+    type=click.Choice(["trade", "weekly", "monthly", "backtest"], case_sensitive=False),
+    default="monthly",
+    help="Capital window used for risk sizing.",
+)
+@click.option("--is-isolated-futures", is_flag=True, help="Enable isolated futures.")
+def compare_grid(
+    data_dir: str,
+    primary_timeframe: str,
+    strategy: str,
+    windows: tuple[str, ...],
+    output: str,
+    capital: float,
+    risk_percent: float,
+    rrr_values: str,
+    ttl_values: str,
+    jobs: int,
+    maker_fee: float,
+    taker_fee: float,
+    max_positions: int,
+    max_allowed_leverage: float,
+    max_allowed_margin: float,
+    risk_base_period: str,
+    is_isolated_futures: bool,
+):
+    """Run a tiny execution-only rrr/ttl grid across bounded windows."""
+    logger.info("🚀 Starting execution-grid comparison...")
+    cfg = load_strategy_config(strategy, logger)
+    if cfg is None:
+        return
+    log_strategy_info(cfg, logger)
+    try:
+        window_specs = parse_window_specs(windows)
+        parsed_rrr_values = parse_float_values(rrr_values)
+        parsed_ttl_values = parse_int_values(ttl_values)
+    except ValueError as e:
+        logger.error("❌ %s", e)
+        return
+
+    output_folder = make_output_folder(output)
+    summary = run_execution_grid_comparison(
+        windows=window_specs,
+        cfg=cfg,
+        base_params=FixedCandidateParams(
+            capital=capital,
+            risk_percent=risk_percent,
+            rrr=parsed_rrr_values[0],
+            ttl=parsed_ttl_values[0],
+            maker_fee=maker_fee,
+            taker_fee=taker_fee,
+            max_positions=max_positions,
+            max_allowed_leverage=max_allowed_leverage,
+            max_allowed_margin=max_allowed_margin,
+            risk_base_period=risk_base_period,
+            is_isolated_futures=is_isolated_futures,
+        ),
+        rrr_values=parsed_rrr_values,
+        ttl_values=parsed_ttl_values,
+        data_dir=data_dir,
+        primary_timeframe=primary_timeframe,
+        output_folder=output_folder,
+        jobs=jobs,
+        logger=logger,
+    )
+    logger.info("Completed %d execution-grid candidates", len(summary))
 
 
 if __name__ == "__main__":

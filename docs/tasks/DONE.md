@@ -4,6 +4,78 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-03 — Precomputed execution-grid signal reuse
+
+- Inspected SOL March grid diagnostics for the best row (`rrr = 1.0`,
+  `ttl = 30`) and candidate A (`rrr = 1.25`, `ttl = 36`).
+- Found that executed SOL March trades were all bearish-context,
+  H4-setup-SELL, TRENDING-regime shorts; losses cluster around the March 11-14
+  reversal and are stop-loss dominated rather than TTL dominated.
+- Identified stop-anchor quality as the next useful investigation: order-block
+  anchored shorts were negative while pivot-anchored shorts were positive in
+  both inspected rows.
+- Changed `backtester compare-grid` so each symbol/window builds the fixed
+  `crypt_ensemble` signal frame once and reuses it across `rrr` / `ttl`
+  execution candidates.
+- Kept deterministic grid row ordering and shifted process-level `--jobs`
+  parallelism to independent windows after signal reuse.
+- Added a focused test proving two execution candidates in one window call
+  `strategy.generate()` exactly once.
+- Updated README `compare-grid` docs to describe signal reuse.
+
+Verification: ruff check and format clean on changed report/test files;
+targeted donor pytest `5 passed`; `compare-grid --help` verified; tiny SOL
+smoke exported two candidate runs from one signal build and byte-identical
+`signals.csv` files.
+
+## 2026-06-03 — SOL March execution grid completed
+
+- Added `backtester compare-grid`, an execution-only `rrr` / `ttl` grid
+  report command for bounded H1 windows.
+- The command exports `grid.csv`, `grid.md`, and per-candidate donor artifacts
+  under `runs/<label>/rrr_<value>__ttl_<bars>/`.
+- Added `--jobs N` for process-level parallel candidate/window execution.
+- Backfilled missing local SOL OHLCV data through the project backfill CLI so
+  SOL March 2025 is reproducible locally.
+- Ran the SOL March grid at
+  `/tmp/crypt_execution_grid_sol_mar/20260603_153612`.
+- Result: all 9 `rrr = 1.0/1.25/1.5` and `ttl = 30/36/42` candidates were
+  negative. Best row was `rrr = 1.0`, `ttl = 30`, `total_return_pct = -6.15`,
+  `profit_factor = 0.66`, max drawdown `-11.20`, 64 short-only trades.
+
+Verification: ruff check and format clean on changed CLI/report/test files;
+targeted donor pytest `4 passed`; `compare-grid --help` verified; SOL March
+grid completed and exported artifacts.
+
+## 2026-06-03 — `compare-fixed --jobs` shipped
+
+- Added `--jobs N` to `backtester compare-fixed`.
+- Parallel execution uses independent process workers per window and writes
+  per-window artifacts under `runs/<label>/`.
+- Main-process report aggregation preserves CLI window order even when workers
+  finish out of order.
+- Added duplicate window-label validation so parallel workers cannot overwrite
+  the same run artifact directory.
+- Updated the README fixed-candidate command to show `--jobs 3`.
+
+Verification: ruff check and format clean on changed CLI/report/test files;
+targeted donor pytest `3 passed`.
+
+## 2026-06-03 — Optimization acceleration plan documented
+
+- Investigated the current donor optimizer shape: `ParameterOptimizer` uses
+  Optuna `JournalStorage` with `n_jobs = 1` and an in-memory signal cache.
+- Recorded that raw parallel Optuna is not the first safe speedup because
+  multi-process workers would miss the in-memory `crypt_ensemble` signal
+  cache and rebuild expensive signal frames.
+- Added backlog items for fixed-window/tiny-grid parallelization, disk-backed
+  signal caching, guarded optimizer `--jobs`, and explicit precomputed-signal
+  execution-only optimization.
+- Added an `IN_PROGRESS.md` handoff with the recommended implementation order
+  and guardrails.
+
+Verification: documentation-only update; no tests run.
+
 ## 2026-06-03 — Fixed H1 candidate A comparison
 
 - Added `backtester compare-fixed`, a bounded fixed-candidate comparison CLI

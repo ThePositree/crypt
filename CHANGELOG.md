@@ -6,6 +6,89 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-03 — Precomputed execution-grid signals
+
+- Inspected SOL March diagnostics for the best grid row and candidate A:
+  failures are short-only, bearish-context, stop-loss dominated, and clustered
+  around the March 11-14 rebound.
+- Found order-block anchored shorts negative while pivot-anchored shorts were
+  positive in both inspected SOL March rows.
+- Changed `backtester compare-grid` to generate one `crypt_ensemble` signal
+  frame per symbol/window and reuse it across `rrr` / `ttl` execution
+  candidates.
+- Kept deterministic grid report ordering and moved `--jobs` work units to
+  independent windows after signal reuse.
+- Added a focused test for one signal build across multiple execution
+  candidates.
+- Updated README and task docs for the new `compare-grid` signal-reuse path.
+
+**ADRs:** none.
+
+**Verification:** ruff check and format clean on changed report/test files;
+targeted donor pytest `5 passed`; `compare-grid --help` verified; tiny SOL
+smoke at `/tmp/crypt_compare_grid_precomputed_smoke/20260603_160558` completed
+with one signal build, two candidate exports, and byte-identical `signals.csv`
+files.
+
+**Files touched:** `backtester/`, `docs/`, `README.md`, `CHANGELOG.md`.
+
+## 2026-06-03 — SOL March execution grid
+
+- Added `backtester compare-grid` for bounded execution-only `rrr` / `ttl`
+  grid reports with `grid.csv`, `grid.md`, and per-candidate donor artifacts.
+- Added `--jobs N` to `compare-grid` for process-level candidate/window
+  parallelism.
+- Backfilled missing local SOL OHLCV data via `crypt.backfill` so the SOL
+  March 2025 H1 window can be reproduced locally.
+- Ran the SOL March grid at
+  `/tmp/crypt_execution_grid_sol_mar/20260603_153612`.
+- Result: all 9 candidates remained negative; best was `rrr = 1.0`,
+  `ttl = 30`, `total_return_pct = -6.15`, `profit_factor = 0.66`,
+  max drawdown `-11.20`, 64 short-only trades.
+
+**ADRs:** none.
+
+**Verification:** ruff check and format clean on changed CLI/report/test
+paths; targeted donor pytest `4 passed`; `compare-grid --help` verified; SOL
+March grid completed and exported artifacts.
+
+**Files touched:** `backtester/`, `docs/`, `README.md`, `CHANGELOG.md`.
+
+## 2026-06-03 — Parallel fixed-candidate windows
+
+- Added `--jobs N` to `backtester compare-fixed` for process-level parallel
+  execution of independent windows.
+- Kept `--jobs 1` as the default serial path and preserved deterministic
+  `windows.csv` / `windows.md` row order when workers finish out of order.
+- Added duplicate window-label validation to prevent run artifact overwrites.
+- Updated README fixed-candidate docs with the new `--jobs` option.
+
+**ADRs:** none.
+
+**Verification:** ruff check and format clean on changed CLI/report/test
+paths; targeted donor pytest `3 passed`; `compare-fixed --help` shows
+`--jobs`.
+
+**Files touched:** `backtester/`, `docs/`, `README.md`, `CHANGELOG.md`.
+
+## 2026-06-03 — Optimization acceleration planning
+
+- Documented the safe path for speeding up donor H1 optimization: parallelize
+  fixed-window/tiny-grid workloads first, then add precomputed signal reuse,
+  then disk-backed signal caching, and only then guarded optimizer `--jobs`.
+- Added P1 backlog items for `compare-fixed`/tiny-grid parallelization,
+  disk-backed `crypt_ensemble` signal cache, guarded optimizer parallelism,
+  and explicit precomputed-signal execution-only optimization.
+- Recorded the key guardrail: broad full-history `--strategy-param-search`
+  should not be parallelized before workers can share or reuse generated
+  signal frames.
+
+**ADRs:** none.
+
+**Verification:** documentation-only update; no tests run.
+
+**Files touched:** `docs/`, `CHANGELOG.md`.
+
 ## 2026-06-03 — Owner idea parking lot
 
 - Added `docs/tasks/IDEAS.md` for owner ideas that should be remembered for

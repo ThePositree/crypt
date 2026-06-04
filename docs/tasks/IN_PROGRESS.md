@@ -1,5 +1,260 @@
 # In progress
 
+## Status as of 2026-06-03 (session 39)
+
+**Active work:** SOL March attribution and precomputed execution-grid signal
+reuse are complete.
+
+Completed this session:
+
+- Inspected SOL March diagnostics for best grid row
+  (`rrr = 1.0`, `ttl = 30`) and candidate A (`rrr = 1.25`, `ttl = 36`) under
+  `/tmp/crypt_execution_grid_sol_mar/20260603_153612/runs/sol_2025_03/`.
+- Added an explicit precomputed-signal path to `backtester compare-grid`: for
+  each symbol/window, `crypt_ensemble` now generates the fixed signal frame
+  once, then each `rrr` / `ttl` execution candidate reuses that frame.
+- Kept `compare-grid --jobs` deterministic by parallelizing at the window
+  level after signal reuse; candidates within one window share the same signal
+  build and preserve original grid row order.
+- Added a focused test proving two execution candidates in one window call
+  `strategy.generate()` exactly once.
+- Updated README to remove the stale warning that `compare-grid` rebuilds
+  signals per candidate.
+
+SOL March diagnostic readout:
+
+- All executed trades in both inspected rows were bearish-context,
+  H4-setup-SELL, TRENDING-regime shorts. This is not a mixed-side issue in the
+  executed sample.
+- The month had a large V-shaped move: signal-frame close fell to a low around
+  `115.66` on `2025-03-11`, then later rebounded while H4/D1 context continued
+  producing short setups.
+- Losses cluster around `2025-03-11` to `2025-03-14` and also `2025-03-01` to
+  `2025-03-02`.
+- Stop-losses are the main drag, not TTL expiry. Candidate A had 37
+  stop-losses, 17 take-profits, and 9 TTL exits; best row had 33 stop-losses,
+  20 take-profits, and 11 TTL exits.
+- Stop source is nearly all H1 (`62-63` of `63-64` trades), so the failure is
+  not caused by wide H4 stops dominating H1 execution.
+- `order_block` anchors were negative while `pivot` anchors were positive in
+  both rows. Candidate A: order-block PnL `-892.00`, pivot PnL `+240.08`.
+  Best row: order-block PnL `-975.18`, pivot PnL `+359.92`.
+- Confidence did not protect the window: the `25-29` confidence bucket in
+  candidate A had 12 trades, all stop-losses, for `-361.32`.
+
+Next steps:
+
+1. Before changing filters, inspect why order-block anchored shorts are poor in
+   SOL March: stale OB age, invalidated OB after reversal, or trigger entering
+   too late into the rebound. Update `docs/crypt_ensemble_mtf.md` first if the
+   fix changes stop-anchor selection or trigger gating.
+2. Consider a bounded diagnostic that compares current structural-stop
+   selection against a pivot-only or stricter-order-block variant on SOL
+   January/February/March and TON January/February. Do not accept the variant
+   from SOL March alone.
+3. With precomputed signal reuse in `compare-grid`, wider execution-only
+   `rrr`/`ttl` checks are now cheaper per window, but broad strategy-param
+   search still needs disk-backed signal caching or guarded optimizer
+   parallelism.
+
+Verification:
+
+- `env UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_INSTALL_DIR=/tmp/uv-python uv run ruff check backtester/src/backtester/fixed_candidate_report.py backtester/tests/test_fixed_candidate_report.py`
+  -> clean.
+- `env UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_INSTALL_DIR=/tmp/uv-python uv run ruff format --check backtester/src/backtester/fixed_candidate_report.py backtester/tests/test_fixed_candidate_report.py`
+  -> clean.
+- `env PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_INSTALL_DIR=/tmp/uv-python uv run --extra dev pytest tests/test_fixed_candidate_report.py -q`
+  in `backtester/` -> 5 passed, 4 existing timezone-to-period warnings.
+- `env PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_INSTALL_DIR=/tmp/uv-python uv run --extra dev backtester compare-grid --help`
+  in `backtester/` -> ok.
+- Tiny SOL smoke completed at
+  `/tmp/crypt_compare_grid_precomputed_smoke/20260603_160558`: one
+  `crypt_ensemble` progress build for 73 bars, then two execution exports.
+  The two candidate `signals.csv` files were byte-identical.
+
+---
+
+## Status as of 2026-06-03 (session 38)
+
+**Active work:** SOL March execution-only grid is complete; execution geometry
+alone does not fix the blocker.
+
+Completed this session:
+
+- Added `backtester compare-grid`, a tiny execution-only `rrr` / `ttl` grid
+  runner built on the existing fixed-candidate report path.
+- The command writes `grid.csv`, `grid.md`, and per-candidate donor artifacts
+  under `runs/<label>/rrr_<value>__ttl_<bars>/`.
+- Added `--jobs N` to the grid runner so candidate/window jobs can run in
+  independent process workers.
+- Backfilled missing local SOL OHLCV data through the project backfill CLI:
+  `SOL-USDT-SWAP`, `2025-02-04` to `2025-04-02`, `data-types=ohlcv`.
+  The first sandboxed run could not reach OKX; the escalated network run
+  completed and extended local SOL H1 data through `2025-04-05 23:00 UTC`.
+- Ran the SOL March grid at
+  `/tmp/crypt_execution_grid_sol_mar/20260603_153612`.
+
+SOL March grid result:
+
+| rrr | ttl | Return | PF | Max DD | Trades | Short PnL |
+|-----|-----|--------|----|--------|--------|-----------|
+| `1.0` | `30` | `-6.15%` | `0.66` | `-11.20%` | 64 | `-615.26` |
+| `1.0` | `36` | `-6.48%` | `0.65` | `-10.85%` | 63 | `-647.65` |
+| `1.0` | `42` | `-7.19%` | `0.63` | `-11.77%` | 63 | `-719.48` |
+| `1.25` | `30` | `-6.59%` | `0.65` | `-11.13%` | 64 | `-659.06` |
+| `1.25` | `36` | `-6.52%` | `0.66` | `-10.63%` | 63 | `-651.92` |
+| `1.25` | `42` | `-7.10%` | `0.65` | `-11.00%` | 63 | `-710.33` |
+| `1.5` | `30` | `-8.52%` | `0.56` | `-13.64%` | 62 | `-852.35` |
+| `1.5` | `36` | `-8.21%` | `0.58` | `-13.16%` | 62 | `-821.22` |
+| `1.5` | `42` | `-8.63%` | `0.57` | `-13.38%` | 60 | `-863.01` |
+
+Interpretation:
+
+- The best SOL March grid row is only `rrr = 1.0`, `ttl = 30`, and still
+  loses `-6.15%` with `profit_factor = 0.66`.
+- Candidate A (`rrr = 1.25`, `ttl = 36`) remains representative of the
+  failure, not an outlier caused by one bad TTL/RRR choice.
+- All rows are short-only after filtering (`long_pnl = 0.0`), so a simple
+  execution-geometry tweak is not enough. The next useful investigation is
+  signal/setup attribution for SOL March: H4 setup side quality, D1 context,
+  trigger timing, structural-stop source/distance, and exit timing around the
+  losing short sequence.
+- At the time of session 38, `compare-grid` rebuilt `crypt_ensemble` signals
+  for every candidate. Session 39 added precomputed per-window signal reuse, so
+  this warning is now historical.
+
+Next steps:
+
+1. Inspect SOL March diagnostics from
+   `/tmp/crypt_execution_grid_sol_mar/20260603_153612/runs/sol_2025_03/rrr_1__ttl_30/`
+   and candidate A's
+   `/tmp/crypt_execution_grid_sol_mar/20260603_153612/runs/sol_2025_03/rrr_1_25__ttl_36/`.
+   Focus on the losing short clusters and whether H4/D1 context stayed bearish
+   into a reversal.
+2. Before running wider grids, implement the explicit precomputed-signal
+   execution path so `rrr`/`ttl` candidates reuse one generated signal frame.
+3. If changing side filters, trigger rules, or setup/context gates, update
+   `docs/crypt_ensemble_mtf.md` first and add focused no-lookahead tests.
+
+Verification:
+
+- `env UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_INSTALL_DIR=/tmp/uv-python uv run ruff check backtester/src/backtester/__main__.py backtester/src/backtester/fixed_candidate_report.py backtester/tests/test_fixed_candidate_report.py`
+  -> clean.
+- `env UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_INSTALL_DIR=/tmp/uv-python uv run ruff format --check backtester/src/backtester/__main__.py backtester/src/backtester/fixed_candidate_report.py backtester/tests/test_fixed_candidate_report.py`
+  -> clean.
+- `env PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_INSTALL_DIR=/tmp/uv-python uv run --extra dev pytest tests/test_fixed_candidate_report.py -q`
+  in `backtester/` -> 4 passed.
+- `env PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_INSTALL_DIR=/tmp/uv-python uv run --extra dev backtester compare-grid --help`
+  in `backtester/` -> shows `--rrr-values`, `--ttl-values`, and `--jobs`.
+- SOL March grid command completed and exported `grid.csv`, `grid.md`, and
+  nine per-candidate donor run directories.
+- Context7 Click docs were attempted but unavailable this session due MCP HTTP
+  transport failure; implementation followed the existing project Click
+  pattern and CLI help was verified locally.
+
+---
+
+## Status as of 2026-06-03 (session 37)
+
+**Active work:** `compare-fixed --jobs` is implemented and verified.
+
+Completed this session:
+
+- Added `--jobs N` to `backtester compare-fixed`.
+- `jobs = 1` remains the default serial path.
+- `jobs > 1` runs independent windows in process workers and writes normal
+  per-window artifacts under `runs/<label>/`.
+- `windows.csv` and `windows.md` are still aggregated by the main process in
+  the original CLI window order, even when workers finish out of order.
+- Duplicate window labels now raise a clear error because they would overwrite
+  the same run artifact directory.
+- README now documents `--jobs` in the fixed-candidate command.
+
+Next steps:
+
+1. Keep candidate A evaluation as the trading priority. If the owner-run
+   full-history check is available, inspect that before adding broader
+   optimization machinery.
+2. If SOL March remains the blocker, implement or run the tiny execution-only
+   grid around `rrr = 1.0, 1.25, 1.5` and `ttl = 30, 36, 42`; now use
+   `compare-fixed --jobs` for window-level parallelism where applicable.
+3. Do not expose broad Optuna `--jobs` for `--strategy-param-search` until
+   precomputed-signal reuse or disk-backed signal caching is implemented.
+
+Verification:
+
+- `env UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_INSTALL_DIR=/tmp/uv-python uv run ruff check backtester/src/backtester/__main__.py backtester/src/backtester/fixed_candidate_report.py backtester/tests/test_fixed_candidate_report.py`
+  -> clean.
+- `env UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_INSTALL_DIR=/tmp/uv-python uv run ruff format --check backtester/src/backtester/__main__.py backtester/src/backtester/fixed_candidate_report.py backtester/tests/test_fixed_candidate_report.py`
+  -> clean.
+- `env PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_INSTALL_DIR=/tmp/uv-python uv run --extra dev pytest tests/test_fixed_candidate_report.py -q`
+  in `backtester/` -> 3 passed.
+- `env PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_INSTALL_DIR=/tmp/uv-python uv run --extra dev backtester compare-fixed --help`
+  in `backtester/` -> shows `--jobs INTEGER RANGE [default: 1; x>=1]`.
+- Context7 Click docs checked: current docs support `@click.option`,
+  `click.IntRange(...)`, `default`, `show_default=True`, and `help` for this
+  option shape.
+
+---
+
+## Status as of 2026-06-03 (session 36)
+
+**Active work:** optimization acceleration planning is documented; no code has
+been changed yet.
+
+Owner question:
+
+- Can optimization startup/runtime be accelerated with parallelization, and
+  what other options are worth doing?
+
+Answer recorded for the next agent:
+
+- Yes, but do not start by blindly changing Optuna from `n_jobs=1` to a large
+  value. The current bottleneck is expensive `crypt_ensemble.generate()` signal
+  construction. Existing in-memory optimizer signal caching only helps inside
+  one `ParameterOptimizer`; multi-process workers would each miss that cache.
+- First parallelize independent cheap units: `compare-fixed` windows and tiny
+  execution-only grids around candidate A.
+- Add an explicit precomputed-signal execution path so `rrr`/`ttl`/risk trials
+  run against one generated signal frame.
+- Add disk-backed signal caching before enabling multi-process
+  strategy-param search.
+- Only then expose guarded optimizer `--jobs`, and reject or warn on
+  `--strategy-param-search --jobs > 1` unless the disk cache is active.
+
+Docs updated this session:
+
+- Added P1 backlog items for:
+  - fixed-window/tiny-grid parallelization;
+  - disk-backed `crypt_ensemble` signal cache;
+  - guarded optimizer `--jobs`;
+  - explicit precomputed-signal execution-only optimization.
+- Added this handoff block so the next agent does not rediscover the same
+  Optuna/cache constraints.
+
+Context7 note:
+
+- Current Optuna docs confirm `study.optimize(..., n_jobs=N)` for threaded
+  parallel trials and multi-process workers sharing `JournalStorage`; RDB
+  storage is preferred for distributed/multi-node use. This supports the
+  approach, but the project-specific cache semantics are the real blocker.
+
+Next steps:
+
+1. If implementing acceleration now, start with `compare-fixed --jobs N` or a
+   tiny execution-only grid runner. This has the least strategy/cache risk.
+2. Keep candidate A evaluation as the trading priority: do not spend a session
+   on broad strategy-param parallel Optuna before the full-history candidate
+   check or SOL March blocker analysis.
+3. If adding `--jobs`, update README/CLI docs in the same change and add tests
+   proving deterministic aggregation when workers finish out of order.
+
+Verification:
+
+- Documentation-only update; no tests run.
+
+---
+
 ## Status as of 2026-06-03 (session 35)
 
 **Active work:** candidate A is now defined for an owner-run long diagnostic,

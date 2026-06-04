@@ -199,6 +199,8 @@ For cheaper fixed-candidate checks across several bounded windows, use
 March 2025 and TON January/February 2025 using the fixed execution candidate
 (`rrr = 1.25`, `ttl = 36`, `risk_percent = 1.0`) and writes `windows.csv`,
 `windows.md`, and per-window donor run artifacts under `runs/<label>/`.
+Use `--jobs N` to run independent windows in parallel; this does not parallelize
+Optuna strategy-parameter search.
 
 ```bash
 PYTHONPATH=src:../src uv run --extra dev backtester compare-fixed \
@@ -208,7 +210,30 @@ PYTHONPATH=src:../src uv run --extra dev backtester compare-fixed \
     --output results/crypt_ensemble_h1_fixed \
     --rrr 1.25 \
     --ttl 36 \
-    --risk-percent 1.0
+    --risk-percent 1.0 \
+    --jobs 3
+```
+
+For a tiny execution-only `rrr` / `ttl` grid around a problematic window, use
+`compare-grid`. It writes `grid.csv`, `grid.md`, and per-candidate donor
+artifacts under `runs/<label>/rrr_<value>__ttl_<bars>/`. For each
+symbol/window, `compare-grid` now builds the `crypt_ensemble` signal frame
+once and reuses it across execution candidates, so `rrr` / `ttl` checks do not
+pay repeated signal-generation cost for the same fixed strategy config.
+`--jobs N` parallelizes independent windows; candidates inside one window are
+run serially so they can share the precomputed signal frame.
+
+```bash
+PYTHONPATH=src:../src uv run --extra dev backtester compare-grid \
+    --data-dir ../data \
+    --primary-timeframe 1h \
+    --strategy strategies/crypt_ensemble_h1.json \
+    --output results/crypt_ensemble_h1_grid_sol_mar \
+    --window sol_2025_03:SOL-USDT-SWAP:2025-03-01:2025-04-01 \
+    --rrr-values 1.0,1.25,1.5 \
+    --ttl-values 30,36,42 \
+    --risk-percent 1.0 \
+    --jobs 3
 ```
 
 Use `--from` / `--to` for bounded donor `crypt-parquet` smokes before running
