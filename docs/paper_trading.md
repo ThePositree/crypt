@@ -150,7 +150,7 @@ Run on every tick (which is every H4 close). For each open trade:
      `PaperLedgerSettings.same_bar_resolution`.
 
      The backtester solves this identically in
-     `backtester/src/backtester/execution_sim.py` — `_resolve_bar_exit()`
+     `src/backtester/execution_sim.py` — `_resolve_bar_exit()`
      (lines 523–586) with `bar_exit_policy`. The paper ledger must use
      the same logic for comparability between M2 backtest and M3 paper
      results. Use `worst_case` as the consistent default in both.
@@ -164,7 +164,7 @@ Run on every tick (which is every H4 close). For each open trade:
    - SL exits: `exit_fee = taker_fee (0.05%)`
    - Timeout exits: `exit_fee = taker_fee (0.05%)`
 
-   Reference: `backtester/src/backtester/fee_model.py` —
+   Reference: `src/backtester/fee_model.py` —
    `StaticPercentFeeModel` (lines 80–138).
 
    `net_return_pct = gross_return_pct - entry_fee - exit_fee - slippage`.
@@ -182,7 +182,7 @@ class PaperLedgerSettings(BaseModel):
     tp_atr_mult: float = 3.0
     timeout_hours: int = 168
     same_bar_resolution: Literal["sl_first", "tp_first", "split"] = "sl_first"
-    # Fee model (see docs/backtest.md §7.2 and backtester/src/backtester/fee_model.py)
+    # Fee model (see docs/backtest.md §7.2 and src/backtester/fee_model.py)
     taker_fee: float = 0.0005   # 0.05%
     maker_fee: float = 0.0002   # 0.02%
     slippage_bps: float = 5.0   # 5 bp per side
@@ -389,7 +389,7 @@ are deliberately aligned with the battle-tested backtester in `backtester/`
 (see `docs/backtest.md §18` for a full inventory of what to port).
 
 For M3 specifically, the exit-check task (`§6`) is a simplified version
-of `backtester/src/backtester/execution_sim.py` — `_update_active_positions()`
+of `src/backtester/execution_sim.py` — `_update_active_positions()`
 (lines 428–521). Key differences vs M3:
 
 | Backtester ExecutionSim | M3 PaperLedger |

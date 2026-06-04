@@ -4,6 +4,105 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-04 — Base-vs-filtered H1 signal-quality comparison
+
+- Ran `backtester signal-quality` across the default H1 diagnostic windows:
+  SOL January/February/March 2025 and TON January/February/March/April 2025.
+- Compared base `crypt_ensemble_h1.json`, full filtered
+  `crypt_ensemble_h1_filtered.json`, and two focused ablations:
+  `crypt_ensemble_h1_filter_short_only.json` and
+  `crypt_ensemble_h1_filter_no_liquidity_sweep.json`.
+- What changed in evidence: base total was `-12.72%` across 557 trades; full
+  filtered total was `+2.31%` across 418 short-only trades; short-only alone
+  was stronger at `+3.96%` across 470 trades; no-liquidity-sweep alone stayed
+  negative at `-8.29%` because it kept the harmful 87 long trades.
+- Why it matters: the current full filter should not be promoted. Its gain
+  mostly comes from deleting longs, while extra anchor filtering reduces useful
+  short flow and worsens SOL January versus short-only.
+- Expected gain for the next task: validate a narrow short-only candidate
+  before spending more time on compound filters.
+
+Artifacts:
+
+- base: `results/crypt_ensemble_h1_signal_quality_base/20260604_141103`
+- full filter: `results/crypt_ensemble_h1_signal_quality_filtered/20260604_142009`
+- short-only:
+  `results/crypt_ensemble_h1_signal_quality_filter_short_only/20260604_143218`
+- no-liquidity-sweep:
+  `results/crypt_ensemble_h1_signal_quality_filter_no_liquidity_sweep/20260604_144227`
+
+Verification: all four reports completed with `UV_CACHE_DIR=/tmp/uv-cache`;
+the no-liquidity-sweep run exported 7 windows and 126 groups.
+
+## 2026-06-04 — H1 signal-quality diagnostics and first filter slice
+
+- Added `backtester signal-quality`, a report-only H1 diagnostic command.
+- What it does: builds `crypt_ensemble` signals once per window, runs one
+  fixed execution profile for realized PnL attribution, and writes
+  `signals.csv` / `signals.md`, `groups.csv` / `groups.md`, optional
+  `errors.csv` / `errors.md`, and per-window donor artifacts.
+- Why it was needed: candidate A was rejected after SOL full `+4.39%` but TON
+  full `-54.65%`, and the monthly execution grid did not reveal a robust
+  `rrr`/`ttl` geometry. More execution search was low leverage without knowing
+  which signal classes were harmful.
+- Expected gain: future agents can compare PnL/trade counts by side, setup
+  month, confidence bucket, anchor type, anchor age/freshness, context/setup
+  alignment, trigger type, stale-anchor marker, and reversal marker before
+  changing strategy logic.
+- Added default-off H1 setup/anchor filters to `crypt_ensemble`:
+  `allowed_sides`, `blocked_sl_anchor_types`, `max_anchor_age_hours`, and
+  `block_context_reversal`.
+- Added `strategies/backtester/crypt_ensemble_h1_filtered.json`, a diagnostic
+  profile that keeps the current H1 geometry but enables short-only,
+  no-liquidity-sweep-anchor, max-72h-anchor-age, and context-reversal filters.
+- Updated `AGENTS.md` so future task docs include what/why/gain/acceptance
+  links, agents explain task intent at session start, and final replies read
+  the next step back to the owner.
+
+Verification: `uv run pytest tests/backtester -q` passed (`114 passed`, 4
+existing pandas timezone-to-period warnings); short base and filtered
+`signal-quality` SOL smokes completed and exported reports under `/tmp`.
+
+## 2026-06-04 — Root-integrated backtester package
+
+- Added ADR-0023: `backtester` is now a root-integrated package under
+  `src/backtester/`, not a nested Python project under `backtester/`.
+- Moved donor tests to `tests/backtester/`.
+- Moved donor strategy JSON files to `strategies/backtester/`.
+- Removed donor-only Hatch/versioningit project files, donor `uv.lock`,
+  donor `mise.toml`, donor `.cursor` rules, local caches/venv, generated
+  donor results, and unused donor dashboard/scripts/gui files.
+- Added root `mise.toml` with common `uv` tasks.
+- Added root `backtester` CLI entrypoint in `pyproject.toml` and merged donor
+  runtime dependencies into the root dependency set.
+- Retired the obsolete root-native `crypt.backtest` harness and removed its
+  tests after usage search found no imports outside its own tests and stale
+  docs.
+- Updated README and migration docs to use root commands such as
+  `uv run backtester run ... --strategy strategies/backtester/...`.
+
+Verification: see the 2026-06-04 changelog entry for exact commands.
+
+## 2026-06-04 — Owner-run H1 artifacts reviewed and grid fail-soft fixed
+
+- Unpacked and inspected owner-provided `results.tar`.
+- Reviewed full candidate A SOL/TON run:
+  - SOL full: `+4.39%`, PF `1.09`, max drawdown `-12.68`, 255 trades.
+  - TON full: `-54.65%`, PF `0.71`, max drawdown `-54.49`, 1258 trades.
+- Rejected candidate A as a calibration candidate; it remains only a
+  diagnostic baseline.
+- Reconstructed the aborted extended monthly grid from per-run artifacts:
+  360 completed candidates across 10 windows, no robust `rrr`/`ttl` candidate,
+  no candidate with at least 7 positive windows.
+- Changed `backtester compare-grid` so failed windows no longer discard
+  completed summaries. Completed windows write `grid.csv` / `grid.md`; failed
+  windows write `grid_errors.csv` / `grid_errors.md`.
+- Added a regression test for partial summary export and updated README.
+
+Verification: ruff check and format clean on changed report/test files via
+root `uv --group dev`; targeted donor pytest `6 passed` with 4 existing
+timezone-to-period warnings.
+
 ## 2026-06-03 — Precomputed execution-grid signal reuse
 
 - Inspected SOL March grid diagnostics for the best row (`rrr = 1.0`,
@@ -204,7 +303,7 @@ files and tests; targeted donor pytest `28 passed`; full donor pytest
   and H1 MTF `generate()` output across signal, stop, trigger, rationale,
   metadata, and per-engine strength columns.
 - Enabled `optimized_windows = true` in
-  `backtester/strategies/crypt_ensemble_h1.json` for the H1 diagnostic config.
+  `strategies/backtester/crypt_ensemble_h1.json` for the H1 diagnostic config.
 - Reran bounded SOL H1 MTF smoke with optimized windows:
   `/tmp/crypt_donor_h1_mtf_smoke_optimized_windows/20260603_083245`.
 - Smoke produced the same key diagnostic result as the prior max-4 run:
@@ -227,7 +326,7 @@ files; targeted donor pytest `25 passed`; full donor pytest `98 passed` with
 - Added the parameter to the donor Optuna suggestion surface and covered the
   explicit cap with a focused structural-stop unit test.
 - Set `max_sl_distance_atr = 4.0` in
-  `backtester/strategies/crypt_ensemble_h1.json` for bounded H1 diagnostics.
+  `strategies/backtester/crypt_ensemble_h1.json` for bounded H1 diagnostics.
 - Updated the MTF spec and README to document the H1 stop-distance cap as a
   diagnostic setup-geometry knob, not final calibration.
 - Reran bounded SOL H1 MTF smoke:
@@ -342,7 +441,7 @@ warnings.
 - Preserved the existing H4 default mode and added an H1 MTF mode with D1
   context filtering, H4 setup verdict, H1 candle-confirm trigger, H1 execution
   tick index, and MTF diagnostics.
-- Added `backtester/strategies/crypt_ensemble_h1.json` for the first H1
+- Added `strategies/backtester/crypt_ensemble_h1.json` for the first H1
   experiment (`ttl = 24`, `rrr = 1.5`, monthly risk base).
 - Added focused donor tests for H1 primary loader semantics, CLI propagation,
   H1 execution diagnostics, H4 forming-candle exclusion, and D1
@@ -432,7 +531,7 @@ warnings.
   not a calibrated confidence threshold and not the default donor entry gate.
 - ADR-0011 status updated so only its `75` rationale is superseded; the
   `[UNCALIBRATED]` marker policy remains accepted.
-- `backtester/strategies/crypt_ensemble.json` no longer sets
+- `strategies/backtester/crypt_ensemble.json` no longer sets
   `min_confidence = 75`; donor `crypt_ensemble` trades BUY/SELL verdicts by
   default.
 - `min_confidence` remains available as an explicit optional diagnostic/Optuna
@@ -504,7 +603,7 @@ pytest `6 passed` with one existing pandas warning.
 - Added `risk_base_period` to donor execution sizing with `trade`, `weekly`,
   `monthly`, and `backtest` modes. The old per-trade current-capital behaviour
   remains available as `trade`.
-- Set `backtester/strategies/crypt_ensemble.json` to monthly risk-base sizing
+- Set `strategies/backtester/crypt_ensemble.json` to monthly risk-base sizing
   for M2 donor smokes, per ADR-0019.
 - Exported `risk_base_capital` on each trade row for audit.
 
@@ -513,7 +612,7 @@ Verification: ruff clean on changed donor files; targeted donor pytest
 
 ## 2026-06-02 — Donor `crypt_ensemble` engine wiring (session 15)
 
-- `backtester/src/backtester/strategies/crypt_ensemble.py` — wired the donor
+- `src/backtester/strategies/crypt_ensemble.py` — wired the donor
   strategy to run the existing `crypt` volatility/regime/directional engines
   and aggregator over `StrategyData`.
 - Donor output now includes `signal`, `entry_price`, ATR-based `sl_price`,
@@ -523,7 +622,7 @@ Verification: ruff clean on changed donor files; targeted donor pytest
   `open_time + 4h` and filtering H4/H1/D1 contexts to candles closed at or
   before that tick.
 - Added visible per-bar progress for long `crypt_ensemble` runs and enabled it
-  in `backtester/strategies/crypt_ensemble.json`.
+  in `strategies/backtester/crypt_ensemble.json`.
 - Fixed the project-Parquet `open_time` ambiguity where the timestamp was both
   index name and column label.
 - Tests added/updated for signal mapping, ATR stop output, missing optional
@@ -537,12 +636,12 @@ but the full run was stopped before completion due duration.
 
 ## 2026-06-02 — Donor backtester Parquet loader and neutral strategy slice (session 14)
 
-- `backtester/src/backtester/data_contracts.py` — added `StrategyData` for
+- `src/backtester/data_contracts.py` — added `StrategyData` for
   richer strategy input while keeping the old DataFrame strategy path.
-- `backtester/src/backtester/data_loader.py`, `cli_runner.py`,
+- `src/backtester/data_loader.py`, `cli_runner.py`,
   `__main__.py` — added `parquet` and `crypt-parquet` CLI data sources.
-- `backtester/src/backtester/strategies/crypt_ensemble.py` and
-  `backtester/strategies/crypt_ensemble.json` — registered a neutral
+- `src/backtester/strategies/crypt_ensemble.py` and
+  `strategies/backtester/crypt_ensemble.json` — registered a neutral
   `crypt_ensemble` skeleton.
 - Tests added for single-file Parquet loading, project-style Parquet columns,
   `crypt-parquet` loader plumbing, CLI source selection, and the neutral

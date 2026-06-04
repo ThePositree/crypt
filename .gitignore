@@ -37,6 +37,7 @@ htmlcov/
 # Project data (runtime artefacts — root-level only, not src/crypt/data/)
 /data/
 /logs/
+/results/
 *.parquet
 *.log
 *.sqlite

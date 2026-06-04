@@ -20,7 +20,7 @@ quickly without rewriting the strategy again.
 Implementation status as of 2026-06-02 session 24: the first additive MTF
 slice is implemented, but H1 full-history smoke is not accepted yet. H4 remains
 the default mode. H1 can be selected through `--primary-timeframe 1h` plus
-`backtester/strategies/crypt_ensemble_h1.json`; it uses D1 context filtering,
+`strategies/backtester/crypt_ensemble_h1.json`; it uses D1 context filtering,
 the H4 ensemble verdict as setup, and an H1 candle-confirm trigger. The
 attempted SOL H1 smoke loaded 21517 H1 bars and started correctly but did not
 reach export before the session process ended, so diagnostics from a completed
@@ -304,17 +304,16 @@ and inspect exported diagnostics.
 Current operator command for bounded execution-only H1 tuning:
 
 ```bash
-cd backtester
 MPLCONFIGDIR=/tmp/matplotlib \
-PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache \
-uv run --extra dev backtester optimize \
+UV_CACHE_DIR=/tmp/uv-cache \
+uv run backtester optimize \
     --data-source crypt-parquet \
-    --data-dir ../data \
+    --data-dir data \
     --primary-timeframe 1h \
     --symbol SOL-USDT-SWAP \
     --from 2025-01-01 \
     --to 2025-02-01 \
-    --strategy strategies/crypt_ensemble_h1.json \
+    --strategy strategies/backtester/crypt_ensemble_h1.json \
     --output /tmp/crypt_donor_h1_mtf_optuna_cli \
     --trials 12 \
     --study-name sol_h1_rrr_ttl \
@@ -469,15 +468,14 @@ Add focused tests before a full smoke:
 First smoke:
 
 ```bash
-cd backtester
-PYTHONPATH=src:../src uv run --extra dev backtester run \
+uv run backtester run \
     --data-source crypt-parquet \
-    --data-dir ../data \
+    --data-dir data \
     --primary-timeframe 1h \
     --symbol SOL-USDT-SWAP \
     --from 2025-01-01 \
     --to 2025-02-01 \
-    --strategy strategies/crypt_ensemble_h1.json \
+    --strategy strategies/backtester/crypt_ensemble_h1.json \
     --output /tmp/crypt_donor_h1_mtf_smoke_bounded
 ```
 
@@ -579,6 +577,78 @@ Inspect:
 - `trade_diagnostics.csv`: exit reason distribution and trades/day;
 - `trades.csv`: long vs short PnL, trigger type, stop source, stop distance;
 - `signal_diagnostics.csv`: decision/confidence/regime distribution.
+
+## H1 signal-quality diagnostics
+
+Before adding more execution grids, use a report-only diagnostic command over
+bounded H1 windows. The purpose is to explain why candidate A failed across
+SOL/TON full-history and monthly windows before changing signal logic.
+
+The report must build the `crypt_ensemble` signal frame once per
+symbol/window, run one fixed execution profile only to attach realized PnL, and
+then write CSV/Markdown summaries. It must not tune parameters or mutate the
+strategy.
+
+Default diagnostic windows:
+
+- SOL January, February, March 2025;
+- TON January, February, March, April 2025.
+
+Required output files:
+
+- `signals.csv` / `signals.md`: one row per window with signal counts,
+  setup/trigger/context distributions, confidence quantiles, stop-source and
+  anchor counts, and stale/reversal markers;
+- `groups.csv` / `groups.md`: grouped trade attribution by side, setup month,
+  confidence bucket, anchor type, anchor source timeframe, anchor freshness,
+  context/setup alignment, trigger type, reversal marker, and stale-anchor
+  marker;
+- `errors.csv` / `errors.md` when a window cannot load or execute.
+
+Definitions:
+
+- `side`: `long` for `is_long = true`, otherwise `short`;
+- `setup_month`: month of `signal_time` when available, otherwise
+  `entry_time`;
+- `confidence_bucket`: `[0,25)`, `[25,40)`, `[40,55)`, `[55,70)`, `[70,85)`,
+  `[85,101]`;
+- `anchor_age_hours`: `signal_time - sl_anchor_known_at` when both timestamps
+  exist;
+- `anchor_age_bucket`: `fresh_0_6h`, `recent_6_24h`, `stale_24_72h`,
+  `old_72h_plus`, or `unknown`;
+- `stale_anchor`: true when `anchor_age_hours > 72`;
+- `reversal_marker`: true when D1 `context_bias` opposes
+  `setup_direction`/trade side.
+
+This diagnostic is deliberately report-only. It may justify later filters, but
+it must not by itself accept a calibration candidate.
+
+## H1 setup and anchor filters
+
+The first filter slice must be parameterized and default-off unless the H1
+diagnostic strategy config explicitly enables it. Filters are evaluated after
+the H1 trigger and structural stop selection, so diagnostics still show why a
+row was neutralized.
+
+Initial filter params:
+
+- `allowed_sides`: optional list containing `long`, `short`, or both. When
+  omitted, both sides are allowed. When a side is disallowed, the row emits
+  `signal = 0` with a rationale suffix.
+- `blocked_sl_anchor_types`: optional list of anchor types to reject, for
+  example `["liquidity_sweep"]`.
+- `max_anchor_age_hours`: optional positive number. Rows with a structural
+  stop anchor older than this at `trigger_known_at` are neutralized. Rows with
+  unknown anchor age are not rejected by this filter because missing anchors
+  are already neutralized by stop planning.
+- `block_context_reversal`: optional boolean. When true, rows whose D1 context
+  opposes the setup/trade side are neutralized even if they passed the earlier
+  trigger path.
+
+The accepted implementation must preserve H4 default behaviour, export
+diagnostic columns for filter decisions, and include focused tests for each
+filter. Bounded SOL/TON windows should then be compared with the filter config
+before any broad Optuna search resumes.
 
 Target diagnostic acceptance, not production acceptance:
 

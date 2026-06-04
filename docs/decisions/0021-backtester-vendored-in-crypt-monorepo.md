@@ -6,6 +6,9 @@
 - **Supersedes**: the repository-layout assumption in ADR-0018 and docs that
   described `backtester/` as a separate nested git repository. ADR-0018 itself
   (donor package as canonical M2 architecture) remains in force.
+- **Partially superseded by**: ADR-0023 for Python packaging/tooling layout.
+  The git decision remains accepted, but `backtester` is no longer a separate
+  Python project with its own `pyproject.toml` and `uv.lock`.
 
 ## Context
 
@@ -32,8 +35,10 @@ Track `backtester/` as ordinary source in the `crypt` repository:
 2. Do **not** register `backtester/` as a git submodule.
 3. Keep `backtester/` as a separate **Python package** with its own
    `pyproject.toml`, `uv.lock`, and tests — only the git boundary moves.
+   This item was later superseded by ADR-0023; the package now lives at
+   `src/backtester/` inside the root `uv` project.
 4. Preserve provenance in ported files via existing header comments pointing at
-   `backtester/src/backtester/<file>.py` and, where applicable,
+   `src/backtester/<file>.py` and, where applicable,
    `https://github.com/AuriumX/backtester` as the upstream origin.
 5. Continue ADR-0018 donor safety rules: prefer additive donor edits, minimal
    surface changes, and focused tests.

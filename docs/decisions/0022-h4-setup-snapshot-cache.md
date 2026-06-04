@@ -61,5 +61,5 @@ snapshot cache.
 ## References
 
 - `docs/crypt_ensemble_mtf.md`
-- `backtester/src/backtester/strategies/crypt_ensemble.py`
+- `src/backtester/strategies/crypt_ensemble.py`
 - ADR-0018: Donor backtester becomes the canonical M2 backtest architecture

@@ -114,9 +114,7 @@ def _clear_rejection(candle: pd.Series, swept_side: str) -> bool:
     body = abs(float(candle["c"]) - float(candle["o"]))
     if body <= 0.5 * candle_range:
         return False
-    return _rejects_in_signal_direction(
-        candle, "bearish" if swept_side == "high" else "bullish"
-    )
+    return _rejects_in_signal_direction(candle, "bearish" if swept_side == "high" else "bullish")
 
 
 def _rejects_in_signal_direction(candle: pd.Series, direction: Direction) -> bool:

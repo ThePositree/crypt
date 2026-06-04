@@ -17,7 +17,7 @@ Related ADRs:
 
 ## 1. Purpose
 
-Populate `data/<SYMBOL>/` Parquet files so the M2 backtest harness and
+Populate `data/<SYMBOL>/` Parquet files so the donor backtester and future
 paper-trading replay have enough history for all engines — especially
 `DerivativesEngine`, which needs OI and long/short ratio back to Feb 2024.
 
@@ -122,12 +122,13 @@ for SYMBOL in SOL-USDT-SWAP TON-USDT-SWAP XPL-USDT-SWAP; do
     --data-types ohlcv
 done
 
-# Run backtest
-PYTHONPATH=src uv run python -m crypt.backtest \
-    --from 2024-06-01 --to 2026-06-01 \
-    --symbols SOL-USDT-SWAP,TON-USDT-SWAP,XPL-USDT-SWAP \
-    --walk-forward-folds 5 \
-    --report-dir reports/backtest_2026-06/
+# Run one donor-backed symbol smoke from the repository root
+uv run backtester run \
+    --data-source crypt-parquet \
+    --data-dir data \
+    --symbol SOL-USDT-SWAP \
+    --strategy strategies/backtester/crypt_ensemble.json \
+    --output results/crypt_ensemble_sol
 ```
 
 ADR-0017 makes the first M2 calibration OHLCV-only, so derivatives history is

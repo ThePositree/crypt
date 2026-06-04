@@ -27,7 +27,7 @@ project-side helpers that reuse existing SMC analysis.
 - `docs/engines/smc_core.md` — Python SMC analyser contract.
 - `src/crypt/structure/smc.py` — existing deterministic SMC outputs:
   `SMCOrderBlock`, `SMCLiquiditySweep`, `SMCPivot`, `SMCState`.
-- `backtester/src/backtester/strategies/crypt_ensemble.py` — current donor
+- `src/backtester/strategies/crypt_ensemble.py` — current donor
   strategy adapter.
 
 ## Previous behaviour
@@ -106,11 +106,11 @@ Optional diagnostic columns are allowed if they do not break donor execution:
 
 ## Implementation notes
 
-- Implemented in `backtester/src/backtester/strategies/crypt_ensemble.py`.
+- Implemented in `src/backtester/strategies/crypt_ensemble.py`.
 - Donor `ExecutionSim` is unchanged.
 - `sl_atr_buffer_mult` defaults to `0.10`.
 - `allow_atr_sl_fallback` defaults to `false` in
-  `backtester/strategies/crypt_ensemble.json`.
+  `strategies/backtester/crypt_ensemble.json`.
 - `sl_atr_mult` remains in the parameter surface for the explicit diagnostic
   ATR fallback path and for backward-compatible Optuna suggestions, but it is
   not used for default structural stops.
@@ -134,12 +134,12 @@ Add focused synthetic tests before running optimizer/backtest:
 
 Implemented verification:
 
-- `uv run ruff check backtester/src/backtester/strategies/crypt_ensemble.py backtester/tests/test_crypt_ensemble_strategy.py`
+- `uv run ruff check src/backtester/strategies/crypt_ensemble.py tests/backtester/test_crypt_ensemble_strategy.py`
   -> clean.
-- `PYTHONPATH=src:../src uv run --extra dev pytest tests/test_crypt_ensemble_strategy.py -q`
-  in `backtester/` -> 14 passed, 1 existing pandas warning.
-- `PYTHONPATH=src:../src uv run --extra dev pytest tests -q` in
-  `backtester/` -> 82 passed, 3 existing pandas warnings.
+- `uv run pytest tests/backtester/test_crypt_ensemble_strategy.py -q`
+  -> 14 passed, 1 existing pandas warning.
+- `uv run pytest tests/backtester -q`
+  -> 82 passed, 3 existing pandas warnings.
 
 ## Future optimizer note
 

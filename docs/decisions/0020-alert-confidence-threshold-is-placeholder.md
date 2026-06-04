@@ -50,6 +50,6 @@ required M2 tradeability gate.
 ## References
 
 - ADR-0011: Thresholds rationale and `[UNCALIBRATED]` marker policy
-- `backtester/src/backtester/strategies/crypt_ensemble.py`
-- `backtester/strategies/crypt_ensemble.json`
-- `backtester/src/backtester/results_analyzer.py`
+- `src/backtester/strategies/crypt_ensemble.py`
+- `strategies/backtester/crypt_ensemble.json`
+- `src/backtester/results_analyzer.py`

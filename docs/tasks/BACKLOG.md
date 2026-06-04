@@ -180,14 +180,79 @@ engineering polish unless it directly supports that outcome.
       a tiny SOL smoke confirmed byte-identical `signals.csv` exports across
       two `rrr` candidates. Existing optimizer best-run cached-signal reuse
       remains in place; disk-backed worker sharing is tracked separately.
+- [x] **Preserve partial `compare-grid` summaries when a window fails** — P1.
+      Completed 2026-06-04 after owner-provided `results.tar` showed the
+      extended grid aborted on missing `sol_2025_05` data after 360 candidate
+      runs had already completed. `compare-grid` now writes `grid.csv` /
+      `grid.md` for completed windows and `grid_errors.csv` /
+      `grid_errors.md` for failed windows.
+- [x] **Add report-only H1 signal quality diagnostics before more execution
+      grids** — P0. Why: candidate A is rejected after SOL full `+4.39%` but
+      TON full `-54.65%`, and the completed monthly grid has no robust
+      `rrr`/`ttl` candidate. Gain: attribute PnL and trade counts by side,
+      setup month, confidence bucket, anchor type, anchor age/freshness,
+      context/setup direction, and reversal/stale markers before changing
+      signal logic. Completed 2026-06-04 with `backtester signal-quality`,
+      which writes `signals.csv` / `groups.csv` plus Markdown and fail-soft
+      `errors.csv` artifacts.
+- [x] **Implement bounded H1 setup/anchor filters after diagnostics** — P0.
+      Why: the next likely signal-quality fixes are side gating, stale-anchor
+      rejection, liquidity-sweep-anchor rejection, and context-reversal
+      blocking; these needed to be testable without changing the base H1
+      config. Gain: future bounded comparisons can use one explicit filtered
+      diagnostic strategy instead of ad hoc CSV editing. Completed 2026-06-04:
+      `crypt_ensemble` now supports default-off `allowed_sides`,
+      `blocked_sl_anchor_types`, `max_anchor_age_hours`, and
+      `block_context_reversal`; `crypt_ensemble_h1_filtered.json` enables the
+      first diagnostic combination.
+- [x] **Run base-vs-filtered H1 signal-quality comparison** — P0. What: run
+      `backtester signal-quality` across default SOL Jan/Feb/Mar and TON
+      Jan/Feb/Mar/Apr windows with both
+      `strategies/backtester/crypt_ensemble_h1.json` and
+      `strategies/backtester/crypt_ensemble_h1_filtered.json`. Why now: the
+      implementation is in place but only short SOL smoke windows were run in
+      this session. Expected gain: decide whether the first filter combination
+      improves the harmful groups identified by diagnostics without deleting
+      too much useful signal flow. Acceptance: two output directories with
+      `signals.csv`, `groups.csv`, Markdown copies, and per-window runs; a
+      written comparison of return/PnL by side, anchor type, anchor age bucket,
+      context/setup alignment, stale marker, and reversal marker. Completed
+      2026-06-04 with base
+      `results/crypt_ensemble_h1_signal_quality_base/20260604_141103`, full
+      filter
+      `results/crypt_ensemble_h1_signal_quality_filtered/20260604_142009`,
+      short-only ablation
+      `results/crypt_ensemble_h1_signal_quality_filter_short_only/20260604_143218`,
+      and no-liquidity-sweep ablation
+      `results/crypt_ensemble_h1_signal_quality_filter_no_liquidity_sweep/20260604_144227`.
+- [ ] **Validate narrow H1 short-only candidate before promoting filters** —
+      P0. What: run a candidate-style bounded report for
+      `strategies/backtester/crypt_ensemble_h1_filter_short_only.json` over
+      the default SOL Jan/Feb/Mar and TON Jan/Feb/Mar/Apr windows. Why now:
+      short-only improved the 7-window aggregate to `+3.96%` by removing
+      harmful longs, while the full filter was weaker (`+2.31%`) and
+      no-liquidity-sweep alone stayed negative (`-8.29%`). Expected gain:
+      determine whether short-only is a simple owner-run candidate or whether
+      SOL March / TON March failures still block promotion. Acceptance: one
+      timestamped report with return, profit factor, max drawdown, trades,
+      side PnL, and a written promote/reject/follow-up decision.
 
 - [x] **Vend `backtester/` into crypt monorepo** — P1. Remove nested
       `backtester/.git`; commit donor sources from the `crypt` root. ADR-0021;
       docs shipped 2026-06-02. Owner completes the git add/commit after
       removing `.git`.
-- [ ] **Run donor `backtester/` tests in root CI** — P2. `.github/workflows/ci.yml`
-      currently covers only `src/crypt/`; add `cd backtester && pytest` (and
-      optional ruff on donor paths) once the monorepo commit lands.
+- [x] **Run donor `backtester` tests from the root project** — P2. Completed
+      2026-06-04 via ADR-0023 root integration: donor tests now live in
+      `tests/backtester/` and run under root `uv run pytest`.
+- [ ] **Bring `src/backtester/` under strict mypy** — P2. The root-integrated
+      donor package is not yet strict-typed, so CI still runs
+      `mypy --strict src/crypt`. Add gradual typing or targeted ignores before
+      expanding strict mypy to `src/backtester/`.
+- [ ] **Bring `src/backtester/` under root ruff rules** — P2. The donor code
+      still has many pre-existing style violations under the stricter root
+      rules (`PTH`, `RUF`, `SIM`, Russian comments/docstrings, etc.), so CI
+      currently excludes `src/backtester/` and `tests/backtester/` from ruff.
+      Clean this separately from functional strategy work.
 
 - [x] **Add donor `StrategyData` contract** — P0. Extend the donor package
       additively so strategies can receive either a plain `pd.DataFrame` or a
@@ -251,7 +316,7 @@ engineering polish unless it directly supports that outcome.
       unchanged; compute only `crypt_ensemble`'s `sl_price` differently.
       Shipped 2026-06-02.
 - [x] **Rerun SOL donor smoke after structural SMC SL** — P0. Use the current
-      `backtester/strategies/crypt_ensemble.json`, inspect `signals.csv`,
+      `strategies/backtester/crypt_ensemble.json`, inspect `signals.csv`,
       `signal_diagnostics.csv`, `trades.csv`, and metrics. Expect fewer trades
       because BUY/SELL verdicts without valid structural stop anchors now emit
       `signal = 0`. Completed 2026-06-02 at
@@ -389,9 +454,9 @@ engineering polish unless it directly supports that outcome.
       current `crypt_ensemble` default, but `weekly` and `backtest` should be
       compared in donor walk-forward/Optuna work before treating sizing mode
       as calibrated.
-- [ ] **Retire or freeze `src/crypt/backtest/` after parity** — P1. Do not
-      delete before donor-backed SOL run works and the owner accepts the new
-      command/report shape.
+- [x] **Retire or freeze `src/crypt/backtest/` after parity** — P1. Completed
+      2026-06-04 by ADR-0023: the old root-native harness and
+      `tests/backtest/` were removed after usage search found no live imports.
 
 ---
 

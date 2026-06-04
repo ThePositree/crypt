@@ -22,7 +22,8 @@ runtime, retry/backoff, heartbeat, log rotation, service config, and Railway
 deployment docs are in place.
 
 Current active work is **M2 donor backtester migration and calibration**.
-`backtester/` is now vendored as ordinary source in this monorepo per ADR-0021.
+`backtester` is now a root-integrated package under `src/backtester` per
+ADR-0023.
 The donor `crypt_ensemble` strategy can replay the existing ensemble over
 project Parquet data and the first multi-timeframe H1 execution slice exists,
 but full H1 smoke acceptance remains open behind H1 setup-geometry retuning
@@ -42,6 +43,7 @@ See `docs/tasks/ROADMAP.md` for milestones.
 - `pytest` — tests
 - `ruff` + `mypy` — lint / type check
 - `uv` — package manager
+- `mise` — optional local tool/task runner
 
 No database, no Redis, no Docker in MVP.
 
@@ -74,11 +76,11 @@ uv run python -m crypt
 uv run python -m crypt --symbols SOL-USDT-SWAP,TON-USDT-SWAP
 ```
 
-## Historical backfill (M2 backtest)
+## Historical backfill (M2 data)
 
 Primary M2 calibration is OHLCV-only (ADR-0017): no paid derivatives,
 liquidations, or sentiment data until the candle-only system demonstrates
-value. See `docs/backfill.md` and `docs/backtest.md`.
+value. See `docs/backfill.md` and `docs/backtester_migration.md`.
 
 ```bash
 # M2 primary backfill (OHLCV-only per ADR-0017)
@@ -87,21 +89,23 @@ PYTHONPATH=src uv run python -m crypt.backfill \
     --from 2024-02-01 --to 2026-06-01 \
     --data-types ohlcv
 
-# Then run backtest — see docs/backtest.md
-PYTHONPATH=src uv run python -m crypt.backtest \
-    --from 2024-06-01 --to 2026-06-01 \
-    --symbols SOL-USDT-SWAP,TON-USDT-SWAP,XPL-USDT-SWAP \
-    --walk-forward-folds 5 \
-    --report-dir reports/backtest_2026-06/
+# Then run donor-backed backtests from the repository root.
+uv run backtester run \
+    --data-source crypt-parquet \
+    --data-dir data \
+    --symbol SOL-USDT-SWAP \
+    --strategy strategies/backtester/crypt_ensemble.json \
+    --output results/crypt_ensemble_sol
 ```
 
 Data lands in `data/<SYMBOL>/` (Parquet). Re-running is idempotent.
 
-## Donor backtester migration (experimental)
+## Backtester (M2)
 
 ADR-0018 moves future M2 work toward the donor `backtester/` package.
-ADR-0021 tracks `backtester/` in this monorepo (same git history as
-`src/crypt/`; not a nested repository). The donor package is treated as a
+ADR-0023 integrates it into the root `uv` project as `src/backtester`; it is
+not a nested repository and no longer has its own `pyproject.toml`, `uv.lock`,
+Hatch config, or subdirectory `mise` file. The donor package is treated as a
 high-risk source-of-truth dependency: avoid rewriting its internals and prefer
 adapting `crypt_ensemble` to its existing strategy API.
 
@@ -128,13 +132,11 @@ ensemble; H1 MTF runs are especially expensive until the donor route gets a
 range limiter or parity-safe cache.
 
 ```bash
-cd backtester
-
-PYTHONPATH=src:../src uv run --extra dev backtester run \
+uv run backtester run \
     --data-source crypt-parquet \
-    --data-dir ../data \
+    --data-dir data \
     --symbol SOL-USDT-SWAP \
-    --strategy strategies/crypt_ensemble.json \
+    --strategy strategies/backtester/crypt_ensemble.json \
     --output results/crypt_ensemble_sol
 ```
 
@@ -155,14 +157,14 @@ execution-only runs should pay for only one signal build per strategy-param
 set.
 
 ```bash
-PYTHONPATH=src:../src uv run --extra dev backtester run \
+uv run backtester run \
     --data-source crypt-parquet \
-    --data-dir ../data \
+    --data-dir data \
     --primary-timeframe 1h \
     --symbol SOL-USDT-SWAP \
     --from 2025-01-01 \
     --to 2025-02-01 \
-    --strategy strategies/crypt_ensemble_h1.json \
+    --strategy strategies/backtester/crypt_ensemble_h1.json \
     --output results/crypt_ensemble_sol_h1
 ```
 
@@ -170,15 +172,15 @@ Bounded H1 setup tuning can use the donor optimizer directly:
 
 ```bash
 MPLCONFIGDIR=/tmp/matplotlib \
-PYTHONPATH=src:../src UV_CACHE_DIR=/tmp/uv-cache \
-uv run --extra dev backtester optimize \
+UV_CACHE_DIR=/tmp/uv-cache \
+uv run backtester optimize \
     --data-source crypt-parquet \
-    --data-dir ../data \
+    --data-dir data \
     --primary-timeframe 1h \
     --symbol SOL-USDT-SWAP \
     --from 2025-01-01 \
     --to 2025-02-01 \
-    --strategy strategies/crypt_ensemble_h1.json \
+    --strategy strategies/backtester/crypt_ensemble_h1.json \
     --output results/crypt_ensemble_sol_h1_optuna \
     --trials 25 \
     --target total_return_pct \
@@ -203,10 +205,10 @@ Use `--jobs N` to run independent windows in parallel; this does not parallelize
 Optuna strategy-parameter search.
 
 ```bash
-PYTHONPATH=src:../src uv run --extra dev backtester compare-fixed \
-    --data-dir ../data \
+uv run backtester compare-fixed \
+    --data-dir data \
     --primary-timeframe 1h \
-    --strategy strategies/crypt_ensemble_h1.json \
+    --strategy strategies/backtester/crypt_ensemble_h1.json \
     --output results/crypt_ensemble_h1_fixed \
     --rrr 1.25 \
     --ttl 36 \
@@ -222,12 +224,15 @@ once and reuses it across execution candidates, so `rrr` / `ttl` checks do not
 pay repeated signal-generation cost for the same fixed strategy config.
 `--jobs N` parallelizes independent windows; candidates inside one window are
 run serially so they can share the precomputed signal frame.
+If one or more windows fail to load or execute, completed windows still write
+`grid.csv` / `grid.md`, and failed windows are listed in `grid_errors.csv` /
+`grid_errors.md`.
 
 ```bash
-PYTHONPATH=src:../src uv run --extra dev backtester compare-grid \
-    --data-dir ../data \
+uv run backtester compare-grid \
+    --data-dir data \
     --primary-timeframe 1h \
-    --strategy strategies/crypt_ensemble_h1.json \
+    --strategy strategies/backtester/crypt_ensemble_h1.json \
     --output results/crypt_ensemble_h1_grid_sol_mar \
     --window sol_2025_03:SOL-USDT-SWAP:2025-03-01:2025-04-01 \
     --rrr-values 1.0,1.25,1.5 \
@@ -235,6 +240,33 @@ PYTHONPATH=src:../src uv run --extra dev backtester compare-grid \
     --risk-percent 1.0 \
     --jobs 3
 ```
+
+Before running more execution grids, use `signal-quality` to attribute H1
+PnL and trade counts by side, setup month, confidence bucket, anchor type,
+anchor freshness, context/setup alignment, trigger type, stale-anchor marker,
+and reversal marker. With no `--window` options it checks SOL Jan/Feb/Mar 2025
+and TON Jan/Feb/Mar/Apr 2025. It writes `signals.csv`, `signals.md`,
+`groups.csv`, `groups.md`, per-window donor artifacts under `runs/<label>/`,
+and `errors.csv` / `errors.md` when some windows fail.
+
+```bash
+uv run backtester signal-quality \
+    --data-dir data \
+    --primary-timeframe 1h \
+    --strategy strategies/backtester/crypt_ensemble_h1.json \
+    --output results/crypt_ensemble_h1_signal_quality \
+    --rrr 1.25 \
+    --ttl 36 \
+    --risk-percent 1.0 \
+    --jobs 3
+```
+
+For a bounded diagnostic of the first H1 setup/anchor filters, run the same
+report with `strategies/backtester/crypt_ensemble_h1_filtered.json`. That
+config keeps the same H1 geometry but enables `allowed_sides = ["short"]`,
+blocks liquidity-sweep stop anchors, rejects anchors older than 72 hours, and
+blocks explicit context reversals. It is a diagnostic profile, not accepted
+calibration.
 
 Use `--from` / `--to` for bounded donor `crypt-parquet` smokes before running
 full-history H1 MTF. The bounds limit the primary/output timeframe while
@@ -250,6 +282,18 @@ execution writes `trades.csv`, `trade_diagnostics.csv`, `metrics.csv`,
 uv sync --all-extras
 uv tool install pre-commit
 pre-commit install
+```
+
+`uv` and `pyproject.toml` are the source of truth for dependencies, scripts,
+and Python tool configuration. `mise` is optional: it pins local tool versions
+and provides short wrappers around the same `uv` commands.
+
+```bash
+# Optional convenience layer:
+mise run sync
+mise run test
+mise run test-backtester
+mise run backtester-help
 ```
 
 Pre-commit runs `ruff` (with auto-fix) and `mypy --strict` on every commit.
@@ -291,22 +335,27 @@ crypt/
 ├── AGENTS.md                # agent operating manual
 ├── CHANGELOG.md             # session-by-session log
 ├── README.md                # this file
-├── backtester/              # donor M2 package (ADR-0018, ADR-0021; own pyproject.toml)
 ├── .cursor/rules/           # always-on rules for AI agents
 ├── docs/
 │   ├── architecture.md      # high-level design
 │   ├── backfill.md          # backfill CLI contract (OKX OHLCV + optional Rubik data)
-│   ├── backtest.md          # M2 backtest harness contract
+│   ├── backtest.md          # retired root-native harness note
 │   ├── backtester_migration.md
 │   ├── decisions/           # ADRs (one decision per file)
 │   ├── engines/             # per-engine specs (signal contracts, logic, thresholds)
 │   └── tasks/               # ROADMAP / BACKLOG / IN_PROGRESS / DONE
-├── src/crypt/               # live ensemble + legacy backtest harness
-└── tests/                   # pytest (crypt package)
+├── mise.toml                # optional tool versions and common tasks
+├── src/backtester/          # canonical M2 donor backtester package
+├── src/crypt/               # live ensemble
+├── strategies/backtester/   # donor strategy JSON configs
+└── tests/                   # pytest suites for crypt and backtester
 ```
 
-Donor tests run from `backtester/` (`uv run pytest` with
-`PYTHONPATH=src:../src`); they are not yet part of root CI.
+Backtester tests now run from the repository root:
+
+```bash
+uv run pytest tests/backtester -q
+```
 
 ## License
 

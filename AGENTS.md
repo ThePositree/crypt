@@ -40,6 +40,26 @@ The owner intentionally does not write implementation plans. You build the
 local task plan yourself. If the task is non-trivial, use the todo-list tool
 and keep it updated as you go.
 
+### Document task intent, not only task mechanics
+
+Task files must explain the work broadly enough that the next agent can
+understand why the item exists without reconstructing the whole prior session.
+When adding or rewriting a task in `BACKLOG.md`, `IN_PROGRESS.md`, or
+`DONE.md`, include:
+
+- **What:** the concrete change or investigation.
+- **Why now:** the evidence, failure, owner request, or previous result that
+  created the task.
+- **Expected gain:** what the project wins if the task is completed.
+- **Acceptance:** the observable output, command, report, test, or decision
+  that proves the task is done.
+- **Links:** relevant docs, ADRs, commands, or artifact paths when available.
+
+At the start of a session, after reading the required files and choosing the
+task or task chain, briefly tell the owner what you are taking, why it exists,
+what it should give us, and how you will know it is done. If you take multiple
+linked tasks, explain the dependency between them.
+
 ### Preserve owner ideas for later
 
 The owner may explicitly say that something is an idea for later / "прозапас"
@@ -154,6 +174,9 @@ Before handing back to the owner, do **all** of:
    list of ADRs touched, list of files touched at directory level.
 5. If the public surface changed (run command, env vars, dependencies,
    feature flags), update `README.md`.
+6. In the final chat reply, read the next step back to the owner explicitly:
+   what remains, why it remains, what it should give the project, and which
+   command or artifact the next agent should start from.
 
 ---
 

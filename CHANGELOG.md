@@ -6,6 +6,122 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-04 — H1 filter comparison and ablations
+
+- Ran full base-vs-filtered H1 signal-quality diagnostics across SOL
+  Jan/Feb/Mar 2025 and TON Jan/Feb/Mar/Apr 2025.
+- Added focused ablation configs for short-only, no-liquidity-sweep,
+  max-72h-anchor-age, and short-plus-no-liquidity-sweep comparisons.
+- Results: base `-12.72%`; full filter `+2.31%`; short-only `+3.96%`;
+  no-liquidity-sweep `-8.29%`. The full filter is not promoted; the next
+  bounded candidate should be short-only.
+- Updated task trackers with the completed artifacts and the next validation
+  handoff.
+
+**ADRs:** none.
+
+**Verification:** completed `backtester signal-quality` runs with
+`UV_CACHE_DIR=/tmp/uv-cache` for base, full filter, short-only, and
+no-liquidity-sweep reports.
+
+**Files touched:** `strategies/`, `docs/`, `CHANGELOG.md`.
+
+## 2026-06-04 — H1 signal-quality diagnostics and filters
+
+- Added `backtester signal-quality` for report-only H1 diagnostics across
+  SOL/TON windows, exporting `signals.csv` / `groups.csv`, Markdown copies,
+  fail-soft `errors.csv`, and per-window donor artifacts.
+- Added H1 diagnostic filters to `crypt_ensemble`: `allowed_sides`,
+  `blocked_sl_anchor_types`, `max_anchor_age_hours`, and
+  `block_context_reversal`, with `signal_filter_reason` exported on signals.
+- Added `strategies/backtester/crypt_ensemble_h1_filtered.json` as a
+  diagnostic profile for short-only, no-liquidity-sweep-anchor, max-72h-anchor
+  age, and context-reversal checks.
+- Updated `AGENTS.md` so task docs must include what/why/gain/acceptance and
+  agents must explain selected task intent at session start and read the next
+  step back at session end.
+- Updated README, MTF spec, migration docs, and task trackers for the new
+  diagnostic workflow.
+
+**ADRs:** none.
+
+**Verification:** `uv run pytest tests/backtester -q` -> 114 passed with 4
+existing pandas timezone-to-period warnings; `uv run ruff check` on changed
+backtester tests clean; `uv run backtester --help` and
+`uv run backtester signal-quality --help` verified with `UV_CACHE_DIR=/tmp`;
+short SOL base and filtered `signal-quality` smokes completed under `/tmp`.
+
+**Files touched:** `AGENTS.md`, `README.md`, `src/backtester/`,
+`tests/backtester/`, `strategies/`, `docs/`, `CHANGELOG.md`.
+
+## 2026-06-04 — Document mise as optional
+
+- Clarified that `uv` / `pyproject.toml` are the canonical dependency,
+  script, and Python-tooling surface.
+- Documented root `mise.toml` as an optional local convenience layer that
+  wraps the same `uv` commands.
+
+**ADRs:** none.
+
+**Verification:** documentation-only update; no tests run.
+
+**Files touched:** `README.md`, `docs/`, `CHANGELOG.md`.
+
+## 2026-06-04 — Root-integrated backtester package
+
+- Added ADR-0023 for the new layout: `backtester` now lives under
+  `src/backtester/` inside the root `uv` project.
+- Moved donor tests to `tests/backtester/` and strategy JSON configs to
+  `strategies/backtester/`.
+- Removed the old nested `backtester/` project boundary: donor
+  `pyproject.toml`, donor `uv.lock`, Hatch/versioningit config, donor
+  `mise.toml`, donor `.cursor` rules, local venv/cache/results, and unused
+  donor dashboard/scripts/gui files.
+- Added root `mise.toml` and root `backtester` console script.
+- Merged donor runtime dependencies into root `pyproject.toml` and refreshed
+  `uv.lock`.
+- Retired and deleted the obsolete `src/crypt/backtest/` harness and
+  `tests/backtest/` after usage search found no live imports outside stale
+  docs/self-tests.
+- Updated README, backfill/backtester docs, CI/pre-commit/mise commands, and
+  task trackers for root-level backtester usage.
+
+**ADRs:** added ADR-0023; updated ADR-0018 and ADR-0021 with supersession
+notes.
+
+**Verification:** `uv run pytest -q` -> 187 passed with 4 existing pandas
+timezone-to-period warnings; `uv run pytest tests/backtester -q` -> 108
+passed with the same warnings; `uv run mypy --strict src/crypt` clean; root
+gated `ruff check` and `ruff format --check` clean; `uv run backtester --help`
+works; `uv lock --check` clean.
+
+**Files touched:** `src/backtester/`, `src/crypt/`, `tests/`,
+`strategies/`, `docs/`, `.github/`, root tooling files.
+
+## 2026-06-04 — Owner-run H1 artifacts and grid fail-soft
+
+- Unpacked and inspected owner-provided `results.tar` from the unattended H1
+  diagnostic commands.
+- Reviewed full candidate A results: SOL full was only mildly positive
+  (`+4.39%`, PF `1.09`) and TON full failed badly (`-54.65%`, PF `0.71`,
+  max drawdown `-54.49`), so candidate A is rejected as calibration.
+- Reconstructed the aborted monthly `compare-grid` from per-run artifacts:
+  360 candidates across 10 completed windows, no robust `rrr`/`ttl` candidate,
+  and no candidate with at least 7 positive windows.
+- Changed `backtester compare-grid` to preserve completed summaries when some
+  windows fail, writing `grid.csv` / `grid.md` plus `grid_errors.csv` /
+  `grid_errors.md`.
+- Added a focused regression test and updated README/task docs for the new
+  fail-soft output and next diagnostic direction.
+
+**ADRs:** none.
+
+**Verification:** ruff check and format clean on changed report/test files via
+root `uv --group dev`; targeted donor pytest `6 passed` with 4 existing
+pandas timezone-to-period warnings.
+
+**Files touched:** `backtester/`, `docs/`, `README.md`, `CHANGELOG.md`.
+
 ## 2026-06-03 — Precomputed execution-grid signals
 
 - Inspected SOL March diagnostics for the best grid row and candidate A:

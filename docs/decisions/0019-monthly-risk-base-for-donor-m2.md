@@ -55,6 +55,6 @@ cash exists when drawdown or locked margin makes a position impossible.
 ## References
 
 - ADR-0018: Donor backtester becomes the canonical M2 backtest architecture
-- `backtester/src/backtester/execution_sim.py`
-- `backtester/src/backtester/risk_model.py`
-- `backtester/strategies/crypt_ensemble.json`
+- `src/backtester/execution_sim.py`
+- `src/backtester/risk_model.py`
+- `strategies/backtester/crypt_ensemble.json`

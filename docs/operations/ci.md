@@ -33,12 +33,14 @@ Non-goals:
 
 ## 2. Required checks
 
-1. **Ruff lint**: `ruff check src tests`. Fails on any rule we have
-   selected in `pyproject.toml`.
-2. **Ruff format**: `ruff format --check src tests`. Fails if anything
-   would be re-formatted.
-3. **Mypy strict**: `mypy --strict src`. Must remain at 0 errors.
-4. **Pytest**: `pytest -q`. Currently 42 tests; growing.
+1. **Ruff lint**: `ruff check src/crypt tests --exclude tests/backtester`.
+   Fails on any rule we have selected for root-native code.
+2. **Ruff format**:
+   `ruff format --check src/crypt tests --exclude tests/backtester`.
+   Fails if anything would be re-formatted.
+3. **Mypy strict**: `mypy --strict src/crypt`. Must remain at 0 errors.
+   The root-integrated donor `backtester` package is not yet strict-typed.
+4. **Pytest**: `pytest -q`.
 5. **uv lock integrity**: `uv lock --check` (or equivalent) to ensure
    `uv.lock` matches `pyproject.toml`. Prevents the "I added a dep but
    forgot to lock" regression.
@@ -82,13 +84,13 @@ jobs:
         run: uv sync --all-extras --frozen
 
       - name: ruff lint
-        run: uv run ruff check src tests
+        run: uv run ruff check src/crypt tests --exclude tests/backtester
 
       - name: ruff format check
-        run: uv run ruff format --check src tests
+        run: uv run ruff format --check src/crypt tests --exclude tests/backtester
 
       - name: mypy strict
-        run: uv run mypy --strict src
+        run: uv run mypy --strict src/crypt
 
       - name: pytest
         run: uv run pytest -q
@@ -157,7 +159,7 @@ repos:
     hooks:
       - id: mypy
         name: mypy
-        entry: uv run mypy --strict src
+        entry: uv run mypy --strict src/crypt
         language: system
         types: [python]
         pass_filenames: false
@@ -197,9 +199,9 @@ Not in the traditional sense, but:
 Cheatsheet:
 ```bash
 uv sync --all-extras --frozen
-uv run ruff check src tests
-uv run ruff format --check src tests
-uv run mypy --strict src
+uv run ruff check src/crypt tests --exclude tests/backtester
+uv run ruff format --check src/crypt tests --exclude tests/backtester
+uv run mypy --strict src/crypt
 uv run pytest -q
 uv lock --check
 ```

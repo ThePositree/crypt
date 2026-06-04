@@ -1,0 +1,36 @@
+min_version.soft = "2026.3.7"
+
+[tools]
+python = "3.12"
+uv = "latest"
+
+[env]
+UV_PYTHON = "3.12"
+
+[tasks.sync]
+description = "Install the root uv environment"
+run = "uv sync --all-extras"
+
+[tasks.lint]
+description = "Run strict ruff checks for crypt code"
+run = "uv run ruff check src/crypt tests --exclude tests/backtester"
+
+[tasks.format]
+description = "Check crypt formatting"
+run = "uv run ruff format --check src/crypt tests --exclude tests/backtester"
+
+[tasks.typecheck]
+description = "Run strict mypy on the crypt package"
+run = "uv run mypy --strict src/crypt"
+
+[tasks.test]
+description = "Run all tests"
+run = "uv run pytest -q"
+
+[tasks.test-backtester]
+description = "Run backtester tests only"
+run = "uv run pytest tests/backtester -q"
+
+[tasks.backtester-help]
+description = "Verify the backtester CLI entrypoint"
+run = "uv run backtester --help"

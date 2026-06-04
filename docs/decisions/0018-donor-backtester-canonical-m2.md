@@ -7,6 +7,8 @@
   `src/crypt/backtest/` harness for future M2 work. Existing replay and
   no-lookahead code remains useful reference material until the replacement is
   accepted.
+- **Updated by**: ADR-0023 retired `src/crypt/backtest/` after the
+  donor-backed route became the canonical package under `src/backtester/`.
 
 ## Context
 
@@ -52,7 +54,8 @@ The donor package must be extended rather than rewritten:
 4. Keep one-symbol-per-run semantics. Multi-symbol reports can be composed by
    running the same strategy repeatedly over different symbols.
 5. Do not remove `src/crypt/backtest/` until the donor-backed route can run at
-   least one SOL backtest and produce auditable trade output.
+   least one SOL backtest and produce auditable trade output. This guard was
+   satisfied and then superseded by ADR-0023.
 
 ## Required interface shape
 
@@ -168,9 +171,9 @@ not on the same data used by Optuna to search.
 
 ## References
 
-- `backtester/src/backtester/__main__.py`
-- `backtester/src/backtester/data_loader.py`
-- `backtester/src/backtester/optimizer.py`
+- `src/backtester/__main__.py`
+- `src/backtester/data_loader.py`
+- `src/backtester/optimizer.py`
 - `src/crypt/backtest/`
 - `docs/backtest.md`
 - ADR-0014: M2 OHLCV-only calibration is rejected
