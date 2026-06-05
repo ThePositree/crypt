@@ -26,6 +26,7 @@ def test_basic_risk_model_long_position_sizing():
         capital=capital,
         risk_base_capital=capital,
         total_locked_margin=total_locked_margin,
+        open_positions=0,
         risk_percent=risk_percent,
         rrr=rrr,
     )
@@ -62,6 +63,7 @@ def test_basic_risk_model_sizes_from_risk_base_capital():
         capital=980.0,
         risk_base_capital=1000.0,
         total_locked_margin=0.0,
+        open_positions=0,
         risk_percent=2.0,
         rrr=2.0,
     )
@@ -89,6 +91,7 @@ def test_basic_risk_model_rejects_invalid_sl():
         capital=1000.0,
         risk_base_capital=1000.0,
         total_locked_margin=0.0,
+        open_positions=0,
         risk_percent=1.0,
         rrr=2.0,
     )
@@ -110,6 +113,7 @@ def test_basic_risk_model_respects_max_leverage():
         capital=1000.0,
         risk_base_capital=1000.0,
         total_locked_margin=0.0,
+        open_positions=0,
         risk_percent=10.0,
         rrr=2.0,
     )
@@ -131,6 +135,7 @@ def test_static_percent_fee_model_entry_and_exit():
         capital=1000.0,
         risk_base_capital=1000.0,
         total_locked_margin=0.0,
+        open_positions=0,
         risk_percent=1.0,
         rrr=2.0,
     )

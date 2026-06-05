@@ -210,11 +210,12 @@ def test_basic_long_take_profit_path():
     assert trade["pnl_abs"] == pytest.approx(pnl_abs)
     assert trade["capital_before"] == pytest.approx(1000.0)
     assert trade["capital_after"] == pytest.approx(1000.0 + pnl_abs)
-    assert trade["locked_margin"] == pytest.approx(position_value)
+    assert trade["leverage"] == pytest.approx(100.0)
+    assert trade["locked_margin"] == pytest.approx(position_value / 100.0)
     assert trade["available_balance_before"] == pytest.approx(1000.0)
     assert trade["open_positions_before"] == 0
     assert trade["total_locked_margin_before"] == pytest.approx(0.0)
-    assert trade["total_locked_margin_after_entry"] == pytest.approx(position_value)
+    assert trade["total_locked_margin_after_entry"] == pytest.approx(position_value / 100.0)
     assert trade["holding_bars"] == 1
     assert bool(trade["is_long"]) is True
 
@@ -604,12 +605,13 @@ def test_margin_state_tracks_concurrent_positions_at_entry():
 
     assert len(trades) == 3
     assert trades["open_positions_before"].tolist() == [0, 1, 2]
-    assert trades["available_balance_before"].tolist() == pytest.approx([1000.0, 800.0, 640.0])
-    assert trades["locked_margin"].tolist() == pytest.approx([200.0, 160.0, 128.0])
-    assert trades["total_locked_margin_before"].tolist() == pytest.approx([0.0, 200.0, 360.0])
+    assert trades["available_balance_before"].tolist() == pytest.approx([1000.0, 998.0, 996.004])
+    assert trades["locked_margin"].tolist() == pytest.approx([2.0, 1.996, 1.992008])
+    assert trades["total_locked_margin_before"].tolist() == pytest.approx([0.0, 2.0, 3.996])
     assert trades["total_locked_margin_after_entry"].tolist() == pytest.approx(
-        [200.0, 360.0, 488.0]
+        [2.0, 3.996, 5.988008]
     )
+    assert trades["leverage"].tolist() == pytest.approx([100.0, 100.0, 100.0])
 
 
 def test_trades_dataframe_columns_and_types():

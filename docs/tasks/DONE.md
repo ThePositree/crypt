@@ -4,6 +4,61 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-05 — Post-ADR-0026 margin validation grids (owner-run)
+
+Owner reran the bounded H1 short-only row (`rrr=1.5`, `ttl=42`,
+`max_positions=1`) across seven windows at `risk_percent = 1.0`, `0.5`, and
+`0.25` after ADR-0026.
+
+Artifacts:
+
+- `results/crypt_ensemble_h1_short_only_post_margin_fix/20260605_152526/`
+- `results/crypt_ensemble_h1_short_only_post_margin_fix_rp05/20260605_154035/`
+- `results/crypt_ensemble_h1_short_only_post_margin_fix_rp025/20260605_154905/`
+
+Result:
+
+- Aggregate return scales linearly: `+10.12%` → `+5.06%` → `+2.51%`.
+- Peak locked margin scales monotonically on **every** window (e.g. TON Jan
+  `46.38%` → `23.19%` → `11.59%`; SOL Jan `2.89%` → `1.44%` → `0.72%`).
+- Max aggregate peak margin: `46.38%` / `23.19%` / `11.59%` — no more `96.62%`
+  plateau when lowering `risk_percent`.
+- Trade counts unchanged except TON Feb (`19` → `18` at `rp=0.25`, likely
+  `min_net_exposure` edge).
+- Economics profile unchanged vs pre-fix grids at `rp=1.0`; candidate remains
+  **not promotable** under mandate (+15%/month on independent windows).
+
+Acceptance for margin audit: **passed**. Next work: P0 mandate-metrics CLI.
+
+## 2026-06-05 — Isolated-margin leverage selection (ADR-0026)
+
+Audited and fixed finite-position margin sizing in the donor execution path.
+
+What changed:
+
+- Added `src/backtester/margin_policy.py` with shared per-slot margin caps and
+  max-leverage locked-margin selection.
+- `BasicRiskModel` and `ExecutionSim._can_open_position` now use the same
+  `effective_margin_fraction` / `per_entry_margin_cap` semantics.
+- `EntryContext` carries `open_positions` so remaining-slot sharing is explicit.
+- Replaced minimum-integer-leverage sizing (which maximized locked margin) with
+  maximum-allowed-leverage sizing when the position fits the per-entry cap.
+
+Why: the bounded H1 short-only row at `max_positions = 1` kept
+`peak_locked_margin_pct_initial = 96.62%` even when `risk_percent` was lowered
+to `0.5` and `0.25`, blocking mandate promotion checks.
+
+Result: synthetic tight-stop profile now scales `16% → 8% → 4%` locked margin
+for `risk_percent = 1.0 / 0.5 / 0.25` at `25x` leverage. Bounded H1 grids must
+be re-run before promotion decisions.
+
+Verification:
+
+- `uv run pytest tests/backtester/test_margin_policy.py tests/backtester/test_risk_fee_models.py tests/backtester/test_execution_sim_run.py -q`
+- full `uv run pytest tests/backtester -q`
+
+Artifacts: code only; post-fix grid rerun tracked in `IN_PROGRESS.md`.
+
 ## 2026-06-05 — H1 short-only finite `max_positions` grid
 
 Ran the bounded short-only execution grid after exposing `max_positions` as a

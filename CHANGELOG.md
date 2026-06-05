@@ -6,6 +6,40 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-05 — Post-margin-fix validation grids (owner-run)
+
+- Owner completed bounded H1 short-only grids at `risk_percent = 1.0`, `0.5`,
+  `0.25` after ADR-0026.
+- Confirmed monotonic `peak_locked_margin_pct_initial` on all seven windows;
+  aggregate return scales `+10.12%` → `+5.06%` → `+2.51%`; max peak margin
+  `46.38%` → `23.19%` → `11.59%` (no `96.62%` plateau).
+- Margin audit acceptance passed; candidate still not mandate-promotable.
+- Next: P0 mandate-metrics CLI.
+
+**ADRs:** ADR-0026 applies.
+
+**Verification:** owner-run `compare-grid` artifacts; Python cross-check of
+three `grid.csv` files.
+
+**Files touched:** `docs/tasks/`, `CHANGELOG.md`.
+
+## 2026-06-05 — Isolated-margin leverage selection (ADR-0026)
+
+- Audited donor margin geometry after the H1 `max_positions = 1` grid kept peak
+  locked margin at `96.62%` when `risk_percent` was lowered.
+- Added `margin_policy.py`; unified per-slot caps across `risk_model.py` and
+  `execution_sim.py`; switched to max-leverage locked-margin selection when the
+  position fits the cap.
+- Added `tests/backtester/test_margin_policy.py`; updated execution-sim margin
+  expectations.
+- Next: re-run bounded H1 short-only grids, then P0 mandate-metrics CLI.
+
+**ADRs:** ADR-0026 (new).
+
+**Verification:** `uv run pytest tests/backtester -q` (all passed).
+
+**Files touched:** `src/backtester/`, `tests/backtester/`, `docs/`.
+
 ## 2026-06-05 — Owner investment mandate (ADR-0025)
 
 - Documented auto-trading candidate gates in `docs/investment_mandate.md`:

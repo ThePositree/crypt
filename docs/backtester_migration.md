@@ -137,6 +137,9 @@ Current calibration state:
   `locked_margin`, `available_balance_before`, `open_positions_before`,
   total locked margin before/after entry, peak open positions, peak locked
   margin, and minimum available balance.
+- Per ADR-0026, margin caps and leverage selection are centralized in
+  `margin_policy.py`. Peak locked margin should now scale with `risk_percent`
+  on tight-stop profiles; re-run bounded grids after this change.
 - `max_positions` should become the next bounded optimizer/search parameter.
   Unconstrained `max_positions = 0` is only a diagnostic baseline for H1
   candidate work.

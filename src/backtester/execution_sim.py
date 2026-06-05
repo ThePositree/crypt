@@ -7,6 +7,7 @@ import pandas as pd
 from tqdm.auto import tqdm
 
 from .fee_model import ExitContext, FeeModel, StaticPercentFeeModel
+from .margin_policy import per_entry_margin_cap
 from .risk_model import BasicRiskModel, EntryContext, RiskModel
 
 
@@ -388,14 +389,14 @@ class ExecutionSim:
                 )
                 return False
 
-        # Calculate required margin for new position
         required_margin = new_position_value / new_leverage
+        max_allowed_margin = per_entry_margin_cap(
+            available_balance=available_balance,
+            max_allowed_margin=self.max_allowed_margin,
+            max_positions=self.max_positions,
+            open_positions=len(active_positions),
+        )
 
-        max_allowed_margin = self.max_allowed_margin * available_balance
-        if max_allowed_margin == 0:
-            max_allowed_margin = available_balance
-
-        # Check if we have enough balance for margin
         if required_margin > max_allowed_margin:
             self._logger.debug(
                 "Isolated futures: insufficient balance for margin. "
@@ -756,6 +757,7 @@ class ExecutionSim:
 
         # Calculate total margin already locked in active positions
         total_locked_margin = sum(pos.locked_margin for pos in active_positions)
+        open_positions_before = len(active_positions)
 
         entry_context = EntryContext(
             signal=signal,
@@ -764,6 +766,7 @@ class ExecutionSim:
             capital=capital,
             risk_base_capital=risk_base_capital,
             total_locked_margin=total_locked_margin,
+            open_positions=open_positions_before,
             risk_percent=risk_percent,
             rrr=rrr,
         )
@@ -775,7 +778,6 @@ class ExecutionSim:
         position_value = risk_result.position_value
         risk_value = risk_result.risk_value
         available_balance = risk_result.available_balance
-        open_positions_before = len(active_positions)
         total_locked_margin_after_entry = total_locked_margin + risk_result.locked_margin
 
         # Entry fee and exposure checks remain in the engine so that they can

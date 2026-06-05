@@ -192,9 +192,10 @@ Pause new entries after too many stop-losses:
 
 - High **peak locked margin** does **not** auto-disqualify a candidate if all
   economic gates pass.
-- The simulator must be fixed so **low** peak margin is also reachable (today
-  `risk_model.py` geometry can bias toward ~100% usage — see `BACKLOG.md` P0
-  margin audit).
+- The simulator must allow **low** peak margin as well as high usage. ADR-0026
+  fixed the old minimum-leverage geometry that pinned tight-stop profiles near
+  ~100% even when `risk_percent` was reduced; re-run bounded grids after that
+  change before promotion decisions.
 - Isolated futures assumption; liquidation-aware leverage remains ADR-0024
   follow-up when stops and liquidation disagree.
 

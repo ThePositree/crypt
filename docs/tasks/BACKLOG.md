@@ -31,29 +31,6 @@ mandate columns agents will keep interpreting grids ad hoc.
 `monthly_mandate.csv` (or equivalent) with raw/capped returns and mandate
 verdict; unit tests cover cap math and gate logic; README links to the workflow.
 
-## P0 — Audit finite-position margin sizing before mandate search
-
-**What:** audit and test the current position-sizing / margin-limit semantics
-for finite `max_positions`, especially the `max_positions = 1` path in
-`src/backtester/risk_model.py` where the derived margin cap can allow one
-position to consume almost all available balance as isolated margin.
-
-**Why now:** the 2026-06-05 lower-risk repeats of the best bounded H1 short-only
-row (`rrr = 1.5`, `ttl = 42`, `max_positions = 1`) showed that reducing
-`risk_percent` from `1.0` to `0.5` and `0.25` scales return/drawdown down but
-does not remove the margin blocker: peak locked margin remains `96.62%` of
-initial capital.
-
-**Expected gain:** make margin diagnostics actionable enough to distinguish a
-realistic bounded candidate from an artifact of the current leverage/margin
-geometry.
-
-**Acceptance:** focused tests describe and lock the intended semantics for
-`risk_percent`, `max_positions`, `max_allowed_margin`, required leverage, and
-`locked_margin`; simulator allows both high and low peak margin paths per
-ADR-0025 §7; a full-year SOL 2025 run is re-evaluated with mandate metrics
-after the fix.
-
 ## P1 — Trailing stop on take-profit (Optuna dimensions)
 
 **What:** implement optional trailing stop per `docs/investment_mandate.md` §6.1:

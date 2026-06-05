@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import logging
-import math
 from dataclasses import dataclass
 from typing import Optional
+
+from .margin_policy import per_entry_margin_cap, select_leverage_and_locked_margin
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,8 @@ class EntryContext:
     total_locked_margin : float
         Total margin currently locked in open positions. Used to derive
         available balance.
+    open_positions : int
+        Number of positions already open before this entry attempt.
     risk_percent : float
         Fraction of available balance to risk on this trade, expressed in
         percent (e.g. ``1.0`` for 1%).
@@ -44,6 +47,7 @@ class EntryContext:
     capital: float
     risk_base_capital: float
     total_locked_margin: float
+    open_positions: int
     risk_percent: float
     rrr: float
 
@@ -200,33 +204,32 @@ class BasicRiskModel(RiskModel):
         size = risk_value / sl_dist
         position_value = size * entry_price
 
-        # Margin and leverage calculations
-        max_margin = self._max_allowed_margin
-        if self._max_positions > 0 and self._max_allowed_margin == 0:
-            max_margin = 1 / self._max_positions
-
-        max_allowed_margin_value = available_balance * max_margin
-        if max_allowed_margin_value <= 0:
-            max_allowed_margin_value = available_balance
-
-        leverage = position_value / max_allowed_margin_value
-        required_leverage = max(1, math.ceil(leverage))
-
-        if required_leverage > self._max_allowed_leverage:
+        per_entry_cap = per_entry_margin_cap(
+            available_balance=available_balance,
+            max_allowed_margin=self._max_allowed_margin,
+            max_positions=self._max_positions,
+            open_positions=ctx.open_positions,
+        )
+        leverage_result = select_leverage_and_locked_margin(
+            position_value=position_value,
+            per_entry_cap=per_entry_cap,
+            max_allowed_leverage=self._max_allowed_leverage,
+        )
+        if leverage_result is None:
             logger.debug(
-                "Leverage %d > %d, skipping",
-                required_leverage,
-                self._max_allowed_leverage,
+                "Position value %.2f does not fit per-entry margin cap %.2f",
+                position_value,
+                per_entry_cap,
             )
             return None
+
+        required_leverage, locked_margin = leverage_result
 
         # Take-profit price
         if is_long:
             tp_price = entry_price + sl_dist * ctx.rrr
         else:
             tp_price = entry_price - sl_dist * ctx.rrr
-
-        locked_margin = position_value / required_leverage
 
         return RiskResult(
             size=size,
