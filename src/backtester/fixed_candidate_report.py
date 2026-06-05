@@ -131,14 +131,16 @@ def summarize_fixed_candidate_run(
     exit_counts = _count_column(trades, "exit_reason")
     signal_counts = _count_column(signals, "signal")
     setup_direction_counts = _count_column(signals, "setup_direction")
+    margin_summary = _margin_summary(trades, initial_capital=params.capital)
 
-    return {
+    row = {
         "label": window.label,
         "symbol": window.symbol,
         "from": window.start,
         "to": window.end,
         "rrr": params.rrr,
         "ttl": params.ttl,
+        "max_positions": params.max_positions,
         "risk_percent": params.risk_percent,
         "total_return_pct": metrics.get("total_return_pct", 0.0),
         "profit_factor": metrics.get("profit_factor", 0.0),
@@ -159,6 +161,8 @@ def summarize_fixed_candidate_run(
         "exit_ttl_expired": int(exit_counts.get("ttl_expired", 0)),
         "run_dir": str(run_dir),
     }
+    row.update(margin_summary)
+    return row
 
 
 def run_fixed_candidate_comparison(
@@ -235,6 +239,7 @@ def run_execution_grid_comparison(
     base_params: FixedCandidateParams,
     rrr_values: list[float],
     ttl_values: list[int],
+    max_positions_values: list[int],
     data_dir: str,
     primary_timeframe: str,
     output_folder: str,
@@ -247,6 +252,8 @@ def run_execution_grid_comparison(
         raise ValueError("rrr_values must not be empty")
     if not ttl_values:
         raise ValueError("ttl_values must not be empty")
+    if not max_positions_values:
+        raise ValueError("max_positions_values must not be empty")
     _validate_unique_labels(windows)
 
     output_path = Path(output_folder)
@@ -258,10 +265,19 @@ def run_execution_grid_comparison(
         (
             index,
             window,
-            _params_with_execution_values(base_params, rrr=rrr, ttl=ttl),
+            _params_with_execution_values(
+                base_params,
+                rrr=rrr,
+                ttl=ttl,
+                max_positions=max_positions,
+            ),
         )
-        for index, (window, rrr, ttl) in enumerate(
-            (window, rrr, ttl) for window in windows for rrr in rrr_values for ttl in ttl_values
+        for index, (window, rrr, ttl, max_positions) in enumerate(
+            (window, rrr, ttl, max_positions)
+            for window in windows
+            for rrr in rrr_values
+            for ttl in ttl_values
+            for max_positions in max_positions_values
         )
     ]
     tasks_by_window: dict[str, list[tuple[int, WindowSpec, FixedCandidateParams]]] = {}
@@ -675,6 +691,7 @@ def summarize_signal_quality_window(
     sl_source_counts = _count_column(signals, "sl_source_tf")
     filter_counts = _count_column(signals, "signal_filter_reason")
     enriched_trades = _enrich_signal_quality_trades(trades)
+    margin_summary = _margin_summary(trades, initial_capital=params.capital)
     stale_trades = (
         int(enriched_trades["stale_anchor"].sum())
         if "stale_anchor" in enriched_trades.columns
@@ -696,6 +713,7 @@ def summarize_signal_quality_window(
         "to": window.end,
         "rrr": params.rrr,
         "ttl": params.ttl,
+        "max_positions": params.max_positions,
         "risk_percent": params.risk_percent,
         "total_return_pct": metrics.get("total_return_pct", 0.0),
         "profit_factor": metrics.get("profit_factor", 0.0),
@@ -718,6 +736,7 @@ def summarize_signal_quality_window(
         "reversal_marker_trades": reversal_trades,
         "run_dir": str(run_dir),
     }
+    row.update(margin_summary)
     for quantile in (0.5, 0.75, 0.9, 0.95):
         row[f"confidence_p{int(quantile * 100)}"] = (
             float(confidence.quantile(quantile)) if not confidence.empty else 0.0
@@ -823,6 +842,7 @@ def _params_with_execution_values(
     *,
     rrr: float,
     ttl: int,
+    max_positions: int | None = None,
 ) -> FixedCandidateParams:
     return FixedCandidateParams(
         capital=params.capital,
@@ -831,7 +851,7 @@ def _params_with_execution_values(
         ttl=ttl,
         maker_fee=params.maker_fee,
         taker_fee=params.taker_fee,
-        max_positions=params.max_positions,
+        max_positions=params.max_positions if max_positions is None else max_positions,
         max_allowed_leverage=params.max_allowed_leverage,
         max_allowed_margin=params.max_allowed_margin,
         risk_base_period=params.risk_base_period,
@@ -840,7 +860,7 @@ def _params_with_execution_values(
 
 
 def _candidate_run_label(params: FixedCandidateParams) -> str:
-    return f"rrr_{_slug_float(params.rrr)}__ttl_{params.ttl}"
+    return f"rrr_{_slug_float(params.rrr)}__ttl_{params.ttl}__maxpos_{params.max_positions}"
 
 
 def _execution_grid_error_row(window: WindowSpec, exc: Exception) -> dict[str, str]:
@@ -888,6 +908,71 @@ def _side_pnl(trades: pd.DataFrame, *, is_long: bool) -> float:
         errors="coerce",
     )
     return float(pnl.sum()) if not pnl.empty else 0.0
+
+
+def _margin_summary(trades: pd.DataFrame, *, initial_capital: float) -> dict[str, Any]:
+    if trades.empty:
+        return {
+            "peak_open_positions": 0,
+            "peak_locked_margin": 0.0,
+            "peak_locked_margin_pct_initial": 0.0,
+            "peak_locked_margin_pct_capital": 0.0,
+            "min_available_balance_before": 0.0,
+        }
+
+    open_positions_before = pd.to_numeric(
+        _column_series(trades, "open_positions_before"),
+        errors="coerce",
+    )
+    if open_positions_before.notna().any():
+        peak_open_positions = int(open_positions_before.max()) + 1
+    else:
+        peak_open_positions = 0
+
+    if "total_locked_margin_after_entry" in trades.columns:
+        locked_after_entry = pd.to_numeric(
+            trades["total_locked_margin_after_entry"],
+            errors="coerce",
+        )
+    elif {"total_locked_margin_before", "locked_margin"}.issubset(trades.columns):
+        locked_after_entry = pd.to_numeric(
+            trades["total_locked_margin_before"],
+            errors="coerce",
+        ).fillna(0.0) + pd.to_numeric(trades["locked_margin"], errors="coerce").fillna(0.0)
+    else:
+        locked_after_entry = pd.to_numeric(
+            _column_series(trades, "locked_margin"),
+            errors="coerce",
+        )
+
+    valid_locked = locked_after_entry.dropna()
+    peak_locked_margin = float(valid_locked.max()) if not valid_locked.empty else 0.0
+    peak_locked_margin_pct_initial = (
+        peak_locked_margin / initial_capital * 100 if initial_capital > 0 else 0.0
+    )
+
+    capital_before = pd.to_numeric(_column_series(trades, "capital_before"), errors="coerce")
+    locked_pct_capital = (locked_after_entry / capital_before.replace(0, pd.NA)) * 100
+    valid_locked_pct_capital = locked_pct_capital.dropna()
+    peak_locked_margin_pct_capital = (
+        float(valid_locked_pct_capital.max()) if not valid_locked_pct_capital.empty else 0.0
+    )
+
+    available_balance_before = pd.to_numeric(
+        _column_series(trades, "available_balance_before"),
+        errors="coerce",
+    ).dropna()
+    min_available_balance_before = (
+        float(available_balance_before.min()) if not available_balance_before.empty else 0.0
+    )
+
+    return {
+        "peak_open_positions": peak_open_positions,
+        "peak_locked_margin": round(peak_locked_margin, 2),
+        "peak_locked_margin_pct_initial": round(peak_locked_margin_pct_initial, 2),
+        "peak_locked_margin_pct_capital": round(peak_locked_margin_pct_capital, 2),
+        "min_available_balance_before": round(min_available_balance_before, 2),
+    }
 
 
 def _prefixed_counts(counts: dict[Any, int], prefix: str) -> dict[str, int]:
@@ -1016,6 +1101,7 @@ def _summarize_trade_group(
                 "to": window.end,
                 "rrr": params.rrr,
                 "ttl": params.ttl,
+                "max_positions": params.max_positions,
                 "risk_percent": params.risk_percent,
                 "dimension": dimension,
                 "group": str(group_value),
@@ -1042,6 +1128,7 @@ def _signal_quality_group_columns() -> list[str]:
         "to",
         "rrr",
         "ttl",
+        "max_positions",
         "risk_percent",
         "dimension",
         "group",

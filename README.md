@@ -118,9 +118,12 @@ sweeps, or confirmed pivots with an ATR buffer; if no structural anchor exists,
 the donor signal is neutralized by default instead of falling back to
 mechanical ATR-only stops.
 Donor execution exports `signal_time`, `risk_base_capital`, confidence, score,
-regime, rationale, stop diagnostics, and per-engine strengths into `trades.csv`
-for audit. It also writes `trade_diagnostics.csv`, a compact report for exit
-reason, side, PnL, and structural stop distance analysis. Per ADR-0019,
+regime, rationale, stop diagnostics, margin diagnostics, and per-engine
+strengths into `trades.csv` for audit. Margin diagnostics include
+`locked_margin`, `available_balance_before`, `open_positions_before`, and
+total locked margin before/after entry. It also writes
+`trade_diagnostics.csv`, a compact report for exit reason, side, PnL,
+structural stop distance, and peak margin/concurrency analysis. Per ADR-0019,
 `crypt_ensemble` sizes risk from the capital at the beginning of each calendar
 month (`risk_base_period = monthly`) instead of compounding every trade from
 current capital. Per ADR-0020, the live Telegram alert threshold of `75` is an
@@ -186,6 +189,7 @@ uv run backtester optimize \
     --target total_return_pct \
     --rrr-low 1.0 --rrr-high 2.0 --rrr-step 0.25 \
     --ttl-low 18 --ttl-high 42 --ttl-step 6 \
+    --max-positions-values 1,2,3,5 \
     --risk-percent 1.0 \
     --no-strategy-param-search \
     --no-daily-limit-search \
@@ -216,12 +220,13 @@ uv run backtester compare-fixed \
     --jobs 3
 ```
 
-For a tiny execution-only `rrr` / `ttl` grid around a problematic window, use
-`compare-grid`. It writes `grid.csv`, `grid.md`, and per-candidate donor
-artifacts under `runs/<label>/rrr_<value>__ttl_<bars>/`. For each
+For a tiny execution-only `rrr` / `ttl` / `max_positions` grid around a
+problematic window, use `compare-grid`. It writes `grid.csv`, `grid.md`, and
+per-candidate donor artifacts under
+`runs/<label>/rrr_<value>__ttl_<bars>__maxpos_<value>/`. For each
 symbol/window, `compare-grid` now builds the `crypt_ensemble` signal frame
-once and reuses it across execution candidates, so `rrr` / `ttl` checks do not
-pay repeated signal-generation cost for the same fixed strategy config.
+once and reuses it across execution candidates, so execution-parameter checks
+do not pay repeated signal-generation cost for the same fixed strategy config.
 `--jobs N` parallelizes independent windows; candidates inside one window are
 run serially so they can share the precomputed signal frame.
 If one or more windows fail to load or execute, completed windows still write
@@ -237,6 +242,7 @@ uv run backtester compare-grid \
     --window sol_2025_03:SOL-USDT-SWAP:2025-03-01:2025-04-01 \
     --rrr-values 1.0,1.25,1.5 \
     --ttl-values 30,36,42 \
+    --max-positions-values 1,2,3,5 \
     --risk-percent 1.0 \
     --jobs 3
 ```

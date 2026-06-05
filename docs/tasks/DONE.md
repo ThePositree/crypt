@@ -4,6 +4,155 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-05 — H1 short-only finite `max_positions` grid
+
+Ran the bounded short-only execution grid after exposing `max_positions` as a
+search parameter, then validated the best bounded row at lower risk sizing.
+
+What was tested:
+
+- Strategy: `strategies/backtester/crypt_ensemble_h1_filter_short_only.json`.
+- Windows: SOL January/February/March 2025 and TON
+  January/February/March/April 2025.
+- Position-cap grid: `rrr = 1.0, 1.25, 1.5`; `ttl = 30, 36, 42`;
+  `max_positions = 1, 2, 3, 5`; `risk_percent = 1.0`.
+- Lower-risk repeats for the bounded winner: `risk_percent = 0.5` and
+  `risk_percent = 0.25` with `rrr = 1.5`, `ttl = 42`,
+  `max_positions = 1`.
+
+Result: the best aggregate row was `rrr = 1.5`, `ttl = 42`,
+`max_positions = 1`, totaling `+10.12%` across the seven-window acceptance set
+with 86 trades, 4 positive windows, 2 negative windows, and TON April flat with
+no trades. Window returns for that row: SOL Jan `+2.56%`, SOL Feb `+5.35%`,
+SOL Mar `-2.07%`, TON Jan `+4.71%`, TON Feb `+3.10%`, TON Mar `-3.53%`, TON
+Apr `0.00%`.
+
+Lower-risk result: returns and drawdowns scaled down, but peak locked margin
+did not become promotable. Aggregate totals for the same seven windows:
+`risk_percent = 0.5` returned `+5.06%` with 86 trades, worst window `-1.77%`,
+worst drawdown `-4.45`, and peak locked margin still `96.62%` of initial
+capital. `risk_percent = 0.25` returned `+2.51%` with 85 trades, worst window
+`-0.88%`, worst drawdown `-2.24`, and peak locked margin still `96.62%` of
+initial capital.
+
+Interpretation: finite position caps improved the short-only candidate profile,
+and `max_positions = 1` is the current bounded winner by return, but it is not
+promoted. Lowering `risk_percent` reduces PnL volatility without fixing the
+margin realism blocker; the next required work is to audit and constrain the
+position-sizing / margin-limit semantics before an owner-run long validation.
+
+Artifacts:
+
+- `results/crypt_ensemble_h1_short_only_max_positions_grid/20260605_125237`
+- `grid.csv` / `grid.md` contain 252 completed rows; no error artifact was
+  produced.
+- `results/crypt_ensemble_h1_short_only_low_risk_grid_rp05/20260605_130507`
+- `results/crypt_ensemble_h1_short_only_low_risk_grid_rp025/20260605_131347`
+
+## 2026-06-05 — `max_positions` optimizer and grid search
+
+Exposed finite concurrent-position caps as an execution-search parameter after
+the H1 margin-realism audit showed that unconstrained short-only diagnostics
+could reach 18 simultaneous positions and about 104% initial capital locked as
+margin.
+
+What changed:
+
+- `backtester optimize` now supports explicit finite `max_positions` choices
+  with `--max-positions-values`; range flags remain available for contiguous
+  bounded sweeps.
+- `ParameterOptimizer` passes the selected `max_positions` into `Backtester`
+  and records it in trial user attributes.
+- Optimizer `best_run/` export now respects the selected `max_positions`
+  instead of falling back to the base CLI/config value.
+- `backtester compare-grid` now supports `--max-positions-values` so bounded
+  reports can compare `rrr` x `ttl` x finite position caps while reusing the
+  same precomputed signal frame per window.
+- Fixed/grid/signal-quality summaries include `max_positions` next to `rrr`,
+  `ttl`, return, drawdown, trade count, and margin diagnostics.
+
+Expected gain: the next H1 candidate check can compare finite caps such as
+`1`, `2`, `3`, and `5` without guessing manually, while preserving
+`max_positions = 0` only as an unconstrained diagnostic baseline per ADR-0024.
+
+Verification:
+
+- `uv run pytest tests/backtester/test_optimizer.py tests/backtester/test_fixed_candidate_report.py -q`
+  -> `11 passed`.
+- `UV_CACHE_DIR=/tmp/uv-cache uv run ruff format --check` on changed Python
+  files -> clean.
+- `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check ... --select E,F,I --ignore E501`
+  on changed Python files -> clean.
+- `UV_CACHE_DIR=/tmp/uv-cache MPLCONFIGDIR=/tmp/matplotlib uv run backtester optimize --help`
+  and `compare-grid --help` show the new flags.
+
+## 2026-06-05 — H1 margin-realism audit
+
+Added margin/concurrency diagnostics to donor execution and fixed-candidate
+reports, then reran the short-only H1 candidate over SOL January/February/March
+2025 and TON January/February/March/April 2025.
+
+What changed:
+
+- `trades.csv` now exports `locked_margin`, `available_balance_before`,
+  `open_positions_before`, `total_locked_margin_before`, and
+  `total_locked_margin_after_entry`.
+- `windows.csv` and `trade_diagnostics.csv` now expose peak open positions,
+  peak locked margin, peak locked-margin percentage, and minimum available
+  balance before entry.
+- The audit run confirmed the old `capital_before` semantics were intentional
+  realized-equity fields, not free-margin fields.
+
+Result: short-only remains a useful diagnostic but is not promotable with
+unconstrained `max_positions = 0`. Seven-window return remains `+3.96%`, but
+peak simultaneous positions reached 18, peak locked margin reached `104.42%`
+of initial capital, and several windows left almost no available margin before
+new entries.
+
+Artifacts:
+
+- `results/crypt_ensemble_h1_short_only_margin_audit/20260605_122841`
+- Per-window `trades.csv`, `trade_diagnostics.csv`, `metrics.csv`, and
+  `signals.csv` under `runs/<label>/`.
+
+Verification: targeted simulator/report/analyzer pytest passed (`49 passed`);
+changed-file formatter check passed; changed-file `ruff check --select E,F,I
+--ignore E501` passed; full root ruff remains blocked by pre-existing donor
+style debt tracked in `BACKLOG.md`.
+
+## 2026-06-05 — H1 short-only candidate validation
+
+Validated `strategies/backtester/crypt_ensemble_h1_filter_short_only.json` with
+fixed execution parameters `rrr = 1.25`, `position_ttl_bars = 36`, and
+`risk_percent = 1.0` across SOL January/February/March 2025 and TON
+January/February/March/April 2025.
+
+The seven-window acceptance set totals `+3.96%` across 470 short-only trades:
+3 positive windows, 3 negative windows, and 1 flat no-trade window. Window
+returns: SOL Jan `-0.90%`, SOL Feb `+13.82%`, SOL Mar `-6.22%`, TON Jan
+`+5.15%`, TON Feb `+2.76%`, TON Mar `-10.65%`, TON Apr `0.00%`.
+Worst window was TON March with `profit_factor = 0.66`, max drawdown
+`-20.52`, and 99 short trades. TON April emitted no tradeable short signals.
+
+Conclusion: short-only remains useful as a signal-quality diagnostic, but is
+not promoted. Results are blocked by ADR-0024 until margin usage, concurrent
+positions, and finite `max_positions` behavior are auditable.
+
+Artifacts:
+
+- Primary `compare-fixed` report for SOL Jan/Feb/Mar and TON Jan/Feb:
+  `results/crypt_ensemble_h1_short_only_candidate/20260605_113757`
+- Duplicate primary run, byte-identical `windows.csv`:
+  `results/crypt_ensemble_h1_short_only_candidate/20260605_113701`
+- TON March supplemental report:
+  `/tmp/crypt_missing_ton_debug/20260605_114825`
+- TON April supplemental report:
+  `results/crypt_ensemble_h1_short_only_candidate_ton_apr/20260605_115125`
+
+Verification: `compare-fixed` completed for all seven acceptance windows.
+The two primary duplicate runs had identical `windows.csv`; the duplicate was
+operator error during output interpretation, not a separate result.
+
 ## 2026-06-04 — Base-vs-filtered H1 signal-quality comparison
 
 - Ran `backtester signal-quality` across the default H1 diagnostic windows:

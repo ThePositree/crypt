@@ -6,6 +6,106 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-05 — H1 finite-position grid result
+
+- Inspected the completed owner-started `max_positions` grid at
+  `results/crypt_ensemble_h1_short_only_max_positions_grid/20260605_125237`.
+- Best aggregate row: `rrr = 1.5`, `ttl = 42`, `max_positions = 1`,
+  `risk_percent = 1.0`, totaling `+10.12%` across seven windows.
+- Reran that bounded row at `risk_percent = 0.5` and `0.25`. Returns/drawdowns
+  scaled down to `+5.06%` / `-4.45` and `+2.51%` / `-2.24`, but peak locked
+  margin still reached `96.62%` of initial capital.
+- Decision: not promoted; lower risk sizing alone does not fix the margin
+  realism blocker. Added a P0 follow-up to audit finite-position margin sizing
+  semantics before H1 promotion.
+
+**ADRs:** ADR-0024 applies; none added.
+
+**Verification:** owner-started artifact inspection plus two completed
+`backtester compare-grid` lower-risk repeats; no tests run.
+
+**Files touched:** `docs/tasks/`, `CHANGELOG.md`.
+
+## 2026-06-05 — `max_positions` search wiring
+
+- Added optimizer search for `max_positions` via explicit
+  `--max-positions-values`, with low/high/step range flags still available.
+- Added `compare-grid --max-positions-values` so bounded execution grids can
+  compare `rrr` / `ttl` / concurrent-position caps while reusing one signal
+  frame per window.
+- Exported `max_positions` in fixed/grid/signal-quality summaries and made
+  optimizer `best_run/` respect the selected value.
+- Updated README/MTF docs and task trackers for the finite-position-cap
+  workflow required by ADR-0024.
+
+**ADRs:** ADR-0024 applies; none added.
+
+**Verification:** targeted optimizer/report pytest `11 passed`; changed-file
+formatter check clean; changed-file `ruff check --select E,F,I --ignore E501`
+clean; `optimize --help` and `compare-grid --help` show the new flags.
+
+**Files touched:** `src/backtester/`, `tests/backtester/`, `docs/`,
+`README.md`, `CHANGELOG.md`.
+
+## 2026-06-05 — H1 margin-realism audit
+
+- Added trade-level margin exports: `locked_margin`,
+  `available_balance_before`, `open_positions_before`,
+  `total_locked_margin_before`, and `total_locked_margin_after_entry`.
+- Added report-level peak margin/concurrency columns to `compare-fixed` /
+  execution-grid summaries and margin rows to `trade_diagnostics.csv`.
+- Reran the seven-window short-only H1 audit at
+  `results/crypt_ensemble_h1_short_only_margin_audit/20260605_122841`.
+- Result: unconstrained short-only remains `+3.96%` overall but is not
+  promotable; peak simultaneous positions reached 18 and peak locked margin
+  reached `104.42%` of initial capital.
+- Updated docs to make finite `max_positions` the next required P0 before
+  owner-run promotion checks.
+
+**ADRs:** ADR-0024 applies; none added.
+
+**Verification:** targeted backtester pytest `49 passed`; changed-file
+formatter check clean; changed-file `ruff check --select E,F,I --ignore E501`
+clean. Full root ruff still fails on pre-existing donor style debt.
+
+**Files touched:** `src/backtester/`, `tests/backtester/`, `docs/`,
+`README.md`, `CHANGELOG.md`.
+
+## 2026-06-05 — H1 short-only candidate validation
+
+- Completed fixed-candidate validation for
+  `strategies/backtester/crypt_ensemble_h1_filter_short_only.json` with
+  `rrr = 1.25`, `position_ttl_bars = 36`, and `risk_percent = 1.0`.
+- Seven-window result across SOL Jan/Feb/Mar 2025 and TON Jan/Feb/Mar/Apr
+  2025: total `+3.96%`, 470 short-only trades, 3 positive windows, 3 negative
+  windows, 1 flat no-trade window. Worst window was TON March at `-10.65%`,
+  `profit_factor = 0.66`, max drawdown `-20.52`; TON April produced no trades.
+- Conclusion: useful diagnostic, not promoted. ADR-0024 still blocks H1
+  promotion until margin usage, concurrent positions, and finite
+  `max_positions` behavior are auditable.
+- Added a P2 backlog follow-up to align `compare-fixed` defaults/docs with the
+  seven-window candidate-validation acceptance set.
+
+**ADRs:** ADR-0024 applies; none added.
+**Files touched:** `docs/tasks/`, `CHANGELOG.md`.
+
+## 2026-06-05 — Margin-realistic H1 concurrency documented
+
+- Recorded ADR-0024: H1 candidates cannot be promoted until concurrent
+  position and margin usage are auditable.
+- Documented that `capital_before` / `capital_after` are realized-equity
+  fields, not free-margin fields.
+- Added P0 follow-ups to export margin diagnostics and make `max_positions` a
+  bounded Optuna/search dimension before promoting short-only.
+- Added a P1 follow-up for explicit isolated-futures liquidation/effective-stop
+  modeling before using maximum leverage as a candidate assumption.
+
+**ADRs:** added ADR-0024.
+
+**Verification:** documentation-only update; no tests run.
+
+**Files touched:** `docs/`, `CHANGELOG.md`.
+
 ## 2026-06-04 — H1 filter comparison and ablations
 
 - Ran full base-vs-filtered H1 signal-quality diagnostics across SOL

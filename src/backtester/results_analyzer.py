@@ -37,9 +37,7 @@ class ResultsAnalyzer:
     >>> analyzer.export_results("results/strategy_v1")
     """
 
-    def __init__(
-        self, trades_df: pd.DataFrame, signal_df: pd.DataFrame | None = None
-    ):
+    def __init__(self, trades_df: pd.DataFrame, signal_df: pd.DataFrame | None = None):
         """
         Initializes the analyzer.
 
@@ -116,12 +114,8 @@ class ResultsAnalyzer:
         win_rate = len(winning_trades) / total_trades if total_trades != 0 else 0.0
         total_pnl_abs = float(df["pnl_abs"].sum())
         avg_pnl_abs = float(df["pnl_abs"].mean())
-        avg_win = (
-            float(winning_trades["pnl_abs"].mean()) if len(winning_trades) != 0 else 0.0
-        )
-        avg_loss = (
-            float(losing_trades["pnl_abs"].mean()) if len(losing_trades) != 0 else 0.0
-        )
+        avg_win = float(winning_trades["pnl_abs"].mean()) if len(winning_trades) != 0 else 0.0
+        avg_loss = float(losing_trades["pnl_abs"].mean()) if len(losing_trades) != 0 else 0.0
 
         profit_factor = (
             abs(winning_trades["pnl_abs"].sum() / losing_trades["pnl_abs"].sum())
@@ -157,9 +151,7 @@ class ResultsAnalyzer:
         """Compute distribution of exit reasons."""
         return df["exit_reason"].value_counts().to_dict()
 
-    def _compute_equity_curve(
-        self, df: pd.DataFrame
-    ) -> tuple[pd.Series, float, float, float]:
+    def _compute_equity_curve(self, df: pd.DataFrame) -> tuple[pd.Series, float, float, float]:
         """Build equity curve and compute total return percentage."""
         equity = df[["exit_time", "capital_after"]].copy()
         equity.drop_duplicates(subset="exit_time", keep="last", inplace=True)
@@ -215,9 +207,7 @@ class ResultsAnalyzer:
         if len(monthly_capital) < 2:
             return 0.0
         monthly_returns = monthly_capital.pct_change()
-        monthly_returns.iloc[0] = (
-            monthly_capital.iloc[0] - initial_capital
-        ) / initial_capital
+        monthly_returns.iloc[0] = (monthly_capital.iloc[0] - initial_capital) / initial_capital
         sd = float(monthly_returns.std())
         if sd == 0:
             return 0.0
@@ -238,9 +228,7 @@ class ResultsAnalyzer:
             monthly_returns.iloc[0] = (
                 (monthly_capital.iloc[0] - initial_capital) / initial_capital * 100
             )
-        monthly_returns_abs = (
-            (monthly_capital - initial_capital) / initial_capital * 100
-        )
+        monthly_returns_abs = (monthly_capital - initial_capital) / initial_capital * 100
 
         return {
             str(period): {
@@ -277,9 +265,7 @@ class ResultsAnalyzer:
             "profit_factor": round(float(pf), 2) if pf != float("inf") else "inf",
         }
 
-    def _compute_side_metrics(
-        self, df: pd.DataFrame
-    ) -> tuple[dict[str, Any], dict[str, Any]]:
+    def _compute_side_metrics(self, df: pd.DataFrame) -> tuple[dict[str, Any], dict[str, Any]]:
         """Compute metrics separately for long and short trades."""
         long_trades = df[df["is_long"]]
         short_trades = df[np.logical_not(df["is_long"])]
@@ -288,9 +274,7 @@ class ResultsAnalyzer:
             self._basic_metrics_for_subset(short_trades),
         )
 
-    def generate(
-        self, risk_free_rate_annual: float = 0.02
-    ) -> dict[str, Any]:
+    def generate(self, risk_free_rate_annual: float = 0.02) -> dict[str, Any]:
         """
         Generates a full set of metrics based on trade history.
 
@@ -347,17 +331,15 @@ class ResultsAnalyzer:
         basic = self._compute_basic_metrics(df)
         period_means = self._compute_period_pnl_means(df)
         exit_counts = self._compute_exit_distribution(df)
-        equity_curve, initial_capital, final_capital, total_return_pct = (
-            self._compute_equity_curve(df)
+        equity_curve, initial_capital, final_capital, total_return_pct = self._compute_equity_curve(
+            df
         )
         drawdown_metrics = self._compute_drawdown_metrics(equity_curve)
         sharpe_ratio = self._compute_sharpe_ratio(
             equity_curve, initial_capital, risk_free_rate_annual
         )
         avg_holding_bars = float(df["holding_bars"].mean())
-        monthly_returns_pct = self._compute_monthly_returns_pct(
-            equity_curve, initial_capital
-        )
+        monthly_returns_pct = self._compute_monthly_returns_pct(equity_curve, initial_capital)
         long_metrics, short_metrics = self._compute_side_metrics(df)
 
         # Build the public metrics payload.
@@ -461,17 +443,13 @@ class ResultsAnalyzer:
         sys.stdout.write("📅 Monthly Returns (%)\n")
         sys.stdout.write("-" * 40 + "\n")
         if m["monthly_returns_pct"]:
-            sys.stdout.write(
-                f"{'Month':<10} {'Return (%)':<15} {'Return ABS (%)':<10}\n"
-            )
+            sys.stdout.write(f"{'Month':<10} {'Return (%)':<15} {'Return ABS (%)':<10}\n")
             sys.stdout.write("-" * 40 + "\n")
             for month, rets in m["monthly_returns_pct"].items():
                 ret, ret_abs = rets["ret"], rets["ret_abs"]
                 sign = "+" if ret >= 0 else ""
                 sign_abs = "+" if ret_abs >= 0 else ""
-                sys.stdout.write(
-                    f"{month:<10} {sign}{ret:<14} {sign_abs}{ret_abs:<9}\n"
-                )
+                sys.stdout.write(f"{month:<10} {sign}{ret:<14} {sign_abs}{ret_abs:<9}\n")
         else:
             sys.stdout.write("  No data\n")
 
@@ -582,9 +560,7 @@ class ResultsAnalyzer:
                 exit_bar_indices.append(pos)
             trades["exit_bar_index"] = exit_bar_indices
         if "entry_bar_index" not in trades.columns:
-            self._logger.warning(
-                "entry_bar_index missing in trades; skipping trade_candles export"
-            )
+            self._logger.warning("entry_bar_index missing in trades; skipping trade_candles export")
             return
 
         ohlc_cols = [c for c in ("open", "high", "low", "close") if c in ohlcv_df.columns]
@@ -617,9 +593,7 @@ class ResultsAnalyzer:
             out_path = os.path.join(candles_dir, f"trade_{i:03d}.csv")
             slice_df.to_csv(out_path)
 
-        self._logger.info(
-            "Trade candles saved: %s (%d files)", candles_dir, len(trades)
-        )
+        self._logger.info("Trade candles saved: %s (%d files)", candles_dir, len(trades))
 
     def _signal_diagnostics(self) -> pd.DataFrame:
         """Return compact signal/verdict counts for no-trade smoke analysis."""
@@ -699,9 +673,7 @@ class ResultsAnalyzer:
         if "entry_time" in df.columns and "exit_time" in df.columns:
             entry_time = pd.to_datetime(df["entry_time"], errors="coerce")
             exit_time = pd.to_datetime(df["exit_time"], errors="coerce")
-            duration_hours = (
-                (exit_time - entry_time).dt.total_seconds() / 3600
-            ).dropna()
+            duration_hours = ((exit_time - entry_time).dt.total_seconds() / 3600).dropna()
             if not duration_hours.empty:
                 add("summary", "all", "duration_hours_mean", duration_hours.mean())
                 add("summary", "all", "duration_hours_p50", duration_hours.quantile(0.5))
@@ -754,6 +726,61 @@ class ResultsAnalyzer:
             for reason, stats in pnl_by_reason.iterrows():
                 for metric, value in stats.items():
                     add("exit_reason_pnl", str(reason), str(metric), value)
+
+        if "open_positions_before" in df.columns:
+            open_positions_before = pd.to_numeric(
+                df["open_positions_before"], errors="coerce"
+            ).dropna()
+            if not open_positions_before.empty:
+                add(
+                    "margin",
+                    "all",
+                    "peak_open_positions",
+                    int(open_positions_before.max()) + 1,
+                )
+
+        if "total_locked_margin_after_entry" in df.columns:
+            locked_after_entry = pd.to_numeric(
+                df["total_locked_margin_after_entry"], errors="coerce"
+            )
+        elif {"total_locked_margin_before", "locked_margin"}.issubset(df.columns):
+            locked_after_entry = pd.to_numeric(
+                df["total_locked_margin_before"], errors="coerce"
+            ).fillna(0.0) + pd.to_numeric(df["locked_margin"], errors="coerce").fillna(0.0)
+        else:
+            locked_after_entry = pd.to_numeric(
+                df.get("locked_margin", pd.Series(index=df.index, dtype="float64")),
+                errors="coerce",
+            )
+
+        valid_locked_after_entry = locked_after_entry.dropna()
+        if not valid_locked_after_entry.empty:
+            peak_locked = float(valid_locked_after_entry.max())
+            add("margin", "all", "peak_locked_margin", peak_locked)
+            initial_capital = (
+                float(pd.to_numeric(df["capital_before"], errors="coerce").iloc[0])
+                if "capital_before" in df.columns and len(df) > 0
+                else 0.0
+            )
+            if initial_capital > 0:
+                add(
+                    "margin",
+                    "all",
+                    "peak_locked_margin_pct_initial",
+                    peak_locked / initial_capital * 100,
+                )
+
+        if "available_balance_before" in df.columns:
+            available_before = pd.to_numeric(
+                df["available_balance_before"], errors="coerce"
+            ).dropna()
+            if not available_before.empty:
+                add(
+                    "margin",
+                    "all",
+                    "min_available_balance_before",
+                    float(available_before.min()),
+                )
 
         if {"exit_reason", "sl_distance_atr"}.issubset(df.columns):
             sl_distance = pd.to_numeric(df["sl_distance_atr"], errors="coerce")
@@ -865,9 +892,7 @@ class ResultsAnalyzer:
 
         return self.trade_analyzer.find_best_predictors(top_n)
 
-    def plot_predictor_distributions(
-        self, metric_name: str, save_path: Optional[str] = None
-    ):
+    def plot_predictor_distributions(self, metric_name: str, save_path: Optional[str] = None):
         """
         Визуализирует распределения метрики для TP и SL.
 

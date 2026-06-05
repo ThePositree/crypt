@@ -9,6 +9,49 @@ Prioritised list of concrete items. Priority labels:
 Items move from here → `IN_PROGRESS.md` when work starts → `DONE.md`
 when finished.
 
+## P0 — Audit finite-position margin sizing before H1 promotion
+
+**What:** audit and test the current position-sizing / margin-limit semantics
+for finite `max_positions`, especially the `max_positions = 1` path in
+`src/backtester/risk_model.py` where the derived margin cap can allow one
+position to consume almost all available balance as isolated margin.
+
+**Why now:** the 2026-06-05 lower-risk repeats of the best bounded H1 short-only
+row (`rrr = 1.5`, `ttl = 42`, `max_positions = 1`) showed that reducing
+`risk_percent` from `1.0` to `0.5` and `0.25` scales return/drawdown down but
+does not remove the margin blocker: peak locked margin remains `96.62%` of
+initial capital.
+
+**Expected gain:** make margin diagnostics actionable enough to distinguish a
+realistic bounded candidate from an artifact of the current leverage/margin
+geometry.
+
+**Acceptance:** focused tests describe and lock the intended semantics for
+`risk_percent`, `max_positions`, `max_allowed_margin`, required leverage, and
+`locked_margin`; the seven-window H1 bounded row is rerun or re-summarized with
+the corrected semantics; the result explicitly says whether a candidate is
+worth a longer owner-run check or whether ADR-0024's liquidation-aware leverage
+work remains the blocker.
+
+## P2 — Align H1 candidate validation window defaults and docs
+
+**What:** make `compare-fixed` candidate-validation examples and defaults
+explicit about their window set, or add a named preset matching the current
+signal-quality acceptance set: SOL Jan/Feb/Mar 2025 plus TON Jan/Feb/Mar/Apr
+2025.
+
+**Why now:** the 2026-06-05 short-only candidate task expected seven windows,
+but the documented `compare-fixed` command without explicit `--window` options
+ran only SOL Jan/Feb/Mar and TON Jan/Feb by default. The missing TON March/April
+windows had to be run as supplemental reports.
+
+**Expected gain:** reduce operator error and make future candidate validation
+reports complete without manual window reconstruction.
+
+**Acceptance:** README/task examples either pass all intended `--window`
+options explicitly or the CLI exposes a preset/default that writes all seven
+candidate-validation windows in one `windows.csv`.
+
 > **Important reading:** the 2026-05-15 planning session created several
 > specs under `docs/` that this backlog references repeatedly. Read them
 > before starting work on any non-trivial item.
@@ -225,7 +268,7 @@ engineering polish unless it directly supports that outcome.
       `results/crypt_ensemble_h1_signal_quality_filter_short_only/20260604_143218`,
       and no-liquidity-sweep ablation
       `results/crypt_ensemble_h1_signal_quality_filter_no_liquidity_sweep/20260604_144227`.
-- [ ] **Validate narrow H1 short-only candidate before promoting filters** —
+- [x] **Validate narrow H1 short-only candidate before promoting filters** —
       P0. What: run a candidate-style bounded report for
       `strategies/backtester/crypt_ensemble_h1_filter_short_only.json` over
       the default SOL Jan/Feb/Mar and TON Jan/Feb/Mar/Apr windows. Why now:
@@ -236,6 +279,60 @@ engineering polish unless it directly supports that outcome.
       SOL March / TON March failures still block promotion. Acceptance: one
       timestamped report with return, profit factor, max drawdown, trades,
       side PnL, and a written promote/reject/follow-up decision.
+      Completed 2026-06-05: seven-window result was `+3.96%` but not
+      promoted; ADR-0024 margin/concurrency guard remained blocking.
+- [x] **Audit H1 concurrent-position and margin realism before promotion** —
+      P0. What: add/report enough donor execution state to audit simultaneous
+      positions under isolated-margin futures: `locked_margin`,
+      `available_balance_before`, `open_positions_before`, peak concurrent
+      position count, peak locked margin, and peak locked-margin percentage.
+      Why now: owner review of the SOL January short-only artifact showed that
+      `capital_before` / `capital_after` are realized-equity fields, not free
+      margin fields, and reconstructing margin from the old artifact showed up
+      to 16 simultaneous positions with roughly 100% of initial capital locked.
+      Expected gain: prevent promotion of an H1 candidate that only works
+      because the simulator permits unrealistic pyramiding or opaque margin
+      usage. Acceptance: a bounded short-only report over the default SOL/TON
+      windows includes the new margin diagnostics, documents whether old
+      `capital_before` semantics were misleading but intentional, and states
+      whether finite `max_positions` must be enforced before owner-run checks.
+      Completed 2026-06-05: unconstrained short-only still totals `+3.96%`,
+      but peak simultaneous positions reach 18, peak locked margin reaches
+      `104.42%` of initial capital, and finite `max_positions` is mandatory
+      before owner-run promotion checks.
+- [x] **Expose `max_positions` as a donor Optuna/search dimension** — P0
+      after the margin-realism audit. What: let bounded optimizer/report flows
+      search `max_positions` over explicit finite values such as `1`, `2`,
+      `3`, and `5`, with `0` allowed only as an unconstrained diagnostic
+      baseline. Why now: the owner wants Optuna to decide how many positions
+      can be open, and the 2026-06-05 audit showed unconstrained H1 entries can
+      consume roughly all available margin with up to 18 simultaneous
+      positions. The margin state is now auditable.
+      Expected gain: replace manual guesses about concurrent positions with
+      reproducible bounded evidence while keeping real margin constraints
+      visible. Acceptance: `trials.csv` / `best_trial.json` / report Markdown
+      include `max_positions`, best-run export respects the selected value,
+      focused tests prove the search parameter is passed into `ExecutionSim`,
+      and docs warn that unconstrained `max_positions = 0` is not promotable
+      without separate justification. See ADR-0024.
+      Completed 2026-06-05: optimizer supports explicit
+      `--max-positions-values` choices plus contiguous low/high/step ranges,
+      `compare-grid` supports `--max-positions-values`, summaries include
+      `max_positions`, best-run export respects the selected value, and
+      focused tests cover the wiring.
+- [ ] **Model liquidation-aware isolated-futures leverage explicitly** — P1.
+      What: decide and implement how leverage is selected when liquidation is
+      allowed to act as the effective stop in isolated futures. Why now: using
+      maximum OKX leverage (`25x`) minimizes locked margin, but if liquidation
+      is closer than the structural stop then the true risk and TP geometry
+      must be based on liquidation, not the farther structural stop. Expected
+      gain: make high-leverage candidate checks mathematically honest instead
+      of treating liquidation as both harmless and invisible. Acceptance:
+      strategy/backtester docs define liquidation-price inputs and formulas,
+      exported trades include leverage and liquidation/effective-stop fields,
+      tests cover liquidation closer/farther than structural SL, and no
+      candidate can silently score risk against a stop that would not be
+      reached before liquidation.
 
 - [x] **Vend `backtester/` into crypt monorepo** — P1. Remove nested
       `backtester/.git`; commit donor sources from the `crypt` root. ADR-0021;

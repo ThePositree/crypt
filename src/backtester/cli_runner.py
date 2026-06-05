@@ -125,6 +125,8 @@ class OptimizerSearchArgs:
     optimize_strategy_params: bool
     risk_percent_range: tuple[float, float, float] | None
     rrr_range: tuple[float, float, float] | None
+    max_positions_values: tuple[int, ...] | None
+    max_positions_range: tuple[int, int, int] | None
     position_ttl_bars_range: tuple[int, int, int] | None
     optimize_daily_limits: bool
     optimize_trading_window: bool
@@ -185,9 +187,7 @@ def load_strategy_config(path: str, logger: logging.Logger) -> StrategyConfig | 
         logger.error("❌ backtest_args must be an object/dict")
         return None
 
-    return StrategyConfig(
-        name=name, version=version, params=params, backtest_args=backtest_args
-    )
+    return StrategyConfig(name=name, version=version, params=params, backtest_args=backtest_args)
 
 
 # Keys accepted in strategy JSON backtest_args (must match BacktestArgs fields).
@@ -369,9 +369,7 @@ def build_cli_data_loader(
         if not symbol:
             missing.append("--symbol")
         if missing:
-            raise ValueError(
-                f"crypt-parquet data source requires: {', '.join(missing)}"
-            )
+            raise ValueError(f"crypt-parquet data source requires: {', '.join(missing)}")
         assert data_dir is not None
         assert symbol is not None
         return CryptParquetDataLoader(
@@ -412,9 +410,7 @@ def build_cli_data_loader(
     raise ValueError(f"Unsupported data source: {data_source!r}")
 
 
-def load_ohlcv_csv(
-    path: str, *, ts_col: str, logger: logging.Logger
-) -> pd.DataFrame | None:
+def load_ohlcv_csv(path: str, *, ts_col: str, logger: logging.Logger) -> pd.DataFrame | None:
     """Load OHLCV data from a CSV file (thin wrapper over CsvDataLoader)."""
     if not os.path.exists(path):
         logger.error("❌ File not found: %s", path)
@@ -493,6 +489,7 @@ _OPTIMIZER_BACKTEST_PARAM_KEYS = frozenset(
     {
         "risk_percent",
         "rrr",
+        "max_positions",
         "position_ttl_bars",
         "max_daily_profit",
         "max_daily_loss",
@@ -502,9 +499,7 @@ _OPTIMIZER_BACKTEST_PARAM_KEYS = frozenset(
 )
 
 
-def _best_strategy_params(
-    *, cfg: StrategyConfig, best_params: dict[str, Any]
-) -> dict[str, Any]:
+def _best_strategy_params(*, cfg: StrategyConfig, best_params: dict[str, Any]) -> dict[str, Any]:
     searched_strategy_params = {
         key: value
         for key, value in best_params.items()
@@ -513,9 +508,7 @@ def _best_strategy_params(
     return {**cfg.params, **searched_strategy_params}
 
 
-def _best_backtest_args(
-    *, base: BacktestArgs, best_params: dict[str, Any]
-) -> BacktestArgs:
+def _best_backtest_args(*, base: BacktestArgs, best_params: dict[str, Any]) -> BacktestArgs:
     kwargs = {
         "capital": base.capital,
         "risk_percent": best_params.get("risk_percent", base.risk_percent),
@@ -523,7 +516,7 @@ def _best_backtest_args(
         "maker_fee": base.maker_fee,
         "taker_fee": base.taker_fee,
         "ttl": best_params.get("position_ttl_bars", base.ttl),
-        "max_positions": base.max_positions,
+        "max_positions": best_params.get("max_positions", base.max_positions),
         "max_allowed_leverage": base.max_allowed_leverage,
         "is_isolated_futures": base.is_isolated_futures,
         "max_allowed_margin": base.max_allowed_margin,
@@ -572,6 +565,8 @@ def run_parameter_optimization(
         risk_percent=backtest_args.risk_percent,
         risk_percent_range=optimizer_args.risk_percent_range,
         rrr_range=optimizer_args.rrr_range,
+        max_positions_values=optimizer_args.max_positions_values,
+        max_positions_range=optimizer_args.max_positions_range,
         position_ttl_bars_range=optimizer_args.position_ttl_bars_range,
         optimize_daily_limits=optimizer_args.optimize_daily_limits,
         optimize_trading_window=optimizer_args.optimize_trading_window,

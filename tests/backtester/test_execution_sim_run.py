@@ -210,6 +210,11 @@ def test_basic_long_take_profit_path():
     assert trade["pnl_abs"] == pytest.approx(pnl_abs)
     assert trade["capital_before"] == pytest.approx(1000.0)
     assert trade["capital_after"] == pytest.approx(1000.0 + pnl_abs)
+    assert trade["locked_margin"] == pytest.approx(position_value)
+    assert trade["available_balance_before"] == pytest.approx(1000.0)
+    assert trade["open_positions_before"] == 0
+    assert trade["total_locked_margin_before"] == pytest.approx(0.0)
+    assert trade["total_locked_margin_after_entry"] == pytest.approx(position_value)
     assert trade["holding_bars"] == 1
     assert bool(trade["is_long"]) is True
 
@@ -574,6 +579,39 @@ def test_isolated_futures_insufficient_margin_blocks_position():
     assert trades.empty
 
 
+def test_margin_state_tracks_concurrent_positions_at_entry():
+    df = _base_df(
+        opens=[100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0],
+        highs=[101.0, 109.0, 109.0, 109.0, 109.0, 109.0, 109.0],
+        lows=[99.0, 96.0, 96.0, 96.0, 96.0, 96.0, 96.0],
+        closes=[100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0],
+        signals=[1, 1, 1, 0, 0, 0, 0],
+        sl_prices=[95.0, 95.0, 95.0, 95.0, 95.0, 95.0, 95.0],
+    )
+    sim = ExecutionSim(
+        initial_capital=1000.0,
+        taker_fee=0.0,
+        maker_fee=0.0,
+        risk_percent=1.0,
+        rrr=2.0,
+        max_positions=0,
+        position_ttl_bars=3,
+        max_allowed_leverage=100.0,
+        min_net_exposure=0.0,
+    )
+
+    trades = sim.run(df)
+
+    assert len(trades) == 3
+    assert trades["open_positions_before"].tolist() == [0, 1, 2]
+    assert trades["available_balance_before"].tolist() == pytest.approx([1000.0, 800.0, 640.0])
+    assert trades["locked_margin"].tolist() == pytest.approx([200.0, 160.0, 128.0])
+    assert trades["total_locked_margin_before"].tolist() == pytest.approx([0.0, 200.0, 360.0])
+    assert trades["total_locked_margin_after_entry"].tolist() == pytest.approx(
+        [200.0, 360.0, 488.0]
+    )
+
+
 def test_trades_dataframe_columns_and_types():
     df = _base_df(
         opens=[100.0, 101.0, 102.0],
@@ -618,6 +656,11 @@ def test_trades_dataframe_columns_and_types():
         "capital_after",
         "holding_bars",
         "leverage",
+        "locked_margin",
+        "available_balance_before",
+        "open_positions_before",
+        "total_locked_margin_before",
+        "total_locked_margin_after_entry",
         "is_long",
         "entry_bar_index",
         "exit_bar_index",

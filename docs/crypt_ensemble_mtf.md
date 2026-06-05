@@ -286,6 +286,9 @@ Retune at minimum:
 
 - `ttl`: use hours-equivalent values such as 12, 24, 36, 48 H1 bars;
 - `rrr`: start with 1.0, 1.5, 2.0;
+- `max_positions`: search finite values such as 1, 2, 3, and 5 after the
+  margin-reporting surface is auditable; keep `0` only as an unconstrained
+  diagnostic baseline;
 - sweep freshness: measure in each timeframe's own bars;
 - SMC event staleness;
 - maximum stop distance in execution ATR. The H4 default may keep the current
@@ -300,6 +303,46 @@ Retune at minimum:
 Do not run broad Optuna until the MTF data contract and diagnostics are
 stable. First use bounded optimizer slices with strategy-param search disabled
 and inspect exported diagnostics.
+
+## Concurrent positions and margin realism
+
+ADR-0024 adds a promotion guard for H1 candidates: short-only or any later H1
+profile must not be promoted until concurrent-position and margin usage are
+auditable.
+
+`capital_before` / `capital_after` in donor trade exports are realized-equity
+fields. They do not represent free margin while other positions are open. H1
+reports now include separate margin fields:
+
+- `locked_margin` for the new position;
+- `available_balance_before`;
+- `open_positions_before`;
+- `total_locked_margin_before`;
+- `total_locked_margin_after_entry`;
+- peak simultaneous positions in the run;
+- peak locked margin and peak locked-margin percentage.
+
+The 2026-06-05 seven-window short-only margin audit at
+`results/crypt_ensemble_h1_short_only_margin_audit/20260605_122841` shows why
+this guard matters. With unconstrained `max_positions = 0`, the run still
+totals `+3.96%`, but peak simultaneous positions reach `18`, peak locked
+margin reaches `104.42%` of initial capital in TON January, and several
+windows leave less than `$50` available before a new entry. That profile is a
+diagnostic baseline, not promotable.
+
+For H1 MTF, repeated H1 triggers inside the same H4 setup can behave like
+pyramiding. That may be tradable, but only if it survives finite
+`max_positions` and realistic isolated-margin checks. Search `max_positions`
+as an execution/risk parameter with Optuna or bounded reports. Do not accept
+an unconstrained `max_positions = 0` result as tradable unless a later ADR
+explicitly justifies that policy.
+
+The owner's intended high-leverage direction is isolated futures, where
+liquidation may be treated as the effective stop if it is reached before the
+structural stop. That requires explicit modeling. If liquidation is closer
+than the structural stop, risk sizing and TP placement must use the liquidation
+price as the effective stop; otherwise the backtest is scoring a risk distance
+that the exchange would not allow the position to survive.
 
 Current operator command for bounded execution-only H1 tuning:
 
@@ -320,6 +363,7 @@ uv run backtester optimize \
     --target total_return_pct \
     --rrr-low 1.0 --rrr-high 2.0 --rrr-step 0.25 \
     --ttl-low 18 --ttl-high 42 --ttl-step 6 \
+    --max-positions-values 1,2,3,5 \
     --risk-percent 1.0 \
     --no-strategy-param-search \
     --no-daily-limit-search \
@@ -342,6 +386,8 @@ execution filters) are searched, `ParameterOptimizer` caches the generated
 `best_run/` export must reuse that frame instead of rerunning the ensemble.
 Changing strategy params such as `max_sl_distance_atr`, SL buffer, or
 `min_confidence` creates new signal-cache keys and is expected to be slower.
+Changing only `max_positions` reuses the same precomputed signal frame because
+it affects execution/margin behavior, not signal generation.
 
 Bounded SOL H1 diagnostic on 2026-06-03:
 

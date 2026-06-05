@@ -83,6 +83,12 @@ def test_summarize_fixed_candidate_run_counts_sides_signals_and_exits():
             "is_long": [True, False, False],
             "pnl_abs": [120.25, -50.0, 30.0],
             "exit_reason": ["take_profit", "stop_loss", "ttl_expired"],
+            "locked_margin": [100.0, 200.0, 150.0],
+            "available_balance_before": [10000.0, 9900.0, 9700.0],
+            "open_positions_before": [0, 1, 2],
+            "total_locked_margin_before": [0.0, 100.0, 300.0],
+            "total_locked_margin_after_entry": [100.0, 300.0, 450.0],
+            "capital_before": [10000.0, 10000.0, 9900.0],
         }
     )
     signals = pd.DataFrame(
@@ -112,6 +118,7 @@ def test_summarize_fixed_candidate_run_counts_sides_signals_and_exits():
     )
 
     assert summary["total_return_pct"] == 1.23
+    assert summary["max_positions"] == 0
     assert summary["long_trades"] == 1
     assert summary["short_trades"] == 2
     assert summary["long_pnl"] == 120.25
@@ -125,6 +132,11 @@ def test_summarize_fixed_candidate_run_counts_sides_signals_and_exits():
     assert summary["exit_take_profit"] == 1
     assert summary["exit_stop_loss"] == 1
     assert summary["exit_ttl_expired"] == 1
+    assert summary["peak_open_positions"] == 3
+    assert summary["peak_locked_margin"] == 450.0
+    assert summary["peak_locked_margin_pct_initial"] == 4.5
+    assert summary["peak_locked_margin_pct_capital"] == pytest.approx(4.55)
+    assert summary["min_available_balance_before"] == 9700.0
 
 
 def test_signal_quality_summaries_attribute_trades_by_diagnostic_groups(tmp_path):
@@ -274,8 +286,21 @@ def test_execution_grid_window_reuses_one_signal_build(monkeypatch, tmp_path):
     )
     base_params = _candidate_params()
     tasks = [
-        (0, window, _params_with_execution_values(base_params, rrr=1.0, ttl=3)),
-        (1, window, _params_with_execution_values(base_params, rrr=1.25, ttl=6)),
+        (
+            0,
+            window,
+            _params_with_execution_values(base_params, rrr=1.0, ttl=3, max_positions=1),
+        ),
+        (
+            1,
+            window,
+            _params_with_execution_values(
+                base_params,
+                rrr=1.25,
+                ttl=6,
+                max_positions=3,
+            ),
+        ),
     ]
 
     rows = _run_execution_grid_window_precomputed(
@@ -295,6 +320,7 @@ def test_execution_grid_window_reuses_one_signal_build(monkeypatch, tmp_path):
     assert [index for index, _ in rows] == [0, 1]
     assert [row["rrr"] for _, row in rows] == [1.0, 1.25]
     assert [row["ttl"] for _, row in rows] == [3, 6]
+    assert [row["max_positions"] for _, row in rows] == [1, 3]
     assert [row["signal_long"] for _, row in rows] == [1, 1]
 
 
@@ -331,6 +357,7 @@ def test_execution_grid_writes_partial_summary_when_window_fails(
                     "to": window.end,
                     "rrr": params.rrr,
                     "ttl": params.ttl,
+                    "max_positions": params.max_positions,
                     "risk_percent": params.risk_percent,
                     "total_return_pct": 1.23,
                     "profit_factor": 1.1,
@@ -371,6 +398,7 @@ def test_execution_grid_writes_partial_summary_when_window_fails(
         base_params=_candidate_params(),
         rrr_values=[1.0],
         ttl_values=[30],
+        max_positions_values=[1, 3],
         data_dir="/unused",
         primary_timeframe="1h",
         output_folder=str(tmp_path),
@@ -378,7 +406,8 @@ def test_execution_grid_writes_partial_summary_when_window_fails(
         logger=__import__("logging").getLogger("test"),
     )
 
-    assert summary["label"].tolist() == ["ok_window"]
+    assert summary["label"].tolist() == ["ok_window", "ok_window"]
+    assert summary["max_positions"].tolist() == [1, 3]
     assert (tmp_path / "grid.csv").exists()
     assert (tmp_path / "grid.md").exists()
 

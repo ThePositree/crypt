@@ -11,9 +11,9 @@ if _SRC_ROOT_STR in sys.path:
 # package ahead of the deprecated stdlib crypt module.
 sys.path.insert(0, _SRC_ROOT_STR)
 
-import click
+import click  # noqa: E402
 
-from backtester.cli_runner import (
+from backtester.cli_runner import (  # noqa: E402
     OptimizerSearchArgs,
     build_backtest_args,
     build_cli_data_loader,
@@ -27,7 +27,7 @@ from backtester.cli_runner import (
     run_backtest,
     run_parameter_optimization,
 )
-from backtester.fixed_candidate_report import (
+from backtester.fixed_candidate_report import (  # noqa: E402
     FixedCandidateParams,
     parse_float_values,
     parse_int_values,
@@ -400,6 +400,32 @@ def run(
 @click.option("--rrr-low", type=float, default=1.0, help="RRR search low bound.")
 @click.option("--rrr-high", type=float, default=3.0, help="RRR search high bound.")
 @click.option("--rrr-step", type=float, default=0.25, help="RRR search step.")
+@click.option(
+    "--max-positions-values",
+    default=None,
+    help=(
+        "Comma-separated max simultaneous positions values. "
+        "Overrides max-positions low/high/step when set."
+    ),
+)
+@click.option(
+    "--max-positions-low",
+    type=int,
+    default=None,
+    help="Max-positions search low bound.",
+)
+@click.option(
+    "--max-positions-high",
+    type=int,
+    default=None,
+    help="Max-positions search high bound.",
+)
+@click.option(
+    "--max-positions-step",
+    type=int,
+    default=1,
+    help="Max-positions search step.",
+)
 @click.option("--ttl-low", type=int, default=None, help="TTL search low bound.")
 @click.option("--ttl-high", type=int, default=None, help="TTL search high bound.")
 @click.option("--ttl-step", type=int, default=1, help="TTL search step.")
@@ -464,6 +490,10 @@ def optimize(
     rrr_low: float,
     rrr_high: float,
     rrr_step: float,
+    max_positions_values: str | None,
+    max_positions_low: int | None,
+    max_positions_high: int | None,
+    max_positions_step: int,
     ttl_low: int | None,
     ttl_high: int | None,
     ttl_step: int,
@@ -535,6 +565,23 @@ def optimize(
         ttl_range = None
     else:
         ttl_range = (ttl_low, ttl_high, ttl_step)
+    if max_positions_low is None or max_positions_high is None:
+        max_positions_range = None
+    else:
+        max_positions_range = (
+            max_positions_low,
+            max_positions_high,
+            max_positions_step,
+        )
+    try:
+        parsed_max_positions_values = (
+            tuple(parse_int_values(max_positions_values))
+            if max_positions_values is not None
+            else None
+        )
+    except ValueError as e:
+        logger.error("❌ %s", e)
+        return
 
     output_folder = make_output_folder(output)
     run_parameter_optimization(
@@ -549,6 +596,8 @@ def optimize(
             optimize_strategy_params=strategy_param_search,
             risk_percent_range=risk_percent_range,
             rrr_range=(rrr_low, rrr_high, rrr_step),
+            max_positions_values=parsed_max_positions_values,
+            max_positions_range=max_positions_range,
             position_ttl_bars_range=ttl_range,
             optimize_daily_limits=daily_limit_search,
             optimize_trading_window=trading_window_search,
@@ -692,6 +741,11 @@ def compare_fixed(
     help="Comma-separated position TTL values in bars.",
 )
 @click.option(
+    "--max-positions-values",
+    default=None,
+    help=("Comma-separated max simultaneous positions values. Defaults to fixed --max-positions."),
+)
+@click.option(
     "--jobs",
     type=click.IntRange(min=1),
     default=1,
@@ -720,6 +774,7 @@ def compare_grid(
     risk_percent: float,
     rrr_values: str,
     ttl_values: str,
+    max_positions_values: str | None,
     jobs: int,
     maker_fee: float,
     taker_fee: float,
@@ -729,7 +784,7 @@ def compare_grid(
     risk_base_period: str,
     is_isolated_futures: bool,
 ):
-    """Run a tiny execution-only rrr/ttl grid across bounded windows."""
+    """Run a tiny execution-only rrr/ttl/max_positions grid across bounded windows."""
     logger.info("🚀 Starting execution-grid comparison...")
     cfg = load_strategy_config(strategy, logger)
     if cfg is None:
@@ -739,6 +794,11 @@ def compare_grid(
         window_specs = parse_window_specs(windows)
         parsed_rrr_values = parse_float_values(rrr_values)
         parsed_ttl_values = parse_int_values(ttl_values)
+        parsed_max_positions_values = (
+            parse_int_values(max_positions_values)
+            if max_positions_values is not None
+            else [max_positions]
+        )
     except ValueError as e:
         logger.error("❌ %s", e)
         return
@@ -762,6 +822,7 @@ def compare_grid(
         ),
         rrr_values=parsed_rrr_values,
         ttl_values=parsed_ttl_values,
+        max_positions_values=parsed_max_positions_values,
         data_dir=data_dir,
         primary_timeframe=primary_timeframe,
         output_folder=output_folder,

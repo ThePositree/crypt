@@ -81,6 +81,8 @@ def test_parameter_optimizer_can_suggest_ttl_and_merge_base_strategy_params(
         optimize_strategy_params=True,
         risk_percent_range=None,
         rrr_range=(1.0, 1.5, 0.25),
+        max_positions_values=(1, 2, 3, 5),
+        max_positions_range=None,
         position_ttl_bars_range=(24, 48, 12),
         optimize_daily_limits=False,
         optimize_trading_window=False,
@@ -93,6 +95,7 @@ def test_parameter_optimizer_can_suggest_ttl_and_merge_base_strategy_params(
             {
                 "suggested": 2,
                 "rrr": 1.25,
+                "max_positions": 2,
                 "position_ttl_bars": 36,
             }
         )
@@ -103,6 +106,7 @@ def test_parameter_optimizer_can_suggest_ttl_and_merge_base_strategy_params(
     assert _DummyStrategy.generate_calls == 1
     assert captured["run_kwargs"]["risk_percent"] == 1.0
     assert captured["run_kwargs"]["rrr"] == 1.25
+    assert captured["run_kwargs"]["max_positions"] == 2
     assert captured["run_kwargs"]["position_ttl_bars"] == 36
     assert captured["run_kwargs"]["risk_base_period"] == "monthly"
     assert captured["run_kwargs"]["max_daily_profit"] is None
@@ -186,7 +190,7 @@ def test_run_parameter_optimization_exports_trials_and_best_run(
 
         def optimize(self, **kwargs):
             captured["optimize_kwargs"] = kwargs
-            return {"rrr": 1.5, "position_ttl_bars": 30}, _FakeStudy()
+            return {"rrr": 1.5, "max_positions": 3, "position_ttl_bars": 30}, _FakeStudy()
 
         def cached_signals_for_params(self, params):
             captured["cached_params"] = params
@@ -257,6 +261,8 @@ def test_run_parameter_optimization_exports_trials_and_best_run(
             optimize_strategy_params=False,
             risk_percent_range=None,
             rrr_range=(1.0, 2.0, 0.25),
+            max_positions_values=(1, 2, 3, 5),
+            max_positions_range=(1, 3, 1),
             position_ttl_bars_range=(24, 48, 6),
             optimize_daily_limits=False,
             optimize_trading_window=False,
@@ -270,9 +276,12 @@ def test_run_parameter_optimization_exports_trials_and_best_run(
     assert (tmp_path / "best_trial.json").exists()
     assert captured["optimizer_kwargs"]["strategy_params"] == {"baseline": True}
     assert captured["optimizer_kwargs"]["risk_percent"] == 0.75
+    assert captured["optimizer_kwargs"]["max_positions_values"] == (1, 2, 3, 5)
+    assert captured["optimizer_kwargs"]["max_positions_range"] == (1, 3, 1)
     assert captured["optimize_kwargs"]["n_trials"] == 3
     assert captured["cached_params"] == {"baseline": True}
     assert captured["best_run_kwargs"]["rrr"] == 1.5
+    assert captured["best_run_kwargs"]["max_positions"] == 3
     assert captured["best_run_kwargs"]["position_ttl_bars"] == 30
     assert "signal" in captured["best_signal_columns"]
     assert captured["best_run_folder"] == str(tmp_path / "best_run")

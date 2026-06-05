@@ -15,6 +15,7 @@ from backtester.tester import Backtester
 
 FloatRange = tuple[float, float, float]
 IntRange = tuple[int, int, int]
+IntChoices = tuple[int, ...]
 
 
 @dataclass
@@ -48,6 +49,8 @@ class ParameterOptimizer:
         risk_percent: float = 1.0,
         risk_percent_range: FloatRange | None = (0.1, 0.5, 0.1),
         rrr_range: FloatRange | None = (1.0, 5.0, 1.0),
+        max_positions_values: IntChoices | None = None,
+        max_positions_range: IntRange | None = None,
         position_ttl_bars_range: IntRange | None = None,
         optimize_daily_limits: bool = True,
         optimize_trading_window: bool = True,
@@ -70,6 +73,8 @@ class ParameterOptimizer:
         self.risk_percent = risk_percent
         self.risk_percent_range = risk_percent_range
         self.rrr_range = rrr_range
+        self.max_positions_values = max_positions_values
+        self.max_positions_range = max_positions_range
         self.position_ttl_bars_range = position_ttl_bars_range
         self.optimize_daily_limits = optimize_daily_limits
         self.optimize_trading_window = optimize_trading_window
@@ -106,6 +111,13 @@ class ParameterOptimizer:
                 self.risk_percent,
             )
             rrr = self._suggest_float_or_fixed(trial, "rrr", self.rrr_range, 2.0)
+            max_positions = self._suggest_int_choice_range_or_fixed(
+                trial,
+                "max_positions",
+                self.max_positions_values,
+                self.max_positions_range,
+                self.max_positions,
+            )
             position_ttl_bars = self._suggest_int_or_fixed(
                 trial,
                 "position_ttl_bars",
@@ -117,9 +129,7 @@ class ParameterOptimizer:
             max_daily_profit = None
             max_daily_loss = None
             if self.optimize_daily_limits:
-                max_daily_profit = trial.suggest_float(
-                    "max_daily_profit", rrr, 15.0, step=1
-                )
+                max_daily_profit = trial.suggest_float("max_daily_profit", rrr, 15.0, step=1)
                 max_daily_loss = trial.suggest_float(
                     "max_daily_loss",
                     max(1.0, rrr // 2),
@@ -140,7 +150,7 @@ class ParameterOptimizer:
                 maker_fee=self.maker_fee,
                 risk_percent=risk_percent,
                 rrr=rrr,
-                max_positions=self.max_positions,
+                max_positions=max_positions,
                 position_ttl_bars=position_ttl_bars,
                 min_net_exposure=self.min_net_exposure,
                 is_isolated_futures=self.is_isolated_futures,
@@ -155,6 +165,7 @@ class ParameterOptimizer:
 
             m = results.metrics
             trial.set_user_attr("total_return_pct", m.get("total_return_pct", -100))
+            trial.set_user_attr("max_positions", max_positions)
             trial.set_user_attr("position_ttl_bars", position_ttl_bars)
             trial.set_user_attr("signal_cache_size", len(self._signal_cache))
             trial.set_user_attr(
@@ -198,6 +209,18 @@ class ParameterOptimizer:
             return fixed
         low, high, step = value_range
         return trial.suggest_int(name, low, high, step=step)
+
+    @staticmethod
+    def _suggest_int_choice_range_or_fixed(
+        trial: optuna.Trial,
+        name: str,
+        values: IntChoices | None,
+        value_range: IntRange | None,
+        fixed: int,
+    ) -> int:
+        if values is not None:
+            return int(trial.suggest_categorical(name, list(values)))
+        return ParameterOptimizer._suggest_int_or_fixed(trial, name, value_range, fixed)
 
     @staticmethod
     def _strategy_cache_key(params: dict[str, Any]) -> str:

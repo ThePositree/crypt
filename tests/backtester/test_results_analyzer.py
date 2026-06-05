@@ -44,9 +44,7 @@ def test_export_no_trades_preserves_metrics_and_signal_diagnostics(tmp_path):
     exported_signals = pd.read_csv(tmp_path / "signals.csv")
     diagnostics = pd.read_csv(tmp_path / "signal_diagnostics.csv")
 
-    assert metrics.to_dict("records") == [
-        {"error": "no_trades", "total_trades": 0}
-    ]
+    assert metrics.to_dict("records") == [{"error": "no_trades", "total_trades": 0}]
     assert len(exported_signals) == 3
     assert "tick_time" in exported_signals.columns
     assert {
@@ -82,6 +80,11 @@ def test_export_trades_writes_trade_diagnostics(tmp_path):
                 "is_long": True,
                 "sl_distance_atr": 4.0,
                 "sl_anchor_type": "order_block",
+                "locked_margin": 100.0,
+                "available_balance_before": 1000.0,
+                "open_positions_before": 0,
+                "total_locked_margin_before": 0.0,
+                "total_locked_margin_after_entry": 100.0,
             },
             {
                 "entry_time": "2026-01-03 00:00:00",
@@ -97,6 +100,11 @@ def test_export_trades_writes_trade_diagnostics(tmp_path):
                 "is_long": False,
                 "sl_distance_atr": 1.0,
                 "sl_anchor_type": "pivot",
+                "locked_margin": 250.0,
+                "available_balance_before": 900.0,
+                "open_positions_before": 1,
+                "total_locked_margin_before": 100.0,
+                "total_locked_margin_after_entry": 350.0,
             },
         ]
     )
@@ -114,6 +122,10 @@ def test_export_trades_writes_trade_diagnostics(tmp_path):
     assert records[("exit_reason", "ttl_expired", "count")] == 1
     assert records[("exit_reason", "ttl_expired", "share")] == 0.5
     assert records[("side_exit_reason", "long:ttl_expired", "count")] == 1
+    assert records[("margin", "all", "peak_open_positions")] == 2
+    assert records[("margin", "all", "peak_locked_margin")] == 350.0
+    assert records[("margin", "all", "peak_locked_margin_pct_initial")] == 35.0
+    assert records[("margin", "all", "min_available_balance_before")] == 900.0
     assert records[("sl_distance_atr_by_exit", "ttl_expired", "p50")] == 4.0
     assert records[("sl_anchor", "order_block", "distance_atr_p50")] == 4.0
 

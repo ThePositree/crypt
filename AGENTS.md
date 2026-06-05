@@ -142,14 +142,14 @@ the next agent is not blind.
 
 **Which markdown to touch (checklist)**
 
-| Situation | Update |
-|-----------|--------|
-| Any completed fix worth a paper trail | `CHANGELOG.md` (dated; say what broke and how it was fixed). |
-| You fixed something but another agent should verify / deploy | Top of `docs/tasks/IN_PROGRESS.md` — short **next steps** + link to failing command or PR. |
-| The fix closes a task line item | Move that item to `docs/tasks/DONE.md` with the date. |
-| You discovered follow-up risk (flaky test, missing monitoring) | `docs/tasks/BACKLOG.md` with `P0`/`P1`/`P2`. |
-| Behaviour or operator steps changed | Spec under `docs/` or `README.md` if commands / env / flags changed. |
-| Owner-facing deploy or ops behaviour changed | Relevant file under `docs/deploy/` or feature doc. |
+| Situation                                                      | Update                                                                                     |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Any completed fix worth a paper trail                          | `CHANGELOG.md` (dated; say what broke and how it was fixed).                               |
+| You fixed something but another agent should verify / deploy   | Top of `docs/tasks/IN_PROGRESS.md` — short **next steps** + link to failing command or PR. |
+| The fix closes a task line item                                | Move that item to `docs/tasks/DONE.md` with the date.                                      |
+| You discovered follow-up risk (flaky test, missing monitoring) | `docs/tasks/BACKLOG.md` with `P0`/`P1`/`P2`.                                               |
+| Behaviour or operator steps changed                            | Spec under `docs/` or `README.md` if commands / env / flags changed.                       |
+| Owner-facing deploy or ops behaviour changed                   | Relevant file under `docs/deploy/` or feature doc.                                         |
 
 **"Continue" vs "fix"**
 
@@ -182,7 +182,7 @@ Before handing back to the owner, do **all** of:
 
 ## 4. What the owner controls
 
-- The contents of `docs/tasks/ROADMAP.md` (you may *suggest* edits in chat
+- The contents of `docs/tasks/ROADMAP.md` (you may _suggest_ edits in chat
   but do not silently rewrite it).
 - Final yes/no on ADRs explicitly marked `status: proposed` and flagged for
   owner review.

@@ -128,9 +128,18 @@ Current calibration state:
 - Candidate A (`rrr = 1.25`, `ttl = 36`, `risk_percent = 1.0`) is rejected as
   a calibration candidate after full SOL/TON and monthly grid review.
 - More raw `rrr`/`ttl` search is low leverage until signal quality changes.
-- The next useful operator step is to run `signal-quality` across the default
-  SOL/TON windows for both the base H1 config and the filtered diagnostic
-  config, then compare `groups.csv` before accepting or rejecting any filter.
+- The latest signal-quality comparison made short-only the best narrow H1
+  diagnostic, but the margin-realism audit rejected unconstrained promotion:
+  the seven-window short-only run reached 18 simultaneous positions and peak
+  locked margin near or above initial capital.
+- `capital_before` / `capital_after` in trade exports are realized-equity
+  fields, not free-margin fields. Current H1 candidate reports now expose
+  `locked_margin`, `available_balance_before`, `open_positions_before`,
+  total locked margin before/after entry, peak open positions, peak locked
+  margin, and minimum available balance.
+- `max_positions` should become the next bounded optimizer/search parameter.
+  Unconstrained `max_positions = 0` is only a diagnostic baseline for H1
+  candidate work.
 
 ## StrategyData contract
 

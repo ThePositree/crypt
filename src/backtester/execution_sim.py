@@ -69,6 +69,10 @@ class Position:
     capital_before: float
     leverage: float
     locked_margin: float
+    available_balance_before: float
+    open_positions_before: int
+    total_locked_margin_before: float
+    total_locked_margin_after_entry: float
     is_long: bool
     metadata: dict[str, Any]
 
@@ -78,22 +82,14 @@ class Position:
             raise ValueError("Position size must be positive")
         if self.is_long:
             if self.tp_price <= self.entry_price:
-                raise ValueError(
-                    "Take Profit price must be higher than entry price for long"
-                )
+                raise ValueError("Take Profit price must be higher than entry price for long")
             if self.sl_price >= self.entry_price:
-                raise ValueError(
-                    "Stop Loss price must be lower than entry price for long"
-                )
+                raise ValueError("Stop Loss price must be lower than entry price for long")
         else:
             if self.tp_price >= self.entry_price:
-                raise ValueError(
-                    "Take Profit price must be lower than entry price for short"
-                )
+                raise ValueError("Take Profit price must be lower than entry price for short")
             if self.sl_price <= self.entry_price:
-                raise ValueError(
-                    "Stop Loss price must be higher than entry price for short"
-                )
+                raise ValueError("Stop Loss price must be higher than entry price for short")
         if self.leverage < 1:
             raise ValueError("Leverage must be at least 1.0")
 
@@ -434,12 +430,8 @@ class ExecutionSim:
         has_rrr_col = "rrr" in df.columns
         has_entry_price_col = "entry_price" in df.columns
 
-        nan_count_risk_percent = (
-            int(df["risk_percent"].isna().sum()) if has_risk_percent_col else 0
-        )
-        nan_count_rrr = (
-            int(df["rrr"].isna().sum()) if has_rrr_col else 0
-        )
+        nan_count_risk_percent = int(df["risk_percent"].isna().sum()) if has_risk_percent_col else 0
+        nan_count_rrr = int(df["rrr"].isna().sum()) if has_rrr_col else 0
 
         return _InputColumnsMeta(
             has_risk_percent_col=has_risk_percent_col,
@@ -515,8 +507,7 @@ class ExecutionSim:
 
             # TTL
             if not exit_reason and (
-                self.position_ttl_bars > 0
-                and (i + 1) - pos.bar_opened >= self.position_ttl_bars
+                self.position_ttl_bars > 0 and (i + 1) - pos.bar_opened >= self.position_ttl_bars
             ):
                 exit_price = next_open
                 exit_reason = ExitReason.TTL_EXPIRED
@@ -543,9 +534,9 @@ class ExecutionSim:
                 new_capital = capital + pnl_abs
 
                 # Public API: expose string value of ExitReason in trade history.
-                reason_value = exit_reason.value if isinstance(
-                    exit_reason, ExitReason
-                ) else exit_reason
+                reason_value = (
+                    exit_reason.value if isinstance(exit_reason, ExitReason) else exit_reason
+                )
 
                 trade_history.append(
                     {
@@ -567,6 +558,11 @@ class ExecutionSim:
                         "capital_after": new_capital,
                         "holding_bars": (i + 1) - pos.bar_opened,
                         "leverage": pos.leverage,
+                        "locked_margin": pos.locked_margin,
+                        "available_balance_before": pos.available_balance_before,
+                        "open_positions_before": pos.open_positions_before,
+                        "total_locked_margin_before": pos.total_locked_margin_before,
+                        "total_locked_margin_after_entry": pos.total_locked_margin_after_entry,
                         "is_long": pos.is_long,
                         "entry_bar_index": pos.bar_opened,
                         "exit_bar_index": i,
@@ -641,9 +637,7 @@ class ExecutionSim:
 
         # This should be unreachable due to __init__ validation, but kept
         # defensively to avoid silent inconsistencies.
-        raise RuntimeError(
-            f"Unexpected bar_exit_policy {self.bar_exit_policy!r} at runtime."
-        )
+        raise RuntimeError(f"Unexpected bar_exit_policy {self.bar_exit_policy!r} at runtime.")
 
     def _prepare_entry_context(
         self,
@@ -695,9 +689,7 @@ class ExecutionSim:
             if not pd.isna(raw_entry_price):
                 current_low = row["low"]
                 current_high = row["high"]
-                if signal in (1, -1) and not (
-                    current_low <= raw_entry_price <= current_high
-                ):
+                if signal in (1, -1) and not (current_low <= raw_entry_price <= current_high):
                     index_value = df.index[i]
                     msg = (
                         "Invalid entry_price: value must lie within current bar "
@@ -783,6 +775,8 @@ class ExecutionSim:
         position_value = risk_result.position_value
         risk_value = risk_result.risk_value
         available_balance = risk_result.available_balance
+        open_positions_before = len(active_positions)
+        total_locked_margin_after_entry = total_locked_margin + risk_result.locked_margin
 
         # Entry fee and exposure checks remain in the engine so that they can
         # combine risk and commission information.
@@ -824,6 +818,10 @@ class ExecutionSim:
             leverage=risk_result.required_leverage,
             is_long=risk_result.is_long,
             locked_margin=risk_result.locked_margin,
+            available_balance_before=available_balance,
+            open_positions_before=open_positions_before,
+            total_locked_margin_before=total_locked_margin,
+            total_locked_margin_after_entry=total_locked_margin_after_entry,
             metadata=entry_ctx["metadata"],
         )
         active_positions.append(new_position)
@@ -889,6 +887,16 @@ class ExecutionSim:
             - capital_after: capital after exit
             - holding_bars: how many bars position was held
             - leverage: leverage used
+            - locked_margin: margin locked by this isolated-futures-style
+              position sizing decision
+            - available_balance_before: realized capital minus already locked
+              margin immediately before opening this position
+            - open_positions_before: active position count immediately before
+              opening this position
+            - total_locked_margin_before: total margin locked by previously
+              active positions immediately before opening this position
+            - total_locked_margin_after_entry: total locked margin after this
+              position is added
             - is_long: True for long, False for short
             - entry_bar_index: index of the bar where position was opened
             - exit_bar_index: index of the bar where position was closed
@@ -910,9 +918,7 @@ class ExecutionSim:
         loss_num = 0
         daily_trading_blocked = False
 
-        for i, row, next_open, current_high, current_low, next_time in self._iter_bars(
-            df
-        ):
+        for i, row, next_open, current_high, current_low, next_time in self._iter_bars(df):
             if capital <= 1:
                 self._logger.warning("Capital below 1, exiting")
                 break
