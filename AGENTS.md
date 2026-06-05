@@ -18,15 +18,19 @@ Read in this order, fully:
 2. This file (`AGENTS.md`).
 3. `.cursor/rules/` (rules are also auto-applied, but read them so you know
    what you have committed to).
-4. `docs/tasks/ROADMAP.md` — global milestones (owner-defined).
-5. `docs/tasks/IN_PROGRESS.md` — what the previous agent was doing. If it is
+4. `docs/investment_mandate.md` — owner economic targets and candidate
+   promote/archive/discard gates (ADR-0025). **Mandatory** before any
+   strategy search, optimizer run, or promotion decision.
+5. `docs/tasks/ROADMAP.md` — global milestones (owner-defined).
+6. `docs/tasks/IN_PROGRESS.md` — what the previous agent was doing. If it is
    non-empty and not yours, assume the previous session was interrupted and
    continue from where it left off, unless the owner says otherwise.
-6. `docs/tasks/IDEAS.md` — owner ideas saved for later. These are not
-   approved tasks.
-7. `docs/tasks/BACKLOG.md` — what is queued next.
-8. The 2 most recent entries in `CHANGELOG.md`.
-9. Any ADR in `docs/decisions/` whose subject is relevant to the task.
+7. `docs/tasks/IDEAS.md` — owner ideas saved for later. These are not
+   approved tasks unless moved into the mandate or `BACKLOG.md`.
+8. `docs/tasks/BACKLOG.md` — what is queued next.
+9. The 2 most recent entries in `CHANGELOG.md`.
+10. Any ADR in `docs/decisions/` whose subject is relevant to the task
+    (including ADR-0025 when evaluating candidates).
 
 If any of these files contradict each other, stop and ask the owner.
 

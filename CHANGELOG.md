@@ -6,6 +6,22 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-05 — Owner investment mandate (ADR-0025)
+
+- Documented auto-trading candidate gates in `docs/investment_mandate.md`:
+  +15%/month ($1 500 on $10k), 2025 full-year SOL-first backtest, 10% intra-month
+  max DD, capped positive outliers at 20%, archive/discard/full-Optuna funnel.
+- Added ADR-0025; surfaced mandate in `README.md`, `AGENTS.md` session-start
+  list, and `BACKLOG.md` header.
+- Approved capped-profit policy from `IDEAS.md`; added backlog items for mandate
+  metrics, trailing stop, stop-limit Optuna dims, and archive layout.
+
+**ADRs:** ADR-0025 (new).
+
+**Verification:** documentation only.
+
+**Files touched:** `docs/`, `README.md`, `AGENTS.md`, `CHANGELOG.md`.
+
 ## 2026-06-05 — H1 finite-position grid result
 
 - Inspected the completed owner-started `max_positions` grid at

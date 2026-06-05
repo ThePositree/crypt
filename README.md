@@ -9,9 +9,21 @@ Modular ensemble decision system for crypto perpetual futures markets.
 > Telegram.
 >
 > Goal of v1: signal generation for the owner to trade manually.
-> Goal of vN: automated execution once the signal track-record is proven.
+> Goal of vN: **automated execution** once a strategy candidate passes the
+> owner investment mandate.
 
-This is **not** a trading bot. It is a research-and-alerting system.
+This is **not** a trading bot yet. It is a research-and-alerting system moving
+toward auto-trading after backtest gates are met.
+
+## Owner targets (candidate gates)
+
+Full spec: **`docs/investment_mandate.md`** (ADR-0025). Summary:
+
+- **+$1 500/month** minimum (**+15%** on a **$10k** portfolio) after fees.
+- **2025** full-year continuous backtest; **SOL first**, then **TON**.
+- Max **10% drawdown inside any month**; month above that → archive.
+- Up to **3** months below 15% allowed; **3** consecutive losing months → discard.
+- Auto-trading code only **after** a candidate **promotes** under the mandate.
 
 ## Status
 
@@ -55,10 +67,11 @@ agents own implementation planning, scaffolding and documentation.
 Anyone (human or agent) contributing should first read:
 
 1. `AGENTS.md`
-2. `.cursor/rules/ai-first-workflow.mdc`
-3. `docs/tasks/IN_PROGRESS.md`
-4. `docs/tasks/ROADMAP.md`
-5. The most recent entries in `CHANGELOG.md`
+2. `docs/investment_mandate.md`
+3. `.cursor/rules/ai-first-workflow.mdc`
+4. `docs/tasks/IN_PROGRESS.md`
+5. `docs/tasks/ROADMAP.md`
+6. The most recent entries in `CHANGELOG.md`
 
 ## Quick start
 

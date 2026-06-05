@@ -9,7 +9,29 @@ Prioritised list of concrete items. Priority labels:
 Items move from here → `IN_PROGRESS.md` when work starts → `DONE.md`
 when finished.
 
-## P0 — Audit finite-position margin sizing before H1 promotion
+> **Investment mandate (ADR-0025):** read `docs/investment_mandate.md` before
+> any strategy search, optimizer run, or promotion decision. Minimum target:
+> **+15%/month** on **$10k** SOL **2025** continuous backtest after fees;
+> max **10% intra-month DD**; auto-trading only after **promote** verdict.
+
+## P0 — Mandate evaluation metrics on full-year SOL 2025 backtest
+
+**What:** add report/CLI output that evaluates a donor backtest run against
+`docs/investment_mandate.md`: per-month raw and capped returns, intra-month
+max DD, consecutive losing months, large losing-day count, and a written
+**promote / archive / discard / full Optuna** verdict.
+
+**Why now:** ADR-0025 fixes the missing economic north star; without automated
+mandate columns agents will keep interpreting grids ad hoc.
+
+**Expected gain:** every candidate report states clearly whether it meets
++$1 500/month, which months failed, and whether to archive or run full Optuna.
+
+**Acceptance:** a command or report script on a full-year SOL 2025 run exports
+`monthly_mandate.csv` (or equivalent) with raw/capped returns and mandate
+verdict; unit tests cover cap math and gate logic; README links to the workflow.
+
+## P0 — Audit finite-position margin sizing before mandate search
 
 **What:** audit and test the current position-sizing / margin-limit semantics
 for finite `max_positions`, especially the `max_positions = 1` path in
@@ -28,10 +50,51 @@ geometry.
 
 **Acceptance:** focused tests describe and lock the intended semantics for
 `risk_percent`, `max_positions`, `max_allowed_margin`, required leverage, and
-`locked_margin`; the seven-window H1 bounded row is rerun or re-summarized with
-the corrected semantics; the result explicitly says whether a candidate is
-worth a longer owner-run check or whether ADR-0024's liquidation-aware leverage
-work remains the blocker.
+`locked_margin`; simulator allows both high and low peak margin paths per
+ADR-0025 §7; a full-year SOL 2025 run is re-evaluated with mandate metrics
+after the fix.
+
+## P1 — Trailing stop on take-profit (Optuna dimensions)
+
+**What:** implement optional trailing stop per `docs/investment_mandate.md` §6.1:
+`trail_activation_rrr` (`0` = fixed TP only) and `trail_distance_atr`; export
+`trailing_stop` exit reason in trades.
+
+**Why now:** owner-approved search feature; may improve capture without
+changing signal logic.
+
+**Expected gain:** execution search can compare fixed TP vs trail-after-activation
+on full-year mandate evaluation.
+
+**Acceptance:** spec in `docs/backtester_migration.md` or feature doc; unit
+tests for activation and trail exit on synthetic bars; Optuna can search both
+params; `trail_activation_rrr = 0` preserves current behaviour.
+
+## P1 — Stop-loss count limits as Optuna dimensions
+
+**What:** implement `max_stop_losses_per_day`, `max_stop_losses_per_month`, and
+`max_consecutive_stop_losses` per `docs/investment_mandate.md` §6.2; `0` =
+disabled.
+
+**Why now:** owner-approved risk guard for auto-trading candidates.
+
+**Expected gain:** full Optuna can limit death-by-a-thousand-stops profiles
+before mandate evaluation.
+
+**Acceptance:** limits pause new entries per spec; exported trades show when
+limits triggered; Optuna wiring with focused tests.
+
+## P1 — Candidate archive artifact layout
+
+**What:** define `results/archive/<candidate_id>/` convention for near-miss
+profiles (e.g. +8–14% capped monthly average) with mandate report, params
+JSON, and one-paragraph owner-facing verdict.
+
+**Why now:** ADR-0025 archive tier needs a consistent handoff so good-but-not-enough
+candidates are not deleted or mistaken for promote.
+
+**Acceptance:** documented in `docs/investment_mandate.md` §5.2 and README;
+example archive entry for current H1 short-only bounded row.
 
 ## P2 — Align H1 candidate validation window defaults and docs
 
