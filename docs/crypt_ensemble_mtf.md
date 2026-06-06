@@ -289,6 +289,10 @@ Retune at minimum:
 - `max_positions`: search finite values such as 1, 2, 3, and 5 after the
   margin-reporting surface is auditable; keep `0` only as an unconstrained
   diagnostic baseline;
+- `trail_activation_rrr` and `trail_distance_atr`: keep
+  `trail_activation_rrr = 0` for fixed TP, then compare bounded trailing values
+  such as activation `0.5`, `0.75`, `1.0`, `1.25` and distance `0.5`, `1.0`,
+  `1.5`, `2.0` ATR;
 - sweep freshness: measure in each timeframe's own bars;
 - SMC event staleness;
 - maximum stop distance in execution ATR. The H4 default may keep the current

@@ -113,6 +113,8 @@ class Backtester:
         maker_fee: float = 0.0002,
         risk_percent: float = 1.0,
         rrr: float = 2.0,
+        trail_activation_rrr: float = 0.0,
+        trail_distance_atr: float = 0.0,
         max_positions: int = 5,
         position_ttl_bars: int = 20,
         min_net_exposure: float = 0.01,
@@ -149,6 +151,11 @@ class Backtester:
             Reward to Risk ratio. Defines how many times further TP is than SL.
             Example: 2.0 → TP is 2x the distance from entry as SL.
             TP price = entry_price + (entry_price - sl_price) * rrr
+        trail_activation_rrr : float, default 0.0
+            Profit threshold in stop-distance multiples that activates trailing.
+            ``0`` disables trailing and keeps fixed TP behaviour.
+        trail_distance_atr : float, default 0.0
+            Trailing distance in ATR units after activation.
         max_positions : int, default 5
             Maximum number of simultaneous positions.
 
@@ -210,6 +217,8 @@ class Backtester:
             ("Initial Capital", initial_capital),
             ("Risk Percent", risk_percent),
             ("RRR", rrr),
+            ("Trail Activation RRR", trail_activation_rrr),
+            ("Trail Distance ATR", trail_distance_atr),
             ("Taker Fee", taker_fee),
             ("Maker Fee", maker_fee),
             ("Max Positions", max_positions),
@@ -236,6 +245,8 @@ class Backtester:
             maker_fee=maker_fee,
             risk_percent=risk_percent,
             rrr=rrr,
+            trail_activation_rrr=trail_activation_rrr,
+            trail_distance_atr=trail_distance_atr,
             max_positions=max_positions,
             position_ttl_bars=position_ttl_bars,
             min_net_exposure=min_net_exposure,

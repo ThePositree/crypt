@@ -202,6 +202,8 @@ uv run backtester optimize \
     --target total_return_pct \
     --rrr-low 1.0 --rrr-high 2.0 --rrr-step 0.25 \
     --ttl-low 18 --ttl-high 42 --ttl-step 6 \
+    --trail-activation-rrr-values 0,0.5,0.75,1.0,1.25 \
+    --trail-distance-atr-low 0.5 --trail-distance-atr-high 2.0 --trail-distance-atr-step 0.5 \
     --max-positions-values 1,2,3,5 \
     --risk-percent 1.0 \
     --no-strategy-param-search \
@@ -217,7 +219,11 @@ For cheaper fixed-candidate checks across several bounded windows, use
 `compare-fixed`. With no `--window` options it compares SOL January/February/
 March 2025 and TON January/February 2025 using the fixed execution candidate
 (`rrr = 1.25`, `ttl = 36`, `risk_percent = 1.0`) and writes `windows.csv`,
-`windows.md`, and per-window donor run artifacts under `runs/<label>/`.
+`windows.md`, `monthly_mandate.csv`, `mandate_summary.csv`,
+`mandate_summary.md`, and per-window donor run artifacts under `runs/<label>/`.
+The mandate files apply ADR-0025 gates: raw/capped monthly returns, intra-month
+max drawdown, stop-loss counts, and the promote/archive/discard/full-Optuna
+verdict, evaluated per symbol because each symbol has its own mandate portfolio.
 Use `--jobs N` to run independent windows in parallel; this does not parallelize
 Optuna strategy-parameter search.
 

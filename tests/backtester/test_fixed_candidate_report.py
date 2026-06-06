@@ -17,6 +17,7 @@ from backtester.fixed_candidate_report import (
     parse_signal_quality_window_specs,
     parse_window_spec,
     run_execution_grid_comparison,
+    run_fixed_candidate_comparison,
     summarize_fixed_candidate_run,
     summarize_signal_quality_groups,
     summarize_signal_quality_window,
@@ -28,6 +29,8 @@ def _candidate_params() -> FixedCandidateParams:
         capital=10000.0,
         risk_percent=1.0,
         rrr=1.25,
+        trail_activation_rrr=0.0,
+        trail_distance_atr=0.0,
         ttl=36,
         maker_fee=0.0002,
         taker_fee=0.0005,
@@ -398,6 +401,8 @@ def test_execution_grid_writes_partial_summary_when_window_fails(
         base_params=_candidate_params(),
         rrr_values=[1.0],
         ttl_values=[30],
+        trail_activation_rrr_values=[0.0],
+        trail_distance_atr_values=[0.0],
         max_positions_values=[1, 3],
         data_dir="/unused",
         primary_timeframe="1h",
@@ -416,3 +421,222 @@ def test_execution_grid_writes_partial_summary_when_window_fails(
     assert errors["error_type"].tolist() == ["ValueError"]
     assert "Failed to load data" in errors["error"].iloc[0]
     assert (tmp_path / "grid_errors.md").exists()
+
+
+def test_fixed_candidate_comparison_exports_mandate_report(monkeypatch, tmp_path):
+    windows = [
+        WindowSpec(
+            label="jan",
+            symbol="SOL-USDT-SWAP",
+            start="2025-01-01",
+            end="2025-02-01",
+        ),
+        WindowSpec(
+            label="feb",
+            symbol="SOL-USDT-SWAP",
+            start="2025-02-01",
+            end="2025-03-01",
+        ),
+    ]
+
+    def fake_run_window(*, index, window, run_dir, **_kwargs):
+        run_dir.mkdir(parents=True, exist_ok=True)
+        pnl = 1600.0 if window.label == "jan" else -500.0
+        pd.DataFrame(
+            {
+                "exit_time": [f"{window.start}T12:00:00+00:00"],
+                "pnl_abs": [pnl],
+                "exit_reason": ["take_profit" if pnl > 0 else "stop_loss"],
+            }
+        ).to_csv(run_dir / "trades.csv", index=False)
+        return (
+            index,
+            {
+                "label": window.label,
+                "symbol": window.symbol,
+                "from": window.start,
+                "to": window.end,
+                "rrr": 1.25,
+                "trail_activation_rrr": 0.0,
+                "trail_distance_atr": 0.0,
+                "ttl": 36,
+                "max_positions": 1,
+                "risk_percent": 1.0,
+                "total_return_pct": pnl / 100.0,
+                "profit_factor": 1.0,
+                "max_drawdown": 0.0,
+                "total_trades": 1,
+                "run_dir": str(run_dir),
+            },
+        )
+
+    monkeypatch.setattr(
+        "backtester.fixed_candidate_report._run_fixed_candidate_window",
+        fake_run_window,
+    )
+
+    run_fixed_candidate_comparison(
+        windows=windows,
+        cfg=StrategyConfig(
+            name="dummy",
+            version="test",
+            params={},
+            backtest_args={},
+        ),
+        params=_candidate_params(),
+        data_dir="/unused",
+        primary_timeframe="1h",
+        output_folder=str(tmp_path),
+        jobs=1,
+        logger=__import__("logging").getLogger("test"),
+    )
+
+    monthly = pd.read_csv(tmp_path / "monthly_mandate.csv")
+    summary = pd.read_csv(tmp_path / "mandate_summary.csv")
+
+    assert monthly["month"].tolist() == ["2025-01", "2025-02"]
+    assert monthly["symbol"].tolist() == ["SOL-USDT-SWAP", "SOL-USDT-SWAP"]
+    assert monthly["raw_monthly_return_pct"].tolist() == [16.0, -5.0]
+    assert monthly["stop_loss_count"].tolist() == [0, 1]
+    assert summary["symbol"].tolist() == ["SOL-USDT-SWAP"]
+    assert summary.loc[0, "verdict"] == "full_optuna"
+    assert (tmp_path / "mandate_summary.md").exists()
+
+
+def test_fixed_candidate_mandate_report_evaluates_symbols_separately(
+    monkeypatch,
+    tmp_path,
+):
+    windows = [
+        WindowSpec(
+            label="sol_jan",
+            symbol="SOL-USDT-SWAP",
+            start="2025-01-01",
+            end="2025-02-01",
+        ),
+        WindowSpec(
+            label="ton_jan",
+            symbol="TON-USDT-SWAP",
+            start="2025-01-01",
+            end="2025-02-01",
+        ),
+    ]
+
+    def fake_run_window(*, index, window, run_dir, **_kwargs):
+        run_dir.mkdir(parents=True, exist_ok=True)
+        pnl = 1600.0 if window.symbol == "SOL-USDT-SWAP" else -500.0
+        pd.DataFrame(
+            {
+                "exit_time": [f"{window.start}T12:00:00+00:00"],
+                "pnl_abs": [pnl],
+                "exit_reason": ["take_profit" if pnl > 0 else "stop_loss"],
+            }
+        ).to_csv(run_dir / "trades.csv", index=False)
+        return (
+            index,
+            {
+                "label": window.label,
+                "symbol": window.symbol,
+                "from": window.start,
+                "to": window.end,
+                "rrr": 1.25,
+                "ttl": 36,
+                "max_positions": 1,
+                "risk_percent": 1.0,
+                "total_return_pct": pnl / 100.0,
+                "profit_factor": 1.0,
+                "max_drawdown": 0.0,
+                "total_trades": 1,
+                "run_dir": str(run_dir),
+            },
+        )
+
+    monkeypatch.setattr(
+        "backtester.fixed_candidate_report._run_fixed_candidate_window",
+        fake_run_window,
+    )
+
+    run_fixed_candidate_comparison(
+        windows=windows,
+        cfg=StrategyConfig(
+            name="dummy",
+            version="test",
+            params={},
+            backtest_args={},
+        ),
+        params=_candidate_params(),
+        data_dir="/unused",
+        primary_timeframe="1h",
+        output_folder=str(tmp_path),
+        jobs=1,
+        logger=__import__("logging").getLogger("test"),
+    )
+
+    monthly = pd.read_csv(tmp_path / "monthly_mandate.csv")
+    summary = pd.read_csv(tmp_path / "mandate_summary.csv")
+
+    assert monthly["symbol"].tolist() == ["SOL-USDT-SWAP", "TON-USDT-SWAP"]
+    assert monthly["raw_monthly_return_pct"].tolist() == [16.0, -5.0]
+    assert summary["symbol"].tolist() == ["SOL-USDT-SWAP", "TON-USDT-SWAP"]
+    assert summary["months_passing_floor"].tolist() == [1, 0]
+
+
+def test_fixed_candidate_mandate_report_handles_empty_trades_csv(
+    monkeypatch,
+    tmp_path,
+):
+    window = WindowSpec(
+        label="empty_jan",
+        symbol="SOL-USDT-SWAP",
+        start="2025-01-01",
+        end="2025-02-01",
+    )
+
+    def fake_run_window(*, index, run_dir, **_kwargs):
+        run_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "trades.csv").write_text("")
+        return (
+            index,
+            {
+                "label": window.label,
+                "symbol": window.symbol,
+                "from": window.start,
+                "to": window.end,
+                "rrr": 1.25,
+                "ttl": 36,
+                "max_positions": 1,
+                "risk_percent": 1.0,
+                "total_return_pct": 0.0,
+                "profit_factor": 0.0,
+                "max_drawdown": 0.0,
+                "total_trades": 0,
+                "run_dir": str(run_dir),
+            },
+        )
+
+    monkeypatch.setattr(
+        "backtester.fixed_candidate_report._run_fixed_candidate_window",
+        fake_run_window,
+    )
+
+    run_fixed_candidate_comparison(
+        windows=[window],
+        cfg=StrategyConfig(
+            name="dummy",
+            version="test",
+            params={},
+            backtest_args={},
+        ),
+        params=_candidate_params(),
+        data_dir="/unused",
+        primary_timeframe="1h",
+        output_folder=str(tmp_path),
+        jobs=1,
+        logger=__import__("logging").getLogger("test"),
+    )
+
+    monthly = pd.read_csv(tmp_path / "monthly_mandate.csv")
+
+    assert monthly.loc[0, "symbol"] == "SOL-USDT-SWAP"
+    assert monthly.loc[0, "trade_count"] == 0
+    assert monthly.loc[0, "raw_monthly_return_pct"] == 0.0

@@ -71,6 +71,10 @@ class BacktestArgs:
         Risk percent per trade (in percent units, e.g. 1.0 means 1%).
     rrr:
         Reward/Risk ratio.
+    trail_activation_rrr:
+        Profit threshold in stop-distance multiples that activates trailing.
+    trail_distance_atr:
+        Trailing distance in ATR units after activation.
     maker_fee:
         Maker fee rate.
     taker_fee:
@@ -100,6 +104,8 @@ class BacktestArgs:
     capital: float
     risk_percent: float
     rrr: float
+    trail_activation_rrr: float
+    trail_distance_atr: float
     maker_fee: float
     taker_fee: float
     ttl: int
@@ -125,6 +131,8 @@ class OptimizerSearchArgs:
     optimize_strategy_params: bool
     risk_percent_range: tuple[float, float, float] | None
     rrr_range: tuple[float, float, float] | None
+    trail_activation_rrr_values: tuple[float, ...] | None
+    trail_distance_atr_range: tuple[float, float, float] | None
     max_positions_values: tuple[int, ...] | None
     max_positions_range: tuple[int, int, int] | None
     position_ttl_bars_range: tuple[int, int, int] | None
@@ -196,6 +204,8 @@ _BACKTEST_ARG_KEYS = frozenset(
         "capital",
         "risk_percent",
         "rrr",
+        "trail_activation_rrr",
+        "trail_distance_atr",
         "maker_fee",
         "taker_fee",
         "ttl",
@@ -447,6 +457,8 @@ def run_backtest(*, df: StrategyInput, strategy: BaseStrategy, args: BacktestArg
         maker_fee=args.maker_fee,
         risk_percent=args.risk_percent,
         rrr=args.rrr,
+        trail_activation_rrr=args.trail_activation_rrr,
+        trail_distance_atr=args.trail_distance_atr,
         max_positions=args.max_positions,
         position_ttl_bars=args.ttl,
         max_allowed_leverage=args.max_allowed_leverage,
@@ -489,6 +501,8 @@ _OPTIMIZER_BACKTEST_PARAM_KEYS = frozenset(
     {
         "risk_percent",
         "rrr",
+        "trail_activation_rrr",
+        "trail_distance_atr",
         "max_positions",
         "position_ttl_bars",
         "max_daily_profit",
@@ -513,6 +527,14 @@ def _best_backtest_args(*, base: BacktestArgs, best_params: dict[str, Any]) -> B
         "capital": base.capital,
         "risk_percent": best_params.get("risk_percent", base.risk_percent),
         "rrr": best_params.get("rrr", base.rrr),
+        "trail_activation_rrr": best_params.get(
+            "trail_activation_rrr",
+            base.trail_activation_rrr,
+        ),
+        "trail_distance_atr": best_params.get(
+            "trail_distance_atr",
+            base.trail_distance_atr,
+        ),
         "maker_fee": base.maker_fee,
         "taker_fee": base.taker_fee,
         "ttl": best_params.get("position_ttl_bars", base.ttl),
@@ -565,6 +587,10 @@ def run_parameter_optimization(
         risk_percent=backtest_args.risk_percent,
         risk_percent_range=optimizer_args.risk_percent_range,
         rrr_range=optimizer_args.rrr_range,
+        trail_activation_rrr=backtest_args.trail_activation_rrr,
+        trail_activation_rrr_values=optimizer_args.trail_activation_rrr_values,
+        trail_distance_atr=backtest_args.trail_distance_atr,
+        trail_distance_atr_range=optimizer_args.trail_distance_atr_range,
         max_positions_values=optimizer_args.max_positions_values,
         max_positions_range=optimizer_args.max_positions_range,
         position_ttl_bars_range=optimizer_args.position_ttl_bars_range,
@@ -610,6 +636,8 @@ def run_parameter_optimization(
             maker_fee=best_args.maker_fee,
             risk_percent=best_args.risk_percent,
             rrr=best_args.rrr,
+            trail_activation_rrr=best_args.trail_activation_rrr,
+            trail_distance_atr=best_args.trail_distance_atr,
             max_positions=best_args.max_positions,
             position_ttl_bars=best_args.ttl,
             max_allowed_leverage=best_args.max_allowed_leverage,

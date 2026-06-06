@@ -4,6 +4,152 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-06 — SOL 2025 mandate validation completed
+
+Completed the real SOL 2025 fixed-candidate mandate report for the current H1
+short-only row.
+
+What was done:
+
+- Diagnosed the owner-run crash: local SOL OHLCV parquet ended in April 2025
+  (`ohlcv_1h` max `2025-04-05 23:00 UTC`), so `sol_2025_05` and later windows
+  had empty H1 primary candles.
+- Backfilled SOL OHLCV through the project backfill CLI for
+  `2025-04-01` to `2026-01-01`, then verified full 2025 H1/H4/D1 monthly
+  coverage.
+- Reran the exact 12-month `backtester compare-fixed` command with
+  `rrr = 1.5`, `ttl = 42`, `risk_percent = 1.0`, `max_positions = 1`, and
+  isolated futures.
+
+Artifacts:
+
+- Completed run:
+  `results/crypt_ensemble_h1_short_only_sol_2025_mandate/20260606_120001/`.
+- The owner-started partial run remains at
+  `results/crypt_ensemble_h1_short_only_sol_2025_mandate/20260606_113638/`
+  and contains only `sol_2025_01` through `sol_2025_04`.
+
+Result:
+
+- Mandate verdict: **discard**.
+- `0/12` months passed the `+15%` monthly return floor.
+- `12/12` months were below floor; mandate allows at most `3`.
+- Sum capped monthly return was only `+6.82%`; average capped monthly return
+  was `+0.57%`.
+- Worst monthly drawdown was `-5.41%`; no month breached the `10%` DD limit.
+
+Acceptance:
+
+- `windows.csv`, `monthly_mandate.csv`, `mandate_summary.csv`, and
+  `mandate_summary.md` were written in the completed artifact.
+- `mandate_summary.csv` records `verdict = discard` with rationale
+  `12 months are below the 15% floor; mandate allows at most 3.`
+
+Next: do not rerun this same SOL 2025 row unless signal logic changes. Move to
+the P1 stop-loss count limits or another owner-approved signal-quality
+experiment.
+
+## 2026-06-06 — Mandate evaluation metrics for fixed candidates
+
+Implemented automated ADR-0025 mandate reporting for donor fixed-candidate
+runs.
+
+What changed:
+
+- Added `docs/mandate_reporting.md` as the report contract.
+- Added `src/backtester/mandate_report.py` for monthly raw/capped returns,
+  excess return, intra-month drawdown, stop-loss counts, losing-month streaks,
+  and promote/archive/discard/full-Optuna verdicts.
+- `backtester compare-fixed` now exports `monthly_mandate.csv`,
+  `mandate_summary.csv`, and `mandate_summary.md` beside `windows.csv`,
+  evaluated per symbol so SOL and TON portfolios are not mixed.
+- README documents the new artifacts.
+
+Why: ADR-0025 made the economic gates explicit, but agents still lacked an
+automated report surface for candidate decisions.
+
+Acceptance:
+
+- Unit tests cover capped-return math, floor gates, drawdown archive logic,
+  promote/discard verdicts, and `compare-fixed` mandate CSV export.
+- `uv run pytest tests/backtester -q` passed.
+- Targeted `uv run mypy src/backtester/mandate_report.py
+  src/backtester/fixed_candidate_report.py` passed.
+- Changed-file `ruff check --select E,F,I --ignore E501` passed.
+
+Next: run a real SOL 2025 artifact-level validation and inspect
+`mandate_summary.csv`, or move to the P1 stop-loss limit dimensions if the
+owner does not want to spend a long run on the current weak row.
+
+## 2026-06-06 — Bounded trailing-stop evaluation
+
+Evaluated the newly implemented trailing-stop execution parameters on the
+current short-only H1 finite-position row.
+
+What was tested:
+
+- Strategy: `strategies/backtester/crypt_ensemble_h1_filter_short_only.json`.
+- Windows: SOL January/February/March 2025 and TON
+  January/February/March/April 2025.
+- Fixed row: `rrr = 1.5`, `ttl = 42`, `max_positions = 1`,
+  `risk_percent = 1.0`, monthly risk base, isolated futures, `25x` max
+  leverage.
+- Trailing grid: `trail_activation_rrr = 0, 0.5, 0.75, 1.0, 1.25` and
+  `trail_distance_atr = 0.5, 1.0, 1.5, 2.0`.
+
+Artifacts:
+
+- Failed first owner-run artifact:
+  `results/crypt_ensemble_h1_short_only_trailing_grid/20260606_104945/`
+  (`trail_distance_atr` was left at `0` while trailing was enabled).
+- Completed rerun:
+  `results/crypt_ensemble_h1_short_only_trailing_grid_rerun/20260606_110353/`.
+
+Result:
+
+- Fixed TP baseline remained best: aggregate `+10.12%`, worst window DD
+  `-8.72`, 86 trades, exits `33` TP / `37` SL / `16` TTL.
+- Best trailing row was `trail_activation_rrr = 1.25`,
+  `trail_distance_atr = 0.5`: aggregate `+7.70`, worst window DD `-8.54`,
+  96 trades, exits `41` trailing / `40` SL / `15` TTL.
+- All other trailing rows were weaker; several turned the bounded profile
+  negative or pushed worst drawdown beyond `10%`.
+- Decision: trailing stop is **not worth a wider SOL 2025 run** for this
+  candidate row; keep fixed TP as the current bounded winner.
+
+Next: return to the P0 mandate-metrics CLI unless the owner chooses a new
+signal-quality experiment.
+
+## 2026-06-06 — Optional trailing-stop execution
+
+Implemented bounded-search trailing stop support for donor execution.
+
+What changed:
+
+- Added `trail_activation_rrr` and `trail_distance_atr` to `ExecutionSim`,
+  `Backtester.run`, CLI args, optimizer args, fixed-window reports, and
+  execution-grid reports.
+- `trail_activation_rrr = 0` preserves the existing fixed-TP path.
+- After activation, fixed TP is disabled and exits use
+  `exit_reason = trailing_stop` with taker-fee semantics.
+- Trailing distance uses a strategy-provided `trail_atr` column when present,
+  otherwise execution ATR14 computed from closed candles.
+- Reports now export `exit_trailing_stop` plus trailing params.
+
+Why: the owner chose to skip mandate-metrics automation for now and asked for
+the narrower feature that may improve capture without changing signal logic.
+
+Verification:
+
+- `uv run pytest tests/backtester/test_execution_sim_run.py tests/backtester/test_optimizer.py tests/backtester/test_fixed_candidate_report.py -q`
+- changed-file `ruff format --check`
+- changed-file `ruff check --select E,F,I --ignore E501`
+- `uv run backtester run --help`
+- `uv run backtester optimize --help`
+- `uv run backtester compare-grid --help`
+
+Next: run bounded trailing-stop comparison for the current short-only H1 row.
+
 ## 2026-06-05 — Post-ADR-0026 margin validation grids (owner-run)
 
 Owner reran the bounded H1 short-only row (`rrr=1.5`, `ttl=42`,

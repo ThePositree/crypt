@@ -6,6 +6,89 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-06 — SOL 2025 mandate validation artifact
+
+- Diagnosed the owner-run `compare-fixed` failure: local SOL OHLCV parquet
+  ended in April 2025, leaving `sol_2025_05` and later H1 windows empty.
+- Backfilled SOL OHLCV through `2026-01-01` and verified full 2025 H1/H4/D1
+  coverage.
+- Reran the 12-month SOL H1 short-only fixed candidate at
+  `results/crypt_ensemble_h1_short_only_sol_2025_mandate/20260606_120001/`.
+- Mandate verdict: **discard**; `0/12` months passed the `+15%` floor, capped
+  yearly sum was `+6.82%`, worst monthly DD was `-5.41%`.
+- Added a P1 backlog item for OHLCV coverage preflight before expensive window
+  reports.
+
+**ADRs:** ADR-0025 applies; none added.
+
+**Verification:** completed `backtester compare-fixed --jobs 3`; inspected
+`windows.csv`, `monthly_mandate.csv`, and `mandate_summary.csv`.
+
+**Files touched:** `data/`, `results/`, `docs/tasks/`, `CHANGELOG.md`.
+
+## 2026-06-06 — Mandate reporting for fixed candidates
+
+- Added `docs/mandate_reporting.md` and `src/backtester/mandate_report.py`.
+- `backtester compare-fixed` now exports per-symbol `monthly_mandate.csv`,
+  `mandate_summary.csv`, and `mandate_summary.md` from per-window `trades.csv`
+  artifacts, preserving ADR-0025's separate portfolio assumption.
+- Mandate report covers raw/capped monthly returns, excess return,
+  intra-month max DD, stop-loss counts, losing-month streaks, and
+  promote/archive/discard/full-Optuna verdicts.
+- Moved the P0 mandate-metrics item to `DONE.md`; next handoff is real SOL
+  2025 artifact validation or P1 stop-loss limits.
+
+**ADRs:** ADR-0025 applies; none added.
+
+**Verification:** `uv run pytest tests/backtester -q`; targeted
+`uv run mypy src/backtester/mandate_report.py src/backtester/fixed_candidate_report.py`;
+changed-file `ruff check --select E,F,I --ignore E501`; changed-file
+`ruff format --check`.
+
+**Files touched:** `src/backtester/`, `tests/backtester/`, `docs/`,
+`README.md`, `CHANGELOG.md`.
+
+## 2026-06-06 — Bounded trailing-stop evaluation
+
+- Checked the owner-run trailing grid at
+  `results/crypt_ensemble_h1_short_only_trailing_grid/20260606_104945/`; it
+  failed all windows because trailing was enabled with `trail_distance_atr = 0`.
+- Reran the seven-window short-only H1 bounded grid at
+  `results/crypt_ensemble_h1_short_only_trailing_grid_rerun/20260606_110353/`.
+- Fixed TP remained best: aggregate `+10.12%`; best trailing row
+  (`trail_activation_rrr = 1.25`, `trail_distance_atr = 0.5`) reached only
+  `+7.70%`.
+- Decision: do not widen trailing to SOL 2025 for this candidate row; return
+  to mandate reporting unless the owner chooses another signal-quality test.
+
+**ADRs:** ADR-0025 and ADR-0026 apply; none added.
+
+**Verification:** completed `backtester compare-grid` artifact with 140 rows
+and no `grid_errors.csv`; Python aggregation of `grid.csv`.
+
+**Files touched:** `docs/tasks/`, `CHANGELOG.md`.
+
+## 2026-06-06 — Optional trailing-stop execution
+
+- Added optional `trail_activation_rrr` / `trail_distance_atr` execution
+  params across `ExecutionSim`, `Backtester.run`, CLI, optimizer, and bounded
+  reports.
+- `trail_activation_rrr = 0` preserves fixed TP; after activation fixed TP is
+  disabled and exits export `exit_reason = trailing_stop` with taker fee.
+- Reports now include trailing params and `exit_trailing_stop`; README and MTF
+  docs show bounded search usage.
+- Next: run a bounded trailing-stop grid for the current H1 short-only
+  finite-position row.
+
+**ADRs:** none.
+
+**Verification:** targeted backtester pytest `48 passed`; changed-file
+formatter check clean; changed-file `ruff check --select E,F,I --ignore E501`
+clean; `backtester run/optimize/compare-grid --help` expose the new flags.
+
+**Files touched:** `src/backtester/`, `tests/backtester/`, `docs/`,
+`README.md`, `CHANGELOG.md`.
+
 ## 2026-06-05 — Post-margin-fix validation grids (owner-run)
 
 - Owner completed bounded H1 short-only grids at `risk_percent = 1.0`, `0.5`,

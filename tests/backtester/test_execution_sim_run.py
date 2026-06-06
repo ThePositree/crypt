@@ -33,6 +33,7 @@ def _base_df(
     entry_prices: list[float | None] | None = None,
     risk_percents: list[float] | None = None,
     rrrs: list[float] | None = None,
+    trail_atrs: list[float] | None = None,
     start: str = "2026-01-01",
     freq: str = "D",
 ) -> pd.DataFrame:
@@ -51,6 +52,8 @@ def _base_df(
         data["risk_percent"] = risk_percents
     if rrrs is not None:
         data["rrr"] = rrrs
+    if trail_atrs is not None:
+        data["trail_atr"] = trail_atrs
     return pd.DataFrame(data, index=idx)
 
 
@@ -269,6 +272,74 @@ def test_basic_short_take_profit_path():
     assert trade["exit_price"] == pytest.approx(tp_price)
     assert trade["fee_exit"] == pytest.approx(fee_exit)
     assert trade["pnl_abs"] == pytest.approx(pnl_abs)
+
+
+def test_long_trailing_stop_activates_and_exits_with_taker_fee():
+    df = _base_df(
+        opens=[100.0, 101.0, 102.0],
+        highs=[101.0, 110.0, 103.0],
+        lows=[99.0, 107.0, 101.0],
+        closes=[100.5, 108.0, 102.5],
+        signals=[1, 0, 0],
+        sl_prices=[95.0, 100.0, 101.0],
+        trail_atrs=[2.0, 2.0, 2.0],
+    )
+    sim = ExecutionSim(
+        initial_capital=1000.0,
+        taker_fee=0.001,
+        maker_fee=0.0002,
+        risk_percent=1.0,
+        rrr=2.0,
+        trail_activation_rrr=0.5,
+        trail_distance_atr=1.0,
+        max_positions=1,
+        max_allowed_leverage=100.0,
+        min_net_exposure=0.0,
+    )
+
+    trades = sim.run(df)
+
+    assert len(trades) == 1
+    trade = trades.iloc[0]
+    assert trade["exit_reason"] == "trailing_stop"
+    assert trade["exit_price"] == pytest.approx(108.0)
+    assert trade["trail_stop_price"] == pytest.approx(108.0)
+    assert bool(trade["trail_active"]) is True
+    assert trade["fee_exit"] == pytest.approx(trade["size"] * 108.0 * 0.001)
+
+
+def test_short_trailing_stop_activates_and_exits_with_taker_fee():
+    df = _base_df(
+        opens=[100.0, 101.0, 102.0],
+        highs=[101.0, 98.0, 103.0],
+        lows=[99.0, 95.0, 101.0],
+        closes=[100.5, 96.0, 102.5],
+        signals=[-1, 0, 0],
+        sl_prices=[105.0, 100.0, 101.0],
+        trail_atrs=[2.0, 2.0, 2.0],
+    )
+    sim = ExecutionSim(
+        initial_capital=1000.0,
+        taker_fee=0.001,
+        maker_fee=0.0002,
+        risk_percent=1.0,
+        rrr=2.0,
+        trail_activation_rrr=0.5,
+        trail_distance_atr=1.0,
+        max_positions=1,
+        max_allowed_leverage=100.0,
+        min_net_exposure=0.0,
+    )
+
+    trades = sim.run(df)
+
+    assert len(trades) == 1
+    trade = trades.iloc[0]
+    assert trade["exit_reason"] == "trailing_stop"
+    assert trade["exit_price"] == pytest.approx(97.0)
+    assert trade["trail_stop_price"] == pytest.approx(97.0)
+    assert bool(trade["trail_active"]) is True
+    assert trade["fee_exit"] == pytest.approx(trade["size"] * 97.0 * 0.001)
 
 
 def test_per_bar_risk_percent_and_rrr_override_defaults():
@@ -653,6 +724,10 @@ def test_trades_dataframe_columns_and_types():
         "fee_exit",
         "tp_price",
         "sl_price",
+        "trail_activation_rrr",
+        "trail_distance_atr",
+        "trail_stop_price",
+        "trail_active",
         "exit_reason",
         "capital_before",
         "capital_after",

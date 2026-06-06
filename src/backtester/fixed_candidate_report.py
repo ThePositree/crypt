@@ -18,6 +18,8 @@ from backtester.cli_runner import (
     run_backtest,
 )
 from backtester.data_contracts import StrategyInput
+from backtester.mandate_report import build_mandate_report
+from backtester.results_analyzer import ResultsAnalyzer
 from backtester.tester import Backtester
 
 DEFAULT_WINDOWS = (
@@ -51,6 +53,8 @@ class FixedCandidateParams:
     capital: float
     risk_percent: float
     rrr: float
+    trail_activation_rrr: float
+    trail_distance_atr: float
     ttl: int
     maker_fee: float
     taker_fee: float
@@ -65,6 +69,8 @@ class FixedCandidateParams:
             capital=self.capital,
             risk_percent=self.risk_percent,
             rrr=self.rrr,
+            trail_activation_rrr=self.trail_activation_rrr,
+            trail_distance_atr=self.trail_distance_atr,
             maker_fee=self.maker_fee,
             taker_fee=self.taker_fee,
             ttl=self.ttl,
@@ -139,6 +145,8 @@ def summarize_fixed_candidate_run(
         "from": window.start,
         "to": window.end,
         "rrr": params.rrr,
+        "trail_activation_rrr": params.trail_activation_rrr,
+        "trail_distance_atr": params.trail_distance_atr,
         "ttl": params.ttl,
         "max_positions": params.max_positions,
         "risk_percent": params.risk_percent,
@@ -158,6 +166,7 @@ def summarize_fixed_candidate_run(
         "setup_neutral": int(setup_direction_counts.get("HOLD", 0)),
         "exit_take_profit": int(exit_counts.get("take_profit", 0)),
         "exit_stop_loss": int(exit_counts.get("stop_loss", 0)),
+        "exit_trailing_stop": int(exit_counts.get("trailing_stop", 0)),
         "exit_ttl_expired": int(exit_counts.get("ttl_expired", 0)),
         "run_dir": str(run_dir),
     }
@@ -227,6 +236,12 @@ def run_fixed_candidate_comparison(
     summary.to_csv(summary_path, index=False)
     markdown_path = output_path / "windows.md"
     markdown_path.write_text(_to_markdown_table(summary) + "\n")
+    _export_mandate_report_from_runs(
+        summary=summary,
+        output_path=output_path,
+        initial_capital=params.capital,
+        logger=logger,
+    )
     logger.info("Fixed-candidate summary saved to: %s", summary_path)
     logger.info("Fixed-candidate markdown saved to: %s", markdown_path)
     return summary
@@ -239,6 +254,8 @@ def run_execution_grid_comparison(
     base_params: FixedCandidateParams,
     rrr_values: list[float],
     ttl_values: list[int],
+    trail_activation_rrr_values: list[float],
+    trail_distance_atr_values: list[float],
     max_positions_values: list[int],
     data_dir: str,
     primary_timeframe: str,
@@ -252,6 +269,10 @@ def run_execution_grid_comparison(
         raise ValueError("rrr_values must not be empty")
     if not ttl_values:
         raise ValueError("ttl_values must not be empty")
+    if not trail_activation_rrr_values:
+        raise ValueError("trail_activation_rrr_values must not be empty")
+    if not trail_distance_atr_values:
+        raise ValueError("trail_distance_atr_values must not be empty")
     if not max_positions_values:
         raise ValueError("max_positions_values must not be empty")
     _validate_unique_labels(windows)
@@ -269,14 +290,25 @@ def run_execution_grid_comparison(
                 base_params,
                 rrr=rrr,
                 ttl=ttl,
+                trail_activation_rrr=trail_activation_rrr,
+                trail_distance_atr=trail_distance_atr,
                 max_positions=max_positions,
             ),
         )
-        for index, (window, rrr, ttl, max_positions) in enumerate(
-            (window, rrr, ttl, max_positions)
+        for index, (
+            window,
+            rrr,
+            ttl,
+            trail_activation_rrr,
+            trail_distance_atr,
+            max_positions,
+        ) in enumerate(
+            (window, rrr, ttl, trail_activation_rrr, trail_distance_atr, max_positions)
             for window in windows
             for rrr in rrr_values
             for ttl in ttl_values
+            for trail_activation_rrr in trail_activation_rrr_values
+            for trail_distance_atr in trail_distance_atr_values
             for max_positions in max_positions_values
         )
     ]
@@ -790,13 +822,15 @@ def _run_backtest_with_precomputed_signals(
     df: StrategyInput,
     signals: pd.DataFrame,
     args: BacktestArgs,
-):
+) -> ResultsAnalyzer:
     return Backtester(df, lambda _df: signals.copy()).run(
         initial_capital=args.capital,
         taker_fee=args.taker_fee,
         maker_fee=args.maker_fee,
         risk_percent=args.risk_percent,
         rrr=args.rrr,
+        trail_activation_rrr=args.trail_activation_rrr,
+        trail_distance_atr=args.trail_distance_atr,
         max_positions=args.max_positions,
         position_ttl_bars=args.ttl,
         max_allowed_leverage=args.max_allowed_leverage,
@@ -842,12 +876,20 @@ def _params_with_execution_values(
     *,
     rrr: float,
     ttl: int,
+    trail_activation_rrr: float | None = None,
+    trail_distance_atr: float | None = None,
     max_positions: int | None = None,
 ) -> FixedCandidateParams:
     return FixedCandidateParams(
         capital=params.capital,
         risk_percent=params.risk_percent,
         rrr=rrr,
+        trail_activation_rrr=(
+            params.trail_activation_rrr if trail_activation_rrr is None else trail_activation_rrr
+        ),
+        trail_distance_atr=(
+            params.trail_distance_atr if trail_distance_atr is None else trail_distance_atr
+        ),
         ttl=ttl,
         maker_fee=params.maker_fee,
         taker_fee=params.taker_fee,
@@ -860,7 +902,12 @@ def _params_with_execution_values(
 
 
 def _candidate_run_label(params: FixedCandidateParams) -> str:
-    return f"rrr_{_slug_float(params.rrr)}__ttl_{params.ttl}__maxpos_{params.max_positions}"
+    return (
+        f"rrr_{_slug_float(params.rrr)}__ttl_{params.ttl}"
+        f"__trail_{_slug_float(params.trail_activation_rrr)}"
+        f"_{_slug_float(params.trail_distance_atr)}"
+        f"__maxpos_{params.max_positions}"
+    )
 
 
 def _execution_grid_error_row(window: WindowSpec, exc: Exception) -> dict[str, str]:
@@ -884,6 +931,59 @@ def _validate_unique_labels(windows: list[WindowSpec]) -> None:
     if duplicates:
         joined = ", ".join(duplicates)
         raise ValueError(f"Duplicate window labels would overwrite run outputs: {joined}")
+
+
+def _export_mandate_report_from_runs(
+    *,
+    summary: pd.DataFrame,
+    output_path: Path,
+    initial_capital: float,
+    logger: logging.Logger,
+) -> None:
+    if summary.empty or not {"from", "to", "run_dir"}.issubset(summary.columns):
+        return
+
+    monthly_frames: list[pd.DataFrame] = []
+    summary_frames: list[pd.DataFrame] = []
+    for symbol, symbol_summary in summary.groupby("symbol", sort=False):
+        frames: list[pd.DataFrame] = []
+        for _, row in symbol_summary.iterrows():
+            trades_path = Path(str(row["run_dir"])) / "trades.csv"
+            if not trades_path.exists():
+                logger.warning("Skipping mandate report; missing trades file: %s", trades_path)
+                return
+            try:
+                trades = pd.read_csv(trades_path)
+            except pd.errors.EmptyDataError:
+                trades = pd.DataFrame()
+            if not trades.empty:
+                trades["mandate_source_label"] = row.get("label", "")
+                frames.append(trades)
+
+        trades = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        report = build_mandate_report(
+            trades,
+            initial_capital=initial_capital,
+            start=str(symbol_summary["from"].min()),
+            end=str(symbol_summary["to"].max()),
+        )
+        monthly = report.monthly.copy()
+        monthly.insert(0, "symbol", symbol)
+        mandate_summary = report.summary.copy()
+        mandate_summary.insert(0, "symbol", symbol)
+        monthly_frames.append(monthly)
+        summary_frames.append(mandate_summary)
+
+    monthly_path = output_path / "monthly_mandate.csv"
+    summary_path = output_path / "mandate_summary.csv"
+    markdown_path = output_path / "mandate_summary.md"
+    monthly_report = pd.concat(monthly_frames, ignore_index=True)
+    summary_report = pd.concat(summary_frames, ignore_index=True)
+    monthly_report.to_csv(monthly_path, index=False)
+    summary_report.to_csv(summary_path, index=False)
+    markdown_path.write_text(_to_markdown_table(summary_report) + "\n")
+    logger.info("Mandate monthly report saved to: %s", monthly_path)
+    logger.info("Mandate summary saved to: %s", summary_path)
 
 
 def _count_column(df: pd.DataFrame, column: str) -> dict[Any, int]:
@@ -1062,8 +1162,9 @@ def _anchor_age_bucket(value: float) -> str:
 
 
 def _is_context_reversal(context_bias: Any, side: Any) -> bool:
-    return (context_bias == "bearish" and side == "long") or (
-        context_bias == "bullish" and side == "short"
+    return bool(
+        (context_bias == "bearish" and side == "long")
+        or (context_bias == "bullish" and side == "short")
     )
 
 
@@ -1100,6 +1201,8 @@ def _summarize_trade_group(
                 "from": window.start,
                 "to": window.end,
                 "rrr": params.rrr,
+                "trail_activation_rrr": params.trail_activation_rrr,
+                "trail_distance_atr": params.trail_distance_atr,
                 "ttl": params.ttl,
                 "max_positions": params.max_positions,
                 "risk_percent": params.risk_percent,
@@ -1113,6 +1216,7 @@ def _summarize_trade_group(
                 "short_trades": int((side == "short").sum()),
                 "exit_take_profit": int((exit_reason == "take_profit").sum()),
                 "exit_stop_loss": int((exit_reason == "stop_loss").sum()),
+                "exit_trailing_stop": int((exit_reason == "trailing_stop").sum()),
                 "exit_ttl_expired": int((exit_reason == "ttl_expired").sum()),
                 "run_dir": str(run_dir),
             }
@@ -1127,6 +1231,8 @@ def _signal_quality_group_columns() -> list[str]:
         "from",
         "to",
         "rrr",
+        "trail_activation_rrr",
+        "trail_distance_atr",
         "ttl",
         "max_positions",
         "risk_percent",
@@ -1140,6 +1246,7 @@ def _signal_quality_group_columns() -> list[str]:
         "short_trades",
         "exit_take_profit",
         "exit_stop_loss",
+        "exit_trailing_stop",
         "exit_ttl_expired",
         "run_dir",
     ]

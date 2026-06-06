@@ -14,38 +14,25 @@ when finished.
 > **+15%/month** on **$10k** SOL **2025** continuous backtest after fees;
 > max **10% intra-month DD**; auto-trading only after **promote** verdict.
 
-## P0 — Mandate evaluation metrics on full-year SOL 2025 backtest
+## P1 — Add OHLCV coverage preflight for window reports
 
-**What:** add report/CLI output that evaluates a donor backtest run against
-`docs/investment_mandate.md`: per-month raw and capped returns, intra-month
-max DD, consecutive losing months, large losing-day count, and a written
-**promote / archive / discard / full Optuna** verdict.
+**What:** before starting expensive `compare-fixed`, `compare-grid`, or
+`signal-quality` worker pools, validate that each requested
+symbol/timeframe/window has non-empty primary candles and enough context
+coverage for the configured MTF strategy. Fail fast with a concise missing-data
+table.
 
-**Why now:** ADR-0025 fixes the missing economic north star; without automated
-mandate columns agents will keep interpreting grids ad hoc.
+**Why now:** the owner-run SOL 2025 mandate validation spent several minutes
+before failing at `sol_2025_05` because local SOL H1 parquet ended in April
+2025. The fix was data backfill, but the CLI should make this obvious before
+launching a long replay.
 
-**Expected gain:** every candidate report states clearly whether it meets
-+$1 500/month, which months failed, and whether to archive or run full Optuna.
+**Expected gain:** fewer partial artifacts and less operator time lost to data
+coverage surprises.
 
-**Acceptance:** a command or report script on a full-year SOL 2025 run exports
-`monthly_mandate.csv` (or equivalent) with raw/capped returns and mandate
-verdict; unit tests cover cap math and gate logic; README links to the workflow.
-
-## P1 — Trailing stop on take-profit (Optuna dimensions)
-
-**What:** implement optional trailing stop per `docs/investment_mandate.md` §6.1:
-`trail_activation_rrr` (`0` = fixed TP only) and `trail_distance_atr`; export
-`trailing_stop` exit reason in trades.
-
-**Why now:** owner-approved search feature; may improve capture without
-changing signal logic.
-
-**Expected gain:** execution search can compare fixed TP vs trail-after-activation
-on full-year mandate evaluation.
-
-**Acceptance:** spec in `docs/backtester_migration.md` or feature doc; unit
-tests for activation and trail exit on synthetic bars; Optuna can search both
-params; `trail_activation_rrr = 0` preserves current behaviour.
+**Acceptance:** a missing-window run exits before starting worker backtests and
+prints the missing symbol/timeframe/window; a complete SOL 2025 run proceeds
+unchanged; focused tests cover both paths.
 
 ## P1 — Stop-loss count limits as Optuna dimensions
 
@@ -91,6 +78,24 @@ reports complete without manual window reconstruction.
 **Acceptance:** README/task examples either pass all intended `--window`
 options explicitly or the CLI exposes a preset/default that writes all seven
 candidate-validation windows in one `windows.csv`.
+
+## P2 — Guard `compare-grid` trailing parameter traps
+
+**What:** make `backtester compare-grid` fail fast before window execution when
+any `trail_activation_rrr > 0` is requested while
+`--trail-distance-atr-values` is omitted or only contains `0`; optionally skip
+duplicate fixed-TP rows for `trail_activation_rrr = 0` across multiple distance
+values.
+
+**Why now:** the first trailing grid artifact on 2026-06-06 failed all windows
+with `ValueError: trail_distance_atr must be > 0 when trailing is enabled`
+because the distance values were left at the default `0`.
+
+**Expected gain:** fewer owner-run all-error artifacts and less duplicated
+fixed-TP output in bounded reports.
+
+**Acceptance:** CLI validation rejects the invalid grid before signal building;
+tests cover invalid trailing values and fixed-TP de-duplication if implemented.
 
 > **Important reading:** the 2026-05-15 planning session created several
 > specs under `docs/` that this backlog references repeatedly. Read them

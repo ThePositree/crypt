@@ -111,6 +111,18 @@ def cli():
 )
 @click.option("--maker-fee", type=float, default=0.0002, help="Maker fee")
 @click.option("--taker-fee", type=float, default=0.0005, help="Taker fee")
+@click.option(
+    "--trail-activation-rrr",
+    type=float,
+    default=0.0,
+    help="RRR threshold that activates trailing stop. 0 disables trailing.",
+)
+@click.option(
+    "--trail-distance-atr",
+    type=float,
+    default=0.0,
+    help="Trailing stop distance in ATR units after activation.",
+)
 @click.option("--ttl", type=int, default=0, help="Max position duration")
 @click.option("--max-positions", type=int, default=0, help="Max simultaneous positions")
 @click.option("--max-allowed-leverage", type=float, default=25.0, help="Max allowed leverage")
@@ -235,6 +247,8 @@ def run(
     rrr: float,
     maker_fee: float,
     taker_fee: float,
+    trail_activation_rrr: float,
+    trail_distance_atr: float,
     ttl: int,
     max_positions: int,
     max_allowed_leverage: float,
@@ -320,6 +334,8 @@ def run(
         capital=capital,
         risk_percent=risk_percent,
         rrr=rrr,
+        trail_activation_rrr=trail_activation_rrr,
+        trail_distance_atr=trail_distance_atr,
         maker_fee=maker_fee,
         taker_fee=taker_fee,
         ttl=ttl,
@@ -400,6 +416,26 @@ def run(
 @click.option("--rrr-low", type=float, default=1.0, help="RRR search low bound.")
 @click.option("--rrr-high", type=float, default=3.0, help="RRR search high bound.")
 @click.option("--rrr-step", type=float, default=0.25, help="RRR search step.")
+@click.option(
+    "--trail-activation-rrr",
+    type=float,
+    default=0.0,
+    help="Fixed trailing activation RRR when activation values are not provided.",
+)
+@click.option(
+    "--trail-activation-rrr-values",
+    default=None,
+    help="Comma-separated trailing activation RRR values. Include 0 to test fixed TP.",
+)
+@click.option(
+    "--trail-distance-atr",
+    type=float,
+    default=0.0,
+    help="Fixed trailing distance in ATR units when distance range is not provided.",
+)
+@click.option("--trail-distance-atr-low", type=float, default=None, help="Trail ATR low.")
+@click.option("--trail-distance-atr-high", type=float, default=None, help="Trail ATR high.")
+@click.option("--trail-distance-atr-step", type=float, default=0.5, help="Trail ATR step.")
 @click.option(
     "--max-positions-values",
     default=None,
@@ -490,6 +526,12 @@ def optimize(
     rrr_low: float,
     rrr_high: float,
     rrr_step: float,
+    trail_activation_rrr: float,
+    trail_activation_rrr_values: str | None,
+    trail_distance_atr: float,
+    trail_distance_atr_low: float | None,
+    trail_distance_atr_high: float | None,
+    trail_distance_atr_step: float,
     max_positions_values: str | None,
     max_positions_low: int | None,
     max_positions_high: int | None,
@@ -540,6 +582,8 @@ def optimize(
         capital=capital,
         risk_percent=risk_percent,
         rrr=rrr_low,
+        trail_activation_rrr=trail_activation_rrr,
+        trail_distance_atr=trail_distance_atr,
         maker_fee=maker_fee,
         taker_fee=taker_fee,
         ttl=ttl,
@@ -573,10 +617,23 @@ def optimize(
             max_positions_high,
             max_positions_step,
         )
+    if trail_distance_atr_low is None or trail_distance_atr_high is None:
+        trail_distance_atr_range = None
+    else:
+        trail_distance_atr_range = (
+            trail_distance_atr_low,
+            trail_distance_atr_high,
+            trail_distance_atr_step,
+        )
     try:
         parsed_max_positions_values = (
             tuple(parse_int_values(max_positions_values))
             if max_positions_values is not None
+            else None
+        )
+        parsed_trail_activation_rrr_values = (
+            tuple(parse_float_values(trail_activation_rrr_values))
+            if trail_activation_rrr_values is not None
             else None
         )
     except ValueError as e:
@@ -596,6 +653,8 @@ def optimize(
             optimize_strategy_params=strategy_param_search,
             risk_percent_range=risk_percent_range,
             rrr_range=(rrr_low, rrr_high, rrr_step),
+            trail_activation_rrr_values=parsed_trail_activation_rrr_values,
+            trail_distance_atr_range=trail_distance_atr_range,
             max_positions_values=parsed_max_positions_values,
             max_positions_range=max_positions_range,
             position_ttl_bars_range=ttl_range,
@@ -630,6 +689,18 @@ def optimize(
 @click.option("--capital", type=float, default=10000.0, help="Initial capital.")
 @click.option("--risk-percent", type=float, default=1.0, help="Fixed risk percent.")
 @click.option("--rrr", type=float, default=1.25, help="Fixed reward/risk ratio.")
+@click.option(
+    "--trail-activation-rrr",
+    type=float,
+    default=0.0,
+    help="RRR threshold that activates trailing stop. 0 disables trailing.",
+)
+@click.option(
+    "--trail-distance-atr",
+    type=float,
+    default=0.0,
+    help="Trailing stop distance in ATR units after activation.",
+)
 @click.option("--ttl", type=int, default=36, help="Fixed position TTL in bars.")
 @click.option(
     "--jobs",
@@ -659,6 +730,8 @@ def compare_fixed(
     capital: float,
     risk_percent: float,
     rrr: float,
+    trail_activation_rrr: float,
+    trail_distance_atr: float,
     ttl: int,
     jobs: int,
     maker_fee: float,
@@ -689,6 +762,8 @@ def compare_fixed(
             capital=capital,
             risk_percent=risk_percent,
             rrr=rrr,
+            trail_activation_rrr=trail_activation_rrr,
+            trail_distance_atr=trail_distance_atr,
             ttl=ttl,
             maker_fee=maker_fee,
             taker_fee=taker_fee,
@@ -741,6 +816,18 @@ def compare_fixed(
     help="Comma-separated position TTL values in bars.",
 )
 @click.option(
+    "--trail-activation-rrr-values",
+    default="0",
+    show_default=True,
+    help="Comma-separated trailing activation RRR values. 0 disables trailing.",
+)
+@click.option(
+    "--trail-distance-atr-values",
+    default="0",
+    show_default=True,
+    help="Comma-separated trailing distance ATR values.",
+)
+@click.option(
     "--max-positions-values",
     default=None,
     help=("Comma-separated max simultaneous positions values. Defaults to fixed --max-positions."),
@@ -774,6 +861,8 @@ def compare_grid(
     risk_percent: float,
     rrr_values: str,
     ttl_values: str,
+    trail_activation_rrr_values: str,
+    trail_distance_atr_values: str,
     max_positions_values: str | None,
     jobs: int,
     maker_fee: float,
@@ -794,6 +883,8 @@ def compare_grid(
         window_specs = parse_window_specs(windows)
         parsed_rrr_values = parse_float_values(rrr_values)
         parsed_ttl_values = parse_int_values(ttl_values)
+        parsed_trail_activation_rrr_values = parse_float_values(trail_activation_rrr_values)
+        parsed_trail_distance_atr_values = parse_float_values(trail_distance_atr_values)
         parsed_max_positions_values = (
             parse_int_values(max_positions_values)
             if max_positions_values is not None
@@ -811,6 +902,8 @@ def compare_grid(
             capital=capital,
             risk_percent=risk_percent,
             rrr=parsed_rrr_values[0],
+            trail_activation_rrr=parsed_trail_activation_rrr_values[0],
+            trail_distance_atr=parsed_trail_distance_atr_values[0],
             ttl=parsed_ttl_values[0],
             maker_fee=maker_fee,
             taker_fee=taker_fee,
@@ -822,6 +915,8 @@ def compare_grid(
         ),
         rrr_values=parsed_rrr_values,
         ttl_values=parsed_ttl_values,
+        trail_activation_rrr_values=parsed_trail_activation_rrr_values,
+        trail_distance_atr_values=parsed_trail_distance_atr_values,
         max_positions_values=parsed_max_positions_values,
         data_dir=data_dir,
         primary_timeframe=primary_timeframe,
@@ -854,6 +949,18 @@ def compare_grid(
 @click.option("--capital", type=float, default=10000.0, help="Initial capital.")
 @click.option("--risk-percent", type=float, default=1.0, help="Fixed risk percent.")
 @click.option("--rrr", type=float, default=1.25, help="Fixed reward/risk ratio.")
+@click.option(
+    "--trail-activation-rrr",
+    type=float,
+    default=0.0,
+    help="RRR threshold that activates trailing stop. 0 disables trailing.",
+)
+@click.option(
+    "--trail-distance-atr",
+    type=float,
+    default=0.0,
+    help="Trailing stop distance in ATR units after activation.",
+)
 @click.option("--ttl", type=int, default=36, help="Fixed position TTL in bars.")
 @click.option(
     "--jobs",
@@ -883,6 +990,8 @@ def signal_quality(
     capital: float,
     risk_percent: float,
     rrr: float,
+    trail_activation_rrr: float,
+    trail_distance_atr: float,
     ttl: int,
     jobs: int,
     maker_fee: float,
@@ -913,6 +1022,8 @@ def signal_quality(
             capital=capital,
             risk_percent=risk_percent,
             rrr=rrr,
+            trail_activation_rrr=trail_activation_rrr,
+            trail_distance_atr=trail_distance_atr,
             ttl=ttl,
             maker_fee=maker_fee,
             taker_fee=taker_fee,

@@ -143,6 +143,16 @@ Current calibration state:
 - `max_positions` should become the next bounded optimizer/search parameter.
   Unconstrained `max_positions = 0` is only a diagnostic baseline for H1
   candidate work.
+- Optional trailing-stop execution is available behind
+  `trail_activation_rrr` and `trail_distance_atr`. `trail_activation_rrr = 0`
+  preserves the existing fixed-TP behavior. When enabled, the fixed TP remains
+  active only until price first reaches `trail_activation_rrr` times the
+  structural stop distance in profit; after activation, fixed TP is disabled
+  and the position exits through `exit_reason = trailing_stop` when price
+  crosses the trailing stop. The trailing distance uses a strategy-provided
+  `trail_atr` column when present, otherwise execution ATR14 computed from
+  closed candles (`shift(1)`) to avoid look-ahead. Trailing exits use taker fee
+  semantics like stop exits.
 
 ## StrategyData contract
 

@@ -190,7 +190,13 @@ def test_run_parameter_optimization_exports_trials_and_best_run(
 
         def optimize(self, **kwargs):
             captured["optimize_kwargs"] = kwargs
-            return {"rrr": 1.5, "max_positions": 3, "position_ttl_bars": 30}, _FakeStudy()
+            return {
+                "rrr": 1.5,
+                "trail_activation_rrr": 0.75,
+                "trail_distance_atr": 1.5,
+                "max_positions": 3,
+                "position_ttl_bars": 30,
+            }, _FakeStudy()
 
         def cached_signals_for_params(self, params):
             captured["cached_params"] = params
@@ -244,6 +250,8 @@ def test_run_parameter_optimization_exports_trials_and_best_run(
             capital=10000.0,
             risk_percent=0.75,
             rrr=1.0,
+            trail_activation_rrr=0.0,
+            trail_distance_atr=0.0,
             maker_fee=0.0002,
             taker_fee=0.0005,
             ttl=24,
@@ -261,6 +269,8 @@ def test_run_parameter_optimization_exports_trials_and_best_run(
             optimize_strategy_params=False,
             risk_percent_range=None,
             rrr_range=(1.0, 2.0, 0.25),
+            trail_activation_rrr_values=(0.0, 0.75),
+            trail_distance_atr_range=(1.0, 2.0, 0.5),
             max_positions_values=(1, 2, 3, 5),
             max_positions_range=(1, 3, 1),
             position_ttl_bars_range=(24, 48, 6),
@@ -276,11 +286,15 @@ def test_run_parameter_optimization_exports_trials_and_best_run(
     assert (tmp_path / "best_trial.json").exists()
     assert captured["optimizer_kwargs"]["strategy_params"] == {"baseline": True}
     assert captured["optimizer_kwargs"]["risk_percent"] == 0.75
+    assert captured["optimizer_kwargs"]["trail_activation_rrr_values"] == (0.0, 0.75)
+    assert captured["optimizer_kwargs"]["trail_distance_atr_range"] == (1.0, 2.0, 0.5)
     assert captured["optimizer_kwargs"]["max_positions_values"] == (1, 2, 3, 5)
     assert captured["optimizer_kwargs"]["max_positions_range"] == (1, 3, 1)
     assert captured["optimize_kwargs"]["n_trials"] == 3
     assert captured["cached_params"] == {"baseline": True}
     assert captured["best_run_kwargs"]["rrr"] == 1.5
+    assert captured["best_run_kwargs"]["trail_activation_rrr"] == 0.75
+    assert captured["best_run_kwargs"]["trail_distance_atr"] == 1.5
     assert captured["best_run_kwargs"]["max_positions"] == 3
     assert captured["best_run_kwargs"]["position_ttl_bars"] == 30
     assert "signal" in captured["best_signal_columns"]

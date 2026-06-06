@@ -37,6 +37,7 @@ _TRADE_METADATA_EXCLUDED_COLUMNS = frozenset(
         "sl_price",
         "risk_percent",
         "rrr",
+        "trail_atr",
         "entry_price",
         "index",
         "open_time",
@@ -76,6 +77,11 @@ class Position:
     total_locked_margin_after_entry: float
     is_long: bool
     metadata: dict[str, Any]
+    trail_activation_rrr: float = 0.0
+    trail_distance_atr: float = 0.0
+    trail_active: bool = False
+    best_favorable_price: float | None = None
+    trail_stop_price: float | None = None
 
     def __post_init__(self):
         """Validation of input data."""
@@ -100,6 +106,7 @@ class ExitReason(str, Enum):
 
     TAKE_PROFIT = "take_profit"
     STOP_LOSS = "stop_loss"
+    TRAILING_STOP = "trailing_stop"
     TTL_EXPIRED = "ttl_expired"
 
 
@@ -168,6 +175,8 @@ class ExecutionSim:
         maker_fee: float = 0.0002,
         risk_percent: float = 1.0,
         rrr: float = 2.0,
+        trail_activation_rrr: float = 0.0,
+        trail_distance_atr: float = 0.0,
         max_positions: int = 0,
         position_ttl_bars: int = 0,
         min_net_exposure: float = 0.01,
@@ -201,6 +210,13 @@ class ExecutionSim:
         rrr : float, default 2.0
             Reward to Risk ratio. Defines how many times further TP is than SL.
             Example: 2.0 → TP is 2x the distance from entry as SL.
+        trail_activation_rrr : float, default 0.0
+            Profit threshold, in structural stop-distance multiples, at which
+            trailing stop mode starts. ``0`` disables trailing and preserves
+            fixed-TP behaviour.
+        trail_distance_atr : float, default 0.0
+            Trailing stop distance in ATR units after activation. Required to
+            be positive when ``trail_activation_rrr`` is positive.
         max_positions : int, default 0
             Maximum number of simultaneous open positions.
             If reached, new signals are ignored.
@@ -297,12 +313,20 @@ class ExecutionSim:
                 f"{sorted(allowed_risk_base_periods)!r}."
             )
             raise ValueError(msg)
+        if trail_activation_rrr < 0:
+            raise ValueError("trail_activation_rrr must be >= 0")
+        if trail_distance_atr < 0:
+            raise ValueError("trail_distance_atr must be >= 0")
+        if trail_activation_rrr > 0 and trail_distance_atr <= 0:
+            raise ValueError("trail_distance_atr must be > 0 when trailing is enabled")
 
         self.initial_capital = initial_capital
         self.taker_fee = taker_fee
         self.maker_fee = maker_fee
         self.risk_percent = risk_percent
         self.rrr = rrr
+        self.trail_activation_rrr = trail_activation_rrr
+        self.trail_distance_atr = trail_distance_atr
         self.max_positions = max_positions
         self.position_ttl_bars = position_ttl_bars
         self.min_net_exposure = min_net_exposure
@@ -473,7 +497,8 @@ class ExecutionSim:
             current_high = row["high"]
             current_low = row["low"]
 
-            yield i, row, next_open, current_high, current_low, next_time
+            trail_atr = row["trail_atr"] if "trail_atr" in row.dtype.names else None
+            yield i, row, next_open, current_high, current_low, trail_atr, next_time
 
     def _update_active_positions(
         self,
@@ -483,6 +508,7 @@ class ExecutionSim:
         i: int,
         current_high: float,
         current_low: float,
+        trail_atr: float | None,
         next_open: float,
         next_time: pd.Timestamp,
         trade_history: list[dict],
@@ -504,6 +530,7 @@ class ExecutionSim:
                 pos=pos,
                 current_high=current_high,
                 current_low=current_low,
+                trail_atr=trail_atr,
             )
 
             # TTL
@@ -554,6 +581,10 @@ class ExecutionSim:
                         "fee_exit": fee_exit,
                         "tp_price": pos.tp_price,
                         "sl_price": pos.sl_price,
+                        "trail_activation_rrr": pos.trail_activation_rrr,
+                        "trail_distance_atr": pos.trail_distance_atr,
+                        "trail_stop_price": pos.trail_stop_price,
+                        "trail_active": pos.trail_active,
                         "exit_reason": reason_value,
                         "capital_before": pos.capital_before,
                         "capital_after": new_capital,
@@ -583,6 +614,7 @@ class ExecutionSim:
         pos: Position,
         current_high: float,
         current_low: float,
+        trail_atr: float | None,
     ) -> tuple[ExitReason | None, float | None]:
         """
         Resolve TP/SL exit for a single position within the current bar.
@@ -612,6 +644,14 @@ class ExecutionSim:
             Price at which the position is considered closed, or None if
             no TP/SL exit occurs in this bar.
         """
+        if pos.trail_activation_rrr > 0:
+            return self._resolve_trailing_bar_exit(
+                pos=pos,
+                current_high=current_high,
+                current_low=current_low,
+                trail_atr=trail_atr,
+            )
+
         if pos.is_long:
             tp_hit = current_high >= pos.tp_price
             sl_hit = current_low <= pos.sl_price
@@ -639,6 +679,99 @@ class ExecutionSim:
         # This should be unreachable due to __init__ validation, but kept
         # defensively to avoid silent inconsistencies.
         raise RuntimeError(f"Unexpected bar_exit_policy {self.bar_exit_policy!r} at runtime.")
+
+    def _resolve_trailing_bar_exit(
+        self,
+        *,
+        pos: Position,
+        current_high: float,
+        current_low: float,
+        trail_atr: float | None,
+    ) -> tuple[ExitReason | None, float | None]:
+        if trail_atr is None or pd.isna(trail_atr) or trail_atr <= 0:
+            return self._resolve_fixed_exit_before_trailing_atr(pos, current_high, current_low)
+
+        sl_dist = abs(pos.entry_price - pos.sl_price)
+        if pos.is_long:
+            original_sl_hit = current_low <= pos.sl_price
+            activation_price = pos.entry_price + sl_dist * pos.trail_activation_rrr
+            activation_hit = current_high >= activation_price
+            if not pos.trail_active:
+                if original_sl_hit and (not activation_hit or self.bar_exit_policy == "worst_case"):
+                    return ExitReason.STOP_LOSS, pos.sl_price
+                if not activation_hit:
+                    tp_hit = current_high >= pos.tp_price
+                    if tp_hit:
+                        return ExitReason.TAKE_PROFIT, pos.tp_price
+                    if original_sl_hit:
+                        return ExitReason.STOP_LOSS, pos.sl_price
+                    return None, None
+                pos.trail_active = True
+                pos.best_favorable_price = max(pos.entry_price, current_high)
+            else:
+                pos.best_favorable_price = max(
+                    pos.best_favorable_price or pos.entry_price, current_high
+                )
+
+            proposed_stop = pos.best_favorable_price - trail_atr * pos.trail_distance_atr
+            pos.trail_stop_price = max(pos.sl_price, proposed_stop)
+            if current_low <= pos.trail_stop_price:
+                return ExitReason.TRAILING_STOP, pos.trail_stop_price
+            return None, None
+
+        original_sl_hit = current_high >= pos.sl_price
+        activation_price = pos.entry_price - sl_dist * pos.trail_activation_rrr
+        activation_hit = current_low <= activation_price
+        if not pos.trail_active:
+            if original_sl_hit and (not activation_hit or self.bar_exit_policy == "worst_case"):
+                return ExitReason.STOP_LOSS, pos.sl_price
+            if not activation_hit:
+                tp_hit = current_low <= pos.tp_price
+                if tp_hit:
+                    return ExitReason.TAKE_PROFIT, pos.tp_price
+                if original_sl_hit:
+                    return ExitReason.STOP_LOSS, pos.sl_price
+                return None, None
+            pos.trail_active = True
+            pos.best_favorable_price = min(pos.entry_price, current_low)
+        else:
+            pos.best_favorable_price = min(pos.best_favorable_price or pos.entry_price, current_low)
+
+        proposed_stop = pos.best_favorable_price + trail_atr * pos.trail_distance_atr
+        pos.trail_stop_price = min(pos.sl_price, proposed_stop)
+        if current_high >= pos.trail_stop_price:
+            return ExitReason.TRAILING_STOP, pos.trail_stop_price
+        return None, None
+
+    def _resolve_fixed_exit_before_trailing_atr(
+        self,
+        pos: Position,
+        current_high: float,
+        current_low: float,
+    ) -> tuple[ExitReason | None, float | None]:
+        if pos.is_long:
+            tp_hit = current_high >= pos.tp_price
+            sl_hit = current_low <= pos.sl_price
+            if tp_hit and sl_hit:
+                if self.bar_exit_policy == "best_case":
+                    return ExitReason.TAKE_PROFIT, pos.tp_price
+                return ExitReason.STOP_LOSS, pos.sl_price
+            if tp_hit:
+                return ExitReason.TAKE_PROFIT, pos.tp_price
+            if sl_hit:
+                return ExitReason.STOP_LOSS, pos.sl_price
+        else:
+            tp_hit = current_low <= pos.tp_price
+            sl_hit = current_high >= pos.sl_price
+            if tp_hit and sl_hit:
+                if self.bar_exit_policy == "best_case":
+                    return ExitReason.TAKE_PROFIT, pos.tp_price
+                return ExitReason.STOP_LOSS, pos.sl_price
+            if tp_hit:
+                return ExitReason.TAKE_PROFIT, pos.tp_price
+            if sl_hit:
+                return ExitReason.STOP_LOSS, pos.sl_price
+        return None, None
 
     def _prepare_entry_context(
         self,
@@ -825,6 +958,8 @@ class ExecutionSim:
             total_locked_margin_before=total_locked_margin,
             total_locked_margin_after_entry=total_locked_margin_after_entry,
             metadata=entry_ctx["metadata"],
+            trail_activation_rrr=self.trail_activation_rrr,
+            trail_distance_atr=self.trail_distance_atr,
         )
         active_positions.append(new_position)
 
@@ -905,6 +1040,9 @@ class ExecutionSim:
             - any strategy metadata columns from the signal row, for example
               confidence, score, regime, rationale, and per-engine strengths
         """
+        if self.trail_activation_rrr > 0 and "trail_atr" not in df.columns:
+            df = _with_closed_atr14(df)
+
         try:
             columns_meta = self._validate_input_df(df)
         except _NotEnoughBarsError:
@@ -920,7 +1058,9 @@ class ExecutionSim:
         loss_num = 0
         daily_trading_blocked = False
 
-        for i, row, next_open, current_high, current_low, next_time in self._iter_bars(df):
+        for i, row, next_open, current_high, current_low, trail_atr, next_time in self._iter_bars(
+            df
+        ):
             if capital <= 1:
                 self._logger.warning("Capital below 1, exiting")
                 break
@@ -948,6 +1088,7 @@ class ExecutionSim:
                 i=i,
                 current_high=current_high,
                 current_low=current_low,
+                trail_atr=trail_atr,
                 next_open=next_open,
                 next_time=next_time,
                 trade_history=trade_history,
@@ -1007,6 +1148,21 @@ class ExecutionSim:
                 )
 
         return pd.DataFrame(trade_history) if trade_history else pd.DataFrame()
+
+
+def _with_closed_atr14(df: pd.DataFrame) -> pd.DataFrame:
+    enriched = df.copy()
+    previous_close = enriched["close"].shift(1)
+    true_range = pd.concat(
+        [
+            enriched["high"] - enriched["low"],
+            (enriched["high"] - previous_close).abs(),
+            (enriched["low"] - previous_close).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
+    enriched["trail_atr"] = true_range.rolling(14).mean().shift(1)
+    return enriched
 
 
 def _trade_metadata_from_row(row) -> dict[str, Any]:
