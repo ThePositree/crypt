@@ -45,6 +45,7 @@ _PARITY_COLUMNS = [
     "setup_direction",
     "trigger_type",
     "trigger_known_at",
+    "setup_snapshot_time",
     "sl_source_tf",
     "signal_filter_reason",
     "strength_derivatives",
@@ -99,8 +100,11 @@ def test_signal_filter_blocks_disallowed_side():
         stop=stop,
         filters=_SignalFilterConfig(
             allowed_sides=frozenset({"short"}),
+            allowed_sl_anchor_types=None,
             blocked_sl_anchor_types=frozenset(),
             max_anchor_age_hours=None,
+            min_signal_sl_distance_atr=None,
+            max_signal_sl_distance_atr=None,
             block_context_reversal=False,
         ),
         trigger_known_at=datetime(2025, 3, 10, tzinfo=UTC),
@@ -120,8 +124,11 @@ def test_signal_filter_blocks_configured_anchor_type():
         stop=stop,
         filters=_SignalFilterConfig(
             allowed_sides=None,
+            allowed_sl_anchor_types=None,
             blocked_sl_anchor_types=frozenset({"liquidity_sweep"}),
             max_anchor_age_hours=None,
+            min_signal_sl_distance_atr=None,
+            max_signal_sl_distance_atr=None,
             block_context_reversal=False,
         ),
         trigger_known_at=datetime(2025, 3, 10, tzinfo=UTC),
@@ -131,6 +138,77 @@ def test_signal_filter_blocks_configured_anchor_type():
 
     assert filtered.signal == 0
     assert reason == "sl_anchor_type_blocked:liquidity_sweep"
+
+
+def test_signal_filter_blocks_unlisted_anchor_type():
+    stop = _filter_stop(signal=-1, anchor_type="order_block")
+
+    filtered, reason = _apply_signal_filters(
+        stop=stop,
+        filters=_SignalFilterConfig(
+            allowed_sides=None,
+            allowed_sl_anchor_types=frozenset({"pivot"}),
+            blocked_sl_anchor_types=frozenset(),
+            max_anchor_age_hours=None,
+            min_signal_sl_distance_atr=None,
+            max_signal_sl_distance_atr=None,
+            block_context_reversal=False,
+        ),
+        trigger_known_at=datetime(2025, 3, 10, tzinfo=UTC),
+        context_bias="neutral",
+        setup_direction="SELL",
+    )
+
+    assert filtered.signal == 0
+    assert reason == "sl_anchor_type_not_allowed:order_block"
+
+
+def test_signal_filter_blocks_stop_distance_outside_diagnostic_range():
+    tight = _StopPlan(
+        signal=-1,
+        sl_price=101.0,
+        anchor_type="pivot",
+        anchor_level=100.5,
+        anchor_known_at=None,
+        distance_atr=1.5,
+    )
+    wide = _StopPlan(
+        signal=-1,
+        sl_price=105.0,
+        anchor_type="pivot",
+        anchor_level=104.0,
+        anchor_known_at=None,
+        distance_atr=3.25,
+    )
+    filters = _SignalFilterConfig(
+        allowed_sides=None,
+        allowed_sl_anchor_types=None,
+        blocked_sl_anchor_types=frozenset(),
+        max_anchor_age_hours=None,
+        min_signal_sl_distance_atr=2.0,
+        max_signal_sl_distance_atr=3.0,
+        block_context_reversal=False,
+    )
+
+    filtered_tight, tight_reason = _apply_signal_filters(
+        stop=tight,
+        filters=filters,
+        trigger_known_at=datetime(2025, 3, 10, tzinfo=UTC),
+        context_bias="neutral",
+        setup_direction="SELL",
+    )
+    filtered_wide, wide_reason = _apply_signal_filters(
+        stop=wide,
+        filters=filters,
+        trigger_known_at=datetime(2025, 3, 10, tzinfo=UTC),
+        context_bias="neutral",
+        setup_direction="SELL",
+    )
+
+    assert filtered_tight.signal == 0
+    assert tight_reason == "sl_distance_too_tight:1.5000"
+    assert filtered_wide.signal == 0
+    assert wide_reason == "sl_distance_too_wide:3.2500"
 
 
 def test_signal_filter_blocks_stale_anchor():
@@ -143,8 +221,11 @@ def test_signal_filter_blocks_stale_anchor():
         stop=stop,
         filters=_SignalFilterConfig(
             allowed_sides=None,
+            allowed_sl_anchor_types=None,
             blocked_sl_anchor_types=frozenset(),
             max_anchor_age_hours=72.0,
+            min_signal_sl_distance_atr=None,
+            max_signal_sl_distance_atr=None,
             block_context_reversal=False,
         ),
         trigger_known_at=datetime(2025, 3, 10, tzinfo=UTC),
@@ -163,8 +244,11 @@ def test_signal_filter_blocks_context_reversal():
         stop=stop,
         filters=_SignalFilterConfig(
             allowed_sides=None,
+            allowed_sl_anchor_types=None,
             blocked_sl_anchor_types=frozenset(),
             max_anchor_age_hours=None,
+            min_signal_sl_distance_atr=None,
+            max_signal_sl_distance_atr=None,
             block_context_reversal=True,
         ),
         trigger_known_at=datetime(2025, 3, 10, tzinfo=UTC),
@@ -652,6 +736,7 @@ def test_crypt_ensemble_h1_mode_uses_h1_execution_index_and_diagnostics():
                 "trigger": "1h",
                 "execution": "1h",
             },
+            "trigger_rules": ["h1_candle_confirm"],
         }
     )
     strategy._evaluate_context = lambda _ctx: _verdict("BUY", 0.5)  # type: ignore[method-assign]
@@ -665,6 +750,234 @@ def test_crypt_ensemble_h1_mode_uses_h1_execution_index_and_diagnostics():
     assert set(result["trigger_tf"]) == {"1h"}
     assert set(result["trigger_type"]) == {"1h_candle_confirm"}
     assert set(result["sl_source_tf"]) == {"4h"}
+
+
+def test_crypt_ensemble_h1_default_requires_structural_trigger(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    primary = _ohlcv_at(["2024-01-02 01:00:00"], closes=[10.5])
+    h4 = _ohlcv_at(["2024-01-01 20:00:00"], closes=[10.5])
+    d1 = _ohlcv_at(["2024-01-01 00:00:00"], closes=[12.0])
+    monkeypatch.setattr(
+        crypt_ensemble_mod,
+        "_structural_stop_state_for_timeframe",
+        lambda _ctx, timeframe: (
+            SMCState() if timeframe == Timeframe.H1 else _state_with_protective_pivots()
+        ),
+    )
+    data = StrategyData(
+        primary=primary,
+        candles={"H1": primary, "H4": h4, "D1": d1},
+        extras={},
+        metadata={"symbol": "SOL-USDT-SWAP"},
+    )
+    strategy = CryptEnsembleStrategy(
+        {
+            "sl_atr_mult": 2.0,
+            "progress": False,
+            "timeframes": {
+                "context": ["1d"],
+                "setup": ["4h"],
+                "trigger": "1h",
+                "execution": "1h",
+            },
+        }
+    )
+    strategy._evaluate_context = lambda _ctx: _verdict("BUY", 0.5)  # type: ignore[method-assign]
+
+    result = strategy.generate(data)
+
+    assert list(result["signal"]) == [0]
+    assert list(result["trigger_type"]) == ["trigger_rejected"]
+
+
+def test_crypt_ensemble_h1_raw_candle_mode_uses_h1_candle_direction(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    primary = pd.DataFrame(
+        {
+            "open": [10.0, 10.0],
+            "high": [11.0, 11.0],
+            "low": [9.0, 9.0],
+            "close": [10.5, 9.5],
+            "volume": [10.0, 10.0],
+        },
+        index=pd.to_datetime(
+            ["2024-01-02 01:00:00", "2024-01-02 02:00:00"],
+            utc=True,
+        ),
+    )
+    h4 = _ohlcv_at(["2024-01-01 20:00:00"], closes=[10.5])
+    d1 = pd.DataFrame(
+        {
+            "open": [10.0],
+            "high": [10.5],
+            "low": [8.5],
+            "close": [9.0],
+            "volume": [10.0],
+        },
+        index=pd.to_datetime(["2024-01-01 00:00:00"], utc=True),
+    )
+    monkeypatch.setattr(
+        crypt_ensemble_mod,
+        "_structural_stop_state_for_timeframe",
+        lambda _ctx, _timeframe: SMCState(
+            pivots=[
+                _pivot("low", 8.0),
+                _pivot("high", 12.0),
+            ]
+        ),
+    )
+    data = StrategyData(
+        primary=primary,
+        candles={"H1": primary, "H4": h4, "D1": d1},
+        extras={},
+        metadata={"symbol": "SOL-USDT-SWAP"},
+    )
+    strategy = CryptEnsembleStrategy(
+        {
+            "setup_source": "h1_raw",
+            "sl_atr_mult": 2.0,
+            "progress": False,
+            "timeframes": {
+                "context": ["1d"],
+                "setup": ["4h"],
+                "trigger": "1h",
+                "execution": "1h",
+            },
+            "trigger_rules": ["h1_candle_confirm"],
+        }
+    )
+    strategy._evaluate_context = lambda _ctx: _verdict("HOLD", 0.0)  # type: ignore[method-assign]
+
+    result = strategy.generate(data)
+
+    assert list(result["signal"]) == [1, -1]
+    assert list(result["setup_direction"]) == ["BUY", "SELL"]
+    assert list(result["trigger_type"]) == [
+        "raw_1h_candle_confirm",
+        "raw_1h_candle_confirm",
+    ]
+    assert list(result["context_bias"]) == ["bearish", "bearish"]
+
+
+def test_crypt_ensemble_h1_raw_mode_rejects_doji_without_setup_gate(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    primary = pd.DataFrame(
+        {
+            "open": [10.0],
+            "high": [11.0],
+            "low": [9.0],
+            "close": [10.0],
+            "volume": [10.0],
+        },
+        index=pd.to_datetime(["2024-01-02 01:00:00"], utc=True),
+    )
+    h4 = _ohlcv_at(["2024-01-01 20:00:00"], closes=[10.5])
+    monkeypatch.setattr(
+        crypt_ensemble_mod,
+        "_structural_stop_state_for_timeframe",
+        lambda _ctx, _timeframe: _state_with_protective_pivots(),
+    )
+    data = StrategyData(
+        primary=primary,
+        candles={"H1": primary, "H4": h4, "D1": pd.DataFrame()},
+        extras={},
+        metadata={"symbol": "SOL-USDT-SWAP"},
+    )
+    strategy = CryptEnsembleStrategy(
+        {
+            "setup_source": "h1_raw",
+            "sl_atr_mult": 2.0,
+            "progress": False,
+            "timeframes": {
+                "context": ["1d"],
+                "setup": ["4h"],
+                "trigger": "1h",
+                "execution": "1h",
+            },
+            "trigger_rules": ["h1_candle_confirm"],
+        }
+    )
+    strategy._evaluate_context = lambda _ctx: _verdict("BUY", 0.5)  # type: ignore[method-assign]
+
+    result = strategy.generate(data)
+
+    assert list(result["signal"]) == [0]
+    assert list(result["trigger_type"]) == ["raw_h1_trigger_rejected"]
+
+
+@pytest.mark.parametrize(
+    ("rule", "state", "expected_trigger_type"),
+    [
+        (
+            "h1_structure_break",
+            SMCState(structure_events=[_event(BULLISH, known_at=_ts("2024-01-02 02:00:00"))]),
+            "h1_structure_break",
+        ),
+        (
+            "h1_sweep_reversal",
+            SMCState(liquidity_sweeps=[_sweep("low", 9.5, known_at=_ts("2024-01-02 02:00:00"))]),
+            "h1_sweep_reversal",
+        ),
+        (
+            "h1_order_block_retest",
+            SMCState(
+                order_blocks=[
+                    _order_block(
+                        BULLISH,
+                        low=9.0,
+                        high=10.25,
+                        known_at=_ts("2024-01-02 02:00:00"),
+                    )
+                ]
+            ),
+            "h1_order_block_retest",
+        ),
+    ],
+)
+def test_crypt_ensemble_h1_structural_trigger_rules_emit_auditable_type(
+    monkeypatch: pytest.MonkeyPatch,
+    rule: str,
+    state: SMCState,
+    expected_trigger_type: str,
+):
+    primary = _ohlcv_at(["2024-01-02 01:00:00"], closes=[10.5])
+    h4 = _ohlcv_at(["2024-01-01 20:00:00"], closes=[10.5])
+    d1 = _ohlcv_at(["2024-01-01 00:00:00"], closes=[12.0])
+    monkeypatch.setattr(
+        crypt_ensemble_mod,
+        "_structural_stop_state_for_timeframe",
+        lambda _ctx, timeframe: (
+            state if timeframe == Timeframe.H1 else _state_with_protective_pivots()
+        ),
+    )
+    data = StrategyData(
+        primary=primary,
+        candles={"H1": primary, "H4": h4, "D1": d1},
+        extras={},
+        metadata={"symbol": "SOL-USDT-SWAP"},
+    )
+    strategy = CryptEnsembleStrategy(
+        {
+            "sl_atr_mult": 2.0,
+            "progress": False,
+            "timeframes": {
+                "context": ["1d"],
+                "setup": ["4h"],
+                "trigger": "1h",
+                "execution": "1h",
+            },
+            "trigger_rules": [rule],
+        }
+    )
+    strategy._evaluate_context = lambda _ctx: _verdict("BUY", 0.5)  # type: ignore[method-assign]
+
+    result = strategy.generate(data)
+
+    assert list(result["signal"]) == [1]
+    assert list(result["trigger_type"]) == [expected_trigger_type]
 
 
 def test_context_window_cache_matches_reference_builder():
@@ -792,6 +1105,7 @@ def test_crypt_ensemble_optimized_windows_match_reference_h1_output(
             "trigger": "1h",
             "execution": "1h",
         },
+        "trigger_rules": ["h1_candle_confirm"],
     }
 
     def evaluate(ctx):
@@ -871,6 +1185,7 @@ def test_crypt_ensemble_h1_setup_snapshot_reuses_h4_verdict_until_next_h4_close(
                 "trigger": "1h",
                 "execution": "1h",
             },
+            "trigger_rules": ["h1_candle_confirm"],
         }
     )
     setup_times: list[pd.Timestamp] = []
@@ -893,6 +1208,13 @@ def test_crypt_ensemble_h1_setup_snapshot_reuses_h4_verdict_until_next_h4_close(
         "1h_candle_confirm",
         "1h_candle_confirm",
         "trigger_rejected",
+    ]
+    assert list(result["setup_snapshot_time"]) == [
+        "2024-01-02T04:00:00+00:00",
+        "2024-01-02T04:00:00+00:00",
+        "2024-01-02T04:00:00+00:00",
+        "2024-01-02T08:00:00+00:00",
+        "2024-01-02T08:00:00+00:00",
     ]
 
 
@@ -926,6 +1248,7 @@ def test_crypt_ensemble_h1_mode_uses_closer_h1_structural_stop(
                 "trigger": "1h",
                 "execution": "1h",
             },
+            "trigger_rules": ["h1_candle_confirm"],
         }
     )
     strategy._evaluate_context = lambda _ctx: _verdict("BUY", 0.5)  # type: ignore[method-assign]
@@ -968,6 +1291,7 @@ def test_crypt_ensemble_h1_mode_keeps_h4_stop_when_h1_is_wider(
                 "trigger": "1h",
                 "execution": "1h",
             },
+            "trigger_rules": ["h1_candle_confirm"],
         }
     )
     strategy._evaluate_context = lambda _ctx: _verdict("BUY", 0.5)  # type: ignore[method-assign]
@@ -999,6 +1323,7 @@ def test_crypt_ensemble_h1_mode_excludes_forming_h4_candle():
                 "trigger": "1h",
                 "execution": "1h",
             },
+            "trigger_rules": ["h1_candle_confirm"],
         }
     )
     h4_lengths: list[int] = []
@@ -1048,6 +1373,7 @@ def test_crypt_ensemble_h1_mode_excludes_forming_d1_candle():
                 "trigger": "1h",
                 "execution": "1h",
             },
+            "trigger_rules": ["h1_candle_confirm"],
         }
     )
     d1_lengths: list[int] = []
@@ -1096,6 +1422,7 @@ def test_crypt_ensemble_h1_mode_blocks_opposite_d1_context():
                 "trigger": "1h",
                 "execution": "1h",
             },
+            "trigger_rules": ["h1_candle_confirm"],
         }
     )
     strategy._evaluate_context = lambda _ctx: _verdict("BUY", 0.5)  # type: ignore[method-assign]
@@ -1142,6 +1469,7 @@ def test_crypt_ensemble_h1_mode_ignores_future_known_h4_stop_anchor(
                 "trigger": "1h",
                 "execution": "1h",
             },
+            "trigger_rules": ["h1_candle_confirm"],
         }
     )
     strategy._evaluate_context = lambda _ctx: _verdict("BUY", 0.5)  # type: ignore[method-assign]
@@ -1189,6 +1517,7 @@ def test_crypt_ensemble_h1_signal_enters_next_h1_open_through_execution_sim(
                 "trigger": "1h",
                 "execution": "1h",
             },
+            "trigger_rules": ["h1_candle_confirm"],
         }
     )
     verdicts = iter([_verdict("BUY", 0.5), _verdict("HOLD", 0.0), _verdict("HOLD", 0.0)])

@@ -1,11 +1,13 @@
 import logging
 import os
 import sys
+from pathlib import Path
 from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
 
+from .trade_chart_report import TradeChartReportConfig, build_trade_chart_report
 from .trade_analyzer import TradeAnalyzer
 from .visualizer import TradeConditionsVisualizer
 
@@ -470,6 +472,9 @@ class ResultsAnalyzer:
         - {folder}/metrics.csv - summary metrics (one row)
         - {folder}/trade_diagnostics.csv - compact exit/side/SL-distance
           diagnostics when trades exist
+        - {folder}/ohlcv.csv - full OHLCV frame used by the run, when provided
+        - {folder}/trade_chart.html - interactive TradingView chart report,
+          when OHLCV is provided
         - {folder}/equity_curve.csv - capital curve (time → capital)
         - {folder}/trade_candles/trade_000.csv, ... - OHLCV slices per trade
           (only when ohlcv_df is provided and trades are non-empty)
@@ -517,6 +522,10 @@ class ResultsAnalyzer:
             self.equity_curve.to_csv(equity_path, header=True)
             self._logger.info("Equity curve saved: %s", equity_path)
 
+        if ohlcv_df is not None:
+            self._export_full_ohlcv(ohlcv_df=ohlcv_df, folder=folder)
+            self._export_trade_chart(ohlcv_df=ohlcv_df, folder=folder)
+
         if ohlcv_df is not None and not self.trades.empty:
             self._export_trade_candles(
                 ohlcv_df=ohlcv_df,
@@ -528,6 +537,33 @@ class ResultsAnalyzer:
         # Save entry metrics when trade-condition analysis was run.
         if self.trade_analyzer is not None:
             self.trade_analyzer.save_entry_metrics(folder)
+
+    def _export_full_ohlcv(self, *, ohlcv_df: pd.DataFrame, folder: str) -> None:
+        """Save the continuous OHLCV frame used by the chart report."""
+        ohlc_cols = [c for c in ("open", "high", "low", "close") if c in ohlcv_df.columns]
+        if len(ohlc_cols) < 4:
+            self._logger.warning("No complete OHLC columns in ohlcv_df; skipping ohlcv.csv")
+            return
+        cols = ohlc_cols + (["volume"] if "volume" in ohlcv_df.columns else [])
+        frame = ohlcv_df[cols].copy()
+        frame.index.name = frame.index.name or "timestamp"
+        path = os.path.join(folder, "ohlcv.csv")
+        frame.to_csv(path)
+        self._logger.info("Full OHLCV saved: %s", path)
+
+    def _export_trade_chart(self, *, ohlcv_df: pd.DataFrame, folder: str) -> None:
+        """Save the default interactive TradingView report for this run."""
+        try:
+            path = build_trade_chart_report(
+                TradeChartReportConfig(
+                    run_dir=Path(folder),
+                    ohlcv_df=ohlcv_df,
+                )
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            self._logger.warning("Trade chart export skipped: %s", exc)
+            return
+        self._logger.info("Trade chart saved: %s", path)
 
     def _export_trade_candles(
         self,

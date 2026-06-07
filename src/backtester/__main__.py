@@ -37,6 +37,10 @@ from backtester.fixed_candidate_report import (  # noqa: E402
     run_fixed_candidate_comparison,
     run_signal_quality_diagnostics,
 )
+from backtester.trade_chart_report import (  # noqa: E402
+    TradeChartReportConfig,
+    build_trade_chart_report,
+)
 
 log_level = logging.getLevelNamesMapping().get(os.environ.get("LOG_LEVEL", "INFO"), logging.INFO)
 
@@ -46,7 +50,7 @@ logger = logging.getLogger("backtester")
 
 
 @click.group()
-def cli():
+def cli() -> None:
     pass
 
 
@@ -274,7 +278,7 @@ def run(
     bingx_time_zone: int,
     bingx_recv_window: int,
     bingx_cache_dir: str | None,
-):
+) -> None:
     """Run backtesting via CLI"""
     logger.info("🚀 Starting backtest via CLI...")
     logger.info("  Data source: %s", data_source)
@@ -549,7 +553,7 @@ def optimize(
     progress: bool,
     export_best_run: bool,
     is_isolated_futures: bool,
-):
+) -> None:
     """Run bounded parameter optimization via the donor ParameterOptimizer."""
     logger.info("🚀 Starting optimization via CLI...")
     cfg = load_strategy_config(strategy, logger)
@@ -605,10 +609,7 @@ def optimize(
             risk_percent_high,
             risk_percent_step,
         )
-    if ttl_low is None or ttl_high is None:
-        ttl_range = None
-    else:
-        ttl_range = (ttl_low, ttl_high, ttl_step)
+    ttl_range = None if ttl_low is None or ttl_high is None else (ttl_low, ttl_high, ttl_step)
     if max_positions_low is None or max_positions_high is None:
         max_positions_range = None
     else:
@@ -741,7 +742,7 @@ def compare_fixed(
     max_allowed_margin: float,
     risk_base_period: str,
     is_isolated_futures: bool,
-):
+) -> None:
     """Run fixed candidate backtests across bounded windows and summarize them."""
     logger.info("🚀 Starting fixed-candidate comparison...")
     cfg = load_strategy_config(strategy, logger)
@@ -872,7 +873,7 @@ def compare_grid(
     max_allowed_margin: float,
     risk_base_period: str,
     is_isolated_futures: bool,
-):
+) -> None:
     """Run a tiny execution-only rrr/ttl/max_positions grid across bounded windows."""
     logger.info("🚀 Starting execution-grid comparison...")
     cfg = load_strategy_config(strategy, logger)
@@ -1001,7 +1002,7 @@ def signal_quality(
     max_allowed_margin: float,
     risk_base_period: str,
     is_isolated_futures: bool,
-):
+) -> None:
     """Run report-only H1 signal-quality diagnostics across bounded windows."""
     logger.info("🚀 Starting signal-quality diagnostics...")
     cfg = load_strategy_config(strategy, logger)
@@ -1015,7 +1016,7 @@ def signal_quality(
         return
 
     output_folder = make_output_folder(output)
-    signals, groups = run_signal_quality_diagnostics(
+    signals, groups, setup_attribution = run_signal_quality_diagnostics(
         windows=window_specs,
         cfg=cfg,
         params=FixedCandidateParams(
@@ -1040,10 +1041,48 @@ def signal_quality(
         logger=logger,
     )
     logger.info(
-        "Completed signal-quality diagnostics: %d windows, %d groups",
+        "Completed signal-quality diagnostics: %d windows, %d groups, %d setup attribution rows",
         len(signals),
         len(groups),
+        len(setup_attribution),
     )
+
+
+@cli.command("trade-chart")
+@click.option("--run-dir", required=True, help="Completed run directory with trades.csv.")
+@click.option(
+    "--output", default=None, help="HTML output path. Defaults to run-dir/trade_chart.html."
+)
+@click.option(
+    "--ohlcv",
+    default=None,
+    help="Optional full OHLCV CSV or Parquet file. Defaults to run-dir/ohlcv.csv.",
+)
+@click.option("--timestamp-col", default="timestamp", help="OHLCV timestamp column.")
+@click.option("--title", default=None, help="Report title.")
+def trade_chart(
+    run_dir: str,
+    output: str | None,
+    ohlcv: str | None,
+    timestamp_col: str,
+    title: str | None,
+) -> None:
+    """Regenerate the interactive TradingView trade chart for a run artifact."""
+    logger.info("🚀 Building trade chart report...")
+    try:
+        output_path = build_trade_chart_report(
+            TradeChartReportConfig(
+                run_dir=Path(run_dir),
+                output_path=Path(output) if output else None,
+                ohlcv_path=Path(ohlcv) if ohlcv else None,
+                timestamp_col=timestamp_col,
+                title=title,
+            )
+        )
+    except (FileNotFoundError, ValueError) as e:
+        logger.error("❌ %s", e)
+        return
+    logger.info("Trade chart report saved to: %s", output_path)
 
 
 if __name__ == "__main__":

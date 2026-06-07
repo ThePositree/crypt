@@ -22,6 +22,14 @@ ADR-0025 for candidate work).
 Build your local task plan yourself. The owner sets global direction only.
 For non-trivial tasks use the todo tool and keep it current.
 
+## Backtests
+
+Backtests and optimizer runs are owner-run by default. If the next step needs
+`backtester run`, `compare-fixed`, `compare-grid`, `signal-quality`, or an
+optimizer command, give the owner the exact command and expected artifacts,
+then wait for the owner to return with the result. Do not run those commands
+yourself unless the owner explicitly asks you to run that specific command.
+
 ## Errors / "fix this"
 
 When the owner pastes failures or asks to fix (not "continue"), follow the

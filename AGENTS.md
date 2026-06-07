@@ -44,6 +44,16 @@ The owner intentionally does not write implementation plans. You build the
 local task plan yourself. If the task is non-trivial, use the todo-list tool
 and keep it updated as you go.
 
+### Owner-run backtests
+
+Backtests and optimizer runs are owner-run by default. When the next useful
+step requires a `backtester` command, agents must give the owner the exact
+command to run, explain the expected artifact path or output files, and then
+wait for the owner to return with the result. Do **not** run repository
+backtests, `compare-fixed`, `compare-grid`, `signal-quality`, or optimizer
+commands yourself unless the owner explicitly asks you to run that specific
+command in chat.
+
 ### Document task intent, not only task mechanics
 
 Task files must explain the work broadly enough that the next agent can

@@ -4,6 +4,495 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-08 — H1 density review and trigger-first reset
+
+Completed the sparse-branch density review and reset the next search protocol
+to trigger-first discovery.
+
+What was done:
+
+- Compared the structural H1 baseline against `age6/noOB` without the
+  `2..4 ATR` distance filter on the same three visual-review windows.
+- Added raw one-trigger H1 diagnostic strategy configs for candle confirm,
+  sweep reversal, structure break, and order-block retest.
+- Documented the trigger-first reset in `docs/crypt_ensemble_mtf.md`.
+
+Artifacts:
+
+- Baseline density:
+  `results/crypt_h1_visual_review_baseline_density/20260607_210508/`.
+- Age6/noOB density:
+  `results/crypt_h1_visual_review_age6_no_ob_density/20260607_211115/`.
+
+Result:
+
+- Baseline remained sparse and weak: TON Feb `+3.15%` on 10 trades, SOL Jan
+  `-3.74%` on 10 trades, SOL Mar `-0.05%` on 7 trades.
+- Age6/noOB did not solve density or quality: TON Feb `+3.17%` on 13 trades,
+  SOL Jan `-4.16%` on 8 trades, SOL Mar `-0.05%` on 7 trades.
+- Decision: stop optimizing this filtered H1 branch. Search raw triggers at
+  `rrr = 1.0`, rank by trade count and win rate before PnL, then add filters
+  one at a time only after a measurable trigger exists.
+
+Verification:
+
+- Inspected owner-run `windows.csv`, `mandate_summary.csv`, `trades.csv`,
+  `trade_diagnostics.csv`, and generated `trade_chart.html` artifacts.
+
+## 2026-06-07 — Visual verdict workflow and no-TTL falsification
+
+Completed the first owner/agent verdict pass using the automatic HTML reports.
+
+What was done:
+
+- Recorded the visual-verdict workflow in `docs/backtester_migration.md`.
+- Treated the owner's chart verdict as strategy-search evidence:
+  too few trades, and TTL should be tested off.
+- Ran the same reviewed windows with `--ttl 0` for
+  `strategies/backtester/crypt_ensemble_h1_trigger_age6_no_ob_distance_2_4.json`.
+- Updated `IN_PROGRESS.md` with the combined verdict and the next concrete
+  density-review commands.
+
+Artifacts:
+
+- TTL-36 visual review:
+  `results/crypt_h1_visual_review/20260607_203324/`.
+- No-TTL falsification:
+  `results/crypt_h1_visual_review_no_ttl/20260607_204930/`.
+
+Result:
+
+- Sparse execution is confirmed: only `5-8` trades per reviewed month, with no
+  month near the `+15%` mandate floor.
+- No-TTL is rejected for this branch. Window returns worsened from
+  TON Feb `+6.07%` to `+4.30%`, SOL Jan `-2.70%` to `-3.69%`, and SOL Mar
+  `-0.48%` to `-2.62%`.
+- TTL exits mostly turned into stop-loss exits, so TTL is currently acting as a
+  damage-control rule rather than the cause of sparse entries.
+
+Decision:
+
+- Keep `ttl = 36` for the current H1 branch.
+- Next work should compare less sparse trigger/filter configs with continuous
+  charts before another broad search.
+
+Verification:
+
+- Completed `backtester compare-fixed --ttl 0 --is-isolated-futures --jobs 3`
+  on the three reviewed windows.
+- Inspected `windows.csv`, `trades.csv`, and generated `trade_chart.html`
+  artifacts.
+
+## 2026-06-07 — Automatic TradingView trade chart frontend
+
+Completed the P1 operator-facing chart frontend for donor backtest artifacts.
+
+What was done:
+
+- `ResultsAnalyzer.export_results(..., ohlcv_df=...)` now writes
+  `ohlcv.csv` and `trade_chart.html` automatically for every normal donor
+  artifact.
+- Because all CLI flows export through `ResultsAnalyzer`, the chart is now
+  produced by `backtester run`, optimizer `best_run/`, `compare-fixed`,
+  `compare-grid`, and `signal-quality` whenever OHLCV is available.
+- Reworked `src/backtester/trade_chart_report.py` to use TradingView
+  Lightweight Charts instead of Plotly.
+- The chart uses the continuous full OHLCV frame, not stitched
+  `trade_candles/`, so candle history between trades is visible.
+- The frontend shows candlesticks, tradeable signal markers, entry/exit
+  markers, and entry/TP/SL/trailing-stop level segments.
+- Kept `backtester trade-chart` only as a manual regeneration command for old
+  artifacts or custom `--ohlcv` sources.
+- Removed the temporary Plotly dependency from the root project lock.
+- Documented the automatic frontend in `README.md` and
+  `docs/backtester_migration.md`.
+
+Why now:
+
+- The latest H1 grid branch is economically rejected, and the next search
+  direction should be visually falsified before spending compute on another
+  signal/grid premise.
+
+Expected gain:
+
+- Faster owner/agent review of whether entries chase late candles, stops sit
+  behind meaningful invalidation, and exits make structural sense on the chart.
+
+Acceptance:
+
+- Every backtester artifact exported with OHLCV gets `ohlcv.csv` and
+  `trade_chart.html` without an extra command.
+- Manual `uv run backtester trade-chart --run-dir <run_dir>` regenerates the
+  same frontend from `ohlcv.csv`, or from an external full CSV/Parquet candle
+  source passed with `--ohlcv`.
+
+Verification:
+
+- `uv run pytest tests/backtester/test_trade_chart_report.py tests/backtester/test_results_analyzer.py -q`
+- `uv run mypy src/backtester/trade_chart_report.py`
+- `uv run ruff check src/backtester/trade_chart_report.py tests/backtester/test_trade_chart_report.py tests/backtester/test_results_analyzer.py`
+
+## 2026-06-07 — H1 distance-filter tiny execution grid
+
+Completed the tiny execution-only grid for the best H1 trigger/stop-distance
+diagnostic profile.
+
+What was done:
+
+- Ran `backtester compare-grid` for
+  `strategies/backtester/crypt_ensemble_h1_trigger_age6_no_ob_distance_2_4.json`.
+- Windows: SOL January/February/March 2025 and TON
+  January/February/March/April 2025.
+- Grid: `rrr = 1.0, 1.25, 1.5`; `ttl = 24, 30, 36, 42`;
+  `max_positions = 1`; `risk_percent = 1.0`; monthly risk base; isolated
+  futures.
+
+Artifact:
+
+- `results/crypt_ensemble_h1_trigger_age6_no_ob_distance_2_4_grid/20260607_192915/`.
+
+Result:
+
+- Best row: `rrr = 1.5`, `ttl = 36`, `max_positions = 1`.
+- Best seven-window total return: `+6.18%` across `37` trades, worst DD
+  `-2.26`.
+- Window returns for the best row: SOL Jan `-2.70%`, SOL Feb `+3.31%`,
+  SOL Mar `-0.48%`, TON Jan `+0.04%`, TON Feb `+6.07%`, TON Mar `+0.96%`,
+  TON Apr `-1.02%`.
+- The improvement is not robust: it depends heavily on TON February, and no
+  month is near the `+15%` mandate floor.
+
+Decision:
+
+- Reject this H1 distance-filter diagnostic branch for SOL 2025 mandate
+  validation and broad strategy-param Optuna.
+- If the owner wants another search attempt, start from a new signal premise
+  or a different backlog item rather than widening this branch.
+
+Verification:
+
+- Completed owner-run `backtester compare-grid --is-isolated-futures --jobs 3`.
+- Inspected `grid.csv`; no `grid_errors.csv` was written.
+
+## 2026-06-07 — H1 trigger freshness and stop-distance diagnostics
+
+Completed the P0 diagnostic pass for H1 structural-trigger freshness/rule mix.
+
+What was done:
+
+- Added `strategies/backtester/crypt_ensemble_h1_trigger_age6_no_ob.json`.
+- Added
+  `strategies/backtester/crypt_ensemble_h1_trigger_age6_no_ob_distance_2_4.json`.
+- Ran the standard seven-window isolated `compare-fixed` diagnostic for both
+  configs.
+- Compared both artifacts against the structural-trigger baseline
+  `results/crypt_ensemble_h1_structural_trigger_bounded_isolated/20260607_183249/`.
+
+Artifacts:
+
+- `results/crypt_ensemble_h1_trigger_age6_no_ob_bounded/20260607_185632/`.
+- `results/crypt_ensemble_h1_trigger_age6_no_ob_distance_2_4_bounded/20260607_191049/`.
+
+Result:
+
+- Removing `h1_order_block_retest` and widening trigger freshness to 6 H1 bars
+  was weaker than baseline: `+0.41%` total, `52` trades, worst DD `-3.44`.
+- Adding a `2..4 ATR` signal stop-distance filter improved the bounded total
+  to `+3.78%`, reduced worst DD to `-2.23`, and reduced trade count to `39`.
+- The improved diagnostic removed the harmful `1_2_atr` bucket and left only
+  `2_3_atr` (`20` trades / `+10.19` PnL) and `3_4_atr` (`19` trades /
+  `+367.12` PnL).
+- No month passed the `+15%` mandate floor. SOL is only technically
+  `full_optuna` over the three-month diagnostic slice; TON remains `discard`
+  over four months.
+
+Decision:
+
+- Do not run broad strategy-param Optuna or SOL 2025 mandate validation on
+  either diagnostic config yet.
+- The only justified next compute step is a tiny execution-only grid for
+  `crypt_ensemble_h1_trigger_age6_no_ob_distance_2_4.json` to check whether
+  fixed `rrr = 1.25` / `ttl = 36` is suppressing a still-usable narrow signal.
+
+Verification:
+
+- `uv run pytest tests/backtester/test_crypt_ensemble_strategy.py -q`
+- Completed owner-run `backtester compare-fixed --is-isolated-futures --jobs 3`
+  for both diagnostic configs.
+- Inspected `windows.csv`, `mandate_summary.md`, per-window `signals.csv`, and
+  per-window `trades.csv`.
+
+## 2026-06-07 — H1 structural-trigger bounded validation
+
+Completed the bounded validation for the rewritten H1 structural-trigger
+strategy.
+
+What was done:
+
+- Ran the standard seven-window `compare-fixed` diagnostic for
+  `strategies/backtester/crypt_ensemble_h1.json`.
+- Windows: SOL January/February/March 2025 and TON
+  January/February/March/April 2025.
+- Execution: `rrr = 1.25`, `ttl = 36`, `risk_percent = 1.0`,
+  `max_positions = 1`, monthly risk base, isolated futures.
+- Generated `setup_attribution.csv` / `setup_attribution.md` from the saved
+  per-window `signals.csv` and `trades.csv`.
+
+Artifacts:
+
+- Final isolated acceptance artifact:
+  `results/crypt_ensemble_h1_structural_trigger_bounded_isolated/20260607_183249/`.
+- Earlier non-isolated diagnostic artifact:
+  `results/crypt_ensemble_h1_structural_trigger_bounded/20260607_181623/`.
+
+Result:
+
+- Seven-window total return was roughly `+1.32%` across `57` trades.
+- SOL Jan/Feb/Mar summed `-0.69%`; no SOL month passed the `+15%` floor.
+- TON Jan/Feb/Mar/Apr summed `+2.01%`; TON mandate verdict was `discard`
+  because all four months were below the `+15%` floor.
+- Mandate summary: SOL was `full_optuna` only in the narrow three-month
+  technical sense; this is not a promote or archive candidate.
+- Structural trigger flow was sparse: `227` tradeable signals and `57`
+  executed trades out of `2685` active setup rows.
+- Trigger attribution: `h1_structure_break` had `37` trades / `+56.27` PnL;
+  `h1_sweep_reversal` had `7` trades / `+88.50` PnL;
+  `h1_order_block_retest` had `13` trades / `-13.98` PnL.
+- Stop-distance attribution found a major bad bucket: `1_2_atr` had `11`
+  trades / `-711.48` PnL, while `0_1_atr`, `2_3_atr`, and `3_4_atr` were
+  positive in this slice.
+
+Decision:
+
+- Do not run broad Optuna or SOL 2025 mandate validation on this baseline.
+- Next work should tune H1 trigger freshness/rule composition and the
+  stop-distance diagnostic issue first, then rerun the same seven-window
+  isolated report.
+
+Verification:
+
+- Completed owner-run `backtester compare-fixed --is-isolated-futures --jobs 3`.
+- Inspected `windows.csv`, `monthly_mandate.csv`, `mandate_summary.csv`,
+  `signals.csv`, `signal_diagnostics.csv`, and generated
+  `setup_attribution.csv`.
+
+## 2026-06-07 — H1 structural-trigger strategy rewrite
+
+Completed the owner-directed rewrite of the H1 `crypt_ensemble` entry
+contract.
+
+What changed:
+
+- Replaced the old implicit H1 candle-colour entry path with explicit
+  `trigger_rules` wiring.
+- Added default H1 structural trigger rules:
+  `h1_sweep_reversal`, `h1_structure_break`, and `h1_order_block_retest`.
+- Kept `h1_candle_confirm` available only as an explicit legacy diagnostic
+  rule.
+- Updated all `crypt_ensemble_h1*.json` strategy configs to use the new
+  structural trigger rules.
+- Updated `docs/crypt_ensemble_mtf.md` and README to document the new
+  contract.
+- Added a backlog task for a future standalone interactive HTML trade chart
+  report; no report implementation or Plotly dependency was added in this
+  session.
+
+Why:
+
+- Strategy review found that the previous H1 path reused the H4 ensemble
+  verdict and entered on simple H1 candle colour. That made H1 a weak timing
+  filter rather than a real trigger layer.
+- Recent anchor/stop-distance filters were unstable across SOL March and TON
+  February, indicating that stop-anchor filtering was being used to compensate
+  for poor entry semantics.
+
+Verification:
+
+- `uv run pytest tests/backtester/test_crypt_ensemble_strategy.py -q`
+- `uv run mypy src/backtester/strategies/crypt_ensemble.py`
+- `uv run ruff check --select E,F,I --ignore E501 ...`
+- `uv run ruff format --check ...`
+- Short SOL H1 smoke:
+  `/tmp/crypt_structural_h1_smoke/20260607_144558/` (`2025-01-01` →
+  `2025-01-03`, 49 rows, no trades).
+
+Next:
+
+- Run bounded structural-trigger diagnostics over the standard SOL/TON window
+  set before any strategy-param Optuna or SOL 2025 mandate run.
+
+## 2026-06-07 — H1 pivot-only bounded validation
+
+Completed the P0 bounded validation for the `pivot_only` structural-stop
+filter.
+
+What was done:
+
+- Ran `backtester compare-fixed` for
+  `strategies/backtester/crypt_ensemble_h1_filter_pivot_only.json`.
+- Windows: SOL January/February/March 2025 and TON
+  January/February/March/April 2025.
+- Execution: `rrr = 1.25`, `ttl = 36`, `risk_percent = 1.0`,
+  `max_positions = 1`, monthly risk base, isolated futures.
+
+Artifacts:
+
+- `results/crypt_h1_pivot_only_bounded/20260607_120751/`.
+
+Result:
+
+- Seven-window total return was `-3.04%` across 62 trades.
+- SOL Jan/Feb/Mar summed `+2.93%`; no month passed the `+15%` mandate floor.
+- TON Jan/Feb/Mar/Apr summed `-5.97%`; mandate verdict was `discard` because
+  4/4 months were below the floor.
+- Exit mix: 28 take-profits, 32 stop-losses, 2 TTL exits.
+- Worst window DD was `-5.74`; worst monthly mandate DD was `-6.69`.
+
+Decision:
+
+- Discard `pivot_only` as a general candidate filter for now. It improved SOL
+  March and TON February, but the wider bounded set shows over-pruning and new
+  losses in TON March/April.
+- Do not run a `pivot_only` `rrr/ttl` grid or SOL 2025 mandate report unless a
+  later signal-logic change revives the idea.
+
+Verification:
+
+- Completed `backtester compare-fixed --jobs 3`.
+- Inspected `windows.csv`, `monthly_mandate.csv`, and
+  `mandate_summary.csv`.
+
+Next: implement minimal donor Optuna support for selected `crypt_ensemble`
+strategy parameters, because hand-authored structural filters are not yielding
+a robust bounded candidate.
+
+## 2026-06-07 — H1 structural-stop quality filter experiment
+
+Completed the P0 structural-stop quality filter test before broad Optuna.
+
+What changed:
+
+- Documented default-off structural-stop allow-list and stop-distance filters
+  in `docs/crypt_ensemble_mtf.md`.
+- Added `allowed_sl_anchor_types`, `min_signal_sl_distance_atr`, and
+  `max_signal_sl_distance_atr` to `crypt_ensemble` signal filters.
+- Added diagnostic strategy configs:
+  `crypt_ensemble_h1_filter_pivot_only.json` and
+  `crypt_ensemble_h1_filter_anchor_distance_2_4_no_sweep.json`.
+- Added focused tests for anchor allow-list and stop-distance filtering.
+
+Artifacts:
+
+- Pivot-only:
+  `results/crypt_h1_structural_filter_pivot_only/20260607_114802/`.
+- Anchor-distance/no-sweep:
+  `results/crypt_h1_structural_filter_anchor_distance_2_4_no_sweep/20260607_115259/`.
+
+Result:
+
+- `pivot_only` improved both problem windows: SOL March `+0.56%` baseline →
+  `+2.03%`, max DD `-2.29` → `-1.11`; TON February `+0.07%` baseline →
+  `+2.33%`, max DD `-7.47` → `-2.31`.
+- `anchor_distance_2_4_no_sweep` improved TON February to `+3.29%`, but hurt
+  SOL March to `-2.22%`; treat it as symbol-specific evidence, not a general
+  next candidate.
+
+Verification:
+
+- `uv run pytest tests/backtester/test_crypt_ensemble_strategy.py -q`
+- `uv run mypy src/backtester/strategies/crypt_ensemble.py`
+- `uv run ruff check --select E,F,I --ignore E501 ...`
+- `uv run ruff format --check ...`
+- Two completed `backtester compare-fixed` bounded reports.
+
+Next: validate `pivot_only` across the standard bounded SOL/TON window set
+before any SOL 2025 mandate rerun or broad strategy-param Optuna.
+
+## 2026-06-07 — H1 trigger/setup-quality attribution report
+
+Completed the P0 attribution report before changing H1 signal logic.
+
+What was done:
+
+- Added `setup_snapshot_time` to `crypt_ensemble` signal exports so H1 rows can
+  be attributed back to the H4 setup snapshot that produced the verdict.
+- Extended `backtester signal-quality` with `setup_attribution.csv` /
+  `setup_attribution.md`.
+- The new attribution groups tradeable and rejected setup rows by setup
+  snapshot time, trigger type, context bias, context/setup alignment, anchor
+  type, anchor source timeframe, stop-distance bucket, anchor freshness,
+  realized outcome, and signal filter reason.
+- Ran the report on SOL March 2025 and TON February 2025 with the fixed
+  finite-position baseline (`rrr = 1.25`, `ttl = 36`, `max_positions = 1`).
+
+Artifacts:
+
+- `results/crypt_h1_setup_attribution/20260607_112717/`.
+
+Result:
+
+- SOL March: fixed baseline `+0.56%`, max DD `-2.29`, 18 trades; 385 SELL
+  setup rows produced 67 short signals, with 150 context-opposite and 112
+  trigger-rejected rows.
+- TON February: fixed baseline `+0.07%`, max DD `-7.47`, 20 trades; 425 SELL
+  setup rows produced 105 short signals, with 212 trigger-rejected rows.
+- The next useful lever is structural-stop quality, not side gating or broad
+  strategy-param Optuna: SOL pivot anchors were positive while order-block
+  anchors were negative; TON liquidity-sweep anchors were negative while
+  order-block and pivot anchors were positive.
+
+Verification:
+
+- `uv run pytest tests/backtester/test_fixed_candidate_report.py tests/backtester/test_crypt_ensemble_strategy.py -q`
+- `uv run mypy src/backtester/fixed_candidate_report.py src/backtester/strategies/crypt_ensemble.py`
+- `uv run ruff check --select E,F,I --ignore E501 ...` on changed source/test
+  files.
+- `uv run ruff format --check ...` on changed source/test files.
+
+Next: test a default-off structural-stop quality filter using the attribution
+artifact before any broad Optuna or SOL 2025 mandate rerun.
+
+## 2026-06-06 — Broader H1 setup-geometry diagnostics
+
+Completed the next P0 diagnostic pass before broad Optuna.
+
+What was done:
+
+- Ran execution-only `backtester optimize` for SOL March 2025 with
+  strategy-param, daily-limit, and trading-window search disabled.
+- Ran the same bounded optimizer for TON February 2025.
+- Ran a fixed finite-position baseline on the same windows with
+  `rrr = 1.25`, `ttl = 36`, `max_positions = 1`.
+- Compared best trials, fixed baselines, side counts, trigger counts, stop
+  anchors, exit mix, drawdown, and mandate relevance.
+
+Artifacts:
+
+- `results/crypt_donor_h1_mtf_optuna_sol_mar/20260606_180826/`.
+- `results/crypt_donor_h1_mtf_optuna_ton_feb/20260606_181333/`.
+- `results/crypt_donor_h1_mtf_fixed_sol_mar_ton_feb/20260606_181827/`.
+
+Result:
+
+- SOL March best: `+1.29%`, max DD `-2.01`, `rrr = 1.25`, `ttl = 24`,
+  `max_positions = 1`; fixed baseline was `+0.56%`.
+- TON February best: `+18.45%`, but max DD `-15.97`, `rrr = 2.0`,
+  `ttl = 36`, `max_positions = 5`; fixed baseline was `+0.07%`.
+- Both windows are already short-only at the tradeable-signal layer, so side
+  gating is not the next useful lever.
+- Decision: target H1 trigger/setup-quality attribution before changing signal
+  logic or running broad Optuna.
+
+Verification:
+
+- Completed both `backtester optimize` runs.
+- Completed `backtester compare-fixed --jobs 2` baseline.
+- Inspected `best_trial.json`, `trials.csv`, `windows.csv`,
+  `metrics.csv`, `signal_diagnostics.csv`, and `trade_diagnostics.csv`.
+
+Next: add or extend a cheap H1 trigger/setup-quality attribution report and
+run it on SOL March and TON February.
+
 ## 2026-06-06 — SOL 2025 mandate validation completed
 
 Completed the real SOL 2025 fixed-candidate mandate report for the current H1

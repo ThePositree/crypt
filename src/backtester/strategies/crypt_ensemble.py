@@ -1,5 +1,17 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Literal, cast
+
+import numpy as np
+import optuna
+import pandas as pd
+from tqdm import tqdm
+
+from backtester.data_contracts import StrategyData, StrategyInput
+from backtester.strategy import BaseStrategy
 from crypt.aggregator.ensemble import aggregate
 from crypt.aggregator.weights import SCORING_ENGINES, WeightsConfig
 from crypt.data.context import _df_to_ls_ratio, _df_to_oi, _df_to_taker_volume
@@ -27,18 +39,6 @@ from crypt.structure.smc import (
     SMCState,
     analyse_smc_cached,
 )
-from dataclasses import dataclass
-from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Any, Literal
-
-import numpy as np
-import optuna
-import pandas as pd
-from tqdm import tqdm
-
-from backtester.data_contracts import StrategyData, StrategyInput
-from backtester.strategy import BaseStrategy
 
 _TIMEFRAME_CLOSE_DELTA = {
     Timeframe.M15: timedelta(minutes=15),
@@ -56,10 +56,25 @@ _DEFAULT_ALLOW_ATR_SL_FALLBACK = False
 _DEFAULT_MIN_CONFIDENCE: int | None = None
 _DEFAULT_MAX_SL_DISTANCE_ATR = 8.0
 _DEFAULT_OPTIMIZED_SETUP_SNAPSHOTS = True
+_DEFAULT_MAX_TRIGGER_AGE_BARS = 3
 _H4 = timedelta(hours=4)
 _MAX_SWEEP_AGE_BARS = 3
 
 _StopAnchorType = Literal["order_block", "liquidity_sweep", "pivot", "atr_fallback", "none"]
+_STOP_ANCHOR_TYPES = frozenset({"order_block", "liquidity_sweep", "pivot", "atr_fallback", "none"})
+_TriggerRule = Literal[
+    "h1_sweep_reversal",
+    "h1_structure_break",
+    "h1_order_block_retest",
+    "h1_candle_confirm",
+]
+_H1_STRUCTURAL_TRIGGER_RULES: tuple[_TriggerRule, ...] = (
+    "h1_sweep_reversal",
+    "h1_structure_break",
+    "h1_order_block_retest",
+)
+_TRIGGER_RULES = frozenset((*_H1_STRUCTURAL_TRIGGER_RULES, "h1_candle_confirm"))
+_SETUP_SOURCES = frozenset({"mtf", "h1_raw"})
 
 
 @dataclass(frozen=True)
@@ -94,8 +109,11 @@ class _StopPlan:
 @dataclass(frozen=True)
 class _SignalFilterConfig:
     allowed_sides: frozenset[str] | None
+    allowed_sl_anchor_types: frozenset[str] | None
     blocked_sl_anchor_types: frozenset[str]
     max_anchor_age_hours: float | None
+    min_signal_sl_distance_atr: float | None
+    max_signal_sl_distance_atr: float | None
     block_context_reversal: bool
 
 
@@ -120,6 +138,12 @@ class CryptEnsembleStrategy(BaseStrategy):
         self.optimized_windows = bool(params.get("optimized_windows", False))
         self.optimized_setup_snapshots = bool(
             params.get("optimized_setup_snapshots", _DEFAULT_OPTIMIZED_SETUP_SNAPSHOTS)
+        )
+        self.trigger_rules = _trigger_rules_config(params.get("trigger_rules"), self.timeframes)
+        self.setup_source = _setup_source_config(params.get("setup_source"))
+        self.max_trigger_age_bars = _positive_int(
+            params.get("max_trigger_age_bars", _DEFAULT_MAX_TRIGGER_AGE_BARS),
+            "max_trigger_age_bars",
         )
         self.signal_filters = _signal_filter_config(params)
         self.weights = WeightsConfig.load(_weights_path(params.get("weights_path")))
@@ -167,6 +191,7 @@ class CryptEnsembleStrategy(BaseStrategy):
         ):
             try:
                 tick_dt = tick_time.to_pydatetime()
+                setup_snapshot_time: datetime | None = tick_dt
                 if window_cache is None:
                     ctx = _build_context(
                         symbol=symbol,
@@ -182,6 +207,7 @@ class CryptEnsembleStrategy(BaseStrategy):
                         timeframe=Timeframe.H4,
                         tick_time=tick_dt,
                     )
+                    setup_snapshot_time = setup_time or tick_dt
                     setup_ctx = ctx
                     if setup_time is not None:
                         setup_ctx = (
@@ -208,7 +234,7 @@ class CryptEnsembleStrategy(BaseStrategy):
                         verdict = self._evaluate_context(setup_ctx)
                         setup_snapshot_cache[setup_key] = verdict
                     mtf = self._mtf_decision_from_verdict(
-                        verdict, setup_ctx, primary.loc[open_time]
+                        verdict, ctx, setup_ctx, primary.loc[open_time]
                     )
                 else:
                     mtf = self._mtf_decision(ctx, primary.loc[open_time])
@@ -247,6 +273,7 @@ class CryptEnsembleStrategy(BaseStrategy):
                         setup_direction=mtf.setup_direction,
                         trigger_type=mtf.trigger_type,
                         trigger_known_at=tick_time.to_pydatetime(),
+                        setup_snapshot_time=setup_snapshot_time,
                         sl_source_tf=sl_source_tf.value,
                         signal_filter_reason=filter_reason,
                     )
@@ -290,19 +317,33 @@ class CryptEnsembleStrategy(BaseStrategy):
     def _use_setup_snapshots(self) -> bool:
         return (
             self.optimized_setup_snapshots
+            and self.setup_source == "mtf"
             and self.timeframes.execution != Timeframe.H4
             and Timeframe.H4 in self.timeframes.setup
         )
 
     def _mtf_decision(self, ctx: EvaluationContext, price_row: pd.Series) -> _MTFDecision:
         verdict = self._evaluate_context(ctx)
-        return self._mtf_decision_from_verdict(verdict, ctx, price_row)
+        return self._mtf_decision_from_verdict(verdict, ctx, ctx, price_row)
 
     def _mtf_decision_from_verdict(
-        self, verdict: Verdict, ctx: EvaluationContext, price_row: pd.Series
+        self,
+        verdict: Verdict,
+        trigger_ctx: EvaluationContext,
+        setup_ctx: EvaluationContext,
+        price_row: pd.Series,
     ) -> _MTFDecision:
         setup_direction = verdict.decision
-        context_bias = _context_bias(ctx)
+        context_bias = _context_bias(setup_ctx)
+        if self.setup_source == "h1_raw":
+            return _raw_h1_decision(
+                verdict=verdict,
+                ctx=trigger_ctx,
+                price_row=price_row,
+                rules=self.trigger_rules,
+                max_age_bars=self.max_trigger_age_bars,
+                context_bias=context_bias,
+            )
         if self.timeframes.execution == Timeframe.H4:
             return _MTFDecision(
                 verdict=verdict,
@@ -331,7 +372,15 @@ class CryptEnsembleStrategy(BaseStrategy):
                 setup_direction=setup_direction,
                 rationale_suffix="MTF neutralized: D1 context is opposite",
             )
-        if not _trigger_candle_confirms(price_row, signal):
+        trigger_type = _select_h1_trigger_type(
+            ctx=trigger_ctx,
+            price_row=price_row,
+            signal=signal,
+            trigger_tf=self.timeframes.trigger,
+            rules=self.trigger_rules,
+            max_age_bars=self.max_trigger_age_bars,
+        )
+        if trigger_type is None:
             return _MTFDecision(
                 verdict=verdict,
                 signal_override=0,
@@ -343,7 +392,7 @@ class CryptEnsembleStrategy(BaseStrategy):
         return _MTFDecision(
             verdict=verdict,
             signal_override=signal,
-            trigger_type=f"{self.timeframes.trigger.value}_candle_confirm",
+            trigger_type=trigger_type,
             context_bias=context_bias,
             setup_direction=setup_direction,
         )
@@ -364,6 +413,16 @@ def _weights_path(value: object) -> Path:
     return repo_root / "config" / "weights.yaml"
 
 
+def _setup_source_config(value: object) -> str:
+    if value is None:
+        return "mtf"
+    setup_source = str(value)
+    if setup_source not in _SETUP_SOURCES:
+        joined = ", ".join(sorted(_SETUP_SOURCES))
+        raise ValueError(f"setup_source must be one of: {joined}")
+    return setup_source
+
+
 def _optional_int(value: object) -> int | None:
     if value is None:
         return None
@@ -375,11 +434,18 @@ def _optional_int(value: object) -> int | None:
 def _signal_filter_config(params: dict[str, Any]) -> _SignalFilterConfig:
     return _SignalFilterConfig(
         allowed_sides=_optional_side_set(params.get("allowed_sides")),
+        allowed_sl_anchor_types=_optional_anchor_type_set(params.get("allowed_sl_anchor_types")),
         blocked_sl_anchor_types=frozenset(
             str(anchor_type) for anchor_type in (params.get("blocked_sl_anchor_types") or ())
         ),
         max_anchor_age_hours=_optional_positive_float(
             params.get("max_anchor_age_hours"), "max_anchor_age_hours"
+        ),
+        min_signal_sl_distance_atr=_optional_positive_float(
+            params.get("min_signal_sl_distance_atr"), "min_signal_sl_distance_atr"
+        ),
+        max_signal_sl_distance_atr=_optional_positive_float(
+            params.get("max_signal_sl_distance_atr"), "max_signal_sl_distance_atr"
         ),
         block_context_reversal=bool(params.get("block_context_reversal", False)),
     )
@@ -398,10 +464,34 @@ def _optional_side_set(value: object) -> frozenset[str] | None:
     return sides
 
 
+def _optional_anchor_type_set(value: object) -> frozenset[str] | None:
+    if value is None:
+        return None
+    if not isinstance(value, list | tuple | set | frozenset):
+        raise TypeError("allowed_sl_anchor_types must be a list of anchor type values")
+    anchors = frozenset(str(item) for item in value)
+    invalid = anchors.difference(_STOP_ANCHOR_TYPES)
+    if invalid:
+        joined = ", ".join(sorted(invalid))
+        raise ValueError(f"allowed_sl_anchor_types contains invalid values: {joined}")
+    return anchors
+
+
 def _optional_positive_float(value: object, name: str) -> float | None:
     if value is None:
         return None
+    if not isinstance(value, int | float | str | bytes | bytearray):
+        raise ValueError(f"{name} must be a positive number")
     result = float(value)
+    if result <= 0:
+        raise ValueError(f"{name} must be positive")
+    return result
+
+
+def _positive_int(value: object, name: str) -> int:
+    if not isinstance(value, int | float | str | bytes | bytearray):
+        raise ValueError(f"{name} must be a positive integer")
+    result = int(value)
     if result <= 0:
         raise ValueError(f"{name} must be positive")
     return result
@@ -427,6 +517,25 @@ def _timeframe_role_config(value: object) -> TimeframeRoleConfig:
             value.get("execution", value.get("trigger", Timeframe.H4.value))
         ),
     )
+
+
+def _trigger_rules_config(
+    value: object, timeframes: TimeframeRoleConfig
+) -> tuple[_TriggerRule, ...]:
+    if timeframes.execution == Timeframe.H4:
+        return ("h1_candle_confirm",)
+    if value is None:
+        return _H1_STRUCTURAL_TRIGGER_RULES
+    if not isinstance(value, list | tuple | set | frozenset):
+        raise TypeError("trigger_rules must be a list of trigger rule names")
+    rules = tuple(str(item) for item in value)
+    invalid = sorted(set(rules).difference(_TRIGGER_RULES))
+    if invalid:
+        joined = ", ".join(invalid)
+        raise ValueError(f"trigger_rules contains invalid values: {joined}")
+    if not rules:
+        raise ValueError("trigger_rules must not be empty")
+    return cast(tuple[_TriggerRule, ...], rules)
 
 
 def _as_list(value: object) -> list[object]:
@@ -521,7 +630,7 @@ def _latest_closed_time(
     end = int(close_time.searchsorted(tick, side="right"))
     if end <= 0:
         return None
-    return close_time[end - 1].to_pydatetime()
+    return cast(datetime, close_time[end - 1].to_pydatetime())
 
 
 def _filter_ts(df: pd.DataFrame, tick_time: datetime, limit: int) -> pd.DataFrame:
@@ -663,6 +772,164 @@ def _context_opposes_signal(context_bias: str, signal: int) -> bool:
     )
 
 
+def _raw_h1_decision(
+    *,
+    verdict: Verdict,
+    ctx: EvaluationContext,
+    price_row: pd.Series,
+    rules: tuple[_TriggerRule, ...],
+    max_age_bars: int,
+    context_bias: str,
+) -> _MTFDecision:
+    selected = _select_raw_h1_trigger(
+        ctx=ctx,
+        price_row=price_row,
+        rules=rules,
+        max_age_bars=max_age_bars,
+    )
+    if selected is None:
+        return _MTFDecision(
+            verdict=verdict,
+            signal_override=0,
+            trigger_type="raw_h1_trigger_rejected",
+            context_bias=context_bias,
+            setup_direction="RAW",
+            rationale_suffix="MTF neutralized: raw H1 trigger did not fire",
+        )
+    signal, trigger_type = selected
+    setup_direction = "BUY" if signal == 1 else "SELL"
+    return _MTFDecision(
+        verdict=verdict,
+        signal_override=signal,
+        trigger_type=trigger_type,
+        context_bias=context_bias,
+        setup_direction=setup_direction,
+        rationale_suffix=f"raw H1 diagnostic trigger: {trigger_type}",
+    )
+
+
+def _select_raw_h1_trigger(
+    *,
+    ctx: EvaluationContext,
+    price_row: pd.Series,
+    rules: tuple[_TriggerRule, ...],
+    max_age_bars: int,
+) -> tuple[int, str] | None:
+    state = _structural_stop_state_for_timeframe(ctx, Timeframe.H1)
+    for rule in rules:
+        if rule == "h1_candle_confirm":
+            candle_signal = _candle_direction_signal(price_row)
+            if candle_signal != 0:
+                return candle_signal, "raw_1h_candle_confirm"
+        if rule == "h1_sweep_reversal":
+            sweep_signal = _raw_h1_sweep_reversal_signal(
+                state=state,
+                price_row=price_row,
+                tick_time=ctx.tick_time,
+                max_age_bars=max_age_bars,
+            )
+            if sweep_signal != 0:
+                return sweep_signal, "raw_h1_sweep_reversal"
+        if rule == "h1_structure_break":
+            structure_signal = _raw_h1_structure_break_signal(
+                state=state,
+                tick_time=ctx.tick_time,
+                max_age_bars=max_age_bars,
+            )
+            if structure_signal != 0:
+                return structure_signal, "raw_h1_structure_break"
+        if rule == "h1_order_block_retest":
+            order_block_signal = _raw_h1_order_block_retest_signal(
+                state=state,
+                price_row=price_row,
+                tick_time=ctx.tick_time,
+            )
+            if order_block_signal != 0:
+                return order_block_signal, "raw_h1_order_block_retest"
+    return None
+
+
+def _candle_direction_signal(price_row: pd.Series) -> int:
+    close = float(price_row["close"])
+    open_price = float(price_row["open"])
+    if close > open_price:
+        return 1
+    if close < open_price:
+        return -1
+    return 0
+
+
+def _raw_h1_sweep_reversal_signal(
+    *,
+    state: SMCState,
+    price_row: pd.Series,
+    tick_time: datetime,
+    max_age_bars: int,
+) -> int:
+    candle_signal = _candle_direction_signal(price_row)
+    if candle_signal == 0:
+        return 0
+    swept_side = "low" if candle_signal == 1 else "high"
+    candidates = [
+        sweep
+        for sweep in state.liquidity_sweeps
+        if sweep.side == swept_side
+        and sweep.known_at <= tick_time
+        and _event_age_bars(sweep.known_at, tick_time, Timeframe.H1) <= max_age_bars
+    ]
+    return candle_signal if candidates else 0
+
+
+def _raw_h1_structure_break_signal(
+    *,
+    state: SMCState,
+    tick_time: datetime,
+    max_age_bars: int,
+) -> int:
+    candidates = [
+        event
+        for event in state.structure_events
+        if event.known_at <= tick_time
+        and _event_age_bars(event.known_at, tick_time, Timeframe.H1) <= max_age_bars
+        and event.direction in {BULLISH, BEARISH}
+    ]
+    if not candidates:
+        return 0
+    newest = max(candidates, key=lambda event: event.known_at)
+    return 1 if newest.direction == BULLISH else -1
+
+
+def _raw_h1_order_block_retest_signal(
+    *,
+    state: SMCState,
+    price_row: pd.Series,
+    tick_time: datetime,
+) -> int:
+    candidates = [
+        block
+        for block in state.order_blocks
+        if block.active
+        and block.known_at <= tick_time
+        and _trigger_candle_touches_order_block(price_row, block)
+        and block.direction in {BULLISH, BEARISH}
+    ]
+    if not candidates:
+        return 0
+    candle_signal = _candle_direction_signal(price_row)
+    if candle_signal == 0:
+        return 0
+    matching = [
+        block
+        for block in candidates
+        if (block.direction == BULLISH and candle_signal == 1)
+        or (block.direction == BEARISH and candle_signal == -1)
+    ]
+    if not matching:
+        return 0
+    newest = max(matching, key=lambda block: block.known_at)
+    return 1 if newest.direction == BULLISH else -1
+
+
 def _trigger_candle_confirms(price_row: pd.Series, signal: int) -> bool:
     close = float(price_row["close"])
     open_price = float(price_row["open"])
@@ -671,6 +938,125 @@ def _trigger_candle_confirms(price_row: pd.Series, signal: int) -> bool:
     if signal == -1:
         return close < open_price
     return False
+
+
+def _select_h1_trigger_type(
+    *,
+    ctx: EvaluationContext,
+    price_row: pd.Series,
+    signal: int,
+    trigger_tf: Timeframe,
+    rules: tuple[_TriggerRule, ...],
+    max_age_bars: int,
+) -> str | None:
+    if trigger_tf != Timeframe.H1:
+        return (
+            f"{trigger_tf.value}_candle_confirm"
+            if _trigger_candle_confirms(price_row, signal)
+            else None
+        )
+
+    state = _structural_stop_state_for_timeframe(ctx, Timeframe.H1)
+    for rule in rules:
+        if rule == "h1_sweep_reversal" and _h1_sweep_reversal_confirms(
+            state=state,
+            price_row=price_row,
+            signal=signal,
+            tick_time=ctx.tick_time,
+            max_age_bars=max_age_bars,
+        ):
+            return rule
+        if rule == "h1_structure_break" and _h1_structure_break_confirms(
+            state=state,
+            signal=signal,
+            tick_time=ctx.tick_time,
+            max_age_bars=max_age_bars,
+        ):
+            return rule
+        if rule == "h1_order_block_retest" and _h1_order_block_retest_confirms(
+            state=state,
+            price_row=price_row,
+            signal=signal,
+            tick_time=ctx.tick_time,
+        ):
+            return rule
+        if rule == "h1_candle_confirm" and _trigger_candle_confirms(price_row, signal):
+            return "1h_candle_confirm"
+    return None
+
+
+def _h1_sweep_reversal_confirms(
+    *,
+    state: SMCState,
+    price_row: pd.Series,
+    signal: int,
+    tick_time: datetime,
+    max_age_bars: int,
+) -> bool:
+    swept_side = "low" if signal == 1 else "high"
+    candidates = [
+        sweep
+        for sweep in state.liquidity_sweeps
+        if sweep.side == swept_side
+        and sweep.known_at <= tick_time
+        and _event_age_bars(sweep.known_at, tick_time, Timeframe.H1) <= max_age_bars
+    ]
+    if not candidates:
+        return False
+    return _trigger_candle_confirms(price_row, signal)
+
+
+def _h1_structure_break_confirms(
+    *,
+    state: SMCState,
+    signal: int,
+    tick_time: datetime,
+    max_age_bars: int,
+) -> bool:
+    direction = BULLISH if signal == 1 else BEARISH
+    candidates = [
+        event
+        for event in state.structure_events
+        if event.direction == direction
+        and event.known_at <= tick_time
+        and _event_age_bars(event.known_at, tick_time, Timeframe.H1) <= max_age_bars
+    ]
+    return bool(candidates)
+
+
+def _h1_order_block_retest_confirms(
+    *,
+    state: SMCState,
+    price_row: pd.Series,
+    signal: int,
+    tick_time: datetime,
+) -> bool:
+    direction = BULLISH if signal == 1 else BEARISH
+    candidates = [
+        block
+        for block in state.order_blocks
+        if block.active
+        and block.direction == direction
+        and block.known_at <= tick_time
+        and _trigger_candle_touches_order_block(price_row, block)
+    ]
+    if not candidates:
+        return False
+    return _trigger_candle_confirms(price_row, signal)
+
+
+def _trigger_candle_touches_order_block(price_row: pd.Series, block: SMCOrderBlock) -> bool:
+    high = float(price_row["high"])
+    low = float(price_row["low"])
+    close = float(price_row["close"])
+    if block.direction == BULLISH:
+        return low <= block.high and close >= block.low
+    return high >= block.low and close <= block.high
+
+
+def _event_age_bars(known_at: datetime, tick_time: datetime, timeframe: Timeframe) -> float:
+    delta = _TIMEFRAME_CLOSE_DELTA[timeframe]
+    return max(0.0, (tick_time - known_at) / delta)
 
 
 def _atr14_from_donor_frame(df: pd.DataFrame) -> pd.Series:
@@ -722,8 +1108,24 @@ def _apply_signal_filters(
     side = "long" if stop.signal == 1 else "short"
     if filters.allowed_sides is not None and side not in filters.allowed_sides:
         return _neutralized_filtered_stop(stop, f"side_not_allowed:{side}")
+    if filters.allowed_sl_anchor_types is not None and stop.anchor_type not in (
+        filters.allowed_sl_anchor_types
+    ):
+        return _neutralized_filtered_stop(stop, f"sl_anchor_type_not_allowed:{stop.anchor_type}")
     if stop.anchor_type in filters.blocked_sl_anchor_types:
         return _neutralized_filtered_stop(stop, f"sl_anchor_type_blocked:{stop.anchor_type}")
+    if (
+        filters.min_signal_sl_distance_atr is not None
+        and stop.distance_atr is not None
+        and stop.distance_atr < filters.min_signal_sl_distance_atr
+    ):
+        return _neutralized_filtered_stop(stop, f"sl_distance_too_tight:{stop.distance_atr:.4f}")
+    if (
+        filters.max_signal_sl_distance_atr is not None
+        and stop.distance_atr is not None
+        and stop.distance_atr > filters.max_signal_sl_distance_atr
+    ):
+        return _neutralized_filtered_stop(stop, f"sl_distance_too_wide:{stop.distance_atr:.4f}")
     if filters.max_anchor_age_hours is not None and stop.anchor_known_at is not None:
         age_hours = (trigger_known_at - stop.anchor_known_at).total_seconds() / 3600
         if age_hours > filters.max_anchor_age_hours:
@@ -820,6 +1222,7 @@ def _row_from_verdict(
     setup_direction: str = "HOLD",
     trigger_type: str = "h4_close",
     trigger_known_at: datetime | None = None,
+    setup_snapshot_time: datetime | None = None,
     sl_source_tf: str = "4h",
     signal_filter_reason: str | None = None,
 ) -> dict[str, object]:
@@ -849,6 +1252,9 @@ def _row_from_verdict(
         "trigger_type": trigger_type,
         "trigger_known_at": (
             trigger_known_at.isoformat() if trigger_known_at is not None else None
+        ),
+        "setup_snapshot_time": (
+            setup_snapshot_time.isoformat() if setup_snapshot_time is not None else None
         ),
         "sl_source_tf": sl_source_tf,
         "signal_filter_reason": signal_filter_reason,
@@ -1047,6 +1453,7 @@ def _neutral_row(reason: str, price_row: pd.Series) -> dict[str, object]:
         "setup_direction": "HOLD",
         "trigger_type": "error",
         "trigger_known_at": None,
+        "setup_snapshot_time": None,
         "sl_source_tf": "4h",
         "signal_filter_reason": None,
     }

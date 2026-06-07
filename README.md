@@ -130,6 +130,9 @@ candle. Stop-losses are anchored to active order blocks, fresh liquidity
 sweeps, or confirmed pivots with an ATR buffer; if no structural anchor exists,
 the donor signal is neutralized by default instead of falling back to
 mechanical ATR-only stops.
+Default-off H1 diagnostics can filter selected signals by side, structural
+anchor type allow/block lists, anchor age, context reversal, and selected
+stop-distance ATR range.
 Donor execution exports `signal_time`, `risk_base_capital`, confidence, score,
 regime, rationale, stop diagnostics, margin diagnostics, and per-engine
 strengths into `trades.csv` for audit. Margin diagnostics include
@@ -157,7 +160,10 @@ uv run backtester run \
 ```
 
 Experimental H1 MTF mode keeps D1/H4 as context/setup but uses H1 as the
-primary execution frame. The current diagnostic H1 config uses
+primary execution frame. H1 entries now require explicit structural trigger
+rules (`h1_sweep_reversal`, `h1_structure_break`, or
+`h1_order_block_retest`) instead of the earlier legacy candle-colour
+confirmation. The current diagnostic H1 config uses
 `max_sl_distance_atr = 4.0` to reject structural stops wider than 4 execution
 ATR; this is an explicit setup-geometry tuning knob, not a calibrated final
 parameter. The H1 diagnostic config also enables `optimized_windows`, a
@@ -171,6 +177,29 @@ generated `crypt_ensemble` signal frames, so repeated execution-only
 reuses the cached best signal frame when exporting `best_run/`, so
 execution-only runs should pay for only one signal build per strategy-param
 set.
+
+Every donor run export now writes an operator-facing chart frontend next to
+the CSV artifacts:
+
+- `ohlcv.csv` — the continuous candle frame used by the run.
+- `trade_chart.html` — a TradingView Lightweight Charts report with candles,
+  signal markers, entry/exit markers, and entry/TP/SL/trailing-stop level
+  overlays.
+
+The report is generated automatically for `backtester run`, optimizer
+`best_run/`, `compare-fixed` window runs, `compare-grid` candidate runs, and
+`signal-quality` window runs whenever OHLCV is available. To regenerate an old
+artifact manually:
+
+```bash
+uv run backtester trade-chart \
+    --run-dir results/crypt_ensemble_sol_h1/20260607_183249/runs/sol_2025_01
+```
+
+Manual regeneration reads `trades.csv`, optional diagnostics CSVs, and
+`ohlcv.csv` by default; pass `--ohlcv` for a full external CSV/Parquet candle
+source. Legacy `trade_candles/` slices are only a fallback for old artifacts and
+do not provide a continuous between-trade chart.
 
 ```bash
 uv run backtester run \
@@ -269,10 +298,13 @@ uv run backtester compare-grid \
 Before running more execution grids, use `signal-quality` to attribute H1
 PnL and trade counts by side, setup month, confidence bucket, anchor type,
 anchor freshness, context/setup alignment, trigger type, stale-anchor marker,
-and reversal marker. With no `--window` options it checks SOL Jan/Feb/Mar 2025
-and TON Jan/Feb/Mar/Apr 2025. It writes `signals.csv`, `signals.md`,
-`groups.csv`, `groups.md`, per-window donor artifacts under `runs/<label>/`,
-and `errors.csv` / `errors.md` when some windows fail.
+and reversal marker. It also writes setup/trigger attribution for tradeable and
+rejected setup rows by setup snapshot time, trigger type, context bias, anchor
+type, stop-distance bucket, and realized outcome. With no `--window` options
+it checks SOL Jan/Feb/Mar 2025 and TON Jan/Feb/Mar/Apr 2025. It writes
+`signals.csv`, `signals.md`, `groups.csv`, `groups.md`,
+`setup_attribution.csv`, `setup_attribution.md`, per-window donor artifacts
+under `runs/<label>/`, and `errors.csv` / `errors.md` when some windows fail.
 
 ```bash
 uv run backtester signal-quality \

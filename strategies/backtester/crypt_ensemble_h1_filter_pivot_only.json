@@ -1,6 +1,6 @@
 {
   "name": "crypt_ensemble",
-  "version": "0.3.0-mtf-h1-structural-trigger-filter-no-liquidity-sweep",
+  "version": "0.3.0-mtf-h1-structural-trigger-filter-pivot-only",
   "params": {
     "sl_atr_mult": 2.0,
     "sl_atr_buffer_mult": 0.1,
@@ -19,7 +19,7 @@
       "h1_structure_break",
       "h1_order_block_retest"
     ],
-    "blocked_sl_anchor_types": ["liquidity_sweep"]
+    "allowed_sl_anchor_types": ["pivot"]
   },
   "backtest_args": {
     "ttl": 36,

@@ -96,6 +96,45 @@ Backtester tests:
 uv run pytest tests/backtester -q
 ```
 
+Every donor run export writes a chart frontend automatically:
+
+- `ohlcv.csv`: continuous candles for the run window;
+- `trade_chart.html`: TradingView Lightweight Charts report with candles,
+  tradeable signal markers, entry/exit markers, and entry/TP/SL/trailing-stop
+  level overlays.
+
+This applies to `backtester run`, optimizer `best_run/`, `compare-fixed`,
+`compare-grid`, and `signal-quality` artifacts because all of them export
+through `ResultsAnalyzer.export_results(..., ohlcv_df=...)`.
+
+Visual verdict workflow:
+
+- `trade_chart.html` is part of the backtest evidence, not a separate optional
+  tool. Every strategy-search handoff should treat it alongside `windows.csv`,
+  `metrics.csv`, `trades.csv`, and mandate summaries.
+- The owner may add an operator verdict in chat after reviewing the HTML
+  reports. This verdict is optional, but when it exists the acting agent must
+  record it in `docs/tasks/IN_PROGRESS.md` or `docs/tasks/DONE.md` with the
+  artifact path.
+- The agent must then add its own verdict from metrics, trade logs, and chart
+  evidence. If owner and agent verdicts disagree, the next step should be a
+  narrow falsification run, not a broad optimizer search.
+- Every combined verdict must end with the next concrete experiment, including
+  the strategy file, windows, execution params, output path, and acceptance
+  condition.
+
+Manual regeneration for old artifacts remains available:
+
+```bash
+uv run backtester trade-chart \
+    --run-dir results/crypt_ensemble_sol_h1/20260607_183249/runs/sol_2025_01
+```
+
+Manual regeneration uses `ohlcv.csv` by default; pass `--ohlcv
+path/to/candles.csv` or `--ohlcv path/to/candles.parquet` for an external
+continuous source frame. Legacy `trade_candles/` slices are only a fallback for
+old artifacts and will not show between-trade candles.
+
 `mise` is an optional convenience layer. Use the `uv` commands above as the
 canonical form; use these wrappers only when `mise` is installed locally:
 

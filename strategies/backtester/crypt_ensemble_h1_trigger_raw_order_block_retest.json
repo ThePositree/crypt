@@ -1,10 +1,10 @@
 {
   "name": "crypt_ensemble",
-  "version": "0.3.0-mtf-h1-structural-trigger-filter-no-liquidity-sweep",
+  "version": "0.4.0-h1-trigger-raw-order-block-retest",
   "params": {
     "sl_atr_mult": 2.0,
     "sl_atr_buffer_mult": 0.1,
-    "max_sl_distance_atr": 4.0,
+    "max_sl_distance_atr": 8.0,
     "allow_atr_sl_fallback": false,
     "optimized_windows": true,
     "progress": true,
@@ -15,15 +15,12 @@
       "execution": "1h"
     },
     "trigger_rules": [
-      "h1_sweep_reversal",
-      "h1_structure_break",
       "h1_order_block_retest"
-    ],
-    "blocked_sl_anchor_types": ["liquidity_sweep"]
+    ]
   },
   "backtest_args": {
     "ttl": 36,
-    "rrr": 1.25,
+    "rrr": 1.0,
     "risk_percent": 1.0,
     "risk_base_period": "monthly"
   }

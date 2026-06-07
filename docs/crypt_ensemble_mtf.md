@@ -21,7 +21,7 @@ Implementation status as of 2026-06-02 session 24: the first additive MTF
 slice is implemented, but H1 full-history smoke is not accepted yet. H4 remains
 the default mode. H1 can be selected through `--primary-timeframe 1h` plus
 `strategies/backtester/crypt_ensemble_h1.json`; it uses D1 context filtering,
-the H4 ensemble verdict as setup, and an H1 candle-confirm trigger. The
+the H4 ensemble verdict as setup, and structural H1 trigger rules. The
 attempted SOL H1 smoke loaded 21517 H1 bars and started correctly but did not
 reach export before the session process ended, so diagnostics from a completed
 run are still missing.
@@ -195,7 +195,12 @@ Expected config shape:
       "trigger": "1h",
       "execution": "1h"
     },
-    "trigger_rules": ["h1_structure_confirm"],
+    "trigger_rules": [
+      "h1_sweep_reversal",
+      "h1_structure_break",
+      "h1_order_block_retest"
+    ],
+    "max_trigger_age_bars": 3,
     "min_context_confidence": 0.0,
     "min_setup_confidence": 0.0,
     "optimized_windows": true,
@@ -259,7 +264,8 @@ Keep the first slice intentionally narrow.
 6. Gate entries:
    - D1 context is not strongly opposite;
    - H4 setup direction is BUY/SELL;
-   - H1 trigger confirms the same direction.
+   - H1 trigger confirms the same direction with an explicit structural event,
+     not just a green/red candle close.
 7. Use structural stop from H4 setup first. In H1 execution mode, also plan a
    stop from closed H1 structure and replace the H4 stop only when the H1 stop
    is valid, protective for the same signal, known at or before the H1 tick,
@@ -277,6 +283,91 @@ Keep the first slice intentionally narrow.
    - `sl_source_tf`;
    - `sl_distance_atr_execution`;
    - existing `sl_anchor_type` and confidence fields.
+
+## H1 trigger rules
+
+H1 mode no longer treats candle colour as the default trigger. The earlier
+`h1_candle_confirm` rule remains available only as an explicit legacy
+diagnostic rule when listed in `trigger_rules`; do not treat it as a
+production candidate trigger.
+
+Default H1 rules:
+
+- `h1_sweep_reversal`: a fresh H1 liquidity sweep on the protective side
+  (`low` for long, `high` for short), followed by an H1 close in the setup
+  direction.
+- `h1_structure_break`: a fresh H1 BOS/CHOCH in the setup direction.
+- `h1_order_block_retest`: an active H1 order block aligned with the setup
+  direction is retested by the closed trigger candle, and that candle closes
+  in the setup direction.
+
+Freshness is controlled by `max_trigger_age_bars` (default `3`) and is
+measured in trigger-timeframe bars. Every fired signal exports the exact
+`trigger_type` so attribution reports can separate sweep, structure-break,
+and order-block entries. If no configured rule fires, the row is neutralized
+with `trigger_type = trigger_rejected`.
+
+This separates:
+
+- **H4 setup**: broad directional premise from the existing ensemble;
+- **H1 trigger**: concrete market event that permits entry;
+- **structural stop**: protective invalidation level selected after the
+  trigger.
+
+Do not use stop-anchor filters as a substitute for trigger design. Recent
+bounded attribution showed anchor type and stop-distance buckets were not
+stable across SOL March and TON February: SOL March favored pivots and tight
+stops, while TON February favored order-block/pivot anchors and wider 2-4 ATR
+stops. Anchor selection should support the setup, not define the entry edge by
+itself.
+
+## Trigger-first discovery reset
+
+Owner direction on 2026-06-08 resets the H1 search workflow:
+
+1. Start from raw H1 trigger candidates with side, anchor-type,
+   anchor-freshness, context-reversal, and stop-distance filters disabled.
+2. Use `rrr = 1.0` while searching for trigger/filter quality. Treat PnL as a
+   secondary diagnostic at this stage.
+3. Rank raw triggers first by trade count and win rate, then by exit mix,
+   drawdown, and visual plausibility in `trade_chart.html`.
+4. Add filters one at a time only after a raw trigger produces enough trades
+   to measure. Keep filters that improve win rate or remove clearly bad chart
+   patterns without collapsing trade count; reject filters that mostly reduce
+   density or move losses elsewhere.
+5. Only after the trigger plus filter stack is stable should agents search
+   execution parameters such as `rrr`, `ttl`, stop distance, take profit, and
+   trailing stop. Mandate PnL evaluation comes after this stage, not before.
+
+Win rate is not a final promotion metric; it is a diagnostic for discovering
+whether an entry trigger has a measurable edge before execution geometry is
+optimized. Mandate compliance still uses the accepted investment gates in
+`docs/investment_mandate.md`.
+
+### Raw H1 diagnostic mode
+
+`setup_source = "h1_raw"` is a diagnostic-only mode for the trigger-first
+search. It bypasses the H4 setup gate so agents can measure raw H1 trigger
+density before deciding which filters are useful.
+
+Rules:
+
+- H4 and D1 analysis may still be exported as diagnostics, but they do not
+  neutralize the signal.
+- `h1_candle_confirm` maps bullish H1 candles to long and bearish H1 candles
+  to short.
+- `h1_structure_break` maps fresh bullish BOS/CHOCH to long and fresh bearish
+  BOS/CHOCH to short.
+- `h1_sweep_reversal` maps fresh low sweeps with bullish closes to long and
+  fresh high sweeps with bearish closes to short.
+- `h1_order_block_retest` maps touched bullish order blocks with bullish
+  closes to long and touched bearish order blocks with bearish closes to short.
+- If no configured raw trigger fires, export `trigger_type =
+  raw_h1_trigger_rejected`.
+
+Use raw mode only to rank trigger density, win rate, exit mix, and chart
+plausibility. After a raw trigger has measurable edge, recreate it as a normal
+MTF setup/filter candidate before mandate evaluation.
 
 ## Parameter retuning
 
@@ -382,7 +473,8 @@ The command writes:
 - the Optuna journal log;
 - `best_run/` with normal donor exports (`trades.csv`, `metrics.csv`,
   `trade_diagnostics.csv`, `signals.csv`, `signal_diagnostics.csv`,
-  `equity_curve.csv` when trades exist, and `trade_candles/`).
+  `equity_curve.csv` when trades exist, `ohlcv.csv`, `trade_chart.html`, and
+  legacy per-trade `trade_candles/` slices).
 
 When only execution parameters (`rrr`, `position_ttl_bars`, fixed risk and
 execution filters) are searched, `ParameterOptimizer` caches the generated
@@ -653,6 +745,11 @@ Required output files:
   confidence bucket, anchor type, anchor source timeframe, anchor freshness,
   context/setup alignment, trigger type, reversal marker, and stale-anchor
   marker;
+- `setup_attribution.csv` / `setup_attribution.md`: grouped setup-row
+  attribution for both tradeable and rejected setup rows by setup snapshot time,
+  trigger type, context bias, context/setup alignment, anchor type, anchor
+  source timeframe, stop-distance bucket, anchor freshness, realized outcome,
+  and signal filter reason;
 - `errors.csv` / `errors.md` when a window cannot load or execute.
 
 Definitions:
@@ -669,6 +766,12 @@ Definitions:
 - `stale_anchor`: true when `anchor_age_hours > 72`;
 - `reversal_marker`: true when D1 `context_bias` opposes
   `setup_direction`/trade side.
+- `setup_snapshot_time`: the H4 setup snapshot close used for H1 MTF rows when
+  setup snapshots are enabled; otherwise the row's trigger/tick time.
+- `stop_distance_bucket`: `0_1_atr`, `1_2_atr`, `2_3_atr`, `3_4_atr`,
+  `4_atr_plus`, or `unknown`.
+- `realized_outcome`: `win`, `loss`, `flat`, or `no_trade` after joining
+  executed trades back to their `signal_time`.
 
 This diagnostic is deliberately report-only. It may justify later filters, but
 it must not by itself accept a calibration candidate.
@@ -687,10 +790,22 @@ Initial filter params:
   `signal = 0` with a rationale suffix.
 - `blocked_sl_anchor_types`: optional list of anchor types to reject, for
   example `["liquidity_sweep"]`.
+- `allowed_sl_anchor_types`: optional list of anchor types to allow. When set,
+  rows whose selected structural stop anchor is not in the list are
+  neutralized. This is a diagnostic allow-list for attribution follow-ups; do
+  not combine it with `blocked_sl_anchor_types` unless the intent is
+  explicitly documented.
 - `max_anchor_age_hours`: optional positive number. Rows with a structural
   stop anchor older than this at `trigger_known_at` are neutralized. Rows with
   unknown anchor age are not rejected by this filter because missing anchors
   are already neutralized by stop planning.
+- `min_signal_sl_distance_atr`: optional positive number. Rows with selected
+  stop distance below this execution-ATR multiple are neutralized after stop
+  planning.
+- `max_signal_sl_distance_atr`: optional positive number. Rows with selected
+  stop distance above this execution-ATR multiple are neutralized after stop
+  planning. This is distinct from `max_sl_distance_atr`, which is the broader
+  structural-stop validity guard used before filter diagnostics.
 - `block_context_reversal`: optional boolean. When true, rows whose D1 context
   opposes the setup/trade side are neutralized even if they passed the earlier
   trigger path.

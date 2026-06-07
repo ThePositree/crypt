@@ -20,6 +20,7 @@ from backtester.fixed_candidate_report import (
     run_fixed_candidate_comparison,
     summarize_fixed_candidate_run,
     summarize_signal_quality_groups,
+    summarize_signal_quality_setup_attribution,
     summarize_signal_quality_window,
 )
 
@@ -228,6 +229,86 @@ def test_signal_quality_summaries_attribute_trades_by_diagnostic_groups(tmp_path
     ].iloc[0]
     assert by_reversal["trades"] == 2
     assert by_reversal["pnl_sum"] == 40.0
+
+
+def test_signal_quality_setup_attribution_groups_rejected_and_executed_rows(tmp_path):
+    window = WindowSpec(
+        label="sol_mar",
+        symbol="SOL-USDT-SWAP",
+        start="2025-03-01",
+        end="2025-04-01",
+    )
+    signals = pd.DataFrame(
+        {
+            "tick_time": [
+                "2025-03-10T11:00:00+00:00",
+                "2025-03-10T12:00:00+00:00",
+                "2025-03-10T13:00:00+00:00",
+            ],
+            "signal": [-1, 0, 0],
+            "setup_snapshot_time": [
+                "2025-03-10T08:00:00+00:00",
+                "2025-03-10T08:00:00+00:00",
+                "2025-03-10T12:00:00+00:00",
+            ],
+            "setup_direction": ["SELL", "SELL", "HOLD"],
+            "context_bias": ["bearish", "bearish", "neutral"],
+            "trigger_type": [
+                "1h_candle_confirm",
+                "trigger_rejected",
+                "setup_neutral",
+            ],
+            "sl_anchor_type": ["pivot", "none", "none"],
+            "sl_source_tf": ["1h", "4h", "4h"],
+            "sl_distance_atr": [1.5, 0.0, 0.0],
+            "sl_anchor_known_at": [
+                "2025-03-10T10:00:00+00:00",
+                None,
+                None,
+            ],
+            "signal_filter_reason": [None, None, None],
+        }
+    )
+    trades = pd.DataFrame(
+        {
+            "signal_time": ["2025-03-10T11:00:00+00:00"],
+            "pnl_abs": [75.0],
+        }
+    )
+
+    attribution = summarize_signal_quality_setup_attribution(
+        window=window,
+        params=_candidate_params(),
+        signals=signals,
+        trades=trades,
+        run_dir=tmp_path,
+    )
+
+    setup_snapshot = attribution[
+        (attribution["dimension"] == "setup_snapshot_group")
+        & (attribution["group"] == "2025-03-10T08:00:00Z")
+    ].iloc[0]
+    assert setup_snapshot["setup_rows"] == 2
+    assert setup_snapshot["tradeable_signals"] == 1
+    assert setup_snapshot["rejected_setup_rows"] == 1
+    assert setup_snapshot["sell_setup_rows"] == 2
+    assert setup_snapshot["short_signals"] == 1
+    assert setup_snapshot["trigger_rejected_rows"] == 1
+    assert setup_snapshot["executed_trades"] == 1
+    assert setup_snapshot["pnl_sum"] == 75.0
+
+    rejected = attribution[
+        (attribution["dimension"] == "trigger_type") & (attribution["group"] == "trigger_rejected")
+    ].iloc[0]
+    assert rejected["setup_rows"] == 1
+    assert rejected["rejected_setup_rows"] == 1
+    assert rejected["executed_trades"] == 0
+
+    outcome = attribution[
+        (attribution["dimension"] == "realized_outcome") & (attribution["group"] == "win")
+    ].iloc[0]
+    assert outcome["executed_trades"] == 1
+    assert outcome["win_rate"] == 1.0
 
 
 def test_rows_in_window_order_is_deterministic_for_out_of_order_workers():

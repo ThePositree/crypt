@@ -413,7 +413,7 @@ def run_signal_quality_diagnostics(
     output_folder: str,
     jobs: int,
     logger: logging.Logger,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     if jobs < 1:
         raise ValueError("jobs must be >= 1")
     _validate_unique_labels(windows)
@@ -430,12 +430,13 @@ def run_signal_quality_diagnostics(
     )
     signal_rows: list[tuple[int, dict[str, Any]]] = []
     group_frames: list[pd.DataFrame] = []
+    setup_attribution_frames: list[pd.DataFrame] = []
     error_rows: list[dict[str, Any]] = []
 
     if jobs == 1 or len(windows) <= 1:
         for index, window in enumerate(windows):
             try:
-                signal_row, groups = _run_signal_quality_window(
+                signal_row, groups, setup_attribution = _run_signal_quality_window(
                     index=index,
                     window=window,
                     cfg=cfg,
@@ -455,6 +456,7 @@ def run_signal_quality_diagnostics(
                 continue
             signal_rows.append((index, signal_row))
             group_frames.append(groups)
+            setup_attribution_frames.append(setup_attribution)
     else:
         max_workers = min(jobs, len(windows))
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
@@ -474,7 +476,7 @@ def run_signal_quality_diagnostics(
             for future in as_completed(futures):
                 window = futures[future]
                 try:
-                    signal_row, groups = future.result()
+                    signal_row, groups, setup_attribution = future.result()
                 except Exception as exc:
                     error_row = _execution_grid_error_row(window, exc)
                     error_rows.append(error_row)
@@ -486,6 +488,7 @@ def run_signal_quality_diagnostics(
                     continue
                 signal_rows.append((windows.index(window), signal_row))
                 group_frames.append(groups)
+                setup_attribution_frames.append(setup_attribution)
                 logger.info("Completed signal-quality window %s", window.label)
 
     signals = pd.DataFrame(_rows_in_window_order(signal_rows))
@@ -504,6 +507,16 @@ def run_signal_quality_diagnostics(
     groups_markdown_path = output_path / "groups.md"
     groups_markdown_path.write_text(_to_markdown_table(groups) + "\n")
 
+    setup_attribution = (
+        pd.concat(setup_attribution_frames, ignore_index=True)
+        if setup_attribution_frames
+        else pd.DataFrame(columns=_signal_quality_setup_attribution_columns())
+    )
+    setup_attribution_path = output_path / "setup_attribution.csv"
+    setup_attribution.to_csv(setup_attribution_path, index=False)
+    setup_attribution_markdown_path = output_path / "setup_attribution.md"
+    setup_attribution_markdown_path.write_text(_to_markdown_table(setup_attribution) + "\n")
+
     if error_rows:
         errors = pd.DataFrame(error_rows)
         errors_path = output_path / "errors.csv"
@@ -518,7 +531,8 @@ def run_signal_quality_diagnostics(
 
     logger.info("Signal-quality window summary saved to: %s", signals_path)
     logger.info("Signal-quality group summary saved to: %s", groups_path)
-    return signals, groups
+    logger.info("Signal-quality setup attribution saved to: %s", setup_attribution_path)
+    return signals, groups, setup_attribution
 
 
 def _run_fixed_candidate_window(
@@ -652,7 +666,7 @@ def _run_signal_quality_window(
     data_dir: str,
     primary_timeframe: str,
     run_dir: Path,
-) -> tuple[dict[str, Any], pd.DataFrame]:
+) -> tuple[dict[str, Any], pd.DataFrame, pd.DataFrame]:
     worker_logger = logging.getLogger("backtester")
     worker_logger.info(
         "Running signal-quality diagnostics %s %s -> %s",
@@ -699,6 +713,13 @@ def _run_signal_quality_window(
         summarize_signal_quality_groups(
             window=window,
             params=params,
+            trades=results.trades,
+            run_dir=run_dir,
+        ),
+        summarize_signal_quality_setup_attribution(
+            window=window,
+            params=params,
+            signals=results.signals,
             trades=results.trades,
             run_dir=run_dir,
         ),
@@ -806,6 +827,43 @@ def summarize_signal_quality_groups(
     )
     frames = [
         _summarize_trade_group(
+            enriched,
+            window=window,
+            params=params,
+            run_dir=run_dir,
+            dimension=column,
+        )
+        for column in group_columns
+    ]
+    return pd.concat(frames, ignore_index=True)
+
+
+def summarize_signal_quality_setup_attribution(
+    *,
+    window: WindowSpec,
+    params: FixedCandidateParams,
+    signals: pd.DataFrame,
+    trades: pd.DataFrame,
+    run_dir: Path,
+) -> pd.DataFrame:
+    enriched = _enrich_signal_quality_signals(signals, trades)
+    if enriched.empty:
+        return pd.DataFrame(columns=_signal_quality_setup_attribution_columns())
+
+    group_columns = (
+        "setup_snapshot_group",
+        "trigger_type",
+        "context_bias",
+        "context_setup_alignment",
+        "sl_anchor_type",
+        "sl_source_tf",
+        "stop_distance_bucket",
+        "anchor_age_bucket",
+        "realized_outcome",
+        "signal_filter_reason",
+    )
+    frames = [
+        _summarize_setup_attribution_group(
             enriched,
             window=window,
             params=params,
@@ -1139,6 +1197,123 @@ def _enrich_signal_quality_trades(trades: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _enrich_signal_quality_signals(
+    signals: pd.DataFrame,
+    trades: pd.DataFrame,
+) -> pd.DataFrame:
+    if signals.empty:
+        return pd.DataFrame(columns=_signal_quality_setup_attribution_columns())
+
+    df = signals.copy()
+    signal_values = pd.to_numeric(_column_series(df, "signal"), errors="coerce").fillna(0)
+    df["signal_side"] = signal_values.map({1: "long", -1: "short"}).fillna("neutral")
+    df["is_tradeable_signal"] = signal_values.isin([1, -1])
+    df["is_active_setup"] = _column_series(df, "setup_direction").isin(["BUY", "SELL"])
+    df["is_rejected_setup"] = df["is_active_setup"] & ~df["is_tradeable_signal"]
+    df["row_time"] = _first_available_datetime(df, ("tick_time", "trigger_known_at"))
+    df["setup_snapshot_dt"] = _first_available_datetime(
+        df,
+        ("setup_snapshot_time", "trigger_known_at", "tick_time"),
+    )
+    df["setup_snapshot_group"] = (
+        df["setup_snapshot_dt"].dt.strftime("%Y-%m-%dT%H:%M:%SZ").fillna("unknown")
+    )
+    df["setup_month"] = df["setup_snapshot_dt"].dt.strftime("%Y-%m").fillna("unknown")
+    confidence = pd.to_numeric(_column_series(df, "confidence"), errors="coerce")
+    df["confidence_bucket"] = pd.cut(
+        confidence,
+        bins=[0, 25, 40, 55, 70, 85, 101],
+        right=False,
+        include_lowest=True,
+        labels=["0_25", "25_40", "40_55", "55_70", "70_85", "85_101"],
+    ).astype("string")
+    df["confidence_bucket"] = df["confidence_bucket"].fillna("unknown")
+
+    stop_distance = pd.to_numeric(_column_series(df, "sl_distance_atr"), errors="coerce")
+    df["stop_distance_bucket"] = stop_distance.map(_stop_distance_bucket).fillna("unknown")
+    anchor_known_at = pd.to_datetime(
+        _column_series(df, "sl_anchor_known_at"),
+        errors="coerce",
+        utc=True,
+    )
+    age_hours = (df["row_time"] - anchor_known_at).dt.total_seconds() / 3600
+    df["anchor_age_hours"] = age_hours
+    df["anchor_age_bucket"] = age_hours.map(_anchor_age_bucket).fillna("unknown")
+    df["context_setup_alignment"] = [
+        _context_setup_alignment(context_bias, setup_direction)
+        for context_bias, setup_direction in zip(
+            _column_series(df, "context_bias"),
+            _column_series(df, "setup_direction"),
+            strict=False,
+        )
+    ]
+    for column in (
+        "trigger_type",
+        "context_bias",
+        "sl_anchor_type",
+        "sl_source_tf",
+        "signal_filter_reason",
+    ):
+        if column not in df.columns:
+            df[column] = "missing"
+        df[column] = df[column].fillna("none").astype(str)
+
+    trade_outcomes = _trade_outcomes_by_signal_time(trades)
+    if trade_outcomes.empty:
+        df["executed_trades"] = 0
+        df["pnl_sum"] = 0.0
+        df["winning_trades"] = 0
+        df["losing_trades"] = 0
+        df["realized_outcome"] = "no_trade"
+        return df
+
+    merged = df.merge(
+        trade_outcomes,
+        how="left",
+        left_on="row_time",
+        right_on="signal_time_for_join",
+    )
+    merged["executed_trades"] = merged["executed_trades"].fillna(0).astype(int)
+    merged["pnl_sum"] = pd.to_numeric(merged["pnl_sum"], errors="coerce").fillna(0.0)
+    merged["winning_trades"] = merged["winning_trades"].fillna(0).astype(int)
+    merged["losing_trades"] = merged["losing_trades"].fillna(0).astype(int)
+    merged["realized_outcome"] = [
+        _realized_outcome(executed_trades, pnl_sum)
+        for executed_trades, pnl_sum in zip(
+            merged["executed_trades"],
+            merged["pnl_sum"],
+            strict=False,
+        )
+    ]
+    return merged
+
+
+def _trade_outcomes_by_signal_time(trades: pd.DataFrame) -> pd.DataFrame:
+    if trades.empty or "signal_time" not in trades.columns:
+        return pd.DataFrame()
+
+    df = trades.copy()
+    df["signal_time_for_join"] = pd.to_datetime(df["signal_time"], errors="coerce", utc=True)
+    df = df.dropna(subset=["signal_time_for_join"])
+    if df.empty:
+        return pd.DataFrame()
+
+    pnl = pd.to_numeric(_column_series(df, "pnl_abs"), errors="coerce").fillna(0.0)
+    df["pnl_for_group"] = pnl
+    df["winning_trade"] = pnl.gt(0).astype(int)
+    df["losing_trade"] = pnl.lt(0).astype(int)
+    return (
+        df.groupby("signal_time_for_join", as_index=False)
+        .agg(
+            executed_trades=("signal_time_for_join", "size"),
+            pnl_sum=("pnl_for_group", "sum"),
+            winning_trades=("winning_trade", "sum"),
+            losing_trades=("losing_trade", "sum"),
+        )
+        .reset_index(drop=True)
+    )
+
+
 def _first_available_datetime(df: pd.DataFrame, columns: tuple[str, ...]) -> pd.Series:
     result = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns, UTC]")
     for column in columns:
@@ -1159,6 +1334,30 @@ def _anchor_age_bucket(value: float) -> str:
     if value < 72:
         return "stale_24_72h"
     return "old_72h_plus"
+
+
+def _stop_distance_bucket(value: float) -> str:
+    if not pd.notna(value):
+        return "unknown"
+    if value < 1:
+        return "0_1_atr"
+    if value < 2:
+        return "1_2_atr"
+    if value < 3:
+        return "2_3_atr"
+    if value < 4:
+        return "3_4_atr"
+    return "4_atr_plus"
+
+
+def _realized_outcome(executed_trades: int, pnl_sum: float) -> str:
+    if executed_trades <= 0:
+        return "no_trade"
+    if pnl_sum > 0:
+        return "win"
+    if pnl_sum < 0:
+        return "loss"
+    return "flat"
 
 
 def _is_context_reversal(context_bias: Any, side: Any) -> bool:
@@ -1224,6 +1423,70 @@ def _summarize_trade_group(
     return pd.DataFrame(rows, columns=_signal_quality_group_columns())
 
 
+def _summarize_setup_attribution_group(
+    signals: pd.DataFrame,
+    *,
+    window: WindowSpec,
+    params: FixedCandidateParams,
+    run_dir: Path,
+    dimension: str,
+) -> pd.DataFrame:
+    rows: list[dict[str, Any]] = []
+    grouped = signals.groupby(dimension, dropna=False)
+    for group_value, group in grouped:
+        pnl = pd.to_numeric(_column_series(group, "pnl_sum"), errors="coerce").fillna(0.0)
+        executed_trades = pd.to_numeric(
+            _column_series(group, "executed_trades"),
+            errors="coerce",
+        ).fillna(0)
+        winning_trades = pd.to_numeric(
+            _column_series(group, "winning_trades"),
+            errors="coerce",
+        ).fillna(0)
+        setup_direction = _column_series(group, "setup_direction")
+        signal_side = _column_series(group, "signal_side")
+        trigger_type = _column_series(group, "trigger_type")
+        rows.append(
+            {
+                "label": window.label,
+                "symbol": window.symbol,
+                "from": window.start,
+                "to": window.end,
+                "rrr": params.rrr,
+                "trail_activation_rrr": params.trail_activation_rrr,
+                "trail_distance_atr": params.trail_distance_atr,
+                "ttl": params.ttl,
+                "max_positions": params.max_positions,
+                "risk_percent": params.risk_percent,
+                "dimension": dimension,
+                "group": str(group_value),
+                "setup_rows": int(_column_series(group, "is_active_setup").sum()),
+                "tradeable_signals": int(_column_series(group, "is_tradeable_signal").sum()),
+                "rejected_setup_rows": int(_column_series(group, "is_rejected_setup").sum()),
+                "buy_setup_rows": int((setup_direction == "BUY").sum()),
+                "sell_setup_rows": int((setup_direction == "SELL").sum()),
+                "long_signals": int((signal_side == "long").sum()),
+                "short_signals": int((signal_side == "short").sum()),
+                "context_opposite_rows": int((trigger_type == "context_opposite").sum()),
+                "trigger_rejected_rows": int((trigger_type == "trigger_rejected").sum()),
+                "executed_trades": int(executed_trades.sum()),
+                "pnl_sum": round(float(pnl.sum()), 2),
+                "pnl_mean_per_trade": (
+                    round(float(pnl.sum() / executed_trades.sum()), 4)
+                    if executed_trades.sum() > 0
+                    else 0.0
+                ),
+                "win_rate": (
+                    round(float(winning_trades.sum() / executed_trades.sum()), 4)
+                    if executed_trades.sum() > 0
+                    else 0.0
+                ),
+                "run_dir": str(run_dir),
+            }
+        )
+    return pd.DataFrame(rows, columns=_signal_quality_setup_attribution_columns())
+
+
 def _signal_quality_group_columns() -> list[str]:
     return [
         "label",
@@ -1248,6 +1511,37 @@ def _signal_quality_group_columns() -> list[str]:
         "exit_stop_loss",
         "exit_trailing_stop",
         "exit_ttl_expired",
+        "run_dir",
+    ]
+
+
+def _signal_quality_setup_attribution_columns() -> list[str]:
+    return [
+        "label",
+        "symbol",
+        "from",
+        "to",
+        "rrr",
+        "trail_activation_rrr",
+        "trail_distance_atr",
+        "ttl",
+        "max_positions",
+        "risk_percent",
+        "dimension",
+        "group",
+        "setup_rows",
+        "tradeable_signals",
+        "rejected_setup_rows",
+        "buy_setup_rows",
+        "sell_setup_rows",
+        "long_signals",
+        "short_signals",
+        "context_opposite_rows",
+        "trigger_rejected_rows",
+        "executed_trades",
+        "pnl_sum",
+        "pnl_mean_per_trade",
+        "win_rate",
         "run_dir",
     ]
 

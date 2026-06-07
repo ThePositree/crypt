@@ -130,6 +130,51 @@ def test_export_trades_writes_trade_diagnostics(tmp_path):
     assert records[("sl_anchor", "order_block", "distance_atr_p50")] == 4.0
 
 
+def test_export_results_with_ohlcv_writes_trade_chart_and_full_candles(tmp_path):
+    trades = _trades_df(
+        [
+            {
+                "entry_time": "2026-01-01 01:00:00",
+                "exit_time": "2026-01-01 03:00:00",
+                "entry_price": 102.0,
+                "exit_price": 104.0,
+                "tp_price": 104.0,
+                "sl_price": 100.0,
+                "pnl_abs": 10.0,
+                "pnl_rel": 0.01,
+                "exit_reason": "take_profit",
+                "capital_before": 1000.0,
+                "capital_after": 1010.0,
+                "holding_bars": 3,
+                "is_long": True,
+                "entry_bar_index": 1,
+                "exit_bar_index": 3,
+            }
+        ]
+    )
+    ohlcv = pd.DataFrame(
+        {
+            "open": [100.0, 101.0, 102.0, 103.0, 104.0],
+            "high": [101.0, 102.0, 103.0, 104.0, 105.0],
+            "low": [99.0, 100.0, 101.0, 102.0, 103.0],
+            "close": [100.5, 101.5, 102.5, 103.5, 104.5],
+            "volume": [1.0, 2.0, 3.0, 4.0, 5.0],
+        },
+        index=pd.date_range("2026-01-01", periods=5, freq="h", tz="UTC"),
+    )
+    analyzer = ResultsAnalyzer(trades)
+    analyzer.generate()
+
+    analyzer.export_results(str(tmp_path), ohlcv_df=ohlcv)
+
+    assert (tmp_path / "ohlcv.csv").exists()
+    html = (tmp_path / "trade_chart.html").read_text()
+    assert "lightweight-charts@5.2.0" in html
+    assert '"time": 1767225600' in html
+    assert '"time": 1767240000' in html
+    assert '"kind": "entry"' in html
+
+
 def test_generate_profit_factor_inf_when_no_losses():
     df = _trades_df(
         [

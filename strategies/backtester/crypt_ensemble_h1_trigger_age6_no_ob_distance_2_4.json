@@ -1,6 +1,6 @@
 {
   "name": "crypt_ensemble",
-  "version": "0.3.0-mtf-h1-structural-trigger-filter-no-liquidity-sweep",
+  "version": "0.3.0-mtf-h1-trigger-age6-no-ob-distance-2-4",
   "params": {
     "sl_atr_mult": 2.0,
     "sl_atr_buffer_mult": 0.1,
@@ -16,10 +16,11 @@
     },
     "trigger_rules": [
       "h1_sweep_reversal",
-      "h1_structure_break",
-      "h1_order_block_retest"
+      "h1_structure_break"
     ],
-    "blocked_sl_anchor_types": ["liquidity_sweep"]
+    "max_trigger_age_bars": 6,
+    "min_signal_sl_distance_atr": 2.0,
+    "max_signal_sl_distance_atr": 4.0
   },
   "backtest_args": {
     "ttl": 36,

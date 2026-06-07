@@ -14,40 +14,6 @@ when finished.
 > **+15%/month** on **$10k** SOL **2025** continuous backtest after fees;
 > max **10% intra-month DD**; auto-trading only after **promote** verdict.
 
-## P1 — Add OHLCV coverage preflight for window reports
-
-**What:** before starting expensive `compare-fixed`, `compare-grid`, or
-`signal-quality` worker pools, validate that each requested
-symbol/timeframe/window has non-empty primary candles and enough context
-coverage for the configured MTF strategy. Fail fast with a concise missing-data
-table.
-
-**Why now:** the owner-run SOL 2025 mandate validation spent several minutes
-before failing at `sol_2025_05` because local SOL H1 parquet ended in April
-2025. The fix was data backfill, but the CLI should make this obvious before
-launching a long replay.
-
-**Expected gain:** fewer partial artifacts and less operator time lost to data
-coverage surprises.
-
-**Acceptance:** a missing-window run exits before starting worker backtests and
-prints the missing symbol/timeframe/window; a complete SOL 2025 run proceeds
-unchanged; focused tests cover both paths.
-
-## P1 — Stop-loss count limits as Optuna dimensions
-
-**What:** implement `max_stop_losses_per_day`, `max_stop_losses_per_month`, and
-`max_consecutive_stop_losses` per `docs/investment_mandate.md` §6.2; `0` =
-disabled.
-
-**Why now:** owner-approved risk guard for auto-trading candidates.
-
-**Expected gain:** full Optuna can limit death-by-a-thousand-stops profiles
-before mandate evaluation.
-
-**Acceptance:** limits pause new entries per spec; exported trades show when
-limits triggered; Optuna wiring with focused tests.
-
 ## P1 — Candidate archive artifact layout
 
 **What:** define `results/archive/<candidate_id>/` convention for near-miss
@@ -542,7 +508,14 @@ engineering polish unless it directly supports that outcome.
       `ttl = 36`, `total_return_pct = 1.95`, `profit_factor = 1.12`, max
       drawdown `-5.51`, 86 short-only trades. This is encouraging but not
       accepted calibration because the side profile is unstable across
-      windows.
+      windows. Broader out-of-sample diagnostics completed 2026-06-06:
+      SOL March best was only `+1.29%`, max DD `-2.01`, `rrr = 1.25`,
+      `ttl = 24`, `max_positions = 1`; TON February best was `+18.45%`, but
+      with max DD `-15.97`, `rrr = 2.0`, `ttl = 36`, `max_positions = 5`,
+      which breaches the mandate monthly DD gate. The fixed finite-position
+      baseline (`rrr = 1.25`, `ttl = 36`, `max_positions = 1`) was nearly flat
+      on both windows (`SOL March +0.56%`, `TON February +0.07%`). Next target:
+      H1 trigger/setup-quality attribution before changing signal logic.
 - [x] **Add operator-facing bounded optimizer command for `crypt_ensemble`** —
       P0 before broad tuning. Shipped 2026-06-03 as `backtester optimize`.
       The command loads bounded `crypt-parquet`, preserves strategy JSON
@@ -556,18 +529,84 @@ engineering polish unless it directly supports that outcome.
       whether the `rrr = 1.25` / `ttl = 30` result is stable. Completed first
       pass 2026-06-03 with SOL February and TON January; XPL intentionally
       skipped because H1 history is shorter.
-- [ ] **Run broader out-of-sample H1 optimizer diagnostics** — P0 before
+- [x] **Run broader out-of-sample H1 optimizer diagnostics** — P0 before
       enabling strategy-param search. Run at least SOL March 2025 and TON
       February 2025 with strategy-param, daily-limit, and trading-window
       search disabled. Compare each per-window Optuna best against the fixed
       candidate `rrr = 1.25`, `position_ttl_bars = 36` so calibration is not
-      based only on in-sample best trials.
-- [ ] **Investigate H1 short-only side skew before adding filters** — P0.
+      based only on in-sample best trials. Completed 2026-06-06 with artifacts
+      `results/crypt_donor_h1_mtf_optuna_sol_mar/20260606_180826/`,
+      `results/crypt_donor_h1_mtf_optuna_ton_feb/20260606_181333/`, and
+      `results/crypt_donor_h1_mtf_fixed_sol_mar_ton_feb/20260606_181827/`.
+- [x] **Investigate H1 short-only side skew before adding filters** — P0.
       SOL February and TON January best runs were short-only, while SOL
       January mixed longs and shorts. Inspect whether the skew comes from H4
       setup verdicts, D1 context filtering, structural-stop availability, or
       the single `1h_candle_confirm` trigger before adding side-specific
-      filters.
+      filters. Completed 2026-06-06 for the broader windows: SOL March and TON
+      February are both already short-only at the tradeable-signal layer, so
+      side gating is not the next useful change. The issue is setup/trigger
+      quality and finite-position execution geometry.
+- [x] **Add H1 trigger/setup-quality attribution report** — P0 before changing
+      H1 signal logic. What: extend `backtester signal-quality` or add a cheap
+      companion report that groups setup rows and tradeable/rejected signals by
+      setup snapshot time, `trigger_type`, context bias, anchor type, stop
+      distance bucket, and realized outcome. Why now: SOL March and TON
+      February show many SELL setup rows but far fewer tradeable short signals,
+      and the profitable TON execution row violates the mandate DD gate.
+      Expected gain: identify whether the next signal-logic change belongs in
+      `1h_candle_confirm`, H4 setup snapshot gating, D1 context handling, or
+      structural-stop filters. Acceptance: SOL March and TON February reports
+      exist with the grouped attribution and a written decision before any
+      strategy-param Optuna or new SOL 2025 mandate run. Completed 2026-06-07:
+      `backtester signal-quality` now writes `setup_attribution.csv` /
+      `setup_attribution.md`, `crypt_ensemble` exports `setup_snapshot_time`,
+      and the acceptance run lives at
+      `results/crypt_h1_setup_attribution/20260607_112717/`. Decision:
+      trigger/context rows explain most rejected setups, but executed-trade PnL
+      separates more strongly by structural-stop anchor and stop-distance
+      bucket; the next code change should test structural-stop quality filters
+      before broad strategy-param Optuna.
+- [x] **Test structural-stop quality filters from H1 attribution** — P0 before
+      broad strategy-param Optuna. What: add or extend a default-off diagnostic
+      strategy config that can filter by structural-stop anchor type and
+      stop-distance ATR bucket, then run SOL March 2025 and TON February 2025
+      baseline comparisons. Why now: the new attribution artifact shows SOL
+      pivot anchors were positive while order-block anchors were negative; TON
+      liquidity-sweep anchors were negative while order-block and pivot anchors
+      were positive; stop-distance buckets diverge by symbol. Expected gain:
+      remove weak structural-stop setups with a small auditable filter before
+      paying for broad Optuna. Acceptance: `docs/crypt_ensemble_mtf.md` is
+      updated before code if filter semantics change, focused tests cover the
+      filter, reports exist for SOL March and TON February, and a written
+      decision says whether to expand to a bounded multi-window check or
+      discard the filter. Completed 2026-06-07: added
+      `allowed_sl_anchor_types`, `min_signal_sl_distance_atr`, and
+      `max_signal_sl_distance_atr`; added `pivot_only` and
+      `anchor_distance_2_4_no_sweep` diagnostic configs; ran both filters on
+      SOL March and TON February. Decision: `pivot_only` improved both problem
+      windows and should get a bounded multi-window validation;
+      `anchor_distance_2_4_no_sweep` is TON-positive but SOL-negative and
+      should not be generalized yet.
+- [x] **Validate H1 pivot-only filter across bounded windows** — P0 before SOL
+      2025 mandate rerun or broad strategy-param Optuna. What: run
+      `compare-fixed` for
+      `strategies/backtester/crypt_ensemble_h1_filter_pivot_only.json` over
+      SOL Jan/Feb/Mar 2025 and TON Jan/Feb/Mar/Apr 2025 using
+      `rrr = 1.25`, `ttl = 36`, `risk_percent = 1.0`, `max_positions = 1`,
+      monthly risk base, and isolated futures. Why now: pivot-only improved the
+      two current problem windows but may simply overfit March/February.
+      Expected gain: decide whether pivot-only deserves a tiny execution grid
+      or a SOL 2025 mandate run. Acceptance: one timestamped report with
+      `windows.csv`, mandate files, and a written decision comparing aggregate
+      return, worst DD, trade count, and exit mix against the short-only and
+      baseline artifacts. Completed 2026-06-07 at
+      `results/crypt_h1_pivot_only_bounded/20260607_120751/`. Decision:
+      discard `pivot_only` as a general filter for now. It improved the two
+      problem windows but failed the full bounded set: SOL Jan/Feb/Mar summed
+      only `+2.93%`, TON Jan/Feb/Mar/Apr summed `-5.97%`, total seven-window
+      return was `-3.04%`, and TON mandate summary was `discard` because 4/4
+      months were below the 15% floor.
 - [ ] **Add minimal donor Optuna support for `crypt_ensemble` parameters** —
       P0 after structural SL. Adapt the existing donor optimizer shape rather
       than adding new donor-wide semantics. Register strategy parameters:

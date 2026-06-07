@@ -142,8 +142,7 @@ Run **full Optuna**:
 - daily-limit search
 - trading-window search
 - execution parameters (`rrr`, `ttl`, `risk_percent`, `max_positions`, …)
-- stop-limit parameters (§8)
-- trailing-stop parameters (§9)
+- trailing-stop parameters (§6.1)
 
 Borderline candidates that only **weakly** lose may enter this path. Candidates
 that **strongly** lose in a row are discarded without full Optuna.
@@ -176,9 +175,11 @@ Optuna dimensions (initial ranges, adjust in spec):
 Report exit mix: `trailing_stop` vs `take_profit` vs `stop_loss` vs
 `ttl_expired`.
 
-### 6.2 Stop-loss limits (Optuna)
+### 6.2 Stop-loss count limits (canceled)
 
-Pause new entries after too many stop-losses:
+Owner direction on 2026-06-06 canceled the stop-loss count limit task for the
+current candidate search. Do not implement or optimize these parameters unless
+the owner explicitly revives the idea.
 
 | Parameter | `0` meaning | Role |
 | --------- | ----------- | ---- |
