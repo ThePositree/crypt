@@ -11,6 +11,8 @@ FilterFn = Callable[[DiscoveryEvent, DiscoveryDataset], FilterResult]
 
 
 def filter_catalog() -> dict[str, FilterFn]:
+    from backtester.strategy_discovery.catalog_expansion import expansion_filter_catalog
+
     return {
         "side_long_only": _side_long_only,
         "side_short_only": _side_short_only,
@@ -45,6 +47,7 @@ def filter_catalog() -> dict[str, FilterFn]:
         "trend_strength_max": _trend_strength_max,
         "volume_above_median": _volume_above_median,
         "roc_side_aligned": _roc_side_aligned,
+        **expansion_filter_catalog(),
     }
 
 

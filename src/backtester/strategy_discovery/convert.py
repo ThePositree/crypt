@@ -8,15 +8,21 @@ DISCOVERY_SCHEMA_VERSION = 1
 TREND_STRENGTH_MIN_ATR = 0.5
 AVOID_LOW_VOLUME_MEDIAN_RATIO = 0.5
 BB_SQUEEZE_MAX_WIDTH_PCT = 0.04
+AVOID_DOJI_MIN_BODY_TO_RANGE = 0.15
+BB_WIDTH_RANK_MIN_LOW = 0.2
+VWAP_DIST_MAX_1PCT = 0.01
+VWAP_DIST_MIN_0_2PCT = 0.002
 
 _DISCOVERY_RAW_TRIGGERS = frozenset(
     {
         "h1_candle_confirm",
         "h1_momentum_burst",
+        "h1_nr4_breakout",
         "h1_nr7_breakout",
         "h1_sweep_reversal",
         "h1_structure_break",
         "h1_order_block_retest",
+        "h1_vwap_reclaim",
     }
 )
 
@@ -41,6 +47,11 @@ _FILTER_PARAM_MAP: dict[str, dict[str, Any]] = {
     "avoid_low_volume": {"min_volume_median_ratio": AVOID_LOW_VOLUME_MEDIAN_RATIO},
     "h4_context_aligned": {"require_h4_context_aligned": True},
     "bb_squeeze": {"max_bb_width_pct": BB_SQUEEZE_MAX_WIDTH_PCT},
+    "avoid_doji": {"min_body_to_range": AVOID_DOJI_MIN_BODY_TO_RANGE},
+    "bb_width_rank_min_low": {"min_bb_width_rank_20": BB_WIDTH_RANK_MIN_LOW},
+    "session_off_hours": {"require_session_off_hours": True},
+    "vwap_dist_max_1pct": {"max_session_vwap_dist_pct": VWAP_DIST_MAX_1PCT},
+    "vwap_dist_min_0_2pct": {"min_session_vwap_dist_pct": VWAP_DIST_MIN_0_2PCT},
 }
 
 _UNSUPPORTED_FILTERS = frozenset(
@@ -64,7 +75,6 @@ _UNSUPPORTED_FILTERS = frozenset(
         "volatility_high_only",
         "bb_wide",
         "body_to_range_min",
-        "avoid_doji",
         "bar_range_min_atr",
         "session_london",
         "session_ny",
@@ -191,6 +201,7 @@ def conversion_notes() -> str:
         "block_context_reversal filter that blocks D1 SMC bias opposing the signal. "
         "Structural discovery triggers (sweep/structure/order-block) use simplified OHLCV "
         "rules in discovery but SMC-backed raw rules in donor execution; "
-        "h1_candle_confirm, h1_momentum_burst, and h1_nr7_breakout are intended for "
-        "faithful conversion when paired with mapped discovery filters."
+        "h1_candle_confirm, h1_momentum_burst, h1_nr7_breakout, h1_nr4_breakout, "
+        "and h1_vwap_reclaim are intended for faithful conversion when paired with "
+        "mapped discovery filters."
     )

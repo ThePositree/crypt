@@ -6,6 +6,28 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-09 — v3 discovery candidates → donor crypt_ensemble
+
+- Mapped robust v3 stacks to donor execution: `h1_vwap_reclaim` and
+  `h1_nr4_breakout` triggers plus v3 filters (session off-hours, BB width rank,
+  VWAP distance band, avoid doji).
+- `convert.py` + `crypt_ensemble.py` filter/trigger parity with discovery
+  features; checked-in strategies:
+  `crypt_ensemble_h1_discovery_vwap_reclaim_robust.json`,
+  `crypt_ensemble_h1_discovery_nr4_vwap_robust.json`.
+- Spec `docs/strategy_discovery.md` §13 updated; convert tests added.
+
+## 2026-06-08 — Strategy discovery catalog v3 (OHLCV expansion)
+
+- Added `catalog_expansion.py`: **+30 triggers**, **+67 filters** (candle patterns,
+  session/VWAP, compression/expansion, parameterized threshold bands).
+- Extended `features.py` with session VWAP, wick ratios, gaps, NR4/14, Donchian,
+  MACD proxy, consecutive candle counts, BB width rank, ATR ratio bands.
+- Catalog totals: **44 triggers + 100 filters** (was 14 + 33). v3 blocks are
+  discovery-only until mapped in `convert.py`.
+- Spec: `docs/strategy_discovery.md` § v3; tests updated in
+  `tests/backtester/test_strategy_discovery.py`.
+
 ## 2026-06-08 — Strategy execution context + NR7 tp_pct validation
 
 - `StrategyExecutionContext` propagated into `strategy.generate()` via

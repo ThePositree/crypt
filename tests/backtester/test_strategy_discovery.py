@@ -355,7 +355,7 @@ def _event(
 
 def test_v2_triggers_emit_events_on_synthetic_patterns() -> None:
     triggers = trigger_catalog()
-    assert len(triggers) == 14
+    assert len(triggers) == 44
 
     engulfing = _dataset_from_ohlcv(
         [
@@ -399,7 +399,7 @@ def test_v2_filters_use_extended_metadata() -> None:
         }
     )
     filters = filter_catalog()
-    assert len(filters) == 33
+    assert len(filters) == 100
 
     assert filters["trend_ema_stack_aligned"](event, dataset).passed
     assert filters["sma20_side_aligned"](event, dataset).passed
@@ -418,6 +418,45 @@ def test_v2_filters_use_extended_metadata() -> None:
     short_event.metadata["rsi14"] = 55.0
     assert filters["trend_ema_stack_aligned"](short_event, dataset).passed
     assert filters["roc_side_aligned"](short_event, dataset).passed
+
+
+def test_v3_catalog_triggers_emit_on_synthetic_data() -> None:
+    triggers = trigger_catalog()
+    hammer_dataset = _dataset_from_ohlcv(
+        [
+            (10.0, 10.1, 9.9, 10.0),
+            (10.0, 10.1, 8.5, 10.2),
+        ],
+        atr=0.5,
+    )
+    assert triggers["h1_hammer"](hammer_dataset)
+    trend_dataset = build_discovery_dataset(
+        data=_trend_frame(80),
+        window_label="sample",
+        symbol="SOL-USDT-SWAP",
+    )
+    assert triggers["h1_higher_high_higher_close"](trend_dataset)
+
+
+def test_v3_filters_accept_expansion_metadata() -> None:
+    dataset = _dataset_from_close_path([10, 11, 12, 13])
+    event = _event(dataset, index=2, side="long", entry=12)
+    event.metadata.update(
+        {
+            "session_vwap_dist_pct": 0.004,
+            "volume_ratio_20": 2.0,
+            "bb_at_20bar_low": True,
+            "bb_expanding": True,
+            "consecutive_bull": 3,
+            "hour_utc": 3,
+            "session_open_hour": 0,
+        }
+    )
+    filters = filter_catalog()
+    assert filters["vwap_side_aligned"](event, dataset).passed
+    assert filters["volume_spike_2x"](event, dataset).passed
+    assert filters["consecutive_bull_3"](event, dataset).passed
+    assert filters["session_asia"](event, dataset).passed
 
 
 def test_build_discovery_features_includes_v2_columns() -> None:
@@ -490,6 +529,52 @@ def test_convert_discovery_strategy_maps_nr7_candidate() -> None:
     assert converted["params"]["require_h4_context_aligned"] is True
     assert converted["params"]["max_bb_width_pct"] == 0.04
     assert converted["params"]["allow_atr_sl_fallback"] is True
+
+
+def test_convert_discovery_strategy_maps_v3_vwap_reclaim_candidate() -> None:
+    payload = {
+        "name": "strategy_discovery_candidate",
+        "params": {
+            "discovery_schema_version": 1,
+            "trigger": "h1_vwap_reclaim",
+            "filters": [
+                "avoid_low_volume",
+                "bb_width_rank_min_low",
+                "session_off_hours",
+            ],
+        },
+        "metrics": {"win_rate": 0.5714, "passed_events": 238},
+    }
+
+    converted = convert_discovery_strategy(payload)
+
+    assert converted["params"]["trigger_rules"] == ["h1_vwap_reclaim"]
+    assert converted["params"]["min_volume_median_ratio"] == 0.5
+    assert converted["params"]["min_bb_width_rank_20"] == 0.2
+    assert converted["params"]["require_session_off_hours"] is True
+
+
+def test_convert_discovery_strategy_maps_v3_nr4_candidate() -> None:
+    payload = {
+        "name": "strategy_discovery_candidate",
+        "params": {
+            "discovery_schema_version": 1,
+            "trigger": "h1_nr4_breakout",
+            "filters": [
+                "avoid_doji",
+                "vwap_dist_max_1pct",
+                "vwap_dist_min_0_2pct",
+            ],
+        },
+        "metrics": {"win_rate": 0.5718, "passed_events": 404},
+    }
+
+    converted = convert_discovery_strategy(payload)
+
+    assert converted["params"]["trigger_rules"] == ["h1_nr4_breakout"]
+    assert converted["params"]["min_body_to_range"] == 0.15
+    assert converted["params"]["max_session_vwap_dist_pct"] == 0.01
+    assert converted["params"]["min_session_vwap_dist_pct"] == 0.002
 
 
 def test_convert_discovery_strategy_rejects_unsupported_filter() -> None:

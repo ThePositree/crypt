@@ -62,9 +62,10 @@ Options (pick one with owner in chat):
 2. **Attribution post-mortem** — run `signal-quality` on
    `crypt_ensemble_h1_discovery_momentum_burst_short.json` across the same 12 SOL windows to
    document SL/TTL/signal-filter attrition vs discovery labels.
-3. **New trigger family discovery** — rerun `discover-strategies` on the **v2 OHLCV catalog**
-   (14 triggers + 33 filters; implemented 2026-06-08). Exclude or down-rank momentum-burst;
-   prioritize families with robust per-window label win rates.
+3. **New trigger family discovery** — rerun `discover-strategies` on the **v3 OHLCV catalog**
+   (44 triggers + 100 filters; implemented 2026-06-08). Exclude or down-rank momentum-burst;
+   prioritize families with robust per-window label win rates. First v3 run: lower beam/depth
+   or expect long runtime.
 
 **Status (2026-06-08):** NR7 is the active discovery candidate (momentum-burst
 **discarded**). Initial SL-first donor run:

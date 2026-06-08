@@ -127,7 +127,67 @@ def _build_primary_features(df: pd.DataFrame) -> pd.DataFrame:
     features["bar_range_atr"] = bar_range / atr.replace(0, pd.NA)
     features["roc10"] = df["close"].pct_change(10).shift(1)
     features["hour_utc"] = df.index.hour.astype("int64")
+    typical_price = (df["high"] + df["low"] + df["close"]) / 3
+    session_day = pd.Series(df.index.date, index=df.index)
+    cumulative_tpv = (typical_price * df["volume"]).groupby(session_day).cumsum()
+    cumulative_volume = df["volume"].groupby(session_day).cumsum()
+    session_vwap = (cumulative_tpv / cumulative_volume.replace(0, pd.NA)).shift(1)
+    features["session_vwap"] = session_vwap
+    features["session_vwap_dist_pct"] = (
+        (df["close"] - session_vwap) / df["close"].replace(0, pd.NA)
+    ).shift(1)
+    features["session_open_hour"] = (
+        pd.Series(df.index.hour, index=df.index).groupby(session_day).transform("min")
+    )
+    bar_range = df["high"] - df["low"]
+    body = (df["close"] - df["open"]).abs()
+    features["upper_wick_ratio"] = (
+        (df["high"] - df[["open", "close"]].max(axis=1)) / body.replace(0, pd.NA)
+    ).shift(1)
+    features["lower_wick_ratio"] = (
+        (df[["open", "close"]].min(axis=1) - df["low"]) / body.replace(0, pd.NA)
+    ).shift(1)
+    features["gap_pct"] = (
+        (df["open"] - df["close"].shift(1)) / df["close"].shift(1).replace(0, pd.NA)
+    ).shift(1)
+    bull_bar = df["close"] > df["open"]
+    bear_bar = df["close"] < df["open"]
+    features["consecutive_bull"] = _consecutive_true_count(bull_bar).shift(1)
+    features["consecutive_bear"] = _consecutive_true_count(bear_bar).shift(1)
+    features["prior_bar_same_color"] = (
+        bull_bar.astype("boolean") == bull_bar.shift(1).astype("boolean")
+    ).shift(1)
+    atr5 = true_range.rolling(5, min_periods=5).mean().shift(1)
+    features["atr_ratio_5_20"] = (atr5 / atr.replace(0, pd.NA)).shift(1)
+    features["bb_width_rank_20"] = (
+        features["bb_width_pct"].rolling(20, min_periods=10).rank(pct=True).shift(1)
+    )
+    features["bar_range_rank_20"] = (
+        (bar_range / atr.replace(0, pd.NA)).rolling(20, min_periods=10).rank(pct=True).shift(1)
+    )
+    rolling_bb_min = features["bb_width_pct"].rolling(20, min_periods=10).min().shift(1)
+    features["bb_at_20bar_low"] = features["bb_width_pct"] <= rolling_bb_min
+    features["bb_expanding"] = features["bb_width_pct"] > features["bb_width_pct"].shift(1) * 1.1
+    features["is_nr4"] = bar_range <= bar_range.rolling(4, min_periods=4).min()
+    features["is_nr14"] = bar_range <= bar_range.rolling(14, min_periods=14).min()
+    features["donchian_high_20"] = df["high"].rolling(20, min_periods=10).max().shift(1)
+    features["donchian_low_20"] = df["low"].rolling(20, min_periods=10).min().shift(1)
+    features["volume_ratio_20"] = (
+        df["volume"] / features["volume_median20"].replace(0, pd.NA)
+    ).shift(1)
+    features["close_location"] = (
+        (df["close"] - df["low"]) / bar_range.replace(0, pd.NA)
+    ).shift(1)
+    ema12 = df["close"].ewm(span=12, adjust=False).mean().shift(1)
+    ema26 = df["close"].ewm(span=26, adjust=False).mean().shift(1)
+    features["macd_proxy"] = ema12 - ema26
+    features["macd_signal_proxy"] = features["macd_proxy"].ewm(span=9, adjust=False).mean()
     return features
+
+
+def _consecutive_true_count(mask: pd.Series) -> pd.Series:
+    groups = (mask != mask.shift(fill_value=False)).cumsum()
+    return mask.groupby(groups).cumsum().astype("int64")
 
 
 def _aligned_context_direction(

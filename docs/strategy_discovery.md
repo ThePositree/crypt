@@ -272,7 +272,37 @@ Session / volume:
 - `session_ny` — hour UTC in [13, 21).
 - `volume_above_median` — volume ≥ 20-bar median (not the 0.5× floor).
 
-**Catalog size:** 14 triggers + 33 filters (v1 + v2).
+**Catalog size (v1 + v2):** 14 triggers + 33 filters.
+
+### v3 (OHLCV catalog expansion)
+
+Added in `catalog_expansion.py` — candle patterns, session/VWAP, compression/
+expansion, parameterized threshold filters. All v3 blocks are **discovery-only**
+until mapped in `convert.py`.
+
+**Triggers (+30):** `h1_hammer`, `h1_shooting_star`, `h1_three_soldiers`,
+`h1_three_crows`, `h1_tweezer_bottom`, `h1_tweezer_top`, `h1_morning_star_proxy`,
+`h1_evening_star_proxy`, `h1_pin_bar_bull`, `h1_pin_bar_bear`,
+`h1_gap_up_continuation`, `h1_gap_down_continuation`, `h1_nr4_breakout`,
+`h1_nr14_breakout`, `h1_donchian_20_break`, `h1_donchian_48_break`,
+`h1_vwap_reclaim`, `h1_vwap_reject`, `h1_compression_breakout`,
+`h1_expansion_burst`, `h1_session_open_break`, `h1_higher_high_higher_close`,
+`h1_lower_low_lower_close`, `h1_double_bottom_sweep`, `h1_double_top_sweep`,
+`h1_volume_spike_breakout`, `h1_closing_range_high`, `h1_closing_range_low`,
+`h1_ema50_bounce`, `h1_macd_proxy_cross`.
+
+**Filters (+67):** session (`session_asia`, `session_overlap`, `session_off_hours`,
+`session_open_hour`), VWAP distance bands, volatility compression/expansion
+(`vol_compression_active`, `bb_width_rank_*`, `atr_ratio_5_20_*`), candle
+sequences (`consecutive_bull_*`, `prior_bar_same_color`), parameterized BB width
+(`bb_width_max_2pct` … `bb_width_min_12pct`), RSI bands (`rsi_max_30` …),
+volume spikes, gap filters, wick dominance, NR4/NR14 flags, EMA50/MACD alignment.
+
+**Total catalog:** **44 triggers + 100 filters**.
+
+**Search warning:** beam search over 100 filters explodes combinatorially. Use
+lower `beam-width` / `max-filter-depth` for first v3 runs, or pre-filter trigger
+families.
 
 Donor conversion currently supports only the v1 subset documented in §13.
 v2 blocks are discovery-only until mapped in `convert.py`.
@@ -412,6 +442,8 @@ The checked-in reference configs:
 ```text
 strategies/backtester/crypt_ensemble_h1_discovery_momentum_burst_short.json
 strategies/backtester/crypt_ensemble_h1_discovery_nr7_bb_squeeze_h4.json
+strategies/backtester/crypt_ensemble_h1_discovery_vwap_reclaim_robust.json
+strategies/backtester/crypt_ensemble_h1_discovery_nr4_vwap_robust.json
 ```
 
 Conversion rules:
@@ -424,12 +456,20 @@ Conversion rules:
 - `bb_squeeze` maps to `max_bb_width_pct = 0.04`;
 - `trend_strength_min` maps to `min_trend_strength_atr = 0.5`;
 - `avoid_low_volume` maps to `min_volume_median_ratio = 0.5`;
+- v3 filters (2026-06-09): `avoid_doji` → `min_body_to_range = 0.15`;
+  `bb_width_rank_min_low` → `min_bb_width_rank_20 = 0.2`;
+  `session_off_hours` → `require_session_off_hours = true`;
+  `vwap_dist_max_1pct` → `max_session_vwap_dist_pct = 0.01`;
+  `vwap_dist_min_0_2pct` → `min_session_vwap_dist_pct = 0.002`;
+- v3 triggers: `h1_vwap_reclaim`, `h1_nr4_breakout` (donor raw rules in
+  `crypt_ensemble.py`, discovery-feature aligned);
 - converted raw configs enable `allow_atr_sl_fallback = true` because discovery
   triggers such as `h1_momentum_burst` and `h1_nr7_breakout` do not provide
   structural stop anchors.
 
 Faithful conversion is intended for `h1_candle_confirm`, `h1_momentum_burst`,
-and `h1_nr7_breakout` when paired with mapped discovery filters. Structural
+`h1_nr7_breakout`, `h1_nr4_breakout`, and `h1_vwap_reclaim` when paired with
+mapped discovery filters. Structural
 discovery triggers (`h1_sweep_reversal`, `h1_structure_break`,
 `h1_order_block_retest`) use simplified OHLCV rules in discovery but
 SMC-backed raw rules in donor execution; convert those only for diagnostic

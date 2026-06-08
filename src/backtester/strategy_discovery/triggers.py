@@ -11,6 +11,8 @@ TriggerFn = Callable[[DiscoveryDataset], list[DiscoveryEvent]]
 
 
 def trigger_catalog() -> dict[str, TriggerFn]:
+    from backtester.strategy_discovery.catalog_expansion import expansion_trigger_catalog
+
     return {
         "h1_candle_confirm": _h1_candle_confirm,
         "h1_sweep_reversal": _h1_sweep_reversal,
@@ -26,6 +28,7 @@ def trigger_catalog() -> dict[str, TriggerFn]:
         "h1_engulfing": _h1_engulfing,
         "h1_inside_bar_breakout": _h1_inside_bar_breakout,
         "h1_nr7_breakout": _h1_nr7_breakout,
+        **expansion_trigger_catalog(),
     }
 
 
@@ -317,7 +320,34 @@ def _base_metadata(
         "ema_stack_long": bool(features.get("ema_stack_long", False)),
         "ema_stack_short": bool(features.get("ema_stack_short", False)),
         "sma20": _float_or_none(features.get("sma20")),
+        "ema50": _float_or_none(features.get("ema50")),
+        "session_vwap_dist_pct": _float_or_none(features.get("session_vwap_dist_pct")),
+        "session_vwap": _float_or_none(features.get("session_vwap")),
+        "session_open_hour": _int_or_none(features.get("session_open_hour")),
+        "upper_wick_ratio": _float_or_none(features.get("upper_wick_ratio")),
+        "lower_wick_ratio": _float_or_none(features.get("lower_wick_ratio")),
+        "gap_pct": _float_or_none(features.get("gap_pct")),
+        "consecutive_bull": _int_or_none(features.get("consecutive_bull")),
+        "consecutive_bear": _int_or_none(features.get("consecutive_bear")),
+        "prior_bar_same_color": _bool_or_none(features.get("prior_bar_same_color")),
+        "atr_ratio_5_20": _float_or_none(features.get("atr_ratio_5_20")),
+        "bb_width_rank_20": _float_or_none(features.get("bb_width_rank_20")),
+        "bar_range_rank_20": _float_or_none(features.get("bar_range_rank_20")),
+        "is_nr4": bool(features.get("is_nr4", False)),
+        "is_nr14": bool(features.get("is_nr14", False)),
+        "bb_at_20bar_low": bool(features.get("bb_at_20bar_low", False)),
+        "bb_expanding": bool(features.get("bb_expanding", False)),
+        "volume_ratio_20": _float_or_none(features.get("volume_ratio_20")),
+        "close_location": _float_or_none(features.get("close_location")),
+        "macd_proxy": _float_or_none(features.get("macd_proxy")),
+        "macd_signal_proxy": _float_or_none(features.get("macd_signal_proxy")),
     }
+
+
+def _bool_or_none(value: object) -> bool | None:
+    if value is None or pd.isna(value):
+        return None
+    return bool(value)
 
 
 def _int_or_none(value: object) -> int | None:

@@ -73,15 +73,25 @@ _TriggerRule = Literal[
     "h1_order_block_retest",
     "h1_candle_confirm",
     "h1_momentum_burst",
+    "h1_nr4_breakout",
     "h1_nr7_breakout",
+    "h1_vwap_reclaim",
 ]
+_V3_DISCOVERY_TRIGGERS = frozenset({"h1_nr4_breakout", "h1_vwap_reclaim"})
 _H1_STRUCTURAL_TRIGGER_RULES: tuple[_TriggerRule, ...] = (
     "h1_sweep_reversal",
     "h1_structure_break",
     "h1_order_block_retest",
 )
 _TRIGGER_RULES = frozenset(
-    (*_H1_STRUCTURAL_TRIGGER_RULES, "h1_candle_confirm", "h1_momentum_burst", "h1_nr7_breakout")
+    (
+        *_H1_STRUCTURAL_TRIGGER_RULES,
+        "h1_candle_confirm",
+        "h1_momentum_burst",
+        "h1_nr4_breakout",
+        "h1_nr7_breakout",
+        "h1_vwap_reclaim",
+    )
 )
 _DISCOVERY_CONTEXT_INCOMPLETE = frozenset({"missing", "neutral"})
 _SETUP_SOURCES = frozenset({"mtf", "h1_raw"})
@@ -130,6 +140,11 @@ class _SignalFilterConfig:
     min_trend_strength_atr: float | None = None
     min_volume_median_ratio: float | None = None
     max_bb_width_pct: float | None = None
+    min_body_to_range: float | None = None
+    min_bb_width_rank_20: float | None = None
+    require_session_off_hours: bool = False
+    max_session_vwap_dist_pct: float | None = None
+    min_session_vwap_dist_pct: float | None = None
 
 
 @dataclass(frozen=True)
@@ -140,6 +155,10 @@ class _DiscoveryBarFeatures:
     d1_context: str
     h4_context: str
     bb_width_pct: float | None = None
+    body_to_range: float | None = None
+    bb_width_rank_20: float | None = None
+    hour_utc: int | None = None
+    session_vwap_dist_pct: float | None = None
 
 
 class CryptEnsembleStrategy(BaseStrategy):
@@ -205,7 +224,7 @@ class CryptEnsembleStrategy(BaseStrategy):
                 h4=_candle_frame(strategy_data, Timeframe.H4),
                 d1=_candle_frame(strategy_data, Timeframe.D1),
             )
-            if _uses_discovery_features(self.signal_filters)
+            if _needs_discovery_features(self.trigger_rules, self.signal_filters)
             else None
         )
         window_cache = (
@@ -269,10 +288,20 @@ class CryptEnsembleStrategy(BaseStrategy):
                         verdict = self._evaluate_context(setup_ctx)
                         setup_snapshot_cache[setup_key] = verdict
                     mtf = self._mtf_decision_from_verdict(
-                        verdict, ctx, setup_ctx, primary.loc[open_time]
+                        verdict,
+                        ctx,
+                        setup_ctx,
+                        primary.loc[open_time],
+                        discovery_features=discovery_features,
+                        open_time=open_time,
                     )
                 else:
-                    mtf = self._mtf_decision(ctx, primary.loc[open_time])
+                    mtf = self._mtf_decision(
+                        ctx,
+                        primary.loc[open_time],
+                        discovery_features=discovery_features,
+                        open_time=open_time,
+                    )
                 signal = _signal_from_verdict(
                     mtf.verdict,
                     signal_override=mtf.signal_override,
@@ -377,9 +406,23 @@ class CryptEnsembleStrategy(BaseStrategy):
             and Timeframe.H4 in self.timeframes.setup
         )
 
-    def _mtf_decision(self, ctx: EvaluationContext, price_row: pd.Series) -> _MTFDecision:
+    def _mtf_decision(
+        self,
+        ctx: EvaluationContext,
+        price_row: pd.Series,
+        *,
+        discovery_features: pd.DataFrame | None = None,
+        open_time: pd.Timestamp | None = None,
+    ) -> _MTFDecision:
         verdict = self._evaluate_context(ctx)
-        return self._mtf_decision_from_verdict(verdict, ctx, ctx, price_row)
+        return self._mtf_decision_from_verdict(
+            verdict,
+            ctx,
+            ctx,
+            price_row,
+            discovery_features=discovery_features,
+            open_time=open_time,
+        )
 
     def _mtf_decision_from_verdict(
         self,
@@ -387,6 +430,9 @@ class CryptEnsembleStrategy(BaseStrategy):
         trigger_ctx: EvaluationContext,
         setup_ctx: EvaluationContext,
         price_row: pd.Series,
+        *,
+        discovery_features: pd.DataFrame | None = None,
+        open_time: pd.Timestamp | None = None,
     ) -> _MTFDecision:
         setup_direction = verdict.decision
         context_bias = _context_bias(setup_ctx)
@@ -398,6 +444,8 @@ class CryptEnsembleStrategy(BaseStrategy):
                 rules=self.trigger_rules,
                 max_age_bars=self.max_trigger_age_bars,
                 context_bias=context_bias,
+                discovery_features=discovery_features,
+                open_time=open_time,
             )
         if self.timeframes.execution == Timeframe.H4:
             return _MTFDecision(
@@ -514,6 +562,19 @@ def _signal_filter_config(params: dict[str, Any]) -> _SignalFilterConfig:
         max_bb_width_pct=_optional_non_negative_float(
             params.get("max_bb_width_pct"), "max_bb_width_pct"
         ),
+        min_body_to_range=_optional_non_negative_float(
+            params.get("min_body_to_range"), "min_body_to_range"
+        ),
+        min_bb_width_rank_20=_optional_non_negative_float(
+            params.get("min_bb_width_rank_20"), "min_bb_width_rank_20"
+        ),
+        require_session_off_hours=bool(params.get("require_session_off_hours", False)),
+        max_session_vwap_dist_pct=_optional_non_negative_float(
+            params.get("max_session_vwap_dist_pct"), "max_session_vwap_dist_pct"
+        ),
+        min_session_vwap_dist_pct=_optional_non_negative_float(
+            params.get("min_session_vwap_dist_pct"), "min_session_vwap_dist_pct"
+        ),
     )
 
 
@@ -587,6 +648,20 @@ def _uses_discovery_features(filters: _SignalFilterConfig) -> bool:
         or filters.min_trend_strength_atr is not None
         or filters.min_volume_median_ratio is not None
         or filters.max_bb_width_pct is not None
+        or filters.min_body_to_range is not None
+        or filters.min_bb_width_rank_20 is not None
+        or filters.require_session_off_hours
+        or filters.max_session_vwap_dist_pct is not None
+        or filters.min_session_vwap_dist_pct is not None
+    )
+
+
+def _needs_discovery_features(
+    trigger_rules: tuple[_TriggerRule, ...],
+    filters: _SignalFilterConfig,
+) -> bool:
+    return _uses_discovery_features(filters) or bool(
+        set(trigger_rules).intersection(_V3_DISCOVERY_TRIGGERS)
     )
 
 
@@ -597,6 +672,7 @@ def _discovery_bar_features(
     volume: float,
 ) -> _DiscoveryBarFeatures:
     row = features.loc[open_time]
+    hour_utc = _int_or_none(row.get("hour_utc"))
     return _DiscoveryBarFeatures(
         trend_strength_atr=_finite_float_or_none(row.get("trend_strength_atr")),
         volume=volume,
@@ -604,16 +680,33 @@ def _discovery_bar_features(
         d1_context=str(row.get("d1_context", "missing")),
         h4_context=str(row.get("h4_context", "missing")),
         bb_width_pct=_finite_float_or_none(row.get("bb_width_pct")),
+        body_to_range=_finite_float_or_none(row.get("body_to_range")),
+        bb_width_rank_20=_finite_float_or_none(row.get("bb_width_rank_20")),
+        hour_utc=hour_utc,
+        session_vwap_dist_pct=_finite_float_or_none(row.get("session_vwap_dist_pct")),
     )
 
 
 def _finite_float_or_none(value: object) -> float | None:
     if value is None or pd.isna(value):
         return None
-    result = float(value)
+    if isinstance(value, int | float):
+        result = float(value)
+    elif isinstance(value, str | bytes | bytearray):
+        result = float(value)
+    else:
+        return None
     if not np.isfinite(result):
         return None
     return result
+
+
+def _int_or_none(value: object) -> int | None:
+    if value is None or pd.isna(value):
+        return None
+    if isinstance(value, int | float | str | bytes | bytearray):
+        return int(value)
+    return None
 
 
 def _positive_int(value: object, name: str) -> int:
@@ -934,12 +1027,16 @@ def _raw_h1_decision(
     rules: tuple[_TriggerRule, ...],
     max_age_bars: int,
     context_bias: str,
+    discovery_features: pd.DataFrame | None = None,
+    open_time: pd.Timestamp | None = None,
 ) -> _MTFDecision:
     selected = _select_raw_h1_trigger(
         ctx=ctx,
         price_row=price_row,
         rules=rules,
         max_age_bars=max_age_bars,
+        discovery_features=discovery_features,
+        open_time=open_time,
     )
     if selected is None:
         return _MTFDecision(
@@ -968,6 +1065,8 @@ def _select_raw_h1_trigger(
     price_row: pd.Series,
     rules: tuple[_TriggerRule, ...],
     max_age_bars: int,
+    discovery_features: pd.DataFrame | None = None,
+    open_time: pd.Timestamp | None = None,
 ) -> tuple[int, str] | None:
     state = _structural_stop_state_for_timeframe(ctx, Timeframe.H1)
     for rule in rules:
@@ -1014,6 +1113,22 @@ def _select_raw_h1_trigger(
             )
             if nr7_signal != 0:
                 return nr7_signal, "raw_h1_nr7_breakout"
+        if rule == "h1_nr4_breakout":
+            nr4_signal = _raw_h1_nr4_breakout_signal(
+                price_row=price_row,
+                discovery_features=discovery_features,
+                open_time=open_time,
+            )
+            if nr4_signal != 0:
+                return nr4_signal, "raw_h1_nr4_breakout"
+        if rule == "h1_vwap_reclaim":
+            vwap_signal = _raw_h1_vwap_reclaim_signal(
+                price_row=price_row,
+                discovery_features=discovery_features,
+                open_time=open_time,
+            )
+            if vwap_signal != 0:
+                return vwap_signal, "raw_h1_vwap_reclaim"
     return None
 
 
@@ -1124,6 +1239,46 @@ def _raw_h1_momentum_burst_signal(
     if current_return > threshold and current_close > current_open:
         return 1
     if current_return < -threshold and current_close < current_open:
+        return -1
+    return 0
+
+
+def _raw_h1_nr4_breakout_signal(
+    *,
+    price_row: pd.Series,
+    discovery_features: pd.DataFrame | None,
+    open_time: pd.Timestamp | None,
+) -> int:
+    if discovery_features is None or open_time is None or open_time not in discovery_features.index:
+        return 0
+    if not bool(discovery_features.loc[open_time].get("is_nr4", False)):
+        return 0
+    return _candle_direction_signal(price_row)
+
+
+def _raw_h1_vwap_reclaim_signal(
+    *,
+    price_row: pd.Series,
+    discovery_features: pd.DataFrame | None,
+    open_time: pd.Timestamp | None,
+) -> int:
+    if discovery_features is None or open_time is None or open_time not in discovery_features.index:
+        return 0
+    position = discovery_features.index.get_loc(open_time)
+    if isinstance(position, slice):
+        return 0
+    if position < 1:
+        return 0
+    dist_curr = _finite_float_or_none(discovery_features.iloc[position]["session_vwap_dist_pct"])
+    dist_prev = _finite_float_or_none(
+        discovery_features.iloc[position - 1]["session_vwap_dist_pct"]
+    )
+    if dist_curr is None or dist_prev is None:
+        return 0
+    candle_signal = _candle_direction_signal(price_row)
+    if candle_signal == 1 and dist_prev < 0 and dist_curr >= 0:
+        return 1
+    if candle_signal == -1 and dist_prev > 0 and dist_curr <= 0:
         return -1
     return 0
 
@@ -1399,7 +1554,42 @@ def _apply_signal_filters(
             return _neutralized_filtered_stop(stop, "missing_bb_width_pct")
         if width > filters.max_bb_width_pct:
             return _neutralized_filtered_stop(stop, f"bb_not_squeezed:{width:.4f}")
+    if filters.min_body_to_range is not None:
+        ratio = None if discovery is None else discovery.body_to_range
+        if ratio is None:
+            return _neutralized_filtered_stop(stop, "missing_body_to_range")
+        if ratio < filters.min_body_to_range:
+            return _neutralized_filtered_stop(stop, f"doji_like:{ratio:.4f}")
+    if filters.min_bb_width_rank_20 is not None:
+        rank = None if discovery is None else discovery.bb_width_rank_20
+        if rank is None:
+            return _neutralized_filtered_stop(stop, "missing_bb_width_rank_20")
+        if rank < filters.min_bb_width_rank_20:
+            return _neutralized_filtered_stop(stop, f"bb_width_rank_min_low_fail:{rank:.4f}")
+    if filters.require_session_off_hours:
+        hour = None if discovery is None else discovery.hour_utc
+        if hour is None:
+            return _neutralized_filtered_stop(stop, "missing_hour_utc")
+        if not _is_session_off_hours(hour):
+            return _neutralized_filtered_stop(stop, "in_session")
+    if filters.max_session_vwap_dist_pct is not None:
+        dist = None if discovery is None else discovery.session_vwap_dist_pct
+        if dist is None:
+            return _neutralized_filtered_stop(stop, "missing_session_vwap_dist_pct")
+        if dist > filters.max_session_vwap_dist_pct:
+            return _neutralized_filtered_stop(stop, f"vwap_dist_max_fail:{dist:.4f}")
+    if filters.min_session_vwap_dist_pct is not None:
+        dist = None if discovery is None else discovery.session_vwap_dist_pct
+        if dist is None:
+            return _neutralized_filtered_stop(stop, "missing_session_vwap_dist_pct")
+        if dist < filters.min_session_vwap_dist_pct:
+            return _neutralized_filtered_stop(stop, f"vwap_dist_min_fail:{dist:.4f}")
     return stop, None
+
+
+def _is_session_off_hours(hour_utc: int) -> bool:
+    in_session = (7 <= hour_utc < 15) or (13 <= hour_utc < 21)
+    return not in_session
 
 
 def _neutralized_filtered_stop(stop: _StopPlan, reason: str) -> tuple[_StopPlan, str]:

@@ -4,6 +4,28 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-08 — Strategy discovery catalog v3 (OHLCV expansion)
+
+**What:** expanded discovery catalog with ~97 new OHLCV-native blocks: candle
+patterns, session/VWAP, volatility compression/expansion, candle sequences,
+parameterized RSI/BB/volume thresholds.
+
+**Why now:** full-year baseline discovery (label 1.0/24) showed limited trigger
+diversity; owner requested +70–90 blocks to widen beam-search space beyond
+`h1_candle_confirm` monopoly.
+
+**Result:** `catalog_expansion.py` (+30 triggers, +67 filters), extended
+`features.py`, merged into `triggers.py` / `filters.py`. Total **44 + 100**.
+All v3 blocks discovery-only (no `convert.py` mapping yet).
+
+**Acceptance:** `uv run pytest tests/backtester/test_strategy_discovery.py` green;
+spec `docs/strategy_discovery.md` § v3 updated.
+
+**Next:** owner-run discovery with v3 catalog (expect longer runtime than ~15 min
+baseline); consider `--label-atr-mult 1.5 --label-horizon-bars 36` experiment.
+
+---
+
 ## 2026-06-08 — Strategy execution context (ADR-0028)
 
 Wired CLI execution flags into `strategy.generate()` so tp_pct runs do not
