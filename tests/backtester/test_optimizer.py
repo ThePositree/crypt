@@ -4,6 +4,7 @@ from typing import Any
 
 import optuna
 import pandas as pd
+import pytest
 
 from backtester import cli_runner
 from backtester import optimizer as optimizer_mod
@@ -196,10 +197,12 @@ def test_run_parameter_optimization_exports_trials_and_best_run(
                 "trail_distance_atr": 1.5,
                 "max_positions": 3,
                 "position_ttl_bars": 30,
+                "tp_move_pct": 0.012,
             }, _FakeStudy()
 
-        def cached_signals_for_params(self, params):
+        def cached_signals_for_params(self, params, *, execution_context=None):
             captured["cached_params"] = params
+            captured["cached_execution_context"] = execution_context
             return df.assign(signal=0, sl_price=0.0)
 
     class _FakeResults:
@@ -260,6 +263,8 @@ def test_run_parameter_optimization_exports_trials_and_best_run(
             is_isolated_futures=False,
             max_allowed_margin=1.0,
             risk_base_period="monthly",
+            exit_geometry="tp_pct",
+            structural_sl_mode="ignore",
         ),
         optimizer_args=OptimizerSearchArgs(
             trials=3,
@@ -274,6 +279,7 @@ def test_run_parameter_optimization_exports_trials_and_best_run(
             max_positions_values=(1, 2, 3, 5),
             max_positions_range=(1, 3, 1),
             position_ttl_bars_range=(24, 48, 6),
+            tp_move_pct_range=None,
             optimize_daily_limits=False,
             optimize_trading_window=False,
             export_best_run=True,
@@ -297,6 +303,60 @@ def test_run_parameter_optimization_exports_trials_and_best_run(
     assert captured["best_run_kwargs"]["trail_distance_atr"] == 1.5
     assert captured["best_run_kwargs"]["max_positions"] == 3
     assert captured["best_run_kwargs"]["position_ttl_bars"] == 30
+    assert captured["best_run_kwargs"]["exit_geometry"] == "tp_pct"
+    assert captured["best_run_kwargs"]["tp_move_pct"] == pytest.approx(0.012)
+    assert captured["best_run_kwargs"]["structural_sl_mode"] == "ignore"
+    assert captured["cached_execution_context"] is not None
+    assert captured["cached_execution_context"].exit_geometry == "tp_pct"
     assert "signal" in captured["best_signal_columns"]
     assert captured["best_run_folder"] == str(tmp_path / "best_run")
     assert captured["best_run_rows"] == 1
+
+
+def test_parameter_optimizer_suggests_tp_move_pct_when_range_enabled(monkeypatch):
+    captured: dict[str, Any] = {}
+
+    class Backtester:
+        def __init__(self, df, strategy):
+            captured["strategy"] = strategy
+
+        def run(self, **kwargs):
+            captured["run_kwargs"] = kwargs
+            return _DummyResults()
+
+    monkeypatch.setattr(optimizer_mod, "Backtester", Backtester)
+
+    df = pd.DataFrame(
+        {
+            "open": [1.0],
+            "high": [1.0],
+            "low": [1.0],
+            "close": [1.0],
+            "volume": [1.0],
+        },
+        index=pd.to_datetime(["2025-01-01"], utc=True),
+    )
+    optimizer = ParameterOptimizer(
+        df=df,
+        strategy_class=_DummyStrategy,
+        target=TargetFunction(
+            fn=lambda results: float(results.metrics["total_return_pct"]),
+            direction="maximize",
+        ),
+        optimize_strategy_params=False,
+        risk_percent_range=None,
+        rrr_range=(1.0, 1.5, 0.25),
+        position_ttl_bars_range=None,
+        tp_move_pct_range=(0.008, 0.016, 0.004),
+        exit_geometry="sl_rrr",
+        optimize_daily_limits=False,
+        optimize_trading_window=False,
+    )
+
+    value = optimizer._objective(  # noqa: SLF001
+        optuna.trial.FixedTrial({"rrr": 1.25, "tp_move_pct": 0.012})
+    )
+
+    assert value == 1.5
+    assert captured["run_kwargs"]["exit_geometry"] == "tp_pct"
+    assert captured["run_kwargs"]["tp_move_pct"] == pytest.approx(0.012)

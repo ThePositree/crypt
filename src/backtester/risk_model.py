@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
+from .exit_geometry import ExitGeometryConfig, resolve_exit_levels
 from .margin_policy import per_entry_margin_cap, select_leverage_and_locked_margin
 
 logger = logging.getLogger(__name__)
@@ -71,6 +72,8 @@ class RiskResult:
         Absolute risk in currency units put at risk in this trade.
     sl_dist : float
         Distance from entry to stop loss in price units.
+    sl_price : float
+        Resolved stop-loss price level.
     tp_price : float
         Take-profit price level.
     is_long : bool
@@ -86,6 +89,7 @@ class RiskResult:
     locked_margin: float
     risk_value: float
     sl_dist: float
+    sl_price: float
     tp_price: float
     is_long: bool
     available_balance: float
@@ -139,6 +143,7 @@ class BasicRiskModel(RiskModel):
         max_allowed_margin: float,
         max_positions: int,
         max_allowed_leverage: float,
+        exit_geometry_config: ExitGeometryConfig | None = None,
     ) -> None:
         """
         Create a basic risk model.
@@ -154,11 +159,14 @@ class BasicRiskModel(RiskModel):
         max_allowed_leverage : float
             Maximum allowed leverage. If required leverage exceeds this value,
             the trade is rejected.
+        exit_geometry_config : ExitGeometryConfig | None
+            TP/SL placement mode. Defaults to legacy SL-first ``sl_rrr``.
         """
 
         self._max_allowed_margin = max_allowed_margin
         self._max_positions = max_positions
         self._max_allowed_leverage = max_allowed_leverage
+        self._exit_geometry_config = exit_geometry_config or ExitGeometryConfig()
 
     def calculate_position(self, ctx: EntryContext) -> Optional[RiskResult]:
         """
@@ -175,21 +183,26 @@ class BasicRiskModel(RiskModel):
 
         is_long = signal == 1
         entry_price = ctx.entry_price
-        sl_price = ctx.sl_price
+        structural_sl_price = ctx.sl_price
 
-        # Distance to SL
-        if is_long:
-            sl_dist = entry_price - sl_price
-        else:
-            sl_dist = sl_price - entry_price
-
-        if sl_dist <= 0:
+        resolved = resolve_exit_levels(
+            signal=signal,
+            entry_price=entry_price,
+            structural_sl_price=structural_sl_price,
+            rrr=ctx.rrr,
+            config=self._exit_geometry_config,
+        )
+        if resolved is None:
             logger.debug(
-                "Invalid SL %r >= entry %r, skipping signal",
-                sl_price,
+                "Exit geometry rejected trade at entry %r (structural sl %r)",
                 entry_price,
+                structural_sl_price,
             )
             return None
+
+        sl_price = resolved.sl_price
+        sl_dist = resolved.sl_dist
+        tp_price = resolved.tp_price
 
         # Available balance and risk
         total_locked_margin = ctx.total_locked_margin
@@ -225,12 +238,6 @@ class BasicRiskModel(RiskModel):
 
         required_leverage, locked_margin = leverage_result
 
-        # Take-profit price
-        if is_long:
-            tp_price = entry_price + sl_dist * ctx.rrr
-        else:
-            tp_price = entry_price - sl_dist * ctx.rrr
-
         return RiskResult(
             size=size,
             position_value=position_value,
@@ -238,6 +245,7 @@ class BasicRiskModel(RiskModel):
             locked_margin=locked_margin,
             risk_value=risk_value,
             sl_dist=sl_dist,
+            sl_price=sl_price,
             tp_price=tp_price,
             is_long=is_long,
             available_balance=available_balance,

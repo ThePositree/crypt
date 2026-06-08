@@ -5,11 +5,16 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import pytest
 from click.testing import CliRunner
 from pytest import MonkeyPatch
 
 from backtester.__main__ import cli
 from backtester.data_contracts import StrategyData
+from backtester.strategy_discovery.convert import (
+    DiscoveryConversionError,
+    convert_discovery_strategy,
+)
 from backtester.strategy_discovery.events import DiscoveryEvent
 from backtester.strategy_discovery.features import DiscoveryDataset, build_discovery_dataset
 from backtester.strategy_discovery.filters import filter_catalog
@@ -346,3 +351,170 @@ def _event(
         symbol=dataset.symbol,
         metadata={},
     )
+
+
+def test_v2_triggers_emit_events_on_synthetic_patterns() -> None:
+    triggers = trigger_catalog()
+    assert len(triggers) == 14
+
+    engulfing = _dataset_from_ohlcv(
+        [
+            (10.0, 10.2, 9.8, 9.9),
+            (9.85, 10.3, 9.8, 10.2),
+        ],
+        atr=1.0,
+    )
+    events = triggers["h1_engulfing"](engulfing)
+    assert len(events) == 1
+    assert events[0].side == "long"
+
+    ema_dataset = build_discovery_dataset(
+        data=_trend_frame(80),
+        window_label="sample",
+        symbol="SOL-USDT-SWAP",
+    )
+    ema_events = triggers["h1_ema_cross"](ema_dataset)
+    assert ema_events
+
+
+def test_v2_filters_use_extended_metadata() -> None:
+    dataset = _dataset_from_close_path([10, 11, 12])
+    event = _event(dataset, index=1, side="long", entry=11)
+    event.metadata.update(
+        {
+            "close": 11.0,
+            "sma20": 10.5,
+            "rsi14": 45.0,
+            "volatility_rank": 0.15,
+            "bb_width_pct": 0.03,
+            "body_to_range": 0.6,
+            "bar_range_atr": 0.5,
+            "hour_utc": 10,
+            "trend_strength_atr": 1.0,
+            "volume": 150.0,
+            "volume_median20": 100.0,
+            "roc10": 0.02,
+            "ema_stack_long": True,
+            "ema_stack_short": False,
+        }
+    )
+    filters = filter_catalog()
+    assert len(filters) == 33
+
+    assert filters["trend_ema_stack_aligned"](event, dataset).passed
+    assert filters["sma20_side_aligned"](event, dataset).passed
+    assert filters["rsi_side_aligned"](event, dataset).passed
+    assert filters["volatility_low_only"](event, dataset).passed
+    assert filters["bb_squeeze"](event, dataset).passed
+    assert filters["session_london"](event, dataset).passed
+    assert filters["volume_above_median"](event, dataset).passed
+    assert filters["roc_side_aligned"](event, dataset).passed
+
+    short_event = _event(dataset, index=1, side="short", entry=11)
+    short_event.metadata.update(event.metadata)
+    short_event.metadata["ema_stack_long"] = False
+    short_event.metadata["ema_stack_short"] = True
+    short_event.metadata["roc10"] = -0.02
+    short_event.metadata["rsi14"] = 55.0
+    assert filters["trend_ema_stack_aligned"](short_event, dataset).passed
+    assert filters["roc_side_aligned"](short_event, dataset).passed
+
+
+def test_build_discovery_features_includes_v2_columns() -> None:
+    dataset = build_discovery_dataset(
+        data=_trend_frame(120),
+        window_label="sample",
+        symbol="SOL-USDT-SWAP",
+    )
+    row = dataset.features.iloc[-1]
+    for column in (
+        "ema9",
+        "ema21",
+        "bb_upper",
+        "bb_lower",
+        "bb_width_pct",
+        "body_to_range",
+        "bar_range_atr",
+        "roc10",
+        "hour_utc",
+    ):
+        assert column in dataset.features.columns
+        assert pd.notna(row[column])
+    assert "rsi14" in dataset.features.columns
+    assert dataset.features["rsi14"].iloc[-1] == pytest.approx(100.0)
+
+
+def test_convert_discovery_strategy_maps_selected_candidate() -> None:
+    payload = {
+        "name": "strategy_discovery_candidate",
+        "params": {
+            "discovery_schema_version": 1,
+            "trigger": "h1_momentum_burst",
+            "filters": [
+                "avoid_low_volume",
+                "block_context_reversal",
+                "side_short_only",
+                "trend_strength_min",
+            ],
+        },
+        "metrics": {"win_rate": 0.5573, "passed_events": 325},
+    }
+
+    converted = convert_discovery_strategy(payload)
+
+    assert converted["name"] == "crypt_ensemble"
+    assert converted["params"]["setup_source"] == "h1_raw"
+    assert converted["params"]["trigger_rules"] == ["h1_momentum_burst"]
+    assert converted["params"]["allowed_sides"] == ["short"]
+    assert converted["params"]["block_d1_h4_context_reversal"] is True
+    assert converted["params"]["min_trend_strength_atr"] == 0.5
+    assert converted["params"]["min_volume_median_ratio"] == 0.5
+    assert converted["params"]["allow_atr_sl_fallback"] is True
+    assert converted["discovery_source"]["candidate_id"].startswith("h1_momentum_burst")
+
+
+def test_convert_discovery_strategy_maps_nr7_candidate() -> None:
+    payload = {
+        "name": "strategy_discovery_candidate",
+        "params": {
+            "discovery_schema_version": 1,
+            "trigger": "h1_nr7_breakout",
+            "filters": ["bb_squeeze", "h4_context_aligned"],
+        },
+        "metrics": {"win_rate": 0.5856, "passed_events": 222},
+    }
+
+    converted = convert_discovery_strategy(payload)
+
+    assert converted["params"]["trigger_rules"] == ["h1_nr7_breakout"]
+    assert converted["params"]["require_h4_context_aligned"] is True
+    assert converted["params"]["max_bb_width_pct"] == 0.04
+    assert converted["params"]["allow_atr_sl_fallback"] is True
+
+
+def test_convert_discovery_strategy_rejects_unsupported_filter() -> None:
+    payload = {
+        "name": "strategy_discovery_candidate",
+        "params": {
+            "discovery_schema_version": 1,
+            "trigger": "h1_momentum_burst",
+            "filters": ["d1_context_aligned"],
+        },
+    }
+
+    with pytest.raises(DiscoveryConversionError, match="not yet supported"):
+        convert_discovery_strategy(payload)
+
+
+def test_convert_discovery_strategy_rejects_unsupported_trigger() -> None:
+    payload = {
+        "name": "strategy_discovery_candidate",
+        "params": {
+            "discovery_schema_version": 1,
+            "trigger": "h1_range_breakout",
+            "filters": [],
+        },
+    }
+
+    with pytest.raises(DiscoveryConversionError, match="not yet supported"):
+        convert_discovery_strategy(payload)

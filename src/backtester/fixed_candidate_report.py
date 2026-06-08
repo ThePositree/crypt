@@ -11,6 +11,7 @@ import pandas as pd
 from backtester.cli_runner import (
     BacktestArgs,
     StrategyConfig,
+    backtest_run_kwargs,
     build_cli_data_loader,
     build_strategy_instance,
     export_and_optional_analysis,
@@ -63,6 +64,10 @@ class FixedCandidateParams:
     max_allowed_margin: float
     risk_base_period: str
     is_isolated_futures: bool
+    exit_geometry: str = "sl_rrr"
+    tp_move_pct: float | None = None
+    structural_sl_mode: str = "cap"
+    min_tp_move_pct: float = 0.004
 
     def to_backtest_args(self) -> BacktestArgs:
         return BacktestArgs(
@@ -83,6 +88,10 @@ class FixedCandidateParams:
             max_daily_loss=None,
             trading_begin=None,
             trading_end=None,
+            exit_geometry=self.exit_geometry,
+            tp_move_pct=self.tp_move_pct,
+            structural_sl_mode=self.structural_sl_mode,
+            min_tp_move_pct=self.min_tp_move_pct,
         )
 
 
@@ -180,6 +189,209 @@ def summarize_fixed_candidate_run(
     return row
 
 
+def _group_windows_by_symbol(windows: list[WindowSpec]) -> dict[str, list[WindowSpec]]:
+    grouped: dict[str, list[WindowSpec]] = {}
+    for window in windows:
+        grouped.setdefault(window.symbol, []).append(window)
+    for symbol in grouped:
+        grouped[symbol].sort(key=lambda item: item.start)
+    return grouped
+
+
+def _continuous_span_label(symbol: str) -> str:
+    token = symbol.split("-")[0].lower()
+    return f"{token}_continuous"
+
+
+def _continuous_span_for_symbol(windows: list[WindowSpec]) -> WindowSpec:
+    if not windows:
+        raise ValueError("windows must not be empty")
+    symbol = windows[0].symbol
+    if any(window.symbol != symbol for window in windows):
+        raise ValueError("continuous span requires a single symbol")
+    return WindowSpec(
+        label=_continuous_span_label(symbol),
+        symbol=symbol,
+        start=min(window.start for window in windows),
+        end=max(window.end for window in windows),
+    )
+
+
+def _frame_in_half_open_window(
+    frame: pd.DataFrame,
+    *,
+    start: str,
+    end: str,
+    time_column: str,
+) -> pd.DataFrame:
+    if frame.empty or time_column not in frame.columns:
+        return frame.iloc[0:0].copy()
+    times = pd.to_datetime(frame[time_column], utc=True, errors="coerce")
+    start_ts = pd.Timestamp(start, tz="UTC")
+    end_ts = pd.Timestamp(end, tz="UTC")
+    mask = times.notna() & (times >= start_ts) & (times < end_ts)
+    return frame.loc[mask].copy()
+
+
+def _trades_touching_window(trades: pd.DataFrame, *, start: str, end: str) -> pd.DataFrame:
+    if trades.empty:
+        return trades.copy()
+    if "entry_time" not in trades.columns:
+        raise ValueError("trades must include entry_time for continuous monthly slicing")
+    entered = _frame_in_half_open_window(trades, start=start, end=end, time_column="entry_time")
+    if "exit_time" not in trades.columns:
+        return entered
+    exited = _frame_in_half_open_window(trades, start=start, end=end, time_column="exit_time")
+    return pd.concat([entered, exited], ignore_index=True).drop_duplicates()
+
+
+def _signals_in_window(signals: pd.DataFrame, *, start: str, end: str) -> pd.DataFrame:
+    if signals.empty:
+        return signals.copy()
+    if isinstance(signals.index, pd.DatetimeIndex):
+        start_ts = pd.Timestamp(start, tz="UTC")
+        end_ts = pd.Timestamp(end, tz="UTC")
+        index = pd.to_datetime(signals.index, utc=True)
+        return signals.loc[(index >= start_ts) & (index < end_ts)].copy()
+    for column in ("tick_time", "entry_time", "signal_time"):
+        if column in signals.columns:
+            return _frame_in_half_open_window(signals, start=start, end=end, time_column=column)
+    return signals.copy()
+
+
+def _derive_monthly_row_from_continuous(
+    *,
+    month_window: WindowSpec,
+    params: FixedCandidateParams,
+    all_trades: pd.DataFrame,
+    all_signals: pd.DataFrame,
+    continuous_run_dir: Path,
+) -> dict[str, Any]:
+    month_trades = _trades_touching_window(
+        all_trades,
+        start=month_window.start,
+        end=month_window.end,
+    )
+    month_signals = _signals_in_window(
+        all_signals,
+        start=month_window.start,
+        end=month_window.end,
+    )
+    closed_month = _closed_trades(
+        _frame_in_half_open_window(
+            all_trades,
+            start=month_window.start,
+            end=month_window.end,
+            time_column="exit_time",
+        )
+    )
+    if closed_month.empty:
+        metrics: dict[str, Any] = {
+            "total_return_pct": 0.0,
+            "profit_factor": 0.0,
+            "max_drawdown": 0.0,
+            "total_trades": len(month_trades),
+            "closed_trades": 0,
+            "open_trades": int((month_trades.get("exit_reason") == "open").sum())
+            if not month_trades.empty and "exit_reason" in month_trades.columns
+            else 0,
+        }
+    else:
+        analyzer = ResultsAnalyzer(closed_month, signal_df=month_signals)
+        metrics = analyzer.generate()
+    row = summarize_fixed_candidate_run(
+        window=month_window,
+        params=params,
+        metrics=metrics,
+        signals=month_signals,
+        trades=month_trades,
+        run_dir=continuous_run_dir,
+    )
+    row["execution_mode"] = "continuous_derived"
+    row["continuous_run_dir"] = str(continuous_run_dir)
+    return row
+
+
+def _run_fixed_candidate_comparison_continuous(
+    *,
+    windows: list[WindowSpec],
+    cfg: StrategyConfig,
+    params: FixedCandidateParams,
+    data_dir: str,
+    primary_timeframe: str,
+    output_folder: str,
+    logger: logging.Logger,
+) -> pd.DataFrame:
+    output_path = Path(output_folder)
+    runs_path = output_path / "runs"
+    output_path.mkdir(parents=True, exist_ok=True)
+    runs_path.mkdir(parents=True, exist_ok=True)
+
+    indexed_rows: list[tuple[int, dict[str, Any]]] = []
+    window_index = {window.label: index for index, window in enumerate(windows)}
+
+    for symbol, symbol_windows in _group_windows_by_symbol(windows).items():
+        span = _continuous_span_for_symbol(symbol_windows)
+        run_dir = runs_path / span.label
+        logger.info(
+            "Running continuous fixed candidate for %s (%s -> %s)",
+            symbol,
+            span.start,
+            span.end,
+        )
+        _, continuous_row = _run_fixed_candidate_window(
+            index=0,
+            window=span,
+            cfg=cfg,
+            params=params,
+            data_dir=data_dir,
+            primary_timeframe=primary_timeframe,
+            run_dir=run_dir,
+        )
+        continuous_row["execution_mode"] = "continuous"
+        continuous_path = run_dir / "continuous_summary.json"
+        continuous_path.write_text(
+            pd.Series(continuous_row).to_json(force_ascii=False),
+            encoding="utf-8",
+        )
+
+        all_trades = pd.read_csv(run_dir / "trades.csv")
+        all_signals = pd.read_csv(run_dir / "signals.csv", index_col=0, parse_dates=True)
+
+        for month_window in symbol_windows:
+            indexed_rows.append(
+                (
+                    window_index[month_window.label],
+                    _derive_monthly_row_from_continuous(
+                        month_window=month_window,
+                        params=params,
+                        all_trades=all_trades,
+                        all_signals=all_signals,
+                        continuous_run_dir=run_dir,
+                    ),
+                )
+            )
+
+    rows = _rows_in_window_order(indexed_rows)
+    summary = pd.DataFrame(rows)
+    summary_path = output_path / "windows.csv"
+    summary.to_csv(summary_path, index=False)
+    markdown_path = output_path / "windows.md"
+    markdown_path.write_text(_to_markdown_table(summary) + "\n")
+    _export_mandate_report_from_runs(
+        summary=summary,
+        output_path=output_path,
+        initial_capital=params.capital,
+        logger=logger,
+    )
+    logger.info(
+        "Continuous fixed-candidate summary saved to: %s (%d derived monthly rows)",
+        summary_path,
+        len(summary),
+    )
+    return summary
+
+
 def run_fixed_candidate_comparison(
     *,
     windows: list[WindowSpec],
@@ -190,10 +402,22 @@ def run_fixed_candidate_comparison(
     output_folder: str,
     jobs: int,
     logger: logging.Logger,
+    continuous: bool = False,
 ) -> pd.DataFrame:
     if jobs < 1:
         raise ValueError("jobs must be >= 1")
     _validate_unique_labels(windows)
+
+    if continuous:
+        return _run_fixed_candidate_comparison_continuous(
+            windows=windows,
+            cfg=cfg,
+            params=params,
+            data_dir=data_dir,
+            primary_timeframe=primary_timeframe,
+            output_folder=output_folder,
+            logger=logger,
+        )
 
     output_path = Path(output_folder)
     runs_path = output_path / "runs"
@@ -892,25 +1116,7 @@ def _run_backtest_with_precomputed_signals(
     signals: pd.DataFrame,
     args: BacktestArgs,
 ) -> ResultsAnalyzer:
-    return Backtester(df, lambda _df: signals.copy()).run(
-        initial_capital=args.capital,
-        taker_fee=args.taker_fee,
-        maker_fee=args.maker_fee,
-        risk_percent=args.risk_percent,
-        rrr=args.rrr,
-        trail_activation_rrr=args.trail_activation_rrr,
-        trail_distance_atr=args.trail_distance_atr,
-        max_positions=args.max_positions,
-        position_ttl_bars=args.ttl,
-        max_allowed_leverage=args.max_allowed_leverage,
-        is_isolated_futures=args.is_isolated_futures,
-        max_allowed_margin=args.max_allowed_margin,
-        risk_base_period=args.risk_base_period,
-        max_daily_profit=args.max_daily_profit,
-        max_daily_loss=args.max_daily_loss,
-        trading_begin=args.trading_begin,
-        trading_end=args.trading_end,
-    )
+    return Backtester(df, lambda _df: signals.copy()).run(**backtest_run_kwargs(args))
 
 
 def _load_window_data(
@@ -967,6 +1173,10 @@ def _params_with_execution_values(
         max_allowed_margin=params.max_allowed_margin,
         risk_base_period=params.risk_base_period,
         is_isolated_futures=params.is_isolated_futures,
+        exit_geometry=params.exit_geometry,
+        tp_move_pct=params.tp_move_pct,
+        structural_sl_mode=params.structural_sl_mode,
+        min_tp_move_pct=params.min_tp_move_pct,
     )
 
 
@@ -1016,8 +1226,13 @@ def _export_mandate_report_from_runs(
     summary_frames: list[pd.DataFrame] = []
     for symbol, symbol_summary in summary.groupby("symbol", sort=False):
         frames: list[pd.DataFrame] = []
+        seen_trade_sources: set[str] = set()
         for _, row in symbol_summary.iterrows():
-            trades_path = Path(str(row["run_dir"])) / "trades.csv"
+            trade_source = str(row.get("continuous_run_dir") or row["run_dir"])
+            if trade_source in seen_trade_sources:
+                continue
+            seen_trade_sources.add(trade_source)
+            trades_path = Path(trade_source) / "trades.csv"
             if not trades_path.exists():
                 logger.warning("Skipping mandate report; missing trades file: %s", trades_path)
                 return
@@ -1091,7 +1306,7 @@ def _closed_trades(trades: pd.DataFrame) -> pd.DataFrame:
 
 
 def _closed_trade_count(trades: pd.DataFrame) -> int:
-    return int(len(_closed_trades(trades)))
+    return len(_closed_trades(trades))
 
 
 def _margin_summary(trades: pd.DataFrame, *, initial_capital: float) -> dict[str, Any]:

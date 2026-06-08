@@ -17,6 +17,7 @@ from typing import Any
 import pandas as pd
 
 from backtester.data_contracts import StrategyData, StrategyInput
+from backtester.execution_context import execution_context_from_run_kwargs
 from backtester.data_loader import (
     BaseDataLoader,
     BingxApiDataLoader,
@@ -118,6 +119,10 @@ class BacktestArgs:
     max_daily_loss: float | None = None
     trading_begin: int | None = None
     trading_end: int | None = None
+    exit_geometry: str = "sl_rrr"
+    tp_move_pct: float | None = None
+    structural_sl_mode: str = "cap"
+    min_tp_move_pct: float = 0.004
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,6 +141,7 @@ class OptimizerSearchArgs:
     max_positions_values: tuple[int, ...] | None
     max_positions_range: tuple[int, int, int] | None
     position_ttl_bars_range: tuple[int, int, int] | None
+    tp_move_pct_range: tuple[float, float, float] | None
     optimize_daily_limits: bool
     optimize_trading_window: bool
     export_best_run: bool
@@ -218,6 +224,10 @@ _BACKTEST_ARG_KEYS = frozenset(
         "max_daily_loss",
         "trading_begin",
         "trading_end",
+        "exit_geometry",
+        "tp_move_pct",
+        "structural_sl_mode",
+        "min_tp_move_pct",
     }
 )
 
@@ -447,29 +457,38 @@ def build_strategy_instance(
     return strategy_cls(params)
 
 
+def backtest_run_kwargs(args: BacktestArgs) -> dict[str, Any]:
+    """Keyword arguments for :meth:`backtester.tester.Backtester.run`."""
+    return {
+        "initial_capital": args.capital,
+        "taker_fee": args.taker_fee,
+        "maker_fee": args.maker_fee,
+        "risk_percent": args.risk_percent,
+        "rrr": args.rrr,
+        "trail_activation_rrr": args.trail_activation_rrr,
+        "trail_distance_atr": args.trail_distance_atr,
+        "max_positions": args.max_positions,
+        "position_ttl_bars": args.ttl,
+        "max_allowed_leverage": args.max_allowed_leverage,
+        "is_isolated_futures": args.is_isolated_futures,
+        "max_allowed_margin": args.max_allowed_margin,
+        "risk_base_period": args.risk_base_period,
+        "max_daily_profit": args.max_daily_profit,
+        "max_daily_loss": args.max_daily_loss,
+        "trading_begin": args.trading_begin,
+        "trading_end": args.trading_end,
+        "exit_geometry": args.exit_geometry,
+        "tp_move_pct": args.tp_move_pct,
+        "structural_sl_mode": args.structural_sl_mode,
+        "min_tp_move_pct": args.min_tp_move_pct,
+    }
+
+
 def run_backtest(*, df: StrategyInput, strategy: BaseStrategy, args: BacktestArgs):
     """Run the backtest and return an analyzer instance."""
 
     bt = Backtester(df, strategy.generate)
-    return bt.run(
-        initial_capital=args.capital,
-        taker_fee=args.taker_fee,
-        maker_fee=args.maker_fee,
-        risk_percent=args.risk_percent,
-        rrr=args.rrr,
-        trail_activation_rrr=args.trail_activation_rrr,
-        trail_distance_atr=args.trail_distance_atr,
-        max_positions=args.max_positions,
-        position_ttl_bars=args.ttl,
-        max_allowed_leverage=args.max_allowed_leverage,
-        is_isolated_futures=args.is_isolated_futures,
-        max_allowed_margin=args.max_allowed_margin,
-        risk_base_period=args.risk_base_period,
-        max_daily_profit=args.max_daily_profit,
-        max_daily_loss=args.max_daily_loss,
-        trading_begin=args.trading_begin,
-        trading_end=args.trading_end,
-    )
+    return bt.run(**backtest_run_kwargs(args))
 
 
 def _target_function(name: str) -> TargetFunction:
@@ -505,6 +524,7 @@ _OPTIMIZER_BACKTEST_PARAM_KEYS = frozenset(
         "trail_distance_atr",
         "max_positions",
         "position_ttl_bars",
+        "tp_move_pct",
         "max_daily_profit",
         "max_daily_loss",
         "trading_begin",
@@ -547,6 +567,17 @@ def _best_backtest_args(*, base: BacktestArgs, best_params: dict[str, Any]) -> B
         "max_daily_loss": best_params.get("max_daily_loss", base.max_daily_loss),
         "trading_begin": best_params.get("trading_begin", base.trading_begin),
         "trading_end": best_params.get("trading_end", base.trading_end),
+        "exit_geometry": (
+            "tp_pct"
+            if best_params.get("tp_move_pct") is not None or base.exit_geometry == "tp_pct"
+            else base.exit_geometry
+        ),
+        "tp_move_pct": best_params.get("tp_move_pct", base.tp_move_pct),
+        "structural_sl_mode": best_params.get(
+            "structural_sl_mode",
+            base.structural_sl_mode,
+        ),
+        "min_tp_move_pct": best_params.get("min_tp_move_pct", base.min_tp_move_pct),
     }
     return BacktestArgs(**kwargs)
 
@@ -594,6 +625,11 @@ def run_parameter_optimization(
         max_positions_values=optimizer_args.max_positions_values,
         max_positions_range=optimizer_args.max_positions_range,
         position_ttl_bars_range=optimizer_args.position_ttl_bars_range,
+        tp_move_pct_range=optimizer_args.tp_move_pct_range,
+        exit_geometry=backtest_args.exit_geometry,
+        tp_move_pct=backtest_args.tp_move_pct,
+        structural_sl_mode=backtest_args.structural_sl_mode,
+        min_tp_move_pct=backtest_args.min_tp_move_pct,
         optimize_daily_limits=optimizer_args.optimize_daily_limits,
         optimize_trading_window=optimizer_args.optimize_trading_window,
     )
@@ -624,30 +660,23 @@ def run_parameter_optimization(
         return
 
     best_strategy_params = _best_strategy_params(cfg=cfg, best_params=best_params)
-    cached_best_signals = optimizer.cached_signals_for_params(best_strategy_params)
     best_args = _best_backtest_args(base=backtest_args, best_params=best_params)
+    best_execution_context = execution_context_from_run_kwargs(
+        exit_geometry=best_args.exit_geometry,
+        tp_move_pct=best_args.tp_move_pct,
+        structural_sl_mode=best_args.structural_sl_mode,
+        min_tp_move_pct=best_args.min_tp_move_pct,
+    )
+    cached_best_signals = optimizer.cached_signals_for_params(
+        best_strategy_params,
+        execution_context=best_execution_context,
+    )
     if cached_best_signals is None:
         best_strategy = strategy_cls(best_strategy_params)
         best_results = run_backtest(df=df, strategy=best_strategy, args=best_args)
     else:
         best_results = Backtester(df, lambda _df: cached_best_signals.copy()).run(
-            initial_capital=best_args.capital,
-            taker_fee=best_args.taker_fee,
-            maker_fee=best_args.maker_fee,
-            risk_percent=best_args.risk_percent,
-            rrr=best_args.rrr,
-            trail_activation_rrr=best_args.trail_activation_rrr,
-            trail_distance_atr=best_args.trail_distance_atr,
-            max_positions=best_args.max_positions,
-            position_ttl_bars=best_args.ttl,
-            max_allowed_leverage=best_args.max_allowed_leverage,
-            is_isolated_futures=best_args.is_isolated_futures,
-            max_allowed_margin=best_args.max_allowed_margin,
-            risk_base_period=best_args.risk_base_period,
-            max_daily_profit=best_args.max_daily_profit,
-            max_daily_loss=best_args.max_daily_loss,
-            trading_begin=best_args.trading_begin,
-            trading_end=best_args.trading_end,
+            **backtest_run_kwargs(best_args),
         )
     best_results.export_results(
         str(output_path / "best_run"),

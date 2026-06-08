@@ -6,6 +6,115 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-08 — Strategy execution context + NR7 tp_pct validation
+
+- `StrategyExecutionContext` propagated into `strategy.generate()` via
+  `StrategyData.metadata["execution_context"]` (ADR-0028).
+- With `exit_geometry=tp_pct`, `crypt_ensemble` skips structural SL entry gate;
+  discovery-mapped filters still apply; Optuna signal cache keys include
+  execution-context dimensions.
+- Fixed optimizer `best_run/` re-export: cached path now uses
+  `backtest_run_kwargs()` so `exit_geometry` / `tp_move_pct` are not dropped.
+- Owner-run Jan NR7 tp_pct (SOL H1): execution-context fix raised trades **7 → 11**
+  (`results/nr7_tp_pct_jan_rerun_v2/`); Jan Optuna best **+6.30%**, PF 2.29
+  at `tp=0.008`, `rrr=1.75`, `ttl=36`, `risk=1%`
+  (`results/nr7_tp_pct_optuna_jan_v2/`). Still below mandate +15%/month floor.
+- ADR-0028; spec `docs/backtester/exit_geometry.md` § execution context.
+- Files: `src/backtester/execution_context.py`, `cli_runner.py`, `tester.py`,
+  `optimizer.py`, `strategies/crypt_ensemble.py`, tests.
+
+## 2026-06-08 — TP-first exit geometry (`tp_move_pct`)
+
+- New execution mode `exit_geometry=tp_pct`: TP from target price move %,
+  SL derived via `rrr`, structural `sl_price` capped by default (`cap`).
+- Optuna: search `tp_move_pct` with `--tp-move-pct-low/high/step` (parallel
+  with `rrr`, `ttl`).
+- CLI: `--exit-geometry`, `--tp-move-pct` on `run`, `optimize`, `compare-fixed`.
+- Spec: `docs/backtester/exit_geometry.md`; ADR-0027.
+
+## 2026-06-08 — Continuous compare-fixed for ttl=0
+
+- `compare-fixed --continuous`: one backtest per symbol across all windows;
+  monthly rows derived from continuous trades (positions carry through month
+  boundaries; no orphan/force-close at window end).
+- `--ttl 0` auto-enables continuous mode; `ExecutionSim` already leaves open
+  positions as `exit_reason=open` at end of data.
+- Mandate export dedupes trades when multiple derived rows share one
+  `continuous_run_dir`.
+- Files: `src/backtester/fixed_candidate_report.py`, `src/backtester/__main__.py`,
+  tests.
+
+## 2026-06-08 — NR7 discovery donor execution validation
+
+Owner-run SOL 2025 monthly `compare-fixed` on
+`crypt_ensemble_h1_discovery_nr7_bb_squeeze_h4.json`.
+
+**Mandate verdict: discard** (0/12 months ≥15%, 3 consecutive losing months
+Sep–Nov). **But:** sum capped **+25.6%**, 8/12 positive months, max DD **-6.47%**,
+trade WR **54.2%** — best discovery→execution transfer so far vs momentum-burst
+(-10.95% sum, 6 losing streak).
+
+Artifact: `results/crypt_h1_discovery_nr7_bb_squeeze_sol_2025/20260608_124701/`
+
+## 2026-06-08 — NR7 discovery candidate donor conversion
+
+- Added `h1_nr7_breakout` raw trigger to `crypt_ensemble` (discovery-aligned NR7
+  rule on closed H1 candles).
+- Mapped discovery filters `bb_squeeze` → `max_bb_width_pct = 0.04` and
+  `h4_context_aligned` → `require_h4_context_aligned = true`.
+- Checked in
+  `strategies/backtester/crypt_ensemble_h1_discovery_nr7_bb_squeeze_h4.json` for
+  v2 shortlist top candidate (58.6% label WR / 222 events).
+- Next: owner-run SOL 2025 monthly `compare-fixed` (command in
+  `docs/tasks/IN_PROGRESS.md`).
+
+**Files touched:** `src/backtester/strategies/crypt_ensemble.py`,
+`src/backtester/strategy_discovery/convert.py`, `strategies/backtester/`,
+`tests/backtester/`, `docs/`.
+
+## 2026-06-08 — Discovery catalog v2 (OHLCV-only)
+
+- Expanded strategy discovery with **6 triggers** and **15 filters** using only
+  OHLCV-derived features (EMA, RSI, Bollinger, candle anatomy, session hours,
+  ROC, volume tiers).
+- Extended `features.py` with shared v2 indicator columns; progress estimator
+  now reads catalog size dynamically.
+- v2 blocks are **discovery-only** until mapped in `convert-discovery-strategy`.
+- Catalog size: **14 triggers + 33 filters** (was 8 + 18).
+
+**ADRs:** none.
+
+**Verification:** `pytest tests/backtester/test_strategy_discovery.py`; ruff;
+mypy on `strategy_discovery/`.
+
+**Files touched:** `src/backtester/strategy_discovery/`, `tests/backtester/`,
+`docs/strategy_discovery.md`, `docs/tasks/IDEAS.md`, `CHANGELOG.md`.
+
+## 2026-06-08 — Discovery candidate donor conversion
+
+- Added `backtester convert-discovery-strategy` to map discovery-native
+  `rank_*_strategy.json` files into donor `crypt_ensemble` configs.
+- Extended `crypt_ensemble` with `h1_momentum_burst` raw trigger and
+  discovery-aligned filters: `block_d1_h4_context_reversal`,
+  `min_trend_strength_atr`, `min_volume_median_ratio`.
+- Checked in reference config
+  `strategies/backtester/crypt_ensemble_h1_discovery_momentum_burst_short.json`
+  for
+  `h1_momentum_burst__avoid_low_volume__block_context_reversal__side_short_only__trend_strength_min`.
+- Updated handoff: next owner-run step is SOL 2025 monthly `compare-fixed` on
+  the converted config.
+- Owner-run result (20260608_114552): **mandate discard** — 0/12 months ≥15%,
+  sum capped **-10.95%**, 6 consecutive losing months; label edge did not
+  survive donor SL/RRR/TTL/fees.
+
+**ADRs:** ADR-0025 applies; none added.
+
+**Verification:** focused pytest on conversion, discovery filters, and momentum
+burst trigger; ruff on changed backtester files.
+
+**Files touched:** `src/backtester/`, `strategies/backtester/`, `tests/backtester/`,
+`docs/strategy_discovery.md`, `docs/tasks/`, `CHANGELOG.md`, `README.md`.
+
 ## 2026-06-08 — Full-year discovery artifact review
 
 - Reviewed owner-run full SOL 2025 monthly discovery artifact

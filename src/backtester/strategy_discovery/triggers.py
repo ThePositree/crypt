@@ -20,6 +20,12 @@ def trigger_catalog() -> dict[str, TriggerFn]:
         "h1_range_breakout": _h1_range_breakout,
         "h1_momentum_burst": _h1_momentum_burst,
         "h1_mean_revert_wick": _h1_mean_revert_wick,
+        "h1_ema_cross": _h1_ema_cross,
+        "h1_rsi_reversal": _h1_rsi_reversal,
+        "h1_bb_rejection": _h1_bb_rejection,
+        "h1_engulfing": _h1_engulfing,
+        "h1_inside_bar_breakout": _h1_inside_bar_breakout,
+        "h1_nr7_breakout": _h1_nr7_breakout,
     }
 
 
@@ -128,6 +134,102 @@ def _h1_momentum_burst(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
     return _events_from_masks(dataset, "h1_momentum_burst", long_mask, short_mask)
 
 
+def _h1_ema_cross(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
+    features = dataset.features
+    ema9 = features["ema9"]
+    ema21 = features["ema21"]
+    long_mask = (ema9 > ema21) & (ema9.shift(1) <= ema21.shift(1))
+    short_mask = (ema9 < ema21) & (ema9.shift(1) >= ema21.shift(1))
+    return _events_from_masks(
+        dataset,
+        "h1_ema_cross",
+        long_mask,
+        short_mask,
+        anchor_type="structure",
+    )
+
+
+def _h1_rsi_reversal(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
+    df = dataset.primary
+    rsi = dataset.features["rsi14"]
+    prev_rsi = rsi.shift(1)
+    long_mask = (rsi < 35) & (df["close"] > df["open"]) & (rsi > prev_rsi)
+    short_mask = (rsi > 65) & (df["close"] < df["open"]) & (rsi < prev_rsi)
+    return _events_from_masks(dataset, "h1_rsi_reversal", long_mask, short_mask)
+
+
+def _h1_bb_rejection(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
+    df = dataset.primary
+    bb_lower = dataset.features["bb_lower"]
+    bb_upper = dataset.features["bb_upper"]
+    long_mask = (df["low"] <= bb_lower) & (df["close"] > df["open"])
+    short_mask = (df["high"] >= bb_upper) & (df["close"] < df["open"])
+    return _events_from_masks(
+        dataset,
+        "h1_bb_rejection",
+        long_mask,
+        short_mask,
+        anchor_type="range",
+    )
+
+
+def _h1_engulfing(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
+    df = dataset.primary
+    prev_open = df["open"].shift(1)
+    prev_close = df["close"].shift(1)
+    prev_bear = prev_close < prev_open
+    prev_bull = prev_close > prev_open
+    long_mask = (
+        prev_bear
+        & (df["close"] > df["open"])
+        & (df["open"] <= prev_close)
+        & (df["close"] >= prev_open)
+    )
+    short_mask = (
+        prev_bull
+        & (df["close"] < df["open"])
+        & (df["open"] >= prev_close)
+        & (df["close"] <= prev_open)
+    )
+    return _events_from_masks(dataset, "h1_engulfing", long_mask, short_mask)
+
+
+def _h1_inside_bar_breakout(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
+    df = dataset.primary
+    mother_high = df["high"].shift(2)
+    mother_low = df["low"].shift(2)
+    inside = (df["high"].shift(1) < mother_high) & (df["low"].shift(1) > mother_low)
+    long_mask = inside & (df["close"] > mother_high)
+    short_mask = inside & (df["close"] < mother_low)
+    anchor_price = pd.Series(index=df.index, dtype="float64")
+    anchor_price.loc[long_mask] = mother_high.loc[long_mask]
+    anchor_price.loc[short_mask] = mother_low.loc[short_mask]
+    return _events_from_masks(
+        dataset,
+        "h1_inside_bar_breakout",
+        long_mask,
+        short_mask,
+        anchor_type="range",
+        anchor_age_bars=2,
+        anchor_price=anchor_price,
+    )
+
+
+def _h1_nr7_breakout(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
+    df = dataset.primary
+    bar_range = df["high"] - df["low"]
+    is_nr7 = bar_range <= bar_range.rolling(7, min_periods=7).min()
+    long_mask = is_nr7 & (df["close"] > df["open"])
+    short_mask = is_nr7 & (df["close"] < df["open"])
+    return _events_from_masks(
+        dataset,
+        "h1_nr7_breakout",
+        long_mask,
+        short_mask,
+        anchor_type="range",
+    )
+
+
 def _h1_mean_revert_wick(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
     df = dataset.primary
     body = (df["close"] - df["open"]).abs()
@@ -197,6 +299,7 @@ def _base_metadata(
         "rule_version": 1,
         "side": side,
         "close": float(row["close"]),
+        "open": float(row["open"]),
         "atr": _float_or_none(features.get("atr")),
         "d1_context": str(features.get("d1_context", "missing")),
         "h4_context": str(features.get("h4_context", "missing")),
@@ -205,7 +308,26 @@ def _base_metadata(
         "move_6_atr": _float_or_none(features.get("move_6_atr")),
         "volume": _float_or_none(row.get("volume")),
         "volume_median20": _float_or_none(features.get("volume_median20")),
+        "rsi14": _float_or_none(features.get("rsi14")),
+        "body_to_range": _float_or_none(features.get("body_to_range")),
+        "bb_width_pct": _float_or_none(features.get("bb_width_pct")),
+        "bar_range_atr": _float_or_none(features.get("bar_range_atr")),
+        "hour_utc": _int_or_none(features.get("hour_utc")),
+        "roc10": _float_or_none(features.get("roc10")),
+        "ema_stack_long": bool(features.get("ema_stack_long", False)),
+        "ema_stack_short": bool(features.get("ema_stack_short", False)),
+        "sma20": _float_or_none(features.get("sma20")),
     }
+
+
+def _int_or_none(value: object) -> int | None:
+    if value is None or pd.isna(value):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    return int(str(value))
 
 
 def _float_or_none(value: object) -> float | None:

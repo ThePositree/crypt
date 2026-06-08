@@ -21,3 +21,25 @@ ADR-0025 (2026-06-05).
 uses raw `≥ 15%`. Implementation tracked in `BACKLOG.md`.
 
 ---
+
+## 2026-06-08 — Expand strategy discovery trigger/filter catalog (v2+)
+
+**Status:** **approved** — OHLCV-only v2 slice implemented 2026-06-08.
+
+**Implemented (discovery-only, no donor conversion yet):**
+
+- **+6 triggers:** `h1_ema_cross`, `h1_rsi_reversal`, `h1_bb_rejection`,
+  `h1_engulfing`, `h1_inside_bar_breakout`, `h1_nr7_breakout`
+- **+14 filters:** EMA stack, SMA20/RSI/ROC alignment, volatility low/high,
+  BB squeeze/wide, candle anatomy, session London/NY, volume above median,
+  trend strength max
+
+**Catalog after v2:** 14 triggers + 33 filters. Spec: `docs/strategy_discovery.md` §7–8.
+
+**Deferred (needs non-OHLCV data or ADR):** VWAP session, derivatives/OI,
+BTC intermarket, execution-proxy filters, full SMC engine reuse, order flow.
+
+**Remaining v2+ breadth** from the original inventory (~70–90 blocks) stays
+queued in `BACKLOG.md` when owner wants the next expansion slice.
+
+---

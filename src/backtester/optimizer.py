@@ -9,6 +9,11 @@ import pandas as pd
 from optuna.storages import JournalStorage
 from optuna.storages.journal import JournalFileBackend
 
+from backtester.execution_context import (
+    StrategyExecutionContext,
+    attach_execution_context,
+    execution_context_from_run_kwargs,
+)
 from backtester.results_analyzer import ResultsAnalyzer
 from backtester.strategy import BaseStrategy
 from backtester.tester import Backtester
@@ -57,6 +62,11 @@ class ParameterOptimizer:
         max_positions_values: IntChoices | None = None,
         max_positions_range: IntRange | None = None,
         position_ttl_bars_range: IntRange | None = None,
+        tp_move_pct_range: FloatRange | None = None,
+        exit_geometry: str = "sl_rrr",
+        tp_move_pct: float | None = None,
+        structural_sl_mode: str = "cap",
+        min_tp_move_pct: float = 0.004,
         optimize_daily_limits: bool = True,
         optimize_trading_window: bool = True,
     ):
@@ -85,6 +95,11 @@ class ParameterOptimizer:
         self.max_positions_values = max_positions_values
         self.max_positions_range = max_positions_range
         self.position_ttl_bars_range = position_ttl_bars_range
+        self.tp_move_pct_range = tp_move_pct_range
+        self.exit_geometry = exit_geometry
+        self.tp_move_pct = tp_move_pct
+        self.structural_sl_mode = structural_sl_mode
+        self.min_tp_move_pct = min_tp_move_pct
         self.optimize_daily_limits = optimize_daily_limits
         self.optimize_trading_window = optimize_trading_window
         self._signal_cache: dict[str, pd.DataFrame] = {}
@@ -101,16 +116,6 @@ class ParameterOptimizer:
                     else {}
                 ),
             }
-            strategy_instance = self.strategy_class(strategy_params)
-            strategy_cache_key = self._strategy_cache_key(strategy_params)
-
-            def strategy(df):
-                cached = self._signal_cache.get(strategy_cache_key)
-                if cached is not None:
-                    return cached.copy()
-                generated = strategy_instance.generate(df)
-                self._signal_cache[strategy_cache_key] = generated.copy()
-                return generated
 
             # 2. Подбираем ПАРАМЕТРЫ РИСКА (относятся к тестеру)
             risk_percent = self._suggest_float_or_fixed(
@@ -145,6 +150,38 @@ class ParameterOptimizer:
                 self.position_ttl_bars_range,
                 self.position_ttl_bars,
             )
+            tp_move_pct: float | None = None
+            exit_geometry = self.exit_geometry
+            if self.tp_move_pct_range is not None or self.exit_geometry == "tp_pct":
+                fixed_tp = self.tp_move_pct if self.tp_move_pct is not None else 0.015
+                tp_move_pct = self._suggest_float_or_fixed(
+                    trial,
+                    "tp_move_pct",
+                    self.tp_move_pct_range,
+                    fixed_tp,
+                )
+                exit_geometry = "tp_pct"
+
+            strategy_instance = self.strategy_class(strategy_params)
+            execution_context = execution_context_from_run_kwargs(
+                exit_geometry=exit_geometry,
+                tp_move_pct=tp_move_pct if exit_geometry == "tp_pct" else None,
+                structural_sl_mode=self.structural_sl_mode,
+                min_tp_move_pct=self.min_tp_move_pct,
+            )
+            strategy_cache_key = self._strategy_cache_key(
+                strategy_params,
+                execution_context,
+            )
+
+            def strategy(df):
+                cached = self._signal_cache.get(strategy_cache_key)
+                if cached is not None:
+                    return cached.copy()
+                strategy_input = attach_execution_context(df, execution_context)
+                generated = strategy_instance.generate(strategy_input)
+                self._signal_cache[strategy_cache_key] = generated.copy()
+                return generated
 
             # 3. Подбираем лимиты по дню и окно торговли (ExecutionSim)
             max_daily_profit = None
@@ -183,6 +220,10 @@ class ParameterOptimizer:
                 max_daily_loss=max_daily_loss,
                 trading_begin=trading_begin,
                 trading_end=trading_end,
+                exit_geometry=exit_geometry,
+                tp_move_pct=tp_move_pct if exit_geometry == "tp_pct" else None,
+                structural_sl_mode=self.structural_sl_mode,
+                min_tp_move_pct=self.min_tp_move_pct,
                 risk_free_rate_annual=self.risk_free_rate_annual,
             )
 
@@ -192,6 +233,9 @@ class ParameterOptimizer:
             trial.set_user_attr("trail_distance_atr", trail_distance_atr)
             trial.set_user_attr("max_positions", max_positions)
             trial.set_user_attr("position_ttl_bars", position_ttl_bars)
+            if tp_move_pct is not None:
+                trial.set_user_attr("tp_move_pct", tp_move_pct)
+            trial.set_user_attr("exit_geometry", exit_geometry)
             trial.set_user_attr("signal_cache_size", len(self._signal_cache))
             trial.set_user_attr(
                 "min_monthly_return",
@@ -259,11 +303,24 @@ class ParameterOptimizer:
         return ParameterOptimizer._suggest_int_or_fixed(trial, name, value_range, fixed)
 
     @staticmethod
-    def _strategy_cache_key(params: dict[str, Any]) -> str:
-        return json.dumps(params, sort_keys=True, default=str)
+    def _strategy_cache_key(
+        params: dict[str, Any],
+        execution_context: StrategyExecutionContext | None = None,
+    ) -> str:
+        payload: dict[str, Any] = dict(params)
+        if execution_context is not None:
+            payload["_execution_context"] = execution_context.cache_key_payload()
+        return json.dumps(payload, sort_keys=True, default=str)
 
-    def cached_signals_for_params(self, params: dict[str, Any]) -> pd.DataFrame | None:
-        cached = self._signal_cache.get(self._strategy_cache_key(params))
+    def cached_signals_for_params(
+        self,
+        params: dict[str, Any],
+        *,
+        execution_context: StrategyExecutionContext | None = None,
+    ) -> pd.DataFrame | None:
+        cached = self._signal_cache.get(
+            self._strategy_cache_key(params, execution_context),
+        )
         if cached is None:
             return None
         return cached.copy()

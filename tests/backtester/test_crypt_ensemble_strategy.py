@@ -5,12 +5,14 @@ import pytest
 from pandas.testing import assert_frame_equal
 
 from backtester.data_contracts import StrategyData
+from backtester.execution_context import attach_execution_context, execution_context_from_run_kwargs
 from backtester.execution_sim import ExecutionSim
 from backtester.registry import STRATEGIES
 from backtester.strategies import crypt_ensemble as crypt_ensemble_mod
 from backtester.strategies.crypt_ensemble import (
     CryptEnsembleStrategy,
     _apply_signal_filters,
+    _DiscoveryBarFeatures,
     _SignalFilterConfig,
     _StopPlan,
 )
@@ -859,6 +861,373 @@ def test_crypt_ensemble_h1_raw_candle_mode_uses_h1_candle_direction(
         "raw_1h_candle_confirm",
     ]
     assert list(result["context_bias"]) == ["bearish", "bearish"]
+
+
+def test_discovery_filter_blocks_d1_h4_context_reversal() -> None:
+    stop = _filter_stop(signal=-1)
+    discovery = _DiscoveryBarFeatures(
+        trend_strength_atr=None,
+        volume=None,
+        volume_median20=None,
+        d1_context="long",
+        h4_context="short",
+    )
+
+    filtered, reason = _apply_signal_filters(
+        stop=stop,
+        filters=_SignalFilterConfig(
+            allowed_sides=None,
+            allowed_sl_anchor_types=None,
+            blocked_sl_anchor_types=frozenset(),
+            max_anchor_age_hours=None,
+            min_signal_sl_distance_atr=None,
+            max_signal_sl_distance_atr=None,
+            block_context_reversal=False,
+            block_d1_h4_context_reversal=True,
+        ),
+        trigger_known_at=datetime(2025, 3, 10, tzinfo=UTC),
+        context_bias="bullish",
+        setup_direction="SELL",
+        discovery=discovery,
+    )
+
+    assert filtered.signal == 0
+    assert reason == "d1_h4_context_reversal:long:short"
+
+
+def test_discovery_filter_allows_incomplete_d1_h4_context() -> None:
+    stop = _filter_stop(signal=-1)
+    discovery = _DiscoveryBarFeatures(
+        trend_strength_atr=None,
+        volume=None,
+        volume_median20=None,
+        d1_context="missing",
+        h4_context="short",
+    )
+
+    filtered, reason = _apply_signal_filters(
+        stop=stop,
+        filters=_SignalFilterConfig(
+            allowed_sides=None,
+            allowed_sl_anchor_types=None,
+            blocked_sl_anchor_types=frozenset(),
+            max_anchor_age_hours=None,
+            min_signal_sl_distance_atr=None,
+            max_signal_sl_distance_atr=None,
+            block_context_reversal=False,
+            block_d1_h4_context_reversal=True,
+        ),
+        trigger_known_at=datetime(2025, 3, 10, tzinfo=UTC),
+        context_bias="bullish",
+        setup_direction="SELL",
+        discovery=discovery,
+    )
+
+    assert filtered.signal == -1
+    assert reason is None
+
+
+def test_discovery_filter_blocks_low_trend_strength() -> None:
+    stop = _filter_stop(signal=-1)
+    discovery = _DiscoveryBarFeatures(
+        trend_strength_atr=0.2,
+        volume=None,
+        volume_median20=None,
+        d1_context="short",
+        h4_context="short",
+    )
+
+    filtered, reason = _apply_signal_filters(
+        stop=stop,
+        filters=_SignalFilterConfig(
+            allowed_sides=None,
+            allowed_sl_anchor_types=None,
+            blocked_sl_anchor_types=frozenset(),
+            max_anchor_age_hours=None,
+            min_signal_sl_distance_atr=None,
+            max_signal_sl_distance_atr=None,
+            block_context_reversal=False,
+            min_trend_strength_atr=0.5,
+        ),
+        trigger_known_at=datetime(2025, 3, 10, tzinfo=UTC),
+        context_bias="bearish",
+        setup_direction="SELL",
+        discovery=discovery,
+    )
+
+    assert filtered.signal == 0
+    assert reason == "trend_strength_low:0.2000"
+
+
+def test_discovery_filter_blocks_low_volume() -> None:
+    stop = _filter_stop(signal=-1)
+    discovery = _DiscoveryBarFeatures(
+        trend_strength_atr=None,
+        volume=10.0,
+        volume_median20=100.0,
+        d1_context="short",
+        h4_context="short",
+    )
+
+    filtered, reason = _apply_signal_filters(
+        stop=stop,
+        filters=_SignalFilterConfig(
+            allowed_sides=None,
+            allowed_sl_anchor_types=None,
+            blocked_sl_anchor_types=frozenset(),
+            max_anchor_age_hours=None,
+            min_signal_sl_distance_atr=None,
+            max_signal_sl_distance_atr=None,
+            block_context_reversal=False,
+            min_volume_median_ratio=0.5,
+        ),
+        trigger_known_at=datetime(2025, 3, 10, tzinfo=UTC),
+        context_bias="bearish",
+        setup_direction="SELL",
+        discovery=discovery,
+    )
+
+    assert filtered.signal == 0
+    assert reason == "low_volume"
+
+
+def test_crypt_ensemble_h1_raw_momentum_burst_fires_on_short_burst(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closes = [100.0 + index * 0.05 for index in range(24)]
+    closes.append(99.0)
+    opens = closes[:-1] + [100.2]
+    highs = [max(open_, close) + 0.1 for open_, close in zip(opens, closes, strict=True)]
+    lows = [min(open_, close) - 0.1 for open_, close in zip(opens, closes, strict=True)]
+    index = pd.date_range("2024-01-02 00:00:00", periods=25, freq="1h", tz="UTC")
+    primary = pd.DataFrame(
+        {
+            "open": opens,
+            "high": highs,
+            "low": lows,
+            "close": closes,
+            "volume": [100.0] * 25,
+        },
+        index=index,
+    )
+    h4 = _ohlcv_at(["2024-01-01 20:00:00"], closes=[100.0])
+    d1 = _ohlcv_at(["2024-01-01 00:00:00"], closes=[100.0])
+    data = StrategyData(
+        primary=primary,
+        candles={"H1": primary, "H4": h4, "D1": d1},
+        extras={},
+        metadata={"symbol": "SOL-USDT-SWAP"},
+    )
+    strategy = CryptEnsembleStrategy(
+        {
+            "setup_source": "h1_raw",
+            "allow_atr_sl_fallback": True,
+            "progress": False,
+            "timeframes": {
+                "context": ["1d"],
+                "setup": ["4h"],
+                "trigger": "1h",
+                "execution": "1h",
+            },
+            "trigger_rules": ["h1_momentum_burst"],
+        }
+    )
+    strategy._evaluate_context = lambda _ctx: _verdict("HOLD", 0.0)  # type: ignore[method-assign]
+
+    result = strategy.generate(data)
+
+    assert result["trigger_type"].iloc[-1] == "raw_h1_momentum_burst"
+    assert result["signal"].iloc[-1] == -1
+    assert result["setup_direction"].iloc[-1] == "SELL"
+
+
+def test_crypt_ensemble_h1_raw_nr7_breakout_fires_on_bullish_nr7(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    warmup_opens = [100.0 + index * 0.05 for index in range(18)]
+    warmup_closes = [open_ + 0.05 for open_ in warmup_opens]
+    warmup_highs = [close + 1.0 for close in warmup_closes]
+    warmup_lows = [open_ - 1.0 for open_ in warmup_opens]
+    tail_opens = [106.0, 106.0, 106.0, 106.0, 106.0, 106.0, 105.2]
+    tail_closes = [106.5, 106.5, 106.5, 106.5, 106.5, 106.5, 105.7]
+    tail_highs = [107.0, 107.0, 107.0, 107.0, 107.0, 107.0, 105.8]
+    tail_lows = [105.0, 105.0, 105.0, 105.0, 105.0, 105.0, 105.0]
+    opens = warmup_opens + tail_opens
+    closes = warmup_closes + tail_closes
+    highs = warmup_highs + tail_highs
+    lows = warmup_lows + tail_lows
+    index = pd.date_range("2024-01-02 00:00:00", periods=25, freq="1h", tz="UTC")
+    primary = pd.DataFrame(
+        {
+            "open": opens,
+            "high": highs,
+            "low": lows,
+            "close": closes,
+            "volume": [100.0] * 25,
+        },
+        index=index,
+    )
+    h4 = _ohlcv_at(["2024-01-01 20:00:00"], closes=[100.0])
+    d1 = _ohlcv_at(["2024-01-01 00:00:00"], closes=[100.0])
+    data = StrategyData(
+        primary=primary,
+        candles={"H1": primary, "H4": h4, "D1": d1},
+        extras={},
+        metadata={"symbol": "SOL-USDT-SWAP"},
+    )
+    strategy = CryptEnsembleStrategy(
+        {
+            "setup_source": "h1_raw",
+            "allow_atr_sl_fallback": True,
+            "progress": False,
+            "timeframes": {
+                "context": ["1d"],
+                "setup": ["4h"],
+                "trigger": "1h",
+                "execution": "1h",
+            },
+            "trigger_rules": ["h1_nr7_breakout"],
+        }
+    )
+    strategy._evaluate_context = lambda _ctx: _verdict("HOLD", 0.0)  # type: ignore[method-assign]
+
+    result = strategy.generate(data)
+
+    assert result["trigger_type"].iloc[-1] == "raw_h1_nr7_breakout"
+    assert result["setup_direction"].iloc[-1] == "BUY"
+
+
+def test_crypt_ensemble_tp_pct_execution_context_skips_structural_entry_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    warmup_opens = [100.0 + index * 0.05 for index in range(18)]
+    warmup_closes = [open_ + 0.05 for open_ in warmup_opens]
+    warmup_highs = [close + 1.0 for close in warmup_closes]
+    warmup_lows = [open_ - 1.0 for open_ in warmup_opens]
+    tail_opens = [106.0, 106.0, 106.0, 106.0, 106.0, 106.0, 105.2]
+    tail_closes = [106.5, 106.5, 106.5, 106.5, 106.5, 106.5, 105.7]
+    tail_highs = [107.0, 107.0, 107.0, 107.0, 107.0, 107.0, 105.8]
+    tail_lows = [105.0, 105.0, 105.0, 105.0, 105.0, 105.0, 105.0]
+    opens = warmup_opens + tail_opens
+    closes = warmup_closes + tail_closes
+    highs = warmup_highs + tail_highs
+    lows = warmup_lows + tail_lows
+    index = pd.date_range("2024-01-02 00:00:00", periods=25, freq="1h", tz="UTC")
+    primary = pd.DataFrame(
+        {
+            "open": opens,
+            "high": highs,
+            "low": lows,
+            "close": closes,
+            "volume": [100.0] * 25,
+        },
+        index=index,
+    )
+    h4 = _ohlcv_at(["2024-01-01 20:00:00"], closes=[100.0])
+    d1 = _ohlcv_at(["2024-01-01 00:00:00"], closes=[100.0])
+    data = StrategyData(
+        primary=primary,
+        candles={"H1": primary, "H4": h4, "D1": d1},
+        extras={},
+        metadata={"symbol": "SOL-USDT-SWAP"},
+    )
+    strategy = CryptEnsembleStrategy(
+        {
+            "setup_source": "h1_raw",
+            "allow_atr_sl_fallback": False,
+            "progress": False,
+            "timeframes": {
+                "context": ["1d"],
+                "setup": ["4h"],
+                "trigger": "1h",
+                "execution": "1h",
+            },
+            "trigger_rules": ["h1_nr7_breakout"],
+        }
+    )
+    strategy._evaluate_context = lambda _ctx: _verdict("HOLD", 0.0)  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        crypt_ensemble_mod,
+        "_structural_stop_state",
+        lambda _ctx: SMCState(),
+    )
+
+    sl_rrr_result = strategy.generate(data)
+    tp_pct_data = attach_execution_context(
+        data,
+        execution_context_from_run_kwargs(exit_geometry="tp_pct", tp_move_pct=0.008),
+    )
+    tp_pct_result = strategy.generate(tp_pct_data)
+
+    assert sl_rrr_result["signal"].iloc[-1] == 0
+    assert tp_pct_result["signal"].iloc[-1] == 1
+    assert tp_pct_result["sl_anchor_type"].iloc[-1] == "none"
+    assert "structural entry gate skipped" in str(tp_pct_result["rationale"].iloc[-1])
+
+
+def test_discovery_filter_blocks_h4_context_misaligned() -> None:
+    stop = _filter_stop(signal=-1)
+    discovery = _DiscoveryBarFeatures(
+        trend_strength_atr=None,
+        volume=None,
+        volume_median20=None,
+        d1_context="short",
+        h4_context="long",
+    )
+
+    filtered, reason = _apply_signal_filters(
+        stop=stop,
+        filters=_SignalFilterConfig(
+            allowed_sides=None,
+            allowed_sl_anchor_types=None,
+            blocked_sl_anchor_types=frozenset(),
+            max_anchor_age_hours=None,
+            min_signal_sl_distance_atr=None,
+            max_signal_sl_distance_atr=None,
+            block_context_reversal=False,
+            require_h4_context_aligned=True,
+        ),
+        trigger_known_at=datetime(2025, 3, 10, tzinfo=UTC),
+        context_bias="bearish",
+        setup_direction="SELL",
+        discovery=discovery,
+    )
+
+    assert filtered.signal == 0
+    assert reason == "h4_context_misaligned:long"
+
+
+def test_discovery_filter_blocks_bb_not_squeezed() -> None:
+    stop = _filter_stop(signal=1)
+    discovery = _DiscoveryBarFeatures(
+        trend_strength_atr=None,
+        volume=None,
+        volume_median20=None,
+        d1_context="long",
+        h4_context="long",
+        bb_width_pct=0.06,
+    )
+
+    filtered, reason = _apply_signal_filters(
+        stop=stop,
+        filters=_SignalFilterConfig(
+            allowed_sides=None,
+            allowed_sl_anchor_types=None,
+            blocked_sl_anchor_types=frozenset(),
+            max_anchor_age_hours=None,
+            min_signal_sl_distance_atr=None,
+            max_signal_sl_distance_atr=None,
+            block_context_reversal=False,
+            max_bb_width_pct=0.04,
+        ),
+        trigger_known_at=datetime(2025, 3, 10, tzinfo=UTC),
+        context_bias="bullish",
+        setup_direction="BUY",
+        discovery=discovery,
+    )
+
+    assert filtered.signal == 0
+    assert reason == "bb_not_squeezed:0.0600"
 
 
 def test_crypt_ensemble_h1_raw_mode_rejects_doji_without_setup_gate(

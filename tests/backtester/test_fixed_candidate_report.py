@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pandas as pd
@@ -12,6 +13,7 @@ from backtester.fixed_candidate_report import (
     _params_with_execution_values,
     _rows_in_window_order,
     _run_execution_grid_window_precomputed,
+    _trades_touching_window,
     parse_float_values,
     parse_int_values,
     parse_signal_quality_window_specs,
@@ -721,3 +723,142 @@ def test_fixed_candidate_mandate_report_handles_empty_trades_csv(
     assert monthly.loc[0, "symbol"] == "SOL-USDT-SWAP"
     assert monthly.loc[0, "trade_count"] == 0
     assert monthly.loc[0, "raw_monthly_return_pct"] == 0.0
+
+
+def test_trades_touching_window_includes_cross_month_entries_and_exits():
+    trades = pd.DataFrame(
+        {
+            "entry_time": [
+                "2025-01-15T00:00:00+00:00",
+                "2025-02-20T00:00:00+00:00",
+            ],
+            "exit_time": [
+                "2025-02-05T00:00:00+00:00",
+                pd.NA,
+            ],
+            "exit_reason": ["take_profit", "open"],
+            "pnl_abs": [100.0, pd.NA],
+        }
+    )
+
+    jan = _trades_touching_window(trades, start="2025-01-01", end="2025-02-01")
+    feb = _trades_touching_window(trades, start="2025-02-01", end="2025-03-01")
+
+    assert len(jan) == 1
+    assert jan.iloc[0]["exit_reason"] == "take_profit"
+    assert len(feb) == 2
+    assert set(feb["exit_reason"]) == {"take_profit", "open"}
+
+
+def test_continuous_fixed_candidate_derives_monthly_rows_from_single_run(
+    monkeypatch,
+    tmp_path,
+):
+    windows = [
+        WindowSpec(
+            label="jan",
+            symbol="SOL-USDT-SWAP",
+            start="2025-01-01",
+            end="2025-02-01",
+        ),
+        WindowSpec(
+            label="feb",
+            symbol="SOL-USDT-SWAP",
+            start="2025-02-01",
+            end="2025-03-01",
+        ),
+        WindowSpec(
+            label="mar",
+            symbol="SOL-USDT-SWAP",
+            start="2025-03-01",
+            end="2025-04-01",
+        ),
+    ]
+    run_calls: list[str] = []
+
+    def fake_run_window(*, index, window, run_dir, **_kwargs):
+        run_calls.append(window.label)
+        run_dir.mkdir(parents=True, exist_ok=True)
+        if not window.label.endswith("_continuous"):
+            raise AssertionError(f"continuous mode must not run isolated window {window.label}")
+
+        trades = pd.DataFrame(
+            {
+                "entry_time": [
+                    "2025-01-15T00:00:00+00:00",
+                    "2025-02-20T00:00:00+00:00",
+                ],
+                "exit_time": [
+                    "2025-02-05T00:00:00+00:00",
+                    pd.NA,
+                ],
+                "exit_reason": ["take_profit", "open"],
+                "pnl_abs": [1600.0, pd.NA],
+                "is_long": [True, True],
+                "locked_margin": [100.0, 120.0],
+                "available_balance_before": [10000.0, 11600.0],
+                "open_positions_before": [0, 0],
+                "total_locked_margin_before": [0.0, 0.0],
+                "total_locked_margin_after_entry": [100.0, 120.0],
+                "capital_before": [10000.0, 11600.0],
+                "capital_after": [11600.0, pd.NA],
+                "holding_bars": [21, pd.NA],
+            }
+        )
+        trades.to_csv(run_dir / "trades.csv", index=False)
+        pd.DataFrame({"signal": [1, -1]}).to_csv(run_dir / "signals.csv")
+
+        return (
+            index,
+            {
+                "label": window.label,
+                "symbol": window.symbol,
+                "from": window.start,
+                "to": window.end,
+                "rrr": 1.25,
+                "ttl": 0,
+                "max_positions": 1,
+                "risk_percent": 1.0,
+                "total_return_pct": 16.0,
+                "profit_factor": 1.0,
+                "max_drawdown": 0.0,
+                "total_trades": 2,
+                "run_dir": str(run_dir),
+            },
+        )
+
+    monkeypatch.setattr(
+        "backtester.fixed_candidate_report._run_fixed_candidate_window",
+        fake_run_window,
+    )
+
+    summary = run_fixed_candidate_comparison(
+        windows=windows,
+        cfg=StrategyConfig(
+            name="dummy",
+            version="test",
+            params={},
+            backtest_args={},
+        ),
+        params=replace(_candidate_params(), ttl=0),
+        data_dir="/unused",
+        primary_timeframe="1h",
+        output_folder=str(tmp_path),
+        jobs=1,
+        logger=__import__("logging").getLogger("test"),
+        continuous=True,
+    )
+
+    assert run_calls == ["sol_continuous"]
+    assert summary["label"].tolist() == ["jan", "feb", "mar"]
+    assert (summary["execution_mode"] == "continuous_derived").all()
+    continuous_dir = str(tmp_path / "runs" / "sol_continuous")
+    assert (summary["continuous_run_dir"] == continuous_dir).all()
+    assert (tmp_path / "runs" / "sol_continuous" / "continuous_summary.json").exists()
+
+    monthly = pd.read_csv(tmp_path / "monthly_mandate.csv")
+    assert monthly["month"].tolist() == ["2025-01", "2025-02", "2025-03"]
+    assert monthly["trade_count"].tolist() == [1, 1, 0]
+    assert monthly.loc[monthly["month"] == "2025-02", "raw_monthly_return_pct"].iloc[0] == 16.0
+    assert monthly.loc[monthly["month"] == "2025-01", "raw_monthly_return_pct"].iloc[0] == 0.0
+    assert monthly.loc[monthly["month"] == "2025-03", "raw_monthly_return_pct"].iloc[0] == 0.0

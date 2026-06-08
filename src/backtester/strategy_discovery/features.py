@@ -17,6 +17,20 @@ class DiscoveryDataset:
     features: pd.DataFrame
 
 
+def build_donor_discovery_features(
+    *,
+    primary: pd.DataFrame,
+    h4: pd.DataFrame | None,
+    d1: pd.DataFrame | None,
+) -> pd.DataFrame:
+    """Discovery-aligned per-bar features for donor crypt_ensemble filter parity."""
+    validated = _validate_primary(primary)
+    features = _build_primary_features(validated)
+    features["h4_context"] = _aligned_context_direction(h4, validated.index)
+    features["d1_context"] = _aligned_context_direction(d1, validated.index)
+    return features
+
+
 def build_discovery_dataset(
     *,
     data: StrategyInput,
@@ -84,6 +98,35 @@ def _build_primary_features(df: pd.DataFrame) -> pd.DataFrame:
     features["volatility_rank"] = (
         features["atr_pct"].rolling(100, min_periods=20).rank(pct=True).shift(1)
     )
+    ema9 = df["close"].ewm(span=9, adjust=False).mean().shift(1)
+    ema21 = df["close"].ewm(span=21, adjust=False).mean().shift(1)
+    ema50 = df["close"].ewm(span=50, adjust=False).mean().shift(1)
+    features["ema9"] = ema9
+    features["ema21"] = ema21
+    features["ema50"] = ema50
+    features["ema_stack_long"] = (ema9 > ema21) & (ema21 > ema50)
+    features["ema_stack_short"] = (ema9 < ema21) & (ema21 < ema50)
+    delta = df["close"].diff()
+    gain = delta.clip(lower=0).rolling(14, min_periods=14).mean()
+    loss = (-delta.clip(upper=0)).rolling(14, min_periods=14).mean()
+    rs = gain / loss.replace(0, pd.NA)
+    rsi = 100 - 100 / (1 + rs)
+    rsi = rsi.where(loss > 0, 100.0)
+    rsi = rsi.where((gain > 0) | (loss > 0), 50.0)
+    features["rsi14"] = rsi.shift(1)
+    bb_std = df["close"].rolling(20, min_periods=20).std().shift(1)
+    bb_mid = features["sma20"]
+    features["bb_upper"] = bb_mid + 2 * bb_std
+    features["bb_lower"] = bb_mid - 2 * bb_std
+    features["bb_width_pct"] = (features["bb_upper"] - features["bb_lower"]) / bb_mid.replace(
+        0, pd.NA
+    )
+    bar_range = df["high"] - df["low"]
+    body = (df["close"] - df["open"]).abs()
+    features["body_to_range"] = body / bar_range.replace(0, pd.NA)
+    features["bar_range_atr"] = bar_range / atr.replace(0, pd.NA)
+    features["roc10"] = df["close"].pct_change(10).shift(1)
+    features["hour_utc"] = df.index.hour.astype("int64")
     return features
 
 

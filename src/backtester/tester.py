@@ -4,6 +4,10 @@ from collections.abc import Callable
 import pandas as pd
 
 from backtester.data_contracts import StrategyData, StrategyInput
+from backtester.execution_context import (
+    attach_execution_context,
+    execution_context_from_run_kwargs,
+)
 from backtester.execution_sim import ExecutionSim
 from backtester.results_analyzer import ResultsAnalyzer
 
@@ -126,6 +130,10 @@ class Backtester:
         max_daily_loss: float | None = None,
         trading_begin: int | None = None,
         trading_end: int | None = None,
+        exit_geometry: str = "sl_rrr",
+        tp_move_pct: float | None = None,
+        structural_sl_mode: str = "cap",
+        min_tp_move_pct: float = 0.004,
         risk_free_rate_annual: float = 0.02,
     ) -> ResultsAnalyzer:
         """
@@ -258,15 +266,25 @@ class Backtester:
             max_daily_loss=max_daily_loss,
             trading_begin=trading_begin,
             trading_end=trading_end,
+            exit_geometry=exit_geometry,
+            tp_move_pct=tp_move_pct,
+            structural_sl_mode=structural_sl_mode,
+            min_tp_move_pct=min_tp_move_pct,
         )
 
+        execution_context = execution_context_from_run_kwargs(
+            exit_geometry=exit_geometry,
+            tp_move_pct=tp_move_pct,
+            structural_sl_mode=structural_sl_mode,
+            min_tp_move_pct=min_tp_move_pct,
+        )
         signaled_df = pd.DataFrame()
         try:
             strategy_input: StrategyInput
             if isinstance(self.data, StrategyData):
-                strategy_input = self.data.copy()
+                strategy_input = attach_execution_context(self.data.copy(), execution_context)
             else:
-                strategy_input = self.df.copy()
+                strategy_input = attach_execution_context(self.df.copy(), execution_context)
             signaled_df = self.strategy(strategy_input)
 
             if "signal" not in signaled_df.columns:

@@ -1,9 +1,10 @@
 # Strategy discovery constructor
 
-Status: planned P0 implementation.
+Status: **implemented** (CLI `discover-strategies`, catalog v2: 14 triggers +
+33 OHLCV-only filters). Donor conversion via `convert-discovery-strategy`.
 
-This document is the contract for the next M2 search step. The goal is to
-reduce owner/Codex back-and-forth by replacing manual JSON strategy tinkering
+This document is the contract for the M2 label-based search step. The goal is
+to reduce owner/Codex back-and-forth by replacing manual JSON strategy tinkering
 with one long-running strategy discovery job.
 
 ## 1. Goal
@@ -191,9 +192,9 @@ Default search controls:
 | `label_horizon_bars` | `24` |
 | `label_atr_mult` | `1.0` |
 
-## 7. Initial trigger catalog
+## 7. Trigger catalog
 
-The MVP must include at least these triggers:
+### v1 (MVP)
 
 - `h1_candle_confirm`
 - `h1_sweep_reversal`
@@ -204,12 +205,24 @@ The MVP must include at least these triggers:
 - `h1_momentum_burst`
 - `h1_mean_revert_wick`
 
+### v2 (OHLCV-only expansion)
+
+All v2 triggers use closed H1 candles and derived OHLCV features only. No
+derivatives, order book, or session VWAP.
+
+- `h1_ema_cross` — EMA9/21 golden or death cross (shifted, no look-ahead).
+- `h1_rsi_reversal` — RSI14 extreme (<35 / >65) with reversal candle.
+- `h1_bb_rejection` — touch lower/upper Bollinger band (20, 2σ) + reversal.
+- `h1_engulfing` — bullish/bearish engulfing of prior opposite candle body.
+- `h1_inside_bar_breakout` — inside bar relative to mother bar, breakout close.
+- `h1_nr7_breakout` — narrowest 7-bar range + directional close.
+
 If a trigger is expensive or unclear, implement a simple deterministic version
 and document its exact rule in the module docstring and generated report.
 
-## 8. Initial filter catalog
+## 8. Filter catalog
 
-The MVP must include at least these filters:
+### v1 (MVP)
 
 - `side_long_only`
 - `side_short_only`
@@ -229,6 +242,40 @@ The MVP must include at least these filters:
 - `anchor_age_max_72h`
 - `avoid_after_large_move`
 - `avoid_low_volume`
+
+### v2 (OHLCV-only expansion)
+
+Trend / mean-reversion:
+
+- `trend_ema_stack_aligned` — long: EMA9>EMA21>EMA50; short: reversed stack.
+- `sma20_side_aligned` — close above SMA20 for long, below for short.
+- `rsi_side_aligned` — long RSI 25–55; short RSI 45–75.
+- `trend_strength_max` — `trend_strength_atr <= 1.5` (ranging fade).
+- `roc_side_aligned` — ROC10 sign matches side.
+
+Volatility / Bollinger:
+
+- `volatility_low_only` — ATR percentile rank ≤ 0.2.
+- `volatility_high_only` — ATR percentile rank ≥ 0.8.
+- `bb_squeeze` — Bollinger width ≤ 4% of mid.
+- `bb_wide` — Bollinger width ≥ 8% of mid.
+
+Candle anatomy:
+
+- `body_to_range_min` — body/range ≥ 0.55.
+- `avoid_doji` — body/range ≥ 0.15.
+- `bar_range_min_atr` — bar range ≥ 0.35 ATR.
+
+Session / volume:
+
+- `session_london` — hour UTC in [7, 15).
+- `session_ny` — hour UTC in [13, 21).
+- `volume_above_median` — volume ≥ 20-bar median (not the 0.5× floor).
+
+**Catalog size:** 14 triggers + 33 filters (v1 + v2).
+
+Donor conversion currently supports only the v1 subset documented in §13.
+v2 blocks are discovery-only until mapped in `convert.py`.
 
 Filters that need metadata unavailable for a given trigger/event must reject
 with a stable reason such as `missing_anchor_metadata`, or be marked
@@ -349,14 +396,59 @@ Focused tests:
 - score penalizes tiny samples;
 - CLI writes `candidates.csv`, `search_trace.csv`, and best candidate files.
 
-## 12. One-session implementation rule
+## 13. Donor conversion
 
-The next agent should implement the whole MVP in one session:
+Discovery-native `rank_*_strategy.json` files are not donor-executable directly.
+Convert them with:
 
-1. Build the module.
-2. Wire the CLI.
-3. Add focused tests.
-4. Run targeted pytest and changed-file ruff checks.
-5. Give the owner one long-running command to start.
+```bash
+uv run backtester convert-discovery-strategy \
+    --input results/discovery_sol_h1_2025_monthly/20260608_113331/best_candidates/rank_001_strategy.json \
+    --output strategies/backtester/my_candidate.json
+```
 
-Do not take only one tiny subtask unless an actual blocker prevents completion.
+The checked-in reference configs:
+
+```text
+strategies/backtester/crypt_ensemble_h1_discovery_momentum_burst_short.json
+strategies/backtester/crypt_ensemble_h1_discovery_nr7_bb_squeeze_h4.json
+```
+
+Conversion rules:
+
+- all discovery triggers use `setup_source = h1_raw` (no H4 setup gate);
+- `block_context_reversal` maps to `block_d1_h4_context_reversal` using the
+  same D1/H4 SMA alignment rule as discovery, not the MTF
+  `block_context_reversal` filter that blocks D1 SMC bias opposing the signal;
+- `h4_context_aligned` maps to `require_h4_context_aligned = true`;
+- `bb_squeeze` maps to `max_bb_width_pct = 0.04`;
+- `trend_strength_min` maps to `min_trend_strength_atr = 0.5`;
+- `avoid_low_volume` maps to `min_volume_median_ratio = 0.5`;
+- converted raw configs enable `allow_atr_sl_fallback = true` because discovery
+  triggers such as `h1_momentum_burst` and `h1_nr7_breakout` do not provide
+  structural stop anchors.
+
+Faithful conversion is intended for `h1_candle_confirm`, `h1_momentum_burst`,
+and `h1_nr7_breakout` when paired with mapped discovery filters. Structural
+discovery triggers (`h1_sweep_reversal`, `h1_structure_break`,
+`h1_order_block_retest`) use simplified OHLCV rules in discovery but
+SMC-backed raw rules in donor execution; convert those only for diagnostic
+experiments, not label-parity claims.
+
+After conversion, validate with owner-run `compare-fixed` across SOL 2025 monthly
+windows before any Optuna work.
+
+### Discovery vs donor trade counts
+
+Discovery `passed_events` counts labeled trigger events after filters **without**
+donor execution. Donor trade counts are lower when:
+
+- structural SL entry gate applies (`exit_geometry=sl_rrr`, default);
+- concurrent position / margin limits reject entries;
+- `min_tp_move_pct` or structural exit policy skips trades.
+
+With `exit_geometry=tp_pct` and ADR-0028 execution context, NR7 Jan 2025
+aligns at **~11 trades** (discovery-filter parity for that month), not the
+full-year **222** labeled events (those span all months and include neutral
+labels). A future **donor-eligibility gate** in discovery (BACKLOG P1) should
+approximate executable counts before ranking.

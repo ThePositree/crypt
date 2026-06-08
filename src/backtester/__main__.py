@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import sys
@@ -42,9 +43,13 @@ from backtester.fixed_candidate_report import (  # noqa: E402
 )
 from backtester.strategy_discovery import (  # noqa: E402
     DiscoveryConfig,
+    DiscoveryConversionError,
     DiscoveryWindow,
+    load_and_convert_discovery_strategy,
     run_strategy_discovery,
 )
+from backtester.strategy_discovery.filters import filter_catalog  # noqa: E402
+from backtester.strategy_discovery.triggers import trigger_catalog  # noqa: E402
 from backtester.trade_chart_report import (  # noqa: E402
     TradeChartReportConfig,
     build_trade_chart_report,
@@ -184,6 +189,30 @@ def cli() -> None:
     help="Trading window end hour (0-24, UTC). Entries only when hour < this.",
 )
 @click.option(
+    "--exit-geometry",
+    type=click.Choice(["sl_rrr", "tp_pct"], case_sensitive=False),
+    default="sl_rrr",
+    help="Exit placement: structural SL+RRR (default) or TP-first percent.",
+)
+@click.option(
+    "--tp-move-pct",
+    type=float,
+    default=None,
+    help="Target gross TP price move decimal (0.015 = 1.5%). Required for tp_pct.",
+)
+@click.option(
+    "--structural-sl-mode",
+    type=click.Choice(["cap", "ignore", "reject"], case_sensitive=False),
+    default="cap",
+    help="How structural sl_price constrains TP-first SL.",
+)
+@click.option(
+    "--min-tp-move-pct",
+    type=float,
+    default=0.004,
+    help="Skip entries when tp_move_pct is below this breakeven floor.",
+)
+@click.option(
     "--bingx-symbol",
     type=str,
     default=None,
@@ -276,6 +305,10 @@ def run(
     max_daily_loss: float | None,
     trading_begin: int | None,
     trading_end: int | None,
+    exit_geometry: str,
+    tp_move_pct: float | None,
+    structural_sl_mode: str,
+    min_tp_move_pct: float,
     bingx_symbol: str | None,
     bingx_interval: str | None,
     bingx_start_time: str | None,
@@ -341,6 +374,10 @@ def run(
     if strategy_instance is None:
         return
 
+    if exit_geometry.lower() == "tp_pct" and tp_move_pct is None:
+        logger.error("❌ --tp-move-pct is required when --exit-geometry=tp_pct")
+        return
+
     args = build_backtest_args(
         cfg,
         capital=capital,
@@ -360,6 +397,10 @@ def run(
         max_daily_loss=max_daily_loss,
         trading_begin=trading_begin,
         trading_end=trading_end,
+        exit_geometry=exit_geometry,
+        tp_move_pct=tp_move_pct,
+        structural_sl_mode=structural_sl_mode,
+        min_tp_move_pct=min_tp_move_pct,
     )
 
     results = run_backtest(df=df, strategy=strategy_instance, args=args)
@@ -428,6 +469,33 @@ def run(
 @click.option("--rrr-low", type=float, default=1.0, help="RRR search low bound.")
 @click.option("--rrr-high", type=float, default=3.0, help="RRR search high bound.")
 @click.option("--rrr-step", type=float, default=0.25, help="RRR search step.")
+@click.option(
+    "--exit-geometry",
+    type=click.Choice(["sl_rrr", "tp_pct"], case_sensitive=False),
+    default="sl_rrr",
+    help="Exit placement mode. tp_pct is auto-used when tp-move-pct range is set.",
+)
+@click.option(
+    "--tp-move-pct",
+    type=float,
+    default=None,
+    help="Fixed TP move pct when not searching (required for tp_pct without range).",
+)
+@click.option("--tp-move-pct-low", type=float, default=None, help="TP move pct search low.")
+@click.option("--tp-move-pct-high", type=float, default=None, help="TP move pct search high.")
+@click.option("--tp-move-pct-step", type=float, default=0.002, help="TP move pct search step.")
+@click.option(
+    "--structural-sl-mode",
+    type=click.Choice(["cap", "ignore", "reject"], case_sensitive=False),
+    default="cap",
+    help="How structural sl_price constrains TP-first SL.",
+)
+@click.option(
+    "--min-tp-move-pct",
+    type=float,
+    default=0.004,
+    help="Breakeven floor for tp_move_pct in TP-first mode.",
+)
 @click.option(
     "--trail-activation-rrr",
     type=float,
@@ -538,6 +606,13 @@ def optimize(
     rrr_low: float,
     rrr_high: float,
     rrr_step: float,
+    exit_geometry: str,
+    tp_move_pct: float | None,
+    tp_move_pct_low: float | None,
+    tp_move_pct_high: float | None,
+    tp_move_pct_step: float,
+    structural_sl_mode: str,
+    min_tp_move_pct: float,
     trail_activation_rrr: float,
     trail_activation_rrr_values: str | None,
     trail_distance_atr: float,
@@ -608,7 +683,20 @@ def optimize(
         max_daily_loss=None,
         trading_begin=None,
         trading_end=None,
+        exit_geometry=exit_geometry,
+        tp_move_pct=tp_move_pct,
+        structural_sl_mode=structural_sl_mode,
+        min_tp_move_pct=min_tp_move_pct,
     )
+    if tp_move_pct_low is not None and tp_move_pct_high is not None:
+        tp_move_pct_range = (tp_move_pct_low, tp_move_pct_high, tp_move_pct_step)
+    else:
+        tp_move_pct_range = None
+    if exit_geometry.lower() == "tp_pct" and tp_move_pct is None and tp_move_pct_range is None:
+        logger.error(
+            "❌ tp_pct mode requires --tp-move-pct or --tp-move-pct-low/--tp-move-pct-high"
+        )
+        return
     if risk_percent_low is None or risk_percent_high is None:
         risk_percent_range = None
     else:
@@ -667,6 +755,7 @@ def optimize(
             max_positions_values=parsed_max_positions_values,
             max_positions_range=max_positions_range,
             position_ttl_bars_range=ttl_range,
+            tp_move_pct_range=tp_move_pct_range,
             optimize_daily_limits=daily_limit_search,
             optimize_trading_window=trading_window_search,
             export_best_run=export_best_run,
@@ -710,7 +799,15 @@ def optimize(
     default=0.0,
     help="Trailing stop distance in ATR units after activation.",
 )
-@click.option("--ttl", type=int, default=36, help="Fixed position TTL in bars.")
+@click.option("--ttl", type=int, default=36, help="Fixed position TTL in bars. 0 disables TTL.")
+@click.option(
+    "--continuous",
+    is_flag=True,
+    help=(
+        "Run one continuous backtest per symbol across all windows so open positions "
+        "carry until TP/SL (auto-enabled when ttl=0)."
+    ),
+)
 @click.option(
     "--jobs",
     type=click.IntRange(min=1),
@@ -730,6 +827,30 @@ def optimize(
     help="Capital window used for risk sizing.",
 )
 @click.option("--is-isolated-futures", is_flag=True, help="Enable isolated futures.")
+@click.option(
+    "--exit-geometry",
+    type=click.Choice(["sl_rrr", "tp_pct"], case_sensitive=False),
+    default="sl_rrr",
+    help="Exit placement: structural SL+RRR (default) or TP-first percent.",
+)
+@click.option(
+    "--tp-move-pct",
+    type=float,
+    default=None,
+    help="Target gross TP price move decimal (0.015 = 1.5%). Required for tp_pct.",
+)
+@click.option(
+    "--structural-sl-mode",
+    type=click.Choice(["cap", "ignore", "reject"], case_sensitive=False),
+    default="cap",
+    help="How structural sl_price constrains TP-first SL.",
+)
+@click.option(
+    "--min-tp-move-pct",
+    type=float,
+    default=0.004,
+    help="Skip entries when tp_move_pct is below this breakeven floor.",
+)
 def compare_fixed(
     data_dir: str,
     primary_timeframe: str,
@@ -742,6 +863,7 @@ def compare_fixed(
     trail_activation_rrr: float,
     trail_distance_atr: float,
     ttl: int,
+    continuous: bool,
     jobs: int,
     maker_fee: float,
     taker_fee: float,
@@ -750,6 +872,10 @@ def compare_fixed(
     max_allowed_margin: float,
     risk_base_period: str,
     is_isolated_futures: bool,
+    exit_geometry: str,
+    tp_move_pct: float | None,
+    structural_sl_mode: str,
+    min_tp_move_pct: float,
 ) -> None:
     """Run fixed candidate backtests across bounded windows and summarize them."""
     logger.info("🚀 Starting fixed-candidate comparison...")
@@ -757,6 +883,9 @@ def compare_fixed(
     if cfg is None:
         return
     log_strategy_info(cfg, logger)
+    if exit_geometry.lower() == "tp_pct" and tp_move_pct is None:
+        logger.error("❌ --tp-move-pct is required when --exit-geometry=tp_pct")
+        return
     try:
         window_specs = parse_window_specs(windows)
     except ValueError as e:
@@ -764,6 +893,12 @@ def compare_fixed(
         return
 
     output_folder = make_output_folder(output)
+    use_continuous = continuous or ttl == 0
+    if ttl == 0 and not continuous:
+        logger.info(
+            "ttl=0 enables continuous execution automatically so open positions "
+            "are not orphaned at each monthly window boundary."
+        )
     summary = run_fixed_candidate_comparison(
         windows=window_specs,
         cfg=cfg,
@@ -781,12 +916,17 @@ def compare_fixed(
             max_allowed_margin=max_allowed_margin,
             risk_base_period=risk_base_period,
             is_isolated_futures=is_isolated_futures,
+            exit_geometry=exit_geometry,
+            tp_move_pct=tp_move_pct,
+            structural_sl_mode=structural_sl_mode,
+            min_tp_move_pct=min_tp_move_pct,
         ),
         data_dir=data_dir,
         primary_timeframe=primary_timeframe,
         output_folder=output_folder,
         jobs=jobs,
         logger=logger,
+        continuous=use_continuous,
     )
     logger.info("Completed %d fixed-candidate windows", len(summary))
 
@@ -1170,6 +1310,36 @@ def discover_strategies(
     logger.info("Strategy discovery artifacts saved to: %s", output_path)
 
 
+@cli.command("convert-discovery-strategy")
+@click.option(
+    "--input",
+    "input_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Discovery-native rank_*_strategy.json file.",
+)
+@click.option(
+    "--output",
+    "output_path",
+    required=True,
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Donor crypt_ensemble strategy JSON output path.",
+)
+def convert_discovery_strategy_cmd(input_path: Path, output_path: Path) -> None:
+    """Convert a discovery-native candidate JSON into a donor crypt_ensemble config."""
+    try:
+        converted = load_and_convert_discovery_strategy(input_path)
+    except DiscoveryConversionError as exc:
+        logger.error("❌ %s", exc)
+        return
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(converted, indent=2, sort_keys=False) + "\n",
+        encoding="utf-8",
+    )
+    logger.info("Converted discovery strategy saved to: %s", output_path)
+
+
 def _single_discovery_window_spec(
     *,
     symbol: str | None,
@@ -1209,8 +1379,8 @@ def _estimate_discovery_progress_total(
     beam_width: int,
     max_filter_depth: int,
 ) -> int:
-    trigger_count = 8
-    filter_count = 18
+    trigger_count = len(trigger_catalog())
+    filter_count = len(filter_catalog())
     dataset_steps = window_count
     trigger_steps = trigger_count * window_count
     label_steps = trigger_count * window_count

@@ -4,6 +4,105 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-08 — Strategy execution context (ADR-0028)
+
+Wired CLI execution flags into `strategy.generate()` so tp_pct runs do not
+require structural stop anchors at the signal layer.
+
+What was done:
+
+- Added `StrategyExecutionContext` and metadata propagation from `Backtester`,
+  `ParameterOptimizer`, and CLI runners.
+- `crypt_ensemble` skips structural SL entry gate when `exit_geometry=tp_pct`;
+  discovery-mapped filters unchanged.
+- Optuna signal cache keys include execution-context fields that affect signals.
+- Fixed optimizer `best_run/` cached re-export omitting `exit_geometry` /
+  `tp_move_pct`.
+- Spec: `docs/backtester/exit_geometry.md`; ADR-0028.
+
+Owner validation (Jan SOL H1, NR7 candidate):
+
+- Rerun v2: **11 trades**, **+3.36%** (`nr7_tp_pct_jan_rerun_v2/`).
+- Jan Optuna v2 best: **+6.30%**, PF 2.29, `tp=0.008`, `rrr=1.75`, `ttl=36`
+  (`nr7_tp_pct_optuna_jan_v2/`).
+
+---
+
+## 2026-06-08 — TP-first exit geometry (ADR-0027)
+
+Added `exit_geometry=tp_pct`: fixed gross TP move from entry, SL derived via
+`rrr`, structural SL policy at exit layer (`cap` / `ignore` / `reject`).
+
+What was done:
+
+- `exit_geometry.py`, `risk_model.py`, `ExecutionSim` integration.
+- CLI flags on `run`, `optimize`, `compare-fixed`; Optuna `--tp-move-pct-low/high/step`.
+- Spec `docs/backtester/exit_geometry.md`; ADR-0027.
+
+---
+
+## 2026-06-08 — NR7 v2 shortlist donor conversion (code)
+
+Prepared donor execution path for v2 discovery top candidate
+`h1_nr7_breakout__bb_squeeze__h4_context_aligned`.
+
+- `h1_nr7_breakout` trigger + `bb_squeeze` / `h4_context_aligned` filter mapping
+  in `crypt_ensemble` and `convert.py`.
+- Checked-in config
+  `strategies/backtester/crypt_ensemble_h1_discovery_nr7_bb_squeeze_h4.json`.
+- Owner-run SL-first `compare-fixed`: mandate discard but +25.6% capped sum
+  (`results/crypt_h1_discovery_nr7_bb_squeeze_sol_2025/20260608_124701/`).
+- tp_pct tuning tracked in `DONE.md` 2026-06-08 execution-context entry.
+
+---
+
+## 2026-06-08 — Discovery catalog v2 (OHLCV-only)
+
+Expanded `discover-strategies` with OHLCV-only triggers and filters from
+`IDEAS.md` (owner-approved slice).
+
+What was done:
+
+- **+6 triggers:** `h1_ema_cross`, `h1_rsi_reversal`, `h1_bb_rejection`,
+  `h1_engulfing`, `h1_inside_bar_breakout`, `h1_nr7_breakout`.
+- **+15 filters:** EMA stack, SMA20/RSI/ROC alignment, volatility low/high,
+  BB squeeze/wide, candle anatomy, London/NY session, volume above median,
+  trend strength max.
+- Extended `features.py` (EMA, RSI, Bollinger, bar anatomy, ROC, hour UTC).
+- Progress estimator uses dynamic catalog size.
+- Spec updated in `docs/strategy_discovery.md` §7–8.
+
+Acceptance: 14 triggers + 33 filters; focused pytest; ruff; mypy strict on
+`strategy_discovery/`. v2 blocks discovery-only (no donor conversion yet).
+
+---
+
+## 2026-06-08 — Discovery shortlist donor conversion
+
+Converted the selected full-year discovery candidate into a donor-executable
+`crypt_ensemble` diagnostic config.
+
+What was done:
+
+- Added `backtester convert-discovery-strategy` and
+  `src/backtester/strategy_discovery/convert.py`.
+- Extended `crypt_ensemble` with `h1_momentum_burst` and discovery-aligned
+  filters (`block_d1_h4_context_reversal`, `min_trend_strength_atr`,
+  `min_volume_median_ratio`).
+- Checked in
+  `strategies/backtester/crypt_ensemble_h1_discovery_momentum_burst_short.json`
+  for
+  `h1_momentum_burst__avoid_low_volume__block_context_reversal__side_short_only__trend_strength_min`.
+- Documented conversion semantics in `docs/strategy_discovery.md` §13 and left
+  the owner-run SOL 2025 monthly `compare-fixed` handoff in
+  `docs/tasks/IN_PROGRESS.md`.
+
+Acceptance:
+
+- conversion command + checked-in strategy config + focused tests;
+- owner-run execution validation completed 2026-06-08 → **mandate discard**
+  (`results/crypt_h1_discovery_momentum_burst_sol_2025/20260608_114552/`).
+
 ## 2026-06-08 — Strategy discovery constructor MVP
 
 Completed the P0 implementation of the strategy discovery constructor.

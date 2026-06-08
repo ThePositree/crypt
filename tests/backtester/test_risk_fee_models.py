@@ -45,6 +45,7 @@ def test_basic_risk_model_long_position_sizing():
 
     tp_price = entry_price + sl_dist * rrr
     assert result.tp_price == pytest.approx(tp_price)
+    assert result.sl_price == pytest.approx(sl_price)
     assert result.is_long is True
     assert result.available_balance == pytest.approx(capital)
 

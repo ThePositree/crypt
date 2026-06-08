@@ -6,6 +6,7 @@ from typing import Any, TypedDict
 import pandas as pd
 from tqdm.auto import tqdm
 
+from .exit_geometry import exit_geometry_config_from_args
 from .fee_model import ExitContext, FeeModel, StaticPercentFeeModel
 from .margin_policy import per_entry_margin_cap
 from .risk_model import BasicRiskModel, EntryContext, RiskModel
@@ -126,7 +127,8 @@ class ExecutionSim:
     - Support for long (signal=1) and short (signal=-1) positions
     - Protection against opening positions with too small capital or high commission ratio
     - Support for multiple simultaneous positions with strict limit
-    - All remaining positions closed at last bar close
+    - Open positions at end of data remain ``exit_reason=open`` with unrealized
+      PnL (no forced close at the last bar)
     - Isolated futures mode with leverage consistency and total position value limits
     - Configurable intra-bar TP/SL policy controlling how ambiguous bars are
       resolved using :class:`ExitReason` values.
@@ -191,6 +193,10 @@ class ExecutionSim:
         max_daily_loss: float | None = None,
         trading_begin: int | None = None,
         trading_end: int | None = None,
+        exit_geometry: str = "sl_rrr",
+        tp_move_pct: float | None = None,
+        structural_sl_mode: str = "cap",
+        min_tp_move_pct: float = 0.004,
         risk_model: RiskModel | None = None,
         fee_model: FeeModel | None = None,
     ):
@@ -340,6 +346,12 @@ class ExecutionSim:
         self.max_daily_loss = max_daily_loss
         self.trading_begin = trading_begin
         self.trading_end = trading_end
+        self._exit_geometry_config = exit_geometry_config_from_args(
+            exit_geometry=exit_geometry,
+            tp_move_pct=tp_move_pct,
+            structural_sl_mode=structural_sl_mode,
+            min_tp_move_pct=min_tp_move_pct,
+        )
         self._logger = logging.getLogger(__name__)
 
         # Risk/fee models
@@ -347,6 +359,7 @@ class ExecutionSim:
             max_allowed_margin=self.max_allowed_margin,
             max_positions=self.max_positions,
             max_allowed_leverage=self.max_allowed_leverage,
+            exit_geometry_config=self._exit_geometry_config,
         )
         self._fee_model: FeeModel = fee_model or StaticPercentFeeModel(
             taker_fee=self.taker_fee,
@@ -947,7 +960,7 @@ class ExecutionSim:
             risk_base_capital=risk_base_capital,
             size=risk_result.size,
             tp_price=risk_result.tp_price,
-            sl_price=sl_price,
+            sl_price=risk_result.sl_price,
             bar_opened=bar_opened,
             fee_entry=fee_entry,
             capital_before=capital,

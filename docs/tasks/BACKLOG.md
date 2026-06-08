@@ -14,37 +14,95 @@ when finished.
 > **+15%/month** on **$10k** SOL **2025** continuous backtest after fees;
 > max **10% intra-month DD**; auto-trading only after **promote** verdict.
 
-## P1 — Convert discovery shortlist to donor strategy configs
+## P1 — Model round-trip friction floor in backtester (0.3% breakeven)
 
-**What:** add a narrow conversion path from the selected discovery-native
-candidate into a donor-executable `crypt_ensemble` diagnostic strategy config,
-or document why the top candidate cannot be represented safely in the current
-donor strategy.
+**What:** add a configurable **round-trip friction floor** to donor execution and/or
+PnL reporting so backtests treat the first **~0.3%** price move as cost recovery,
+not profit. Owner direction: pure exchange fees (~0.07–0.10% on OKX perps) are
+not enough; traders also pay spread + slippage, so realistic breakeven is closer
+to **0.25–0.30%** gross move before net PnL turns positive.
 
-Selected candidate from
-`results/discovery_sol_h1_2025_monthly/20260608_113331/`:
+**Why now:** HTML trade charts showed huge TP distances because structural SL was
+wide; the owner is exploring fixed-percent TP/SL geometry and wants backtests to
+reflect the same economic floor used in live planning (`docs/operator.md` mentions
+0.05% slippage per side; owner uses **0.3% all-in breakeven** as working rule).
 
-```text
-h1_momentum_burst__avoid_low_volume__block_context_reversal__side_short_only__trend_strength_min
-```
+**Expected gain:** execution reports, `compare-fixed`, and future fixed-TP experiments
+show **net-after-friction** PnL alongside raw price-move PnL, so candidates are not
+promoted on gross moves that are still below breakeven after realistic costs.
 
-Full-year label profile: `325` events, `180/143/2`, `55.73%` aggregate win
-rate, all 12 months above the event-count floor, 11 of 12 months at or above
-`50%`; July was weak at `42.31%`.
+**Scope (minimal MVP):**
 
-**Why now:** the discovery MVP intentionally exports native
-`best_candidates/rank_*_strategy.json` files. That is enough for ranking signal
-quality, but execution validation still needs a donor strategy config before
-`compare-fixed`, `compare-grid`, or Optuna can evaluate RRR/TTL/SL/TP behavior.
+- Add typed config, default **off** for backward compatibility:
+  - `round_trip_friction_pct` (e.g. `0.003` = 0.3%) applied to notional on entry+exit, **or**
+  - separate `spread_slippage_pct` added on top of existing `FeeModel`.
+- Export in `trades.csv` / metrics: `gross_pnl_abs`, `friction_cost_abs`,
+  `net_pnl_after_friction_abs`, `breakeven_move_pct`.
+- Document in `docs/backtester_migration.md` or fee spec; no mandate gate change until
+  owner approves using friction-adjusted returns for ADR-0025 decisions.
 
-**Expected gain:** turn the first useful discovery report into a bounded
-owner-run execution validation without returning to hand-written one-off JSON
-branches.
+**Acceptance:** unit tests prove a +0.2% gross winner can still be net-negative when
+friction floor is 0.3%; README documents the flag; one example row in docs showing
+Feb discovery trade math.
 
-**Acceptance:** given the selected candidate, the repo contains a documented
-conversion command or checked-in strategy config plus focused tests. The
-handoff includes the exact owner-run SOL 2025 monthly `compare-fixed` command
-and expected artifact path.
+**Links:** owner chat 2026-06-08; `src/backtester/fee_model.py`, `execution_sim.py`;
+`results/crypt_h1_discovery_momentum_burst_sol_2025/20260608_114552/`.
+
+## P1 — Discovery follow-up after momentum-burst execution discard
+
+**What:** decide the next search step after owner-run SOL 2025 monthly `compare-fixed` on the
+converted momentum-burst candidate returned **mandate discard**
+(`results/crypt_h1_discovery_momentum_burst_sol_2025/20260608_114552/`:
+0/12 months ≥15%, sum capped **-10.95%**, 6 consecutive losing months).
+
+Options (pick one with owner in chat):
+
+1. **Execution-proxy discovery** — add a cheap donor-side filter or post-label check that rejects
+   candidates whose events rarely survive structural/ATR-fallback stop placement before ranking.
+2. **Attribution post-mortem** — run `signal-quality` on
+   `crypt_ensemble_h1_discovery_momentum_burst_short.json` across the same 12 SOL windows to
+   document SL/TTL/signal-filter attrition vs discovery labels.
+3. **New trigger family discovery** — rerun `discover-strategies` on the **v2 OHLCV catalog**
+   (14 triggers + 33 filters; implemented 2026-06-08). Exclude or down-rank momentum-burst;
+   prioritize families with robust per-window label win rates.
+
+**Status (2026-06-08):** NR7 is the active discovery candidate (momentum-burst
+**discarded**). Initial SL-first donor run:
+`results/crypt_h1_discovery_nr7_bb_squeeze_sol_2025/20260608_124701/` —
+formal **discard** on monthly ≥15% gate but **+25.6%** capped sum (best
+discovery→execution transfer so far).
+
+**tp_pct follow-up (2026-06-08):** ADR-0027/0028 wired; Jan single-month Optuna
+best **+6.30%** at `tp=0.008`, `rrr=1.75`, `ttl=36` — still far below mandate
++15%/month. Owner running full-year Optuna + 12-month `compare-fixed` with
+`risk_percent` 1–2% search (see `IN_PROGRESS.md`). PC2 deep discovery may
+surface a better trigger+filter stack.
+
+**Why now:** discovery→donor conversion works; execution geometry and entry
+gate were the main NR7 attrition sources (222 labeled events vs ~11 Jan trades
+after filters + execution context).
+
+**Acceptance:** owner returns overnight artifacts; next agent records
+promote/archive/discard for tp_pct-tuned NR7 and any PC2 candidate; no further
+work on momentum-burst unless owner revives it.
+
+## P1 — Discovery donor-eligibility gate
+
+**What:** add a cheap post-label or pre-ranking check in `discover-strategies`
+that estimates how many events would survive donor entry rules (including
+structural SL gate for `sl_rrr`, or discovery-filter parity for `tp_pct`).
+
+**Why now:** discovery `passed_events` (e.g. NR7 **222**/year) diverges from
+donor trade counts (~**11**/Jan) even after execution-context fix; ranking by
+label win rate alone overstates promotable candidates.
+
+**Expected gain:** shortlist candidates whose labeled events correlate with
+executable trades before owner spends Optuna time on conversion.
+
+**Acceptance:** gate documented in `docs/strategy_discovery.md`; unit test on
+synthetic events; optional `--donor-eligibility-mode` flag default off.
+
+**Links:** ADR-0028 consequences; `src/backtester/strategy_discovery/scoring.py`.
 
 ## P1 — Candidate archive artifact layout
 

@@ -11,6 +11,11 @@ import pandas as pd
 from tqdm import tqdm
 
 from backtester.data_contracts import StrategyData, StrategyInput
+from backtester.execution_context import (
+    EXECUTION_CONTEXT_METADATA_KEY,
+    StrategyExecutionContext,
+    read_execution_context,
+)
 from backtester.strategy import BaseStrategy
 from crypt.aggregator.ensemble import aggregate
 from crypt.aggregator.weights import SCORING_ENGINES, WeightsConfig
@@ -67,13 +72,18 @@ _TriggerRule = Literal[
     "h1_structure_break",
     "h1_order_block_retest",
     "h1_candle_confirm",
+    "h1_momentum_burst",
+    "h1_nr7_breakout",
 ]
 _H1_STRUCTURAL_TRIGGER_RULES: tuple[_TriggerRule, ...] = (
     "h1_sweep_reversal",
     "h1_structure_break",
     "h1_order_block_retest",
 )
-_TRIGGER_RULES = frozenset((*_H1_STRUCTURAL_TRIGGER_RULES, "h1_candle_confirm"))
+_TRIGGER_RULES = frozenset(
+    (*_H1_STRUCTURAL_TRIGGER_RULES, "h1_candle_confirm", "h1_momentum_burst", "h1_nr7_breakout")
+)
+_DISCOVERY_CONTEXT_INCOMPLETE = frozenset({"missing", "neutral"})
 _SETUP_SOURCES = frozenset({"mtf", "h1_raw"})
 
 
@@ -115,6 +125,21 @@ class _SignalFilterConfig:
     min_signal_sl_distance_atr: float | None
     max_signal_sl_distance_atr: float | None
     block_context_reversal: bool
+    block_d1_h4_context_reversal: bool = False
+    require_h4_context_aligned: bool = False
+    min_trend_strength_atr: float | None = None
+    min_volume_median_ratio: float | None = None
+    max_bb_width_pct: float | None = None
+
+
+@dataclass(frozen=True)
+class _DiscoveryBarFeatures:
+    trend_strength_atr: float | None
+    volume: float | None
+    volume_median20: float | None
+    d1_context: str
+    h4_context: str
+    bb_width_pct: float | None = None
 
 
 class CryptEnsembleStrategy(BaseStrategy):
@@ -158,6 +183,7 @@ class CryptEnsembleStrategy(BaseStrategy):
 
     def generate(self, data: StrategyInput) -> pd.DataFrame:
         strategy_data = _coerce_strategy_data(data)
+        execution_context = read_execution_context(data)
         primary = strategy_data.primary.sort_index().copy()
         out = primary.copy()
         tick_index = _tick_index_from_open_index(primary.index, self.timeframes.execution)
@@ -173,6 +199,15 @@ class CryptEnsembleStrategy(BaseStrategy):
         extras = strategy_data.extras
         symbol = str(strategy_data.metadata.get("symbol", "UNKNOWN"))
         atr = _atr14_from_donor_frame(primary).reindex(primary.index)
+        discovery_features = (
+            _donor_discovery_features(
+                primary=primary,
+                h4=_candle_frame(strategy_data, Timeframe.H4),
+                d1=_candle_frame(strategy_data, Timeframe.D1),
+            )
+            if _uses_discovery_features(self.signal_filters)
+            else None
+        )
         window_cache = (
             _ContextWindowCache(candles=crypt_candles, extras=extras)
             if self.optimized_windows
@@ -243,16 +278,35 @@ class CryptEnsembleStrategy(BaseStrategy):
                     signal_override=mtf.signal_override,
                     min_confidence=self.min_confidence,
                 )
-                stop, sl_source_tf = _select_structural_stop(
-                    ctx=ctx,
-                    signal=signal,
-                    price_row=primary.loc[open_time],
-                    atr=atr.loc[open_time],
-                    sl_atr_mult=self.sl_atr_mult,
-                    sl_atr_buffer_mult=self.sl_atr_buffer_mult,
-                    max_sl_distance_atr=self.max_sl_distance_atr,
-                    allow_atr_sl_fallback=self.allow_atr_sl_fallback,
-                    execution_tf=self.timeframes.execution,
+                entry = float(primary.loc[open_time, "close"])
+                atr_value = float(atr.loc[open_time])
+                if _skip_structural_entry_gate(execution_context) and signal != 0:
+                    stop = _tp_pct_placeholder_stop(
+                        signal=signal,
+                        entry=entry,
+                        atr=atr_value,
+                    )
+                    sl_source_tf = self.timeframes.execution
+                else:
+                    stop, sl_source_tf = _select_structural_stop(
+                        ctx=ctx,
+                        signal=signal,
+                        price_row=primary.loc[open_time],
+                        atr=atr.loc[open_time],
+                        sl_atr_mult=self.sl_atr_mult,
+                        sl_atr_buffer_mult=self.sl_atr_buffer_mult,
+                        max_sl_distance_atr=self.max_sl_distance_atr,
+                        allow_atr_sl_fallback=self.allow_atr_sl_fallback,
+                        execution_tf=self.timeframes.execution,
+                    )
+                discovery_bar = (
+                    _discovery_bar_features(
+                        discovery_features,
+                        open_time,
+                        volume=float(primary.loc[open_time, "volume"]),
+                    )
+                    if discovery_features is not None
+                    else None
                 )
                 filtered_stop, filter_reason = _apply_signal_filters(
                     stop=stop,
@@ -260,6 +314,7 @@ class CryptEnsembleStrategy(BaseStrategy):
                     trigger_known_at=tick_dt,
                     context_bias=mtf.context_bias,
                     setup_direction=mtf.setup_direction,
+                    discovery=discovery_bar,
                 )
                 rows.append(
                     _row_from_verdict(
@@ -448,6 +503,17 @@ def _signal_filter_config(params: dict[str, Any]) -> _SignalFilterConfig:
             params.get("max_signal_sl_distance_atr"), "max_signal_sl_distance_atr"
         ),
         block_context_reversal=bool(params.get("block_context_reversal", False)),
+        block_d1_h4_context_reversal=bool(params.get("block_d1_h4_context_reversal", False)),
+        require_h4_context_aligned=bool(params.get("require_h4_context_aligned", False)),
+        min_trend_strength_atr=_optional_non_negative_float(
+            params.get("min_trend_strength_atr"), "min_trend_strength_atr"
+        ),
+        min_volume_median_ratio=_optional_non_negative_float(
+            params.get("min_volume_median_ratio"), "min_volume_median_ratio"
+        ),
+        max_bb_width_pct=_optional_non_negative_float(
+            params.get("max_bb_width_pct"), "max_bb_width_pct"
+        ),
     )
 
 
@@ -485,6 +551,68 @@ def _optional_positive_float(value: object, name: str) -> float | None:
     result = float(value)
     if result <= 0:
         raise ValueError(f"{name} must be positive")
+    return result
+
+
+def _optional_non_negative_float(value: object, name: str) -> float | None:
+    if value is None:
+        return None
+    if not isinstance(value, int | float | str | bytes | bytearray):
+        raise ValueError(f"{name} must be a non-negative number")
+    result = float(value)
+    if result < 0:
+        raise ValueError(f"{name} must be non-negative")
+    return result
+
+
+def _donor_discovery_features(
+    *,
+    primary: pd.DataFrame,
+    h4: pd.DataFrame,
+    d1: pd.DataFrame,
+) -> pd.DataFrame:
+    from backtester.strategy_discovery.features import build_donor_discovery_features
+
+    return build_donor_discovery_features(
+        primary=primary,
+        h4=h4 if not h4.empty else None,
+        d1=d1 if not d1.empty else None,
+    )
+
+
+def _uses_discovery_features(filters: _SignalFilterConfig) -> bool:
+    return (
+        filters.block_d1_h4_context_reversal
+        or filters.require_h4_context_aligned
+        or filters.min_trend_strength_atr is not None
+        or filters.min_volume_median_ratio is not None
+        or filters.max_bb_width_pct is not None
+    )
+
+
+def _discovery_bar_features(
+    features: pd.DataFrame,
+    open_time: pd.Timestamp,
+    *,
+    volume: float,
+) -> _DiscoveryBarFeatures:
+    row = features.loc[open_time]
+    return _DiscoveryBarFeatures(
+        trend_strength_atr=_finite_float_or_none(row.get("trend_strength_atr")),
+        volume=volume,
+        volume_median20=_finite_float_or_none(row.get("volume_median20")),
+        d1_context=str(row.get("d1_context", "missing")),
+        h4_context=str(row.get("h4_context", "missing")),
+        bb_width_pct=_finite_float_or_none(row.get("bb_width_pct")),
+    )
+
+
+def _finite_float_or_none(value: object) -> float | None:
+    if value is None or pd.isna(value):
+        return None
+    result = float(value)
+    if not np.isfinite(result):
+        return None
     return result
 
 
@@ -564,11 +692,37 @@ def _parse_timeframe(value: object) -> Timeframe:
 def _coerce_strategy_data(data: StrategyInput) -> StrategyData:
     if isinstance(data, StrategyData):
         return data
+    metadata: dict[str, object] = {"symbol": "UNKNOWN", "exchange": "unknown"}
+    execution_context = read_execution_context(data)
+    if execution_context is not None:
+        metadata[EXECUTION_CONTEXT_METADATA_KEY] = execution_context
     return StrategyData(
         primary=data,
         candles={Timeframe.H4.name: data},
         extras={},
-        metadata={"symbol": "UNKNOWN", "exchange": "unknown"},
+        metadata=metadata,
+    )
+
+
+def _skip_structural_entry_gate(context: StrategyExecutionContext | None) -> bool:
+    return context is not None and context.skips_structural_entry_gate
+
+
+def _tp_pct_placeholder_stop(*, signal: int, entry: float, atr: float) -> _StopPlan:
+    if signal not in (1, -1) or not np.isfinite(entry) or entry <= 0:
+        return _StopPlan(0, entry, "none", None, None, None)
+    if not np.isfinite(atr) or atr <= 0:
+        sl_price = entry * (0.999 if signal == 1 else 1.001)
+    else:
+        sl_price = entry - atr if signal == 1 else entry + atr
+    return _StopPlan(
+        signal,
+        sl_price,
+        "none",
+        None,
+        None,
+        None,
+        "execution_context tp_pct: structural entry gate skipped",
     )
 
 
@@ -846,6 +1000,20 @@ def _select_raw_h1_trigger(
             )
             if order_block_signal != 0:
                 return order_block_signal, "raw_h1_order_block_retest"
+        if rule == "h1_momentum_burst":
+            momentum_signal = _raw_h1_momentum_burst_signal(
+                ctx=ctx,
+                price_row=price_row,
+            )
+            if momentum_signal != 0:
+                return momentum_signal, "raw_h1_momentum_burst"
+        if rule == "h1_nr7_breakout":
+            nr7_signal = _raw_h1_nr7_breakout_signal(
+                ctx=ctx,
+                price_row=price_row,
+            )
+            if nr7_signal != 0:
+                return nr7_signal, "raw_h1_nr7_breakout"
     return None
 
 
@@ -928,6 +1096,67 @@ def _raw_h1_order_block_retest_signal(
         return 0
     newest = max(matching, key=lambda block: block.known_at)
     return 1 if newest.direction == BULLISH else -1
+
+
+def _raw_h1_momentum_burst_signal(
+    *,
+    ctx: EvaluationContext,
+    price_row: pd.Series,
+) -> int:
+    del price_row
+    candles = ctx.candles.get(Timeframe.H1)
+    if candles is None or candles.empty:
+        return 0
+    closed = _closed_candles(candles, Timeframe.H1, ctx.tick_time)
+    if len(closed) < 21:
+        return 0
+    close = closed["c"].astype(float)
+    open_ = closed["o"].astype(float)
+    returns = close.pct_change()
+    std = returns.rolling(20, min_periods=20).std().shift(1)
+    current_return = returns.iloc[-1]
+    current_std = std.iloc[-1]
+    if pd.isna(current_return) or pd.isna(current_std) or float(current_std) <= 0:
+        return 0
+    current_close = float(close.iloc[-1])
+    current_open = float(open_.iloc[-1])
+    threshold = float(current_std) * 1.5
+    if current_return > threshold and current_close > current_open:
+        return 1
+    if current_return < -threshold and current_close < current_open:
+        return -1
+    return 0
+
+
+def _raw_h1_nr7_breakout_signal(
+    *,
+    ctx: EvaluationContext,
+    price_row: pd.Series,
+) -> int:
+    del price_row
+    candles = ctx.candles.get(Timeframe.H1)
+    if candles is None or candles.empty:
+        return 0
+    closed = _closed_candles(candles, Timeframe.H1, ctx.tick_time)
+    if len(closed) < 7:
+        return 0
+    high = closed["h"].astype(float)
+    low = closed["l"].astype(float)
+    open_ = closed["o"].astype(float)
+    close = closed["c"].astype(float)
+    bar_range = high - low
+    rolling_min = bar_range.rolling(7, min_periods=7).min()
+    current_min = rolling_min.iloc[-1]
+    current_range = bar_range.iloc[-1]
+    if pd.isna(current_min) or pd.isna(current_range) or current_range > current_min:
+        return 0
+    current_close = float(close.iloc[-1])
+    current_open = float(open_.iloc[-1])
+    if current_close > current_open:
+        return 1
+    if current_close < current_open:
+        return -1
+    return 0
 
 
 def _trigger_candle_confirms(price_row: pd.Series, signal: int) -> bool:
@@ -1102,6 +1331,7 @@ def _apply_signal_filters(
     trigger_known_at: datetime,
     context_bias: str,
     setup_direction: str,
+    discovery: _DiscoveryBarFeatures | None = None,
 ) -> tuple[_StopPlan, str | None]:
     if stop.signal == 0:
         return stop, None
@@ -1134,6 +1364,41 @@ def _apply_signal_filters(
         return _neutralized_filtered_stop(
             stop, f"context_reversal:{context_bias}:{setup_direction}"
         )
+    if filters.min_trend_strength_atr is not None:
+        strength = None if discovery is None else discovery.trend_strength_atr
+        if strength is None:
+            return _neutralized_filtered_stop(stop, "missing_trend_strength")
+        if strength < filters.min_trend_strength_atr:
+            return _neutralized_filtered_stop(stop, f"trend_strength_low:{strength:.4f}")
+    if filters.min_volume_median_ratio is not None:
+        if discovery is None or discovery.volume is None or discovery.volume_median20 is None:
+            return _neutralized_filtered_stop(stop, "missing_volume")
+        threshold = discovery.volume_median20 * filters.min_volume_median_ratio
+        if discovery.volume < threshold:
+            return _neutralized_filtered_stop(stop, "low_volume")
+    if filters.block_d1_h4_context_reversal and discovery is not None:
+        d1 = discovery.d1_context
+        h4 = discovery.h4_context
+        if (
+            d1 not in _DISCOVERY_CONTEXT_INCOMPLETE
+            and h4 not in _DISCOVERY_CONTEXT_INCOMPLETE
+            and d1 != h4
+        ):
+            return _neutralized_filtered_stop(stop, f"d1_h4_context_reversal:{d1}:{h4}")
+    if filters.require_h4_context_aligned:
+        if discovery is None or discovery.h4_context in _DISCOVERY_CONTEXT_INCOMPLETE:
+            return _neutralized_filtered_stop(stop, "missing_h4_context")
+        expected = "long" if side == "long" else "short"
+        if discovery.h4_context != expected:
+            return _neutralized_filtered_stop(
+                stop, f"h4_context_misaligned:{discovery.h4_context}"
+            )
+    if filters.max_bb_width_pct is not None:
+        width = None if discovery is None else discovery.bb_width_pct
+        if width is None:
+            return _neutralized_filtered_stop(stop, "missing_bb_width_pct")
+        if width > filters.max_bb_width_pct:
+            return _neutralized_filtered_stop(stop, f"bb_not_squeezed:{width:.4f}")
     return stop, None
 
 

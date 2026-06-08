@@ -33,13 +33,16 @@ surface has already been completed. Engines, aggregator, decision layer, sinks,
 runtime, retry/backoff, heartbeat, log rotation, service config, and Railway
 deployment docs are in place.
 
-Current active work is **M2 donor backtester migration and calibration**.
-`backtester` is now a root-integrated package under `src/backtester` per
-ADR-0023.
-The donor `crypt_ensemble` strategy can replay the existing ensemble over
-project Parquet data and the first multi-timeframe H1 execution slice exists,
-but full H1 smoke acceptance remains open behind H1 setup-geometry retuning
-and a performance pass.
+Current active work is **M2 donor backtester migration and candidate search**.
+`backtester` is a root-integrated package under `src/backtester` (ADR-0023).
+`discover-strategies` ranks H1 trigger+filter stacks; converted candidates run
+through donor `crypt_ensemble` + mandate `compare-fixed` / Optuna.
+
+**Active candidate:** NR7 + bb_squeeze + h4_context_aligned
+(`crypt_ensemble_h1_discovery_nr7_bb_squeeze_h4.json`). TP-first execution
+(`exit_geometry=tp_pct`, ADR-0027) with execution context in strategy layer
+(ADR-0028). Jan 2025 Optuna slice: **+6.30%** — mandate floor **+15%/month**
+not yet met; owner-run full-year tuning in progress (`IN_PROGRESS.md`).
 
 See `docs/tasks/ROADMAP.md` for milestones.
 
@@ -217,6 +220,18 @@ Use `discover-strategies` before more manual H1 trigger/filter backtests. It
 ranks one-trigger plus filter-stack candidates by fixed ATR-barrier forward
 labels and exports a shortlist for later donor execution validation.
 
+Convert a discovery-native candidate into a donor strategy config:
+
+```bash
+uv run backtester convert-discovery-strategy \
+    --input results/discovery_sol_h1_2025_monthly/20260608_113331/best_candidates/rank_001_strategy.json \
+    --output strategies/backtester/my_candidate.json
+```
+
+The current full-year shortlist reference config is
+`strategies/backtester/crypt_ensemble_h1_discovery_momentum_burst_short.json`.
+See `docs/strategy_discovery.md` §13 for conversion semantics.
+
 ```bash
 uv run backtester discover-strategies \
     --data-dir data \
@@ -281,6 +296,28 @@ max drawdown, stop-loss counts, and the promote/archive/discard/full-Optuna
 verdict, evaluated per symbol because each symbol has its own mandate portfolio.
 Use `--jobs N` to run independent windows in parallel; this does not parallelize
 Optuna strategy-parameter search.
+
+With `--ttl 0`, bar-count TTL is disabled: positions exit only on TP/SL and
+remain open at end of data (no forced close on the last bar). For meaningful
+`ttl=0` evaluation across monthly windows, use `--continuous` (auto-enabled when
+`ttl=0`): one backtest per symbol spans all windows, and monthly `windows.csv`
+rows are derived from that run so open positions are not reset at each month
+boundary.
+
+**TP-first exit geometry** (`--exit-geometry tp_pct --tp-move-pct 0.015`):
+fixed gross TP move from entry; SL = TP distance / `rrr`, structural SL used
+as cap. With `tp_pct`, `crypt_ensemble` skips the structural SL **entry gate**
+(ADR-0028); discovery-mapped filters still apply. Optuna search:
+
+```bash
+--exit-geometry tp_pct \
+--tp-move-pct-low 0.008 --tp-move-pct-high 0.020 --tp-move-pct-step 0.002 \
+--rrr-low 1.25 --rrr-high 2.25 --rrr-step 0.25 \
+--ttl-low 12 --ttl-high 48 --ttl-step 12 \
+--risk-percent-low 1.0 --risk-percent-high 2.0 --risk-percent-step 0.25
+```
+
+See `docs/backtester/exit_geometry.md`.
 
 ```bash
 uv run backtester compare-fixed \
