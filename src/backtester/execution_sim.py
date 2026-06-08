@@ -108,6 +108,7 @@ class ExitReason(str, Enum):
     STOP_LOSS = "stop_loss"
     TRAILING_STOP = "trailing_stop"
     TTL_EXPIRED = "ttl_expired"
+    OPEN = "open"
 
 
 class ExecutionSim:
@@ -1147,7 +1148,51 @@ class ExecutionSim:
                     entry_ctx=entry_ctx,
                 )
 
+        if active_positions:
+            last_bar_index = len(df) - 1
+            trade_history.extend(
+                self._open_position_snapshot(pos=pos, last_bar_index=last_bar_index)
+                for pos in active_positions
+            )
+
         return pd.DataFrame(trade_history) if trade_history else pd.DataFrame()
+
+    @staticmethod
+    def _open_position_snapshot(*, pos: Position, last_bar_index: int) -> dict[str, Any]:
+        """Represent an active entry without realizing PnL at end of data."""
+        return {
+            "signal_time": pos.signal_time,
+            "entry_time": pos.entry_time,
+            "exit_time": pd.NaT,
+            "entry_price": pos.entry_price,
+            "risk_base_capital": pos.risk_base_capital,
+            "exit_price": pd.NA,
+            "size": pos.size,
+            "pnl_abs": pd.NA,
+            "pnl_rel": pd.NA,
+            "fee_entry": pos.fee_entry,
+            "fee_exit": pd.NA,
+            "tp_price": pos.tp_price,
+            "sl_price": pos.sl_price,
+            "trail_activation_rrr": pos.trail_activation_rrr,
+            "trail_distance_atr": pos.trail_distance_atr,
+            "trail_stop_price": pos.trail_stop_price,
+            "trail_active": pos.trail_active,
+            "exit_reason": ExitReason.OPEN.value,
+            "capital_before": pos.capital_before,
+            "capital_after": pd.NA,
+            "holding_bars": max(last_bar_index - pos.bar_opened, 0),
+            "leverage": pos.leverage,
+            "locked_margin": pos.locked_margin,
+            "available_balance_before": pos.available_balance_before,
+            "open_positions_before": pos.open_positions_before,
+            "total_locked_margin_before": pos.total_locked_margin_before,
+            "total_locked_margin_after_entry": pos.total_locked_margin_after_entry,
+            "is_long": pos.is_long,
+            "entry_bar_index": pos.bar_opened,
+            "exit_bar_index": pd.NA,
+            **pos.metadata,
+        }
 
 
 def _with_closed_atr14(df: pd.DataFrame) -> pd.DataFrame:

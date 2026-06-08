@@ -1,88 +1,105 @@
 # In progress
 
-## Next steps — H1 trigger-first discovery reset
+## Next owner-run task — Run strategy discovery MVP
 
-**Owner direction still applies:** stop-loss count limits and OHLCV coverage
-preflight are canceled for the current search. Do not implement either unless
-the owner explicitly revives them.
+**Owner direction still applies:** backtests, optimizer runs, `compare-fixed`,
+`compare-grid`, and `signal-quality` are owner-run by default. The
+`discover-strategies` command is also intended as the next owner-run long job:
+agents should inspect returned artifacts before asking for more manual
+trigger/filter backtests.
 
-**New search protocol:** trigger-first reset. Start from raw H1 trigger
-candidates, make them frequent enough to measure, then add filters one by one.
-Use `rrr = 1.0` while searching for trigger/filter quality and treat PnL as
-secondary. First-rank metrics are trade count, win rate, exit mix, and visual
-plausibility in `trade_chart.html`. Only after a trigger/filter stack is stable
-should agents search `rrr`, `ttl`, SL/TP, and trailing-stop parameters.
+**Current artifacts:**
 
-**What:** compare raw H1 trigger candidates one at a time:
+- Contiguous first pass: `results/discovery_sol_h1/20260608_111656/`.
+- Monthly stability pass: `results/discovery_sol_h1_monthly/20260608_112021/`.
+- Monthly stability pass with robustness exports:
+  `results/discovery_sol_h1_monthly/20260608_112946/`.
+- Full SOL 2025 monthly discovery:
+  `results/discovery_sol_h1_2025_monthly/20260608_113331/`.
 
-- `strategies/backtester/crypt_ensemble_h1_trigger_raw_candle_confirm.json`
-- `strategies/backtester/crypt_ensemble_h1_trigger_raw_sweep_reversal.json`
-- `strategies/backtester/crypt_ensemble_h1_trigger_raw_structure_break.json`
-- `strategies/backtester/crypt_ensemble_h1_trigger_raw_order_block_retest.json`
+**Review verdict:** do not convert the top score candidate. The score ranking
+still prefers dense candle-confirm variants even when they have no edge:
+monthly top score `h1_candle_confirm` had `2157` events, `1041` wins, `1049`
+losses, `67` neutral, `49.81%` win rate.
 
-**Why now:** the latest structural H1 branch stayed sparse and below mandate
-even after removing TTL and distance-filter hypotheses. Optimizing PnL on a
-rare trigger is premature; the project needs a measurable entry event first.
+The narrower high-win candidates are not stable enough yet:
 
-**Expected gain:** identify whether any simple H1 trigger produces enough
-trades and a usable win-rate baseline before spending more compute on filters
-or execution parameters.
+- `h1_order_block_retest__atr_distance_1_2`: aggregate `55` events,
+  `36/19/0`, `65.45%`, but February failed (`6/8`, `42.86%`).
+- `h1_order_block_retest__atr_distance_1_2__trend_strength_min`: aggregate
+  `47` events, `32/15/0`, `68.09%`, but it is rejected by the current
+  `min_trades_total=50` gate and February failed (`6/7`, `46.15%`).
+- `h1_range_breakout__atr_distance_0_1__h4_context_aligned`: aggregate `138`
+  events, `80/58/0`, `57.97%`, but March failed (`19/25`, `43.18%`).
+- `h1_range_breakout__atr_distance_0_1__h4_context_aligned__side_short_only__trend_strength_min`:
+  aggregate `77` events, `46/31/0`, `59.74%`, but March failed (`11/14`,
+  `44.00%`).
+- The most stable checked profile was
+  `h1_candle_confirm__h4_context_aligned__side_short_only__trend_strength_min__volatility_normal_only`:
+  `286` events, `154/130/2`, `54.23%`, with all three months positive
+  (`56.06%`, `53.47%`, `53.85%`). This is only a mild label edge, not enough
+  to treat as an execution candidate yet.
+- The robustness-export pass also surfaced
+  `h1_structure_break__side_short_only`: `136` events, `73/60/3`, `54.89%`,
+  with monthly win rates `57.50%`, `54.72%`, `52.50%`. This is cleaner than
+  candle-confirm but still only a mild edge over three months.
 
-**Acceptance:** for each raw trigger candidate, produce owner-run
-`compare-fixed` artifacts on the same reviewed windows with `rrr = 1.0`; write
-a verdict that selects the next trigger to filter, or rejects this H1 premise
-if all raw triggers remain too sparse or low quality.
+**Full-year verdict:** no candidate passed the strict robust export
+(`robust_min_window_win_rate_50.csv` is empty), so there is no clean
+all-12-month label edge. The best practical shortlist family is:
 
-Current raw candle-confirm artifact:
-
-- `results/crypt_h1_trigger_raw_candle_confirm_r1/20260607_212807/`.
-- Executed trades remained low because `max_positions = 1` throttled a much
-  larger active-signal stream: SOL Jan `174` active signals -> `21` trades,
-  SOL Mar `116` -> `21`, TON Feb `181` -> `23`.
-- Win rate at `rrr = 1.0`: SOL Jan `38.10%`, SOL Mar `57.14%`, TON Feb
-  `56.52%`.
-
-Current higher-concurrency/no-TTL artifact:
-
-- `results/crypt_h1_trigger_raw_candle_confirm_r1_pos5/20260607_213715/`.
-- Ran with `ttl = 0`, `max_positions = 5`.
-- Executed trades still remained too low for trigger discovery: TON Feb `21`,
-  SOL Jan `46`, SOL Mar `30`.
-- Conclusion: execution concurrency and TTL are not the main bottleneck. The
-  current raw trigger configs still depend on H4 setup direction and context
-  gating, so they are not raw enough for the owner-directed reset.
-
-Next command template, no-setup raw H1 candle trigger:
-
-```bash
-uv run backtester compare-fixed \
-    --data-dir data \
-    --primary-timeframe 1h \
-    --strategy strategies/backtester/crypt_ensemble_h1_raw_candle_confirm_no_setup.json \
-    --window ton_2025_02:TON-USDT-SWAP:2025-02-01:2025-03-01 \
-    --window sol_2025_01:SOL-USDT-SWAP:2025-01-01:2025-02-01 \
-    --window sol_2025_03:SOL-USDT-SWAP:2025-03-01:2025-04-01 \
-    --output results/crypt_h1_raw_candle_confirm_no_setup_r1_pos5 \
-    --rrr 1.0 \
-    --ttl 0 \
-    --risk-percent 1.0 \
-    --max-positions 5 \
-    --risk-base-period monthly \
-    --is-isolated-futures \
-    --jobs 3
+```text
+h1_momentum_burst__avoid_low_volume__block_context_reversal__side_short_only__trend_strength_min
 ```
 
-Relevant rejected-branch artifacts:
+It produced `325` labeled events, `180/143/2`, `55.73%` aggregate win rate,
+all 12 months above `min_trades_per_window=10`, and 11 of 12 months at or
+above `50%` win rate. The only weak month was July: `11/15/1`, `42.31%`.
 
-- Density baseline review:
-  `results/crypt_h1_visual_review_baseline_density/20260607_210508/`.
-- Density age6/noOB review:
-  `results/crypt_h1_visual_review_age6_no_ob_density/20260607_211115/`.
-- Baseline structural trigger:
-  `results/crypt_ensemble_h1_structural_trigger_bounded_isolated/20260607_183249/`.
-- Age-6 no-order-block diagnostic:
-  `results/crypt_ensemble_h1_trigger_age6_no_ob_bounded/20260607_185632/`.
-- Age-6 no-order-block with `2..4 ATR` signal stop-distance filter:
-  `results/crypt_ensemble_h1_trigger_age6_no_ob_distance_2_4_bounded/20260607_191049/`.
-- Tiny execution grid for the same diagnostic:
-  `results/crypt_ensemble_h1_trigger_age6_no_ob_distance_2_4_grid/20260607_192915/`.
+Monthly label profile:
+
+| Month | Events | W/L/N | Win rate |
+| --- | ---: | --- | ---: |
+| Jan | 25 | 13/12/0 | 52.00% |
+| Feb | 39 | 22/17/0 | 56.41% |
+| Mar | 25 | 13/12/0 | 52.00% |
+| Apr | 22 | 11/11/0 | 50.00% |
+| May | 24 | 14/10/0 | 58.33% |
+| Jun | 29 | 18/11/0 | 62.07% |
+| Jul | 27 | 11/15/1 | 42.31% |
+| Aug | 20 | 15/5/0 | 75.00% |
+| Sep | 28 | 17/11/0 | 60.71% |
+| Oct | 28 | 14/14/0 | 50.00% |
+| Nov | 32 | 18/13/1 | 58.06% |
+| Dec | 26 | 14/12/0 | 53.85% |
+
+The runner-up without `avoid_low_volume` is nearly identical:
+`h1_momentum_burst__block_context_reversal__side_short_only__trend_strength_min`
+with `327` events, `55.38%`, 11 of 12 months ≥50%, same July weakness.
+
+**What:** implement the backlog conversion path for this selected discovery
+candidate into a donor-executable diagnostic strategy config, or document
+exactly why the current donor `crypt_ensemble` strategy cannot represent it.
+Do not convert the score leaders or narrow sweep/order-block rows yet; they
+failed monthly robustness despite high aggregate win rates.
+
+**Why now:** manual H1 trigger/filter tinkering was burning owner/Codex tokens.
+The strategy discovery constructor now exists, so the next useful step is a
+single unattended discovery report instead of more one-off JSON branches.
+
+**Expected gain:** test whether the only reasonably stable full-year label
+edge survives donor execution mechanics: next-bar entry, structural stop
+availability, RRR/TTL, overlap, margin, and fees.
+
+**Acceptance:** add a checked-in strategy config or documented conversion
+command for the selected candidate, plus focused tests. The next owner-run
+handoff should be a `compare-fixed` command across SOL 2025 monthly windows,
+not another discovery run.
+
+Relevant context:
+
+- Spec: `docs/strategy_discovery.md`.
+- Implementation: `src/backtester/strategy_discovery/`.
+- Tests: `tests/backtester/test_strategy_discovery.py`.
+- Previous manual H1 raw-trigger branch is superseded by this discovery job
+  unless the owner explicitly asks to resume one-off `compare-fixed` runs.

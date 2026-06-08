@@ -4,6 +4,52 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-08 — Strategy discovery constructor MVP
+
+Completed the P0 implementation of the strategy discovery constructor.
+
+What was done:
+
+- Added `src/backtester/strategy_discovery/` with discovery event contracts,
+  primary/context features, eight initial H1 triggers, eighteen initial
+  filters, fixed ATR-barrier forward labeling, Wilson-based scoring, staged
+  beam search, and artifact export.
+- Wired `backtester discover-strategies` into the root CLI.
+- Supported both contiguous `--symbol --from --to` mode and repeated
+  `--window label:SYMBOL:YYYY-MM-DD:YYYY-MM-DD` mode.
+- Exported `config.json`, `candidates.csv`, `candidates.md`,
+  `search_trace.csv`, `rejected.csv`, and discovery-native
+  `best_candidates/rank_*` strategy/event/report files.
+- Added focused tests for trigger output, labeler outcomes, filter
+  pass/reject reasons, no-lookahead H4/D1 context alignment, sample-size
+  scoring, beam de-duplication through the exported candidate IDs, and CLI
+  artifact creation.
+
+Why now:
+
+- Manual H1 trigger/filter search was stuck in one-off JSON branches and
+  repeated owner-run commands. This command gives the owner one unattended job
+  that can produce a ranked shortlist before execution backtests and Optuna.
+
+Expected gain:
+
+- Future sessions can inspect one discovery report instead of asking the owner
+  to run another intermediate trigger/filter backtest.
+
+Acceptance:
+
+- The owner can run `uv run backtester discover-strategies ...` and receive a
+  timestamped artifact directory with ranked candidates and best-candidate
+  event files.
+
+Verification:
+
+- `uv run pytest tests/backtester/test_strategy_discovery.py -q`
+- `uv run ruff check src/backtester/strategy_discovery src/backtester/__main__.py tests/backtester/test_strategy_discovery.py`
+- `uv run mypy src/backtester/strategy_discovery src/backtester/__main__.py tests/backtester/test_strategy_discovery.py`
+- `uv run ruff format --check src/backtester/strategy_discovery src/backtester/__main__.py tests/backtester/test_strategy_discovery.py`
+- `uv run backtester discover-strategies --help`
+
 ## 2026-06-08 — H1 density review and trigger-first reset
 
 Completed the sparse-branch density review and reset the next search protocol

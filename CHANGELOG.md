@@ -6,6 +6,213 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-08 — Full-year discovery artifact review
+
+- Reviewed owner-run full SOL 2025 monthly discovery artifact
+  `results/discovery_sol_h1_2025_monthly/20260608_113331/`.
+- Strict robust shortlist was empty: no candidate kept every month at or above
+  `50%` label win rate.
+- Selected the only practical full-year shortlist family for possible donor
+  conversion:
+  `h1_momentum_burst__avoid_low_volume__block_context_reversal__side_short_only__trend_strength_min`.
+- Selected profile: `325` events, `180/143/2`, `55.73%` aggregate win rate,
+  all 12 months above the event-count floor, 11 of 12 months at or above
+  `50%`; July was the weak month at `42.31%`.
+- Updated `IN_PROGRESS.md`: next work is to convert that discovery-native
+  candidate into a donor-executable diagnostic strategy config or document why
+  current `crypt_ensemble` cannot represent it.
+
+**ADRs:** ADR-0025 applies; none added.
+
+**Verification:** inspected full-year `config.json`, `top_win_rate_min_*`,
+`robust_min_window_win_rate_50.csv`, `candidates.csv`, and
+`candidate_windows.csv`.
+
+**Files touched:** `docs/tasks/`, `CHANGELOG.md`.
+
+## 2026-06-08 — Robust discovery artifact review
+
+- Reviewed owner-run improved monthly discovery artifact
+  `results/discovery_sol_h1_monthly/20260608_112946/`.
+- `top_win_rate_min_50.csv` still led with
+  `h1_order_block_retest__atr_distance_1_2`, but per-window metrics show
+  February weakness (`6/8`, `42.86%`).
+- `top_win_rate_min_100.csv` led with range-breakout `0..1 ATR` H4-aligned
+  variants, but per-window metrics show March weakness (`19/25`, `43.18%`).
+- `robust_min_window_win_rate_50.csv` surfaced two mild but stable Jan-Mar
+  families: candle-confirm H4-aligned short volatility-normal variants and
+  `h1_structure_break__side_short_only`.
+- Fixed shortlist CSV exports so `top_*` and `robust_*` files include the same
+  per-window robustness summary columns as `candidates.csv`.
+- Updated `IN_PROGRESS.md`: next owner-run step is full SOL 2025 monthly
+  discovery before any donor conversion.
+
+**ADRs:** ADR-0025 applies; none added.
+
+**Verification:** inspected `top_win_rate_min_*`, `robust_min_window_win_rate_50`,
+`candidate_windows.csv`, and reran targeted discovery tests/lint/type checks.
+
+**Files touched:** `src/backtester/`, `docs/tasks/`, `CHANGELOG.md`.
+
+## 2026-06-08 — Discovery robustness shortlists
+
+- Extended `backtester discover-strategies` report exports with
+  `candidate_windows.csv` / `.md` containing per-candidate, per-window events,
+  wins, losses, neutral count, and win rate.
+- Added per-window robustness summary columns to `candidates.csv`.
+- Added root shortlist CSV/Markdown exports and matching `best_candidates/`
+  subdirectories for top score, top win rate at minimum sample thresholds
+  (`50`, `100`, `200`, `500`), and robust candidates with every window at or
+  above `50%` win rate.
+- Kept legacy `best_candidates/rank_*` top-score artifacts for compatibility.
+- Updated docs and active handoff so the next owner-run discovery pass starts
+  from the new shortlist files instead of manually sorting `candidates.csv`.
+
+**ADRs:** ADR-0025 applies; none added.
+
+**Verification:** `pytest tests/backtester/test_strategy_discovery.py -q`;
+`ruff check` / `ruff format --check` on discovery, CLI, and discovery tests;
+`mypy` on discovery, CLI, and discovery tests.
+
+**Files touched:** `src/backtester/`, `tests/backtester/`, `docs/`,
+`docs/tasks/`, `README.md`, `CHANGELOG.md`.
+
+## 2026-06-08 — Monthly discovery artifact review
+
+- Reviewed owner-run monthly discovery artifact
+  `results/discovery_sol_h1_monthly/20260608_112021/`.
+- Top score remained non-directional: `h1_candle_confirm`, `2157` events,
+  `49.81%` win rate.
+- High-win narrow candidates were not robust enough across months:
+  `h1_order_block_retest__atr_distance_1_2` was `65.45%` aggregate but failed
+  February; `h1_range_breakout__atr_distance_0_1__h4_context_aligned` was
+  `57.97%` aggregate but failed March.
+- The most stable checked profile was
+  `h1_candle_confirm__h4_context_aligned__side_short_only__trend_strength_min__volatility_normal_only`
+  at `286` events and `54.23%` aggregate win rate, with all three months
+  mildly positive.
+- Updated `IN_PROGRESS.md`: next work should improve discovery report exports
+  with per-window W/L/N and robustness-ranked shortlists before converting any
+  candidate into a donor execution config.
+
+**ADRs:** ADR-0025 applies; none added.
+
+**Verification:** inspected monthly `config.json`, `candidates.csv`, score
+shortlist, and reconstructed per-window labels for selected candidates using
+the discovery labeler.
+
+**Files touched:** `docs/tasks/`, `CHANGELOG.md`.
+
+## 2026-06-08 — Discovery artifact review
+
+- Reviewed owner-run discovery artifact
+  `results/discovery_sol_h1/20260608_111656/`.
+- The top score candidate was dense but not directional:
+  `h1_candle_confirm`, `2155` events, `49.77%` win rate.
+- The best higher-sample candidates were only mild edges (`>=500` events:
+  best `53.23%` win rate), while narrower candidates need stability checks
+  (`h1_order_block_retest__atr_distance_1_2`: `55` events, `65.45%`;
+  `h1_range_breakout__atr_distance_0_1__h4_context_aligned`: `141` events,
+  `56.74%`).
+- Updated `IN_PROGRESS.md` to request a monthly-window discovery rerun before
+  converting any discovery-native candidate into a donor execution config.
+
+**ADRs:** ADR-0025 applies; none added.
+
+**Verification:** inspected `config.json`, `candidates.csv`, top
+`best_candidates/` reports/events, and candidate aggregates with local pandas.
+
+**Files touched:** `docs/tasks/`, `CHANGELOG.md`.
+
+## 2026-06-08 — Discovery progress bar
+
+- Added a Click progress bar to `backtester discover-strategies` so long
+  trigger/filter discovery runs show visible progress through dataset
+  preparation, trigger generation, labeling, beam evaluation, and export.
+- Kept discovery logic unchanged; the progress total is an estimated upper
+  bound and is completed when the search exits early.
+- Added a focused test that `run_strategy_discovery` emits progress ticks.
+
+**ADRs:** ADR-0025 applies; none added.
+
+**Verification:** `pytest tests/backtester/test_strategy_discovery.py -q`;
+`ruff check` / `ruff format --check` on discovery, CLI, and discovery tests;
+`mypy` on discovery, CLI, and discovery tests; `backtester
+discover-strategies --help`.
+
+**Files touched:** `src/backtester/`, `tests/backtester/`, `CHANGELOG.md`.
+
+## 2026-06-08 — Strategy discovery constructor MVP
+
+- Implemented `backtester discover-strategies`, a self-contained trigger/filter
+  discovery job for fixed ATR-barrier forward labels.
+- Added the `src/backtester/strategy_discovery/` package with event contracts,
+  feature building, eight H1 triggers, eighteen filters, labeler, scoring,
+  staged/beam search, and report exports.
+- The command writes `config.json`, `candidates.csv`, `candidates.md`,
+  `search_trace.csv`, `rejected.csv`, and discovery-native
+  `best_candidates/rank_*` artifacts under one timestamped output directory.
+- Added focused discovery tests for trigger output, label outcomes, filters,
+  no-lookahead H4/D1 context alignment, sample-size scoring, candidate
+  de-duplication, and CLI artifact creation.
+- Moved the completed P0 implementation task to `DONE.md`; `IN_PROGRESS.md`
+  now points to the owner-run discovery command and `BACKLOG.md` tracks the
+  follow-up conversion from discovery shortlist to donor strategy config.
+
+**ADRs:** ADR-0025 applies; none added.
+
+**Verification:** `pytest tests/backtester/test_strategy_discovery.py -q`;
+`ruff check` / `ruff format --check` on discovery, CLI, and discovery tests;
+`mypy` on discovery, CLI, and discovery tests; `backtester
+discover-strategies --help`.
+
+**Files touched:** `src/backtester/`, `tests/backtester/`, `docs/tasks/`,
+`README.md`, `CHANGELOG.md`.
+
+## 2026-06-08 — Strategy discovery constructor spec
+
+- Added `docs/strategy_discovery.md`, the contract for a one-session P0
+  implementation of `backtester discover-strategies`.
+- Defined the trigger/filter model: one trigger plus zero or more filters,
+  fixed ATR-barrier forward labels, staged/beam search, scoring, and report
+  artifacts.
+- Promoted the task to the top of `IN_PROGRESS.md` and `BACKLOG.md` so the
+  next agent builds the whole MVP instead of continuing manual one-off H1
+  backtest selection.
+- Kept risk management, leverage, margin, SL/TP, RRR, TTL, and trailing-stop
+  optimization explicitly out of the discovery MVP.
+
+**ADRs:** ADR-0025 applies; none added.
+
+**Verification:** documentation-only change; no tests run.
+
+**Files touched:** `docs/`, `docs/tasks/`, `CHANGELOG.md`.
+
+## 2026-06-08 — Open-position trade accounting
+
+- Diagnosed the owner-run no-setup raw candle-confirm artifact at
+  `results/crypt_h1_raw_candle_confirm_no_setup_r1_pos5/20260608_101504/`.
+- Root cause of the strange trade count: `ExecutionSim` exported only closed
+  positions, so open positions at window end occupied slots and margin but did
+  not appear in `trades.csv` or `total_trades`.
+- `ExecutionSim` now exports still-open positions as `exit_reason = open`
+  without realized `exit_time`, `exit_price`, `pnl_abs`, or `capital_after`.
+- `ResultsAnalyzer` now reports `total_trades`, `closed_trades`, and
+  `open_trades`; realized PnL/return/win-rate/drawdown metrics use closed
+  trades only, while margin/exposure diagnostics still include open rows.
+- Fixed candidate, signal-quality, and mandate reports now preserve entry
+  counts while keeping realized mandate PnL based on closed exits.
+
+**ADRs:** ADR-0025 and ADR-0026 apply; none added.
+
+**Verification:** targeted pytest for execution sim, results analyzer,
+mandate report, and fixed candidate report; changed-file ruff check/format;
+manual replay of SOL March existing `signals.csv` confirmed `17` closed trades
+plus `5` open entries.
+
+**Files touched:** `src/backtester/`, `tests/backtester/`, `docs/tasks/`,
+`CHANGELOG.md`.
+
 ## 2026-06-08 — H1 trigger-first discovery reset
 
 - Recorded the owner-directed reset from filtered H1 branch tuning to raw

@@ -27,15 +27,23 @@ from backtester.cli_runner import (  # noqa: E402
     run_backtest,
     run_parameter_optimization,
 )
+from backtester.data_contracts import StrategyInput  # noqa: E402
 from backtester.fixed_candidate_report import (  # noqa: E402
     FixedCandidateParams,
+    WindowSpec,
     parse_float_values,
     parse_int_values,
     parse_signal_quality_window_specs,
+    parse_window_spec,
     parse_window_specs,
     run_execution_grid_comparison,
     run_fixed_candidate_comparison,
     run_signal_quality_diagnostics,
+)
+from backtester.strategy_discovery import (  # noqa: E402
+    DiscoveryConfig,
+    DiscoveryWindow,
+    run_strategy_discovery,
 )
 from backtester.trade_chart_report import (  # noqa: E402
     TradeChartReportConfig,
@@ -1045,6 +1053,180 @@ def signal_quality(
         len(signals),
         len(groups),
         len(setup_attribution),
+    )
+
+
+@cli.command("discover-strategies")
+@click.option("--data-dir", required=True, help="Project data directory.")
+@click.option(
+    "--primary-timeframe",
+    type=click.Choice(["1h", "4h", "1d"], case_sensitive=False),
+    default="1h",
+    help="Primary discovery timeframe for crypt-parquet data.",
+)
+@click.option("--symbol", default=None, help="Trading pair for contiguous --from/--to mode.")
+@click.option("--from", "from_date", default=None, help="Inclusive start UTC.")
+@click.option("--to", "to_date", default=None, help="Inclusive end UTC.")
+@click.option(
+    "--window",
+    "windows",
+    multiple=True,
+    help=(
+        "Window as label:SYMBOL:YYYY-MM-DD:YYYY-MM-DD. "
+        "May be repeated; overrides --symbol/--from/--to."
+    ),
+)
+@click.option("--output", default="results/discovery", help="Folder for discovery reports.")
+@click.option("--label-horizon-bars", type=int, default=24, show_default=True)
+@click.option("--label-atr-mult", type=float, default=1.0, show_default=True)
+@click.option("--beam-width", type=click.IntRange(min=1), default=20, show_default=True)
+@click.option("--max-filter-depth", type=click.IntRange(min=0), default=4, show_default=True)
+@click.option("--min-trades-total", type=click.IntRange(min=1), default=50, show_default=True)
+@click.option("--min-trades-per-window", type=click.IntRange(min=1), default=10, show_default=True)
+@click.option(
+    "--keep-sparse-triggers",
+    is_flag=True,
+    help="Continue filter search even when an unfiltered trigger is below min-trades-total.",
+)
+def discover_strategies(
+    data_dir: str,
+    primary_timeframe: str,
+    symbol: str | None,
+    from_date: str | None,
+    to_date: str | None,
+    windows: tuple[str, ...],
+    output: str,
+    label_horizon_bars: int,
+    label_atr_mult: float,
+    beam_width: int,
+    max_filter_depth: int,
+    min_trades_total: int,
+    min_trades_per_window: int,
+    keep_sparse_triggers: bool,
+) -> None:
+    """Run trigger/filter discovery with fixed ATR-barrier forward labels."""
+    logger.info("🚀 Starting strategy discovery...")
+    try:
+        window_specs = (
+            [parse_window_spec(raw) for raw in windows]
+            if windows
+            else _single_discovery_window_spec(symbol=symbol, from_date=from_date, to_date=to_date)
+        )
+        discovery_windows = [
+            DiscoveryWindow(
+                label=window.label,
+                symbol=window.symbol,
+                start=window.start,
+                end=window.end,
+                data=_load_discovery_window(
+                    data_dir=data_dir,
+                    primary_timeframe=primary_timeframe,
+                    symbol=window.symbol,
+                    start=window.start,
+                    end=window.end,
+                ),
+            )
+            for window in window_specs
+        ]
+        config = DiscoveryConfig(
+            output=Path(output),
+            primary_timeframe=primary_timeframe,
+            label_horizon_bars=label_horizon_bars,
+            label_atr_mult=label_atr_mult,
+            beam_width=beam_width,
+            max_filter_depth=max_filter_depth,
+            min_trades_total=min_trades_total,
+            min_trades_per_window=min_trades_per_window,
+            keep_sparse_triggers=keep_sparse_triggers,
+        )
+        progress_total = _estimate_discovery_progress_total(
+            window_count=len(discovery_windows),
+            beam_width=beam_width,
+            max_filter_depth=max_filter_depth,
+        )
+        progress_done = 0
+
+        with click.progressbar(
+            length=progress_total,
+            label="Discovering strategies",
+        ) as bar:
+
+            def update_progress(step: int) -> None:
+                nonlocal progress_done
+                bounded_step = min(step, progress_total - progress_done)
+                if bounded_step > 0:
+                    bar.update(bounded_step)
+                    progress_done += bounded_step
+
+            output_path = run_strategy_discovery(
+                windows=discovery_windows,
+                config=config,
+                progress_callback=update_progress,
+            )
+            update_progress(progress_total - progress_done)
+    except ValueError as e:
+        logger.error("❌ %s", e)
+        return
+    logger.info("Strategy discovery artifacts saved to: %s", output_path)
+
+
+def _single_discovery_window_spec(
+    *,
+    symbol: str | None,
+    from_date: str | None,
+    to_date: str | None,
+) -> list[WindowSpec]:
+    if not symbol or not from_date or not to_date:
+        raise ValueError("discover-strategies requires --window or --symbol plus --from/--to")
+    return [parse_window_spec(f"{symbol.lower().replace('-', '_')}:{symbol}:{from_date}:{to_date}")]
+
+
+def _load_discovery_window(
+    *,
+    data_dir: str,
+    primary_timeframe: str,
+    symbol: str,
+    start: str,
+    end: str,
+) -> StrategyInput:
+    loader = build_cli_data_loader(
+        "crypt-parquet",
+        data_dir=data_dir,
+        symbol=symbol,
+        primary_timeframe=primary_timeframe,
+        start=start,
+        end=end,
+    )
+    df = load_ohlcv_via_loader(loader, logger=logger)
+    if df is None:
+        raise ValueError(f"Could not load discovery data for {symbol} {start}..{end}")
+    return df
+
+
+def _estimate_discovery_progress_total(
+    *,
+    window_count: int,
+    beam_width: int,
+    max_filter_depth: int,
+) -> int:
+    trigger_count = 8
+    filter_count = 18
+    dataset_steps = window_count
+    trigger_steps = trigger_count * window_count
+    label_steps = trigger_count * window_count
+    initial_eval_steps = trigger_count
+    depth_one_steps = trigger_count * filter_count if max_filter_depth >= 1 else 0
+    deeper_steps = trigger_count * beam_width * filter_count * max(max_filter_depth - 1, 0)
+    export_steps = 1
+    return max(
+        dataset_steps
+        + trigger_steps
+        + label_steps
+        + initial_eval_steps
+        + depth_one_steps
+        + deeper_steps
+        + export_steps,
+        1,
     )
 
 

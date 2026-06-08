@@ -55,7 +55,12 @@ def build_monthly_mandate_rows(
 
     for month in months:
         month_trades = (
-            prepared[prepared["mandate_month"] == month] if not prepared.empty else pd.DataFrame()
+            prepared[(prepared["mandate_month"] == month) & prepared["is_closed"]]
+            if not prepared.empty
+            else pd.DataFrame()
+        )
+        month_entries = (
+            prepared[prepared["entry_month"] == month] if not prepared.empty else pd.DataFrame()
         )
         monthly_pnl = (
             float(month_trades["pnl_abs"].sum())
@@ -85,7 +90,7 @@ def build_monthly_mandate_rows(
                 "capped_monthly_return_pct": round(min(raw_return, CAP_RETURN_PCT), 2),
                 "excess_return_pct": round(max(raw_return - CAP_RETURN_PCT, 0.0), 2),
                 "max_drawdown_pct": round(max_drawdown_pct, 2),
-                "trade_count": int(len(month_trades)),
+                "trade_count": int(len(month_entries)),
                 "stop_loss_count": stop_loss_count,
                 "passes_return_floor": bool(raw_return >= RETURN_FLOOR_PCT),
                 "breaches_monthly_dd": bool(max_drawdown_pct < MONTHLY_DD_LIMIT_PCT),
@@ -145,7 +150,9 @@ def build_mandate_summary(
 
 def _prepare_trades(trades: pd.DataFrame) -> pd.DataFrame:
     if trades.empty:
-        return pd.DataFrame(columns=["exit_time", "pnl_abs", "mandate_month"])
+        return pd.DataFrame(
+            columns=["entry_time", "exit_time", "pnl_abs", "mandate_month", "entry_month"]
+        )
     if "exit_time" not in trades.columns:
         raise ValueError("trades must include exit_time")
     if "pnl_abs" not in trades.columns:
@@ -153,8 +160,16 @@ def _prepare_trades(trades: pd.DataFrame) -> pd.DataFrame:
 
     prepared = trades.copy()
     prepared["exit_time"] = pd.to_datetime(prepared["exit_time"], errors="coerce", utc=True)
+    if "entry_time" in prepared.columns:
+        prepared["entry_time"] = pd.to_datetime(prepared["entry_time"], errors="coerce", utc=True)
+    else:
+        prepared["entry_time"] = prepared["exit_time"]
     prepared["pnl_abs"] = pd.to_numeric(prepared["pnl_abs"], errors="coerce").fillna(0.0)
-    prepared = prepared.dropna(subset=["exit_time"]).sort_values("exit_time")
+    prepared = prepared.dropna(subset=["entry_time"]).sort_values("entry_time")
+    prepared["entry_month"] = prepared["entry_time"].dt.tz_convert(None).dt.to_period("M")
+    prepared["is_closed"] = prepared["exit_time"].notna()
+    if "exit_reason" in prepared.columns:
+        prepared["is_closed"] = prepared["is_closed"] & (prepared["exit_reason"] != "open")
     prepared["mandate_month"] = prepared["exit_time"].dt.tz_convert(None).dt.to_period("M")
     return prepared
 

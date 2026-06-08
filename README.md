@@ -213,6 +213,32 @@ uv run backtester run \
     --output results/crypt_ensemble_sol_h1
 ```
 
+Use `discover-strategies` before more manual H1 trigger/filter backtests. It
+ranks one-trigger plus filter-stack candidates by fixed ATR-barrier forward
+labels and exports a shortlist for later donor execution validation.
+
+```bash
+uv run backtester discover-strategies \
+    --data-dir data \
+    --primary-timeframe 1h \
+    --symbol SOL-USDT-SWAP \
+    --from 2025-01-01 \
+    --to 2025-04-01 \
+    --output results/discovery_sol_h1 \
+    --label-horizon-bars 24 \
+    --label-atr-mult 1.0 \
+    --beam-width 20 \
+    --max-filter-depth 4 \
+    --min-trades-total 50 \
+    --min-trades-per-window 10
+```
+
+Artifacts land in `results/discovery_sol_h1/<timestamp>/`. Inspect
+`top_win_rate_min_50.csv`, `top_win_rate_min_100.csv`, and
+`robust_min_window_win_rate_50.csv` first, then use `candidate_windows.csv` to
+check per-window wins/losses before opening the matching
+`best_candidates/<shortlist>/rank_001_report.md` and events CSV.
+
 Bounded H1 setup tuning can use the donor optimizer directly:
 
 ```bash

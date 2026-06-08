@@ -422,7 +422,7 @@ def test_fee_too_large_blocks_position():
     )
     sim = ExecutionSim(
         initial_capital=1000.0,
-        taker_fee=0.5,  # 50%
+        taker_fee=2.0,  # 200%
         maker_fee=0.0002,
         risk_percent=1.0,
         rrr=2.0,
@@ -454,7 +454,7 @@ def test_min_net_exposure_blocks_position():
         rrr=2.0,
         max_positions=1,
         max_allowed_leverage=1000.0,
-        min_net_exposure=0.5,  # require 50% of balance as net exposure
+        min_net_exposure=2.0,  # require more than the full balance as net exposure
     )
 
     trades = sim.run(df)
@@ -567,8 +567,7 @@ def test_ttl_expiration_exit():
     assert trade["holding_bars"] == 2
 
 
-def test_positions_not_closed_automatically_at_last_bar():
-    # Current behavior: positions are not force-closed at the final bar
+def test_open_positions_are_reported_without_realized_pnl_at_last_bar():
     df = _base_df(
         opens=[100.0, 101.0, 102.0],
         highs=[101.0, 102.0, 103.0],
@@ -590,15 +589,24 @@ def test_positions_not_closed_automatically_at_last_bar():
 
     trades = sim.run(df)
 
-    # No TP/SL/TTL reached, so no trades recorded
-    assert trades.empty
+    assert len(trades) == 1
+    trade = trades.iloc[0]
+    assert trade["exit_reason"] == "open"
+    assert pd.isna(trade["exit_time"])
+    assert pd.isna(trade["exit_price"])
+    assert pd.isna(trade["pnl_abs"])
+    assert pd.isna(trade["capital_after"])
+    assert trade["locked_margin"] > 0
+    assert trade["available_balance_before"] == pytest.approx(1000.0)
+    assert trade["total_locked_margin_after_entry"] == pytest.approx(trade["locked_margin"])
 
 
-def test_isolated_futures_leverage_mismatch_blocks_second_position():
-    # First long opens, second with different leverage should be rejected in isolated futures mode
+def test_isolated_futures_max_leverage_keeps_concurrent_entries_consistent():
+    # ADR-0026 selects max leverage for fitting positions, so compatible
+    # isolated entries can coexist instead of being rejected by leverage drift.
     df = _base_df(
         opens=[100.0, 101.0, 102.0, 103.0, 104.0],
-        highs=[101.0, 150.0, 150.0, 150.0, 150.0],
+        highs=[101.0, 102.0, 150.0, 150.0, 150.0],
         lows=[99.0, 100.0, 101.0, 102.0, 103.0],
         closes=[100.5, 120.0, 120.0, 120.0, 120.0],
         signals=[1, 1, 0, 0, 0],
@@ -619,8 +627,9 @@ def test_isolated_futures_leverage_mismatch_blocks_second_position():
 
     trades = sim.run(df)
 
-    # Only one position should have been opened and closed
-    assert len(trades) == 1
+    assert len(trades) == 2
+    assert trades["leverage"].tolist() == [100.0, 100.0]
+    assert trades["exit_reason"].tolist() == ["take_profit", "open"]
 
 
 def test_isolated_futures_insufficient_margin_blocks_position():

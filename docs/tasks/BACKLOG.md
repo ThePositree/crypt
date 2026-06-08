@@ -14,6 +14,38 @@ when finished.
 > **+15%/month** on **$10k** SOL **2025** continuous backtest after fees;
 > max **10% intra-month DD**; auto-trading only after **promote** verdict.
 
+## P1 — Convert discovery shortlist to donor strategy configs
+
+**What:** add a narrow conversion path from the selected discovery-native
+candidate into a donor-executable `crypt_ensemble` diagnostic strategy config,
+or document why the top candidate cannot be represented safely in the current
+donor strategy.
+
+Selected candidate from
+`results/discovery_sol_h1_2025_monthly/20260608_113331/`:
+
+```text
+h1_momentum_burst__avoid_low_volume__block_context_reversal__side_short_only__trend_strength_min
+```
+
+Full-year label profile: `325` events, `180/143/2`, `55.73%` aggregate win
+rate, all 12 months above the event-count floor, 11 of 12 months at or above
+`50%`; July was weak at `42.31%`.
+
+**Why now:** the discovery MVP intentionally exports native
+`best_candidates/rank_*_strategy.json` files. That is enough for ranking signal
+quality, but execution validation still needs a donor strategy config before
+`compare-fixed`, `compare-grid`, or Optuna can evaluate RRR/TTL/SL/TP behavior.
+
+**Expected gain:** turn the first useful discovery report into a bounded
+owner-run execution validation without returning to hand-written one-off JSON
+branches.
+
+**Acceptance:** given the selected candidate, the repo contains a documented
+conversion command or checked-in strategy config plus focused tests. The
+handoff includes the exact owner-run SOL 2025 monthly `compare-fixed` command
+and expected artifact path.
+
 ## P1 — Candidate archive artifact layout
 
 **What:** define `results/archive/<candidate_id>/` convention for near-miss

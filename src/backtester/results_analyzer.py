@@ -7,8 +7,8 @@ from typing import Any, Optional
 import numpy as np
 import pandas as pd
 
-from .trade_chart_report import TradeChartReportConfig, build_trade_chart_report
 from .trade_analyzer import TradeAnalyzer
+from .trade_chart_report import TradeChartReportConfig, build_trade_chart_report
 from .visualizer import TradeConditionsVisualizer
 
 
@@ -85,7 +85,7 @@ class ResultsAnalyzer:
     def _prepare_trades_df(self) -> pd.DataFrame:
         """Prepare and normalize trades dataframe for metric computations."""
         df = self.trades.copy()
-        df["exit_time"] = pd.to_datetime(df["exit_time"])
+        df["exit_time"] = pd.to_datetime(df["exit_time"], errors="coerce")
         df["entry_time"] = pd.to_datetime(df["entry_time"])
         df.sort_values("exit_time", inplace=True)
 
@@ -94,6 +94,16 @@ class ResultsAnalyzer:
         df["week"] = df["exit_time"].dt.to_period("W")
         df["month"] = df["exit_time"].dt.to_period("M")
         return df
+
+    @staticmethod
+    def _closed_trades_df(df: pd.DataFrame) -> pd.DataFrame:
+        """Return trades with realized exits for PnL/equity metrics."""
+        if df.empty or "exit_reason" not in df.columns:
+            return df
+        closed = df[df["exit_reason"] != "open"].copy()
+        if "exit_time" in closed.columns:
+            closed = closed.dropna(subset=["exit_time"])
+        return closed
 
     @staticmethod
     def _compute_basic_metrics(df: pd.DataFrame) -> dict[str, Any]:
@@ -330,23 +340,40 @@ class ResultsAnalyzer:
 
         df = self._prepare_trades_df()
 
-        basic = self._compute_basic_metrics(df)
-        period_means = self._compute_period_pnl_means(df)
+        closed_df = self._closed_trades_df(df)
+        total_entries = int(len(df))
+        closed_trades = int(len(closed_df))
+        open_trades = total_entries - closed_trades
+        basic = self._compute_basic_metrics(closed_df)
+        period_means = self._compute_period_pnl_means(closed_df)
         exit_counts = self._compute_exit_distribution(df)
-        equity_curve, initial_capital, final_capital, total_return_pct = self._compute_equity_curve(
-            df
-        )
-        drawdown_metrics = self._compute_drawdown_metrics(equity_curve)
-        sharpe_ratio = self._compute_sharpe_ratio(
-            equity_curve, initial_capital, risk_free_rate_annual
-        )
-        avg_holding_bars = float(df["holding_bars"].mean())
-        monthly_returns_pct = self._compute_monthly_returns_pct(equity_curve, initial_capital)
-        long_metrics, short_metrics = self._compute_side_metrics(df)
+        initial_capital = float(pd.to_numeric(df["capital_before"], errors="coerce").iloc[0])
+        if closed_df.empty:
+            final_capital = initial_capital
+            total_return_pct = 0.0
+            drawdown_metrics = {"max_drawdown": 0.0}
+            sharpe_ratio = 0.0
+            monthly_returns_pct = {}
+        else:
+            (
+                equity_curve,
+                initial_capital,
+                final_capital,
+                total_return_pct,
+            ) = self._compute_equity_curve(closed_df)
+            drawdown_metrics = self._compute_drawdown_metrics(equity_curve)
+            sharpe_ratio = self._compute_sharpe_ratio(
+                equity_curve, initial_capital, risk_free_rate_annual
+            )
+            monthly_returns_pct = self._compute_monthly_returns_pct(equity_curve, initial_capital)
+        avg_holding_bars = float(closed_df["holding_bars"].mean()) if not closed_df.empty else 0.0
+        long_metrics, short_metrics = self._compute_side_metrics(closed_df)
 
         # Build the public metrics payload.
         self.metrics = {
-            "total_trades": int(basic["total_trades"]),
+            "total_trades": total_entries,
+            "closed_trades": closed_trades,
+            "open_trades": open_trades,
             "win_rate": round(float(basic["win_rate"]) * 100, 2),
             "total_pnl_abs": round(float(basic["total_pnl_abs"]), 2),
             "total_return_pct": round(total_return_pct, 2),
@@ -574,7 +601,10 @@ class ResultsAnalyzer:
         bars_after: int,
     ) -> None:
         """Save OHLCV slice around each trade for charting."""
-        trades = self.trades.copy()
+        trades = self._closed_trades_df(self.trades.copy())
+        if trades.empty:
+            self._logger.info("No closed trades; skipping trade_candles export")
+            return
         trades["entry_time"] = pd.to_datetime(trades["entry_time"])
         trades["exit_time"] = pd.to_datetime(trades["exit_time"])
 
@@ -706,9 +736,13 @@ class ResultsAnalyzer:
         total_trades = len(df)
         add("summary", "all", "trades", int(total_trades))
 
-        if "entry_time" in df.columns and "exit_time" in df.columns:
-            entry_time = pd.to_datetime(df["entry_time"], errors="coerce")
-            exit_time = pd.to_datetime(df["exit_time"], errors="coerce")
+        closed_df = self._closed_trades_df(df)
+        add("summary", "all", "closed_trades", int(len(closed_df)))
+        add("summary", "all", "open_trades", int(total_trades - len(closed_df)))
+
+        if "entry_time" in closed_df.columns and "exit_time" in closed_df.columns:
+            entry_time = pd.to_datetime(closed_df["entry_time"], errors="coerce")
+            exit_time = pd.to_datetime(closed_df["exit_time"], errors="coerce")
             duration_hours = ((exit_time - entry_time).dt.total_seconds() / 3600).dropna()
             if not duration_hours.empty:
                 add("summary", "all", "duration_hours_mean", duration_hours.mean())
@@ -741,10 +775,10 @@ class ResultsAnalyzer:
             for (side_name, reason), count in side_reason_counts.items():
                 add("side_exit_reason", f"{side_name}:{reason}", "count", int(count))
 
-        if {"is_long", "pnl_abs"}.issubset(df.columns):
-            side = df["is_long"].map({True: "long", False: "short"})
+        if {"is_long", "pnl_abs"}.issubset(closed_df.columns):
+            side = closed_df["is_long"].map({True: "long", False: "short"})
             pnl_by_side = (
-                df.assign(side=side)
+                closed_df.assign(side=side)
                 .groupby("side", dropna=False)["pnl_abs"]
                 .agg(["count", "sum", "mean", "median"])
                 .sort_index()
@@ -753,9 +787,9 @@ class ResultsAnalyzer:
                 for metric, value in stats.items():
                     add("side_pnl", str(side_name), str(metric), value)
 
-        if {"exit_reason", "pnl_abs"}.issubset(df.columns):
+        if {"exit_reason", "pnl_abs"}.issubset(closed_df.columns):
             pnl_by_reason = (
-                df.groupby("exit_reason", dropna=False)["pnl_abs"]
+                closed_df.groupby("exit_reason", dropna=False)["pnl_abs"]
                 .agg(["count", "sum", "mean", "median"])
                 .sort_index()
             )

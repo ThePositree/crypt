@@ -138,6 +138,9 @@ def summarize_fixed_candidate_run(
     signal_counts = _count_column(signals, "signal")
     setup_direction_counts = _count_column(signals, "setup_direction")
     margin_summary = _margin_summary(trades, initial_capital=params.capital)
+    total_trades = int(metrics.get("total_trades", len(trades)))
+    closed_trades = int(metrics.get("closed_trades", _closed_trade_count(trades)))
+    open_trades = int(metrics.get("open_trades", max(total_trades - closed_trades, 0)))
 
     row = {
         "label": window.label,
@@ -153,7 +156,9 @@ def summarize_fixed_candidate_run(
         "total_return_pct": metrics.get("total_return_pct", 0.0),
         "profit_factor": metrics.get("profit_factor", 0.0),
         "max_drawdown": metrics.get("max_drawdown", 0.0),
-        "total_trades": metrics.get("total_trades", 0),
+        "total_trades": total_trades,
+        "closed_trades": closed_trades,
+        "open_trades": open_trades,
         "long_trades": _side_count(trades, is_long=True),
         "short_trades": _side_count(trades, is_long=False),
         "long_pnl": round(long_pnl, 2),
@@ -168,6 +173,7 @@ def summarize_fixed_candidate_run(
         "exit_stop_loss": int(exit_counts.get("stop_loss", 0)),
         "exit_trailing_stop": int(exit_counts.get("trailing_stop", 0)),
         "exit_ttl_expired": int(exit_counts.get("ttl_expired", 0)),
+        "exit_open": int(exit_counts.get("open", 0)),
         "run_dir": str(run_dir),
     }
     row.update(margin_summary)
@@ -745,6 +751,9 @@ def summarize_signal_quality_window(
     filter_counts = _count_column(signals, "signal_filter_reason")
     enriched_trades = _enrich_signal_quality_trades(trades)
     margin_summary = _margin_summary(trades, initial_capital=params.capital)
+    total_trades = int(metrics.get("total_trades", len(trades)))
+    closed_trades = int(metrics.get("closed_trades", _closed_trade_count(trades)))
+    open_trades = int(metrics.get("open_trades", max(total_trades - closed_trades, 0)))
     stale_trades = (
         int(enriched_trades["stale_anchor"].sum())
         if "stale_anchor" in enriched_trades.columns
@@ -771,7 +780,9 @@ def summarize_signal_quality_window(
         "total_return_pct": metrics.get("total_return_pct", 0.0),
         "profit_factor": metrics.get("profit_factor", 0.0),
         "max_drawdown": metrics.get("max_drawdown", 0.0),
-        "total_trades": metrics.get("total_trades", 0),
+        "total_trades": total_trades,
+        "closed_trades": closed_trades,
+        "open_trades": open_trades,
         "long_trades": _side_count(trades, is_long=True),
         "short_trades": _side_count(trades, is_long=False),
         "long_pnl": round(_side_pnl(trades, is_long=True), 2),
@@ -1061,11 +1072,26 @@ def _side_count(trades: pd.DataFrame, *, is_long: bool) -> int:
 def _side_pnl(trades: pd.DataFrame, *, is_long: bool) -> float:
     if trades.empty or not {"is_long", "pnl_abs"}.issubset(trades.columns):
         return 0.0
+    trades = _closed_trades(trades)
     pnl = pd.to_numeric(
         trades.loc[trades["is_long"] == is_long, "pnl_abs"],
         errors="coerce",
     )
     return float(pnl.sum()) if not pnl.empty else 0.0
+
+
+def _closed_trades(trades: pd.DataFrame) -> pd.DataFrame:
+    if trades.empty or "exit_reason" not in trades.columns:
+        return trades
+    closed = trades[trades["exit_reason"] != "open"].copy()
+    if "exit_time" in closed.columns:
+        exit_time = pd.to_datetime(closed["exit_time"], errors="coerce", utc=True)
+        closed = closed[exit_time.notna()]
+    return closed
+
+
+def _closed_trade_count(trades: pd.DataFrame) -> int:
+    return int(len(_closed_trades(trades)))
 
 
 def _margin_summary(trades: pd.DataFrame, *, initial_capital: float) -> dict[str, Any]:
@@ -1292,7 +1318,9 @@ def _trade_outcomes_by_signal_time(trades: pd.DataFrame) -> pd.DataFrame:
     if trades.empty or "signal_time" not in trades.columns:
         return pd.DataFrame()
 
-    df = trades.copy()
+    df = _closed_trades(trades)
+    if df.empty:
+        return pd.DataFrame()
     df["signal_time_for_join"] = pd.to_datetime(df["signal_time"], errors="coerce", utc=True)
     df = df.dropna(subset=["signal_time_for_join"])
     if df.empty:
@@ -1390,7 +1418,8 @@ def _summarize_trade_group(
     rows: list[dict[str, Any]] = []
     grouped = trades.groupby(dimension, dropna=False)
     for group_value, group in grouped:
-        pnl = pd.to_numeric(_column_series(group, "pnl_abs"), errors="coerce")
+        closed_group = _closed_trades(group)
+        pnl = pd.to_numeric(_column_series(closed_group, "pnl_abs"), errors="coerce")
         exit_reason = _column_series(group, "exit_reason")
         side = _column_series(group, "side")
         rows.append(

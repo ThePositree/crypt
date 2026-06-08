@@ -17,6 +17,69 @@ def test_generate_no_trades_returns_error():
     assert analyzer.metrics == {"error": "no_trades", "total_trades": 0}
 
 
+def test_generate_counts_open_entries_but_excludes_them_from_realized_metrics():
+    df = _trades_df(
+        [
+            {
+                "entry_time": "2026-01-01 00:00:00",
+                "exit_time": "2026-01-01 04:00:00",
+                "entry_price": 100.0,
+                "exit_price": 110.0,
+                "pnl_abs": 10.0,
+                "pnl_rel": 0.1,
+                "exit_reason": "take_profit",
+                "capital_before": 1000.0,
+                "capital_after": 1010.0,
+                "holding_bars": 4,
+                "is_long": True,
+                "locked_margin": 100.0,
+                "available_balance_before": 1000.0,
+                "open_positions_before": 0,
+                "total_locked_margin_before": 0.0,
+                "total_locked_margin_after_entry": 100.0,
+            },
+            {
+                "entry_time": "2026-01-02 00:00:00",
+                "exit_time": pd.NaT,
+                "entry_price": 120.0,
+                "exit_price": pd.NA,
+                "pnl_abs": pd.NA,
+                "pnl_rel": pd.NA,
+                "exit_reason": "open",
+                "capital_before": 1010.0,
+                "capital_after": pd.NA,
+                "holding_bars": 8,
+                "is_long": False,
+                "locked_margin": 250.0,
+                "available_balance_before": 910.0,
+                "open_positions_before": 1,
+                "total_locked_margin_before": 100.0,
+                "total_locked_margin_after_entry": 350.0,
+            },
+        ]
+    )
+
+    analyzer = ResultsAnalyzer(df)
+    metrics = analyzer.generate()
+    diagnostics = analyzer._trade_diagnostics()
+    diag = {
+        (row["section"], row["group"], row["metric"]): row["value"]
+        for row in diagnostics.to_dict("records")
+    }
+
+    assert metrics["total_trades"] == 2
+    assert metrics["closed_trades"] == 1
+    assert metrics["open_trades"] == 1
+    assert metrics["win_rate"] == 100.0
+    assert metrics["total_pnl_abs"] == 10.0
+    assert metrics["total_return_pct"] == 1.0
+    assert metrics["exit_distribution"] == {"take_profit": 1, "open": 1}
+    assert diag[("summary", "all", "trades")] == 2
+    assert diag[("summary", "all", "closed_trades")] == 1
+    assert diag[("summary", "all", "open_trades")] == 1
+    assert diag[("margin", "all", "peak_locked_margin")] == 350.0
+
+
 def test_export_no_trades_preserves_metrics_and_signal_diagnostics(tmp_path):
     signals = pd.DataFrame(
         {

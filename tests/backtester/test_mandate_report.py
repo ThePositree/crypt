@@ -14,6 +14,12 @@ def test_monthly_mandate_caps_positive_outliers_and_counts_gates():
                 "2025-02-03T00:00:00+00:00",
                 "2025-02-04T00:00:00+00:00",
             ],
+            "entry_time": [
+                "2025-01-05T00:00:00+00:00",
+                "2025-01-10T00:00:00+00:00",
+                "2025-02-03T00:00:00+00:00",
+                "2025-02-04T00:00:00+00:00",
+            ],
             "pnl_abs": [2500.0, 500.0, -1200.0, 200.0],
             "exit_reason": ["take_profit", "take_profit", "stop_loss", "take_profit"],
         }
@@ -101,3 +107,28 @@ def test_mandate_summary_archives_monthly_drawdown_breach_before_full_optuna():
 
     assert summary.loc[0, "verdict"] == "archive"
     assert summary.loc[0, "dd_breach_months"] == 1
+
+
+def test_mandate_trade_count_includes_open_entries_without_realized_pnl():
+    trades = pd.DataFrame(
+        {
+            "entry_time": [
+                "2025-01-10T00:00:00+00:00",
+                "2025-01-20T00:00:00+00:00",
+            ],
+            "exit_time": ["2025-01-11T00:00:00+00:00", pd.NaT],
+            "pnl_abs": [1000.0, pd.NA],
+            "exit_reason": ["take_profit", "open"],
+        }
+    )
+
+    report = build_mandate_report(
+        trades,
+        initial_capital=10000.0,
+        start="2025-01-01",
+        end="2025-02-01",
+    )
+
+    row = report.monthly.iloc[0]
+    assert row["trade_count"] == 2
+    assert row["raw_monthly_return_pct"] == 10.0
