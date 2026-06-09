@@ -1,6 +1,6 @@
 {
   "name": "crypt_ensemble",
-  "version": "discovery-h1-vwap-reclaim-avoid-low-volume-bb-width-rank-min-low-session-off-hours",
+  "version": "discovery-h1-nr7-breakout-bb-squeeze-h4-context-aligned",
   "params": {
     "setup_source": "h1_raw",
     "sl_atr_mult": 2.0,
@@ -16,11 +16,10 @@
       "execution": "1h"
     },
     "trigger_rules": [
-      "h1_vwap_reclaim"
+      "h1_nr7_breakout"
     ],
-    "min_volume_median_ratio": 0.5,
-    "min_bb_width_rank_20": 0.2,
-    "require_session_off_hours": true
+    "require_h4_context_aligned": true,
+    "max_bb_width_pct": 0.04
   },
   "backtest_args": {
     "ttl": 36,
@@ -29,19 +28,23 @@
     "risk_base_period": "monthly"
   },
   "discovery_source": {
-    "candidate_id": "h1_vwap_reclaim__avoid_low_volume__bb_width_rank_min_low__session_off_hours",
-    "trigger": "h1_vwap_reclaim",
+    "candidate_id": "h1_nr7_breakout__bb_squeeze__h4_context_aligned",
+    "trigger": "h1_nr7_breakout",
     "filters": [
-      "avoid_low_volume",
-      "bb_width_rank_min_low",
-      "session_off_hours"
+      "bb_squeeze",
+      "h4_context_aligned"
     ],
     "discovery_schema_version": 1,
-    "artifact": "20260608_193549/best_candidates/robust_min_window_win_rate_50/rank_001_strategy.json",
+    "artifact": "results/discovery_sol_h1_2025_v2/20260608_123558/",
     "metrics": {
-      "win_rate": 0.571429,
-      "passed_events": 238,
-      "score": 2.781565
+      "win_rate": 0.585586,
+      "passed_events": 222
     }
+  },
+  "archive": {
+    "status": "archived",
+    "archived_at": "2026-06-09",
+    "reason": "superseded",
+    "docs": "docs/archive/candidates/nr7_bb_squeeze_h4/"
   }
 }

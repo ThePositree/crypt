@@ -51,7 +51,11 @@ There is **no separate annual return floor** beyond the monthly rules above.
 
 ### 3.1 Monthly drawdown
 
-- Measure **max drawdown inside each calendar month** on the equity curve.
+- Measure **max drawdown inside each calendar month** as the worst drop of
+  **realized equity** (closed trades only) **below window-start capital**
+  (`initial_capital`, e.g. $10k). Example: if the lowest post-exit equity in
+  the month is $9 900 from a $10 000 start, max DD = **−1%**. Open positions
+  do not count until exit.
 - If any month has **max DD > 10%** → **archive immediately** (no deep dive).
 - Months with DD ≤ 10% may still be investigated when other flags fire.
 
@@ -119,8 +123,11 @@ Too good to delete, not good enough for production. Example profile:
 - No **3** consecutive losing months;
 - Every month max DD **≤ 10%**.
 
-Archived candidates are stored with full artifacts and a short written verdict.
-They are **not** promoted and **not** auto-traded unless the owner revives them.
+Archived candidates are stored with git-tracked snapshots and a short written
+verdict per `docs/backtester/candidate_archive.md` (`docs/archive/candidates/`,
+frozen strategy JSON in `strategies/archive/`). Full backtest artifacts remain
+under `results/` (local). They are **not** promoted and **not** auto-traded
+unless the owner revives them.
 
 ### 5.3 Discard
 
@@ -219,10 +226,18 @@ Any candidate evaluation report for mandate compliance must include:
 
 ## 9. Current baseline vs mandate
 
-The best bounded H1 short-only row (`rrr = 1.5`, `ttl = 42`, `max_positions =
-1`) summed **+10.12%** across seven **independent** one-month windows — far
-below the **+15%/month** floor. It is **not** a promote candidate under this
-mandate.
+**Active candidate (2026-06-09):** NR4 breakout + VWAP distance band +
+avoid-doji (`crypt_ensemble_h1_discovery_nr4_vwap_robust.json`). After tp_pct
+Optuna and ADR-0029/0030 re-baseline on SOL 2025: **+164.75%** capped sum,
+**8/12** months ≥15%, formal **discard** (4 months below floor, **2** DD
+breaches at risk=2%: Feb −11.4%, Mar −20.21%). See
+`docs/candidates/nr4_vwap_robust.md`; artifact
+`results/nr4_optuna_best_dd0030_rebaseline/20260609_124449/`.
+
+**Archived:** NR7 and VWAP reclaim superseded by NR4 — `docs/archive/candidates/`.
+
+The legacy bounded H1 short-only row (`rrr = 1.5`, `ttl = 42`, `max_positions =
+1`) summed **+10.12%** across seven one-month windows — not a promote candidate.
 
 ---
 
@@ -230,6 +245,8 @@ mandate.
 
 - ADR-0025 — mandate acceptance
 - ADR-0024 — margin realism
+- ADR-0029 — isolated margin always on
+- ADR-0030 — drawdown from window-start capital
 - `docs/tasks/BACKLOG.md` — implementation tasks
 - `docs/paper_trading.md` — M3 validation after promotion
 - `docs/tasks/IDEAS.md` — capped profits origin (now approved here)

@@ -46,7 +46,6 @@ class ParameterOptimizer:
         max_positions: int = 5,
         position_ttl_bars: int = 20,
         min_net_exposure: float = 0.01,
-        is_isolated_futures: bool = False,
         max_allowed_margin: float = 1.0,
         risk_base_period: str = "trade",
         risk_free_rate_annual: float = 0.02,
@@ -79,7 +78,6 @@ class ParameterOptimizer:
         self.max_positions = max_positions
         self.position_ttl_bars = position_ttl_bars
         self.min_net_exposure = min_net_exposure
-        self.is_isolated_futures = is_isolated_futures
         self.max_allowed_margin = max_allowed_margin
         self.risk_base_period = risk_base_period
         self.risk_free_rate_annual = risk_free_rate_annual
@@ -213,7 +211,6 @@ class ParameterOptimizer:
                 max_positions=max_positions,
                 position_ttl_bars=position_ttl_bars,
                 min_net_exposure=self.min_net_exposure,
-                is_isolated_futures=self.is_isolated_futures,
                 max_allowed_margin=self.max_allowed_margin,
                 risk_base_period=self.risk_base_period,
                 max_daily_profit=max_daily_profit,

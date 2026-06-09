@@ -620,7 +620,6 @@ def test_isolated_futures_max_leverage_keeps_concurrent_entries_consistent():
         rrr=2.0,
         max_positions=2,
         max_allowed_leverage=100.0,
-        is_isolated_futures=True,
         max_allowed_margin=0.5,
         min_net_exposure=0.0,
     )
@@ -650,7 +649,6 @@ def test_isolated_futures_insufficient_margin_blocks_position():
         rrr=2.0,
         max_positions=1,
         max_allowed_leverage=100.0,
-        is_isolated_futures=True,
         max_allowed_margin=0.01,
         min_net_exposure=0.0,
     )

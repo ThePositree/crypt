@@ -51,7 +51,6 @@ def build_monthly_mandate_rows(
     months = _month_index(start=start, end=end)
     prepared = _prepare_trades(trades)
     rows: list[dict[str, Any]] = []
-    running_equity = float(initial_capital)
 
     for month in months:
         month_trades = (
@@ -69,12 +68,12 @@ def build_monthly_mandate_rows(
         )
         raw_return = monthly_pnl / initial_capital * 100
         equity_points = (
-            running_equity + month_trades["pnl_abs"].cumsum()
+            initial_capital + month_trades["pnl_abs"].cumsum()
             if not month_trades.empty and "pnl_abs" in month_trades.columns
             else pd.Series(dtype="float64")
         )
         max_drawdown_pct = _max_drawdown_pct(
-            start_equity=running_equity,
+            initial_capital=initial_capital,
             equity_points=equity_points,
         )
         stop_loss_count = (
@@ -97,7 +96,6 @@ def build_monthly_mandate_rows(
                 "is_losing_month": bool(raw_return < 0),
             }
         )
-        running_equity += monthly_pnl
 
     return pd.DataFrame(rows)
 
@@ -186,20 +184,23 @@ def _month_index(*, start: str, end: str) -> pd.PeriodIndex:
     )
 
 
-def _max_drawdown_pct(*, start_equity: float, equity_points: pd.Series) -> float:
+def _max_drawdown_pct(*, initial_capital: float, equity_points: pd.Series) -> float:
+    """Worst drawdown from window-start capital using closed-trade equity only."""
+    if initial_capital <= 0:
+        return 0.0
     if equity_points.empty:
         return 0.0
-    curve = pd.concat(
+    realized = pd.concat(
         [
-            pd.Series([start_equity], dtype="float64"),
+            pd.Series([initial_capital], dtype="float64"),
             pd.to_numeric(equity_points, errors="coerce").dropna().astype("float64"),
         ],
         ignore_index=True,
     )
-    rolling_peak = curve.cummax()
-    drawdown = (curve - rolling_peak) / rolling_peak.replace(0, pd.NA) * 100
-    valid = drawdown.dropna()
-    return float(valid.min()) if not valid.empty else 0.0
+    min_equity = float(realized.min())
+    if min_equity >= initial_capital:
+        return 0.0
+    return (min_equity - initial_capital) / initial_capital * 100
 
 
 def _mandate_verdict(

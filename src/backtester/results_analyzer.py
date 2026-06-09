@@ -182,12 +182,16 @@ class ResultsAnalyzer:
         )
 
     @staticmethod
-    def _compute_drawdown_metrics(equity_curve: pd.Series) -> dict[str, Any]:
-        """Compute max drawdown (as fraction, negative)."""
-        rolling_max = equity_curve.cummax()
-        drawdown = (equity_curve - rolling_max) / rolling_max
-        max_drawdown = float(drawdown.min())
-        return {"max_drawdown": max_drawdown}
+    def _compute_drawdown_metrics(
+        equity_curve: pd.Series, initial_capital: float
+    ) -> dict[str, Any]:
+        """Worst drawdown from window-start capital at closed-trade exit points."""
+        if equity_curve.empty or initial_capital <= 0:
+            return {"max_drawdown": 0.0}
+        min_equity = min(float(initial_capital), float(equity_curve.min()))
+        if min_equity >= initial_capital:
+            return {"max_drawdown": 0.0}
+        return {"max_drawdown": (min_equity - initial_capital) / initial_capital}
 
     @staticmethod
     def _compute_sharpe_ratio(
@@ -322,7 +326,8 @@ class ResultsAnalyzer:
             - daily_pnl_mean: float ($)
             - weekly_pnl_mean: float ($)
             - monthly_pnl_mean: float ($)
-            - max_drawdown: float (%) - negative value
+            - max_drawdown: float (%) — worst drop below window-start capital at
+              closed-trade exits; 0 if equity never fell below start
             - sharpe_ratio: float - annualized Sharpe (monthly returns, default RFR 2%)
             - avg_holding_bars: float - average number of bars
             - exit_distribution: dict - {reason: count}
@@ -361,7 +366,7 @@ class ResultsAnalyzer:
                 final_capital,
                 total_return_pct,
             ) = self._compute_equity_curve(closed_df)
-            drawdown_metrics = self._compute_drawdown_metrics(equity_curve)
+            drawdown_metrics = self._compute_drawdown_metrics(equity_curve, initial_capital)
             sharpe_ratio = self._compute_sharpe_ratio(
                 equity_curve, initial_capital, risk_free_rate_annual
             )

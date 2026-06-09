@@ -156,7 +156,6 @@ def cli() -> None:
     help="Create visualizations for trade conditions analysis",
 )
 @click.option("--create-dashboard", is_flag=True, help="Create summary dashboard")
-@click.option("--is-isolated-futures", is_flag=True, help="Enable isolated futures mode")
 @click.option("--max-allowed-margin", type=float, default=1.0, help="Max allowed margin")
 @click.option(
     "--risk-base-period",
@@ -298,7 +297,6 @@ def run(
     top_predictors: int,
     create_visualizations: bool,
     create_dashboard: bool,
-    is_isolated_futures: bool,
     max_allowed_margin: float,
     risk_base_period: str,
     max_daily_profit: float | None,
@@ -390,7 +388,6 @@ def run(
         ttl=ttl,
         max_positions=max_positions,
         max_allowed_leverage=max_allowed_leverage,
-        is_isolated_futures=is_isolated_futures,
         max_allowed_margin=max_allowed_margin,
         risk_base_period=risk_base_period,
         max_daily_profit=max_daily_profit,
@@ -579,7 +576,6 @@ def run(
     default=True,
     help="Export best-run diagnostics after optimization.",
 )
-@click.option("--is-isolated-futures", is_flag=True, help="Enable isolated futures.")
 def optimize(
     data_source: str,
     csv: str | None,
@@ -635,7 +631,6 @@ def optimize(
     trading_window_search: bool,
     progress: bool,
     export_best_run: bool,
-    is_isolated_futures: bool,
 ) -> None:
     """Run bounded parameter optimization via the donor ParameterOptimizer."""
     logger.info("🚀 Starting optimization via CLI...")
@@ -676,7 +671,6 @@ def optimize(
         ttl=ttl,
         max_positions=max_positions,
         max_allowed_leverage=max_allowed_leverage,
-        is_isolated_futures=is_isolated_futures,
         max_allowed_margin=max_allowed_margin,
         risk_base_period=risk_base_period,
         max_daily_profit=None,
@@ -826,7 +820,6 @@ def optimize(
     default="monthly",
     help="Capital window used for risk sizing.",
 )
-@click.option("--is-isolated-futures", is_flag=True, help="Enable isolated futures.")
 @click.option(
     "--exit-geometry",
     type=click.Choice(["sl_rrr", "tp_pct"], case_sensitive=False),
@@ -871,7 +864,6 @@ def compare_fixed(
     max_allowed_leverage: float,
     max_allowed_margin: float,
     risk_base_period: str,
-    is_isolated_futures: bool,
     exit_geometry: str,
     tp_move_pct: float | None,
     structural_sl_mode: str,
@@ -915,7 +907,6 @@ def compare_fixed(
             max_allowed_leverage=max_allowed_leverage,
             max_allowed_margin=max_allowed_margin,
             risk_base_period=risk_base_period,
-            is_isolated_futures=is_isolated_futures,
             exit_geometry=exit_geometry,
             tp_move_pct=tp_move_pct,
             structural_sl_mode=structural_sl_mode,
@@ -999,7 +990,6 @@ def compare_fixed(
     default="monthly",
     help="Capital window used for risk sizing.",
 )
-@click.option("--is-isolated-futures", is_flag=True, help="Enable isolated futures.")
 def compare_grid(
     data_dir: str,
     primary_timeframe: str,
@@ -1020,7 +1010,6 @@ def compare_grid(
     max_allowed_leverage: float,
     max_allowed_margin: float,
     risk_base_period: str,
-    is_isolated_futures: bool,
 ) -> None:
     """Run a tiny execution-only rrr/ttl/max_positions grid across bounded windows."""
     logger.info("🚀 Starting execution-grid comparison...")
@@ -1060,7 +1049,6 @@ def compare_grid(
             max_allowed_leverage=max_allowed_leverage,
             max_allowed_margin=max_allowed_margin,
             risk_base_period=risk_base_period,
-            is_isolated_futures=is_isolated_futures,
         ),
         rrr_values=parsed_rrr_values,
         ttl_values=parsed_ttl_values,
@@ -1129,7 +1117,6 @@ def compare_grid(
     default="monthly",
     help="Capital window used for risk sizing.",
 )
-@click.option("--is-isolated-futures", is_flag=True, help="Enable isolated futures.")
 def signal_quality(
     data_dir: str,
     primary_timeframe: str,
@@ -1149,7 +1136,6 @@ def signal_quality(
     max_allowed_leverage: float,
     max_allowed_margin: float,
     risk_base_period: str,
-    is_isolated_futures: bool,
 ) -> None:
     """Run report-only H1 signal-quality diagnostics across bounded windows."""
     logger.info("🚀 Starting signal-quality diagnostics...")
@@ -1180,7 +1166,6 @@ def signal_quality(
             max_allowed_leverage=max_allowed_leverage,
             max_allowed_margin=max_allowed_margin,
             risk_base_period=risk_base_period,
-            is_isolated_futures=is_isolated_futures,
         ),
         data_dir=data_dir,
         primary_timeframe=primary_timeframe,

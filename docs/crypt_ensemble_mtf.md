@@ -466,6 +466,12 @@ uv run backtester optimize \
     --export-best-run
 ```
 
+**Optimizer target vs mandate:** default `--target total_return_pct` optimizes
+full-year compound return on one continuous backtest. Mandate promote/archive
+uses per-month floors and intra-month DD on fixed windows (`compare-fixed`).
+Trials can rank well on `total_return_pct` yet fail mandate — use mandate
+reports for final decisions; mandate-aware targets are tracked in BACKLOG (P1).
+
 The command writes:
 
 - `trials.csv`;

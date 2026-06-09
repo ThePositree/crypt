@@ -123,7 +123,6 @@ class Backtester:
         position_ttl_bars: int = 20,
         min_net_exposure: float = 0.01,
         max_allowed_leverage: float = 25.0,
-        is_isolated_futures: bool = False,
         max_allowed_margin: float = 1.0,
         risk_base_period: str = "trade",
         max_daily_profit: float | None = None,
@@ -178,14 +177,10 @@ class Backtester:
             Maximum allowed leverage for the strategy.
             If leverage > max_allowed_leverage, position is not opened.
 
-        is_isolated_futures : bool, default False
-            Enable isolated futures mode. In this mode:
-            - All positions must have the same leverage
-            - Each position is isolated from others
-
         max_allowed_margin : float, default 1.0
             Maximum allowed margin for the strategy.
             If margin > max_allowed_margin, position is not opened.
+            Isolated-margin leverage consistency is always enforced (ADR-0029).
 
         max_daily_profit : float | None, optional
             Daily profit limit in RRR; new positions disabled when daily_rrr >= this.
@@ -233,7 +228,6 @@ class Backtester:
             ("Position TTL", position_ttl_bars),
             ("Min Net Exposure", min_net_exposure),
             ("Max Allowed Leverage", max_allowed_leverage),
-            ("Isolated Futures", is_isolated_futures),
             ("Max Allowed Margin", max_allowed_margin),
             ("Risk Base Period", risk_base_period),
         ]:
@@ -259,7 +253,6 @@ class Backtester:
             position_ttl_bars=position_ttl_bars,
             min_net_exposure=min_net_exposure,
             max_allowed_leverage=max_allowed_leverage,
-            is_isolated_futures=is_isolated_futures,
             max_allowed_margin=max_allowed_margin,
             risk_base_period=risk_base_period,
             max_daily_profit=max_daily_profit,

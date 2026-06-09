@@ -86,8 +86,6 @@ class BacktestArgs:
         Maximum simultaneous positions.
     max_allowed_leverage:
         Maximum allowed leverage.
-    is_isolated_futures:
-        Enable isolated futures mode.
     max_allowed_margin:
         Maximum allowed margin.
     risk_base_period:
@@ -112,7 +110,6 @@ class BacktestArgs:
     ttl: int
     max_positions: int
     max_allowed_leverage: float
-    is_isolated_futures: bool
     max_allowed_margin: float
     risk_base_period: str
     max_daily_profit: float | None = None
@@ -217,7 +214,6 @@ _BACKTEST_ARG_KEYS = frozenset(
         "ttl",
         "max_positions",
         "max_allowed_leverage",
-        "is_isolated_futures",
         "max_allowed_margin",
         "risk_base_period",
         "max_daily_profit",
@@ -470,7 +466,6 @@ def backtest_run_kwargs(args: BacktestArgs) -> dict[str, Any]:
         "max_positions": args.max_positions,
         "position_ttl_bars": args.ttl,
         "max_allowed_leverage": args.max_allowed_leverage,
-        "is_isolated_futures": args.is_isolated_futures,
         "max_allowed_margin": args.max_allowed_margin,
         "risk_base_period": args.risk_base_period,
         "max_daily_profit": args.max_daily_profit,
@@ -560,7 +555,6 @@ def _best_backtest_args(*, base: BacktestArgs, best_params: dict[str, Any]) -> B
         "ttl": best_params.get("position_ttl_bars", base.ttl),
         "max_positions": best_params.get("max_positions", base.max_positions),
         "max_allowed_leverage": base.max_allowed_leverage,
-        "is_isolated_futures": base.is_isolated_futures,
         "max_allowed_margin": base.max_allowed_margin,
         "risk_base_period": base.risk_base_period,
         "max_daily_profit": best_params.get("max_daily_profit", base.max_daily_profit),
@@ -610,7 +604,6 @@ def run_parameter_optimization(
         maker_fee=backtest_args.maker_fee,
         max_positions=backtest_args.max_positions,
         position_ttl_bars=backtest_args.ttl,
-        is_isolated_futures=backtest_args.is_isolated_futures,
         max_allowed_margin=backtest_args.max_allowed_margin,
         risk_base_period=backtest_args.risk_base_period,
         strategy_params=cfg.params,

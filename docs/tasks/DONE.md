@@ -4,6 +4,61 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-09 — NR4 re-baseline after ADR-0029 + ADR-0030 (owner-run)
+
+**What:** 12-month `compare-fixed` on NR4 frozen Optuna best params after
+simulator policy changes.
+
+**Result:** `results/nr4_optuna_best_dd0030_rebaseline/20260609_124449/` —
+**discard** unchanged. Sum capped **+164.75%**, **8/12** months ≥15%, **2** DD
+breaches (Feb −11.4%, Mar −20.21%; was 3 under rolling-peak DD). ADR-0029 had
+no effect (identical to v3 overnight — entries already at 25×).
+
+**Acceptance:** mandate truth recorded in `docs/candidates/nr4_vwap_robust.md`,
+`IN_PROGRESS.md`, `investment_mandate.md` §9.
+
+---
+
+## 2026-06-09 — Drawdown from window-start capital (ADR-0030)
+
+**What:** mandate and `ResultsAnalyzer` max DD now measure worst drop below
+**window-start capital** on closed trades only; open positions ignored.
+
+**Result:** ADR-0030; `mandate_report.py`, `results_analyzer.py`, tests in
+`test_drawdown_from_window_start.py`, `test_mandate_report.py`; spec updates in
+`docs/mandate_reporting.md`, `docs/investment_mandate.md` §3.1.
+
+**Acceptance:** `uv run pytest tests/backtester/test_drawdown_from_window_start.py tests/backtester/test_mandate_report.py -q` green.
+
+---
+
+## 2026-06-09 — Isolated margin always on (ADR-0029)
+
+**What:** removed `--is-isolated-futures` CLI flag; `ExecutionSim` always
+enforces OKX isolated-margin leverage consistency (`ISOLATED_FUTURES_ALWAYS`).
+
+**Result:** ADR-0029; `margin_policy.py`, `execution_sim.py`, CLI/runner cleanup;
+tests updated. Prior runs without the flag used optimistic cross-margin semantics.
+
+**Acceptance:** flag gone from `backtester run` / `optimize` / `compare-fixed` help.
+
+---
+
+## 2026-06-09 — Candidate archive layout + NR7/VWAP shelved
+
+**What:** git-tracked archive for superseded discovery candidates; NR4 remains
+active with near-miss plan.
+
+**Result:** `docs/backtester/candidate_archive.md`; entries under
+`docs/archive/candidates/` for NR7 and VWAP reclaim (mandate snapshots,
+execution params, provenance); frozen JSON in `strategies/archive/`.
+NR4 plan in `docs/candidates/nr4_vwap_robust.md`.
+
+**Acceptance:** `investment_mandate.md` §5.2 references archive paths; README
+Status points to NR4; archived strategies removed from `strategies/backtester/`.
+
+---
+
 ## 2026-06-08 — Strategy discovery catalog v3 (OHLCV expansion)
 
 **What:** expanded discovery catalog with ~97 new OHLCV-native blocks: candle

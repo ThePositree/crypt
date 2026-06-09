@@ -38,11 +38,12 @@ Current active work is **M2 donor backtester migration and candidate search**.
 `discover-strategies` ranks H1 trigger+filter stacks; converted candidates run
 through donor `crypt_ensemble` + mandate `compare-fixed` / Optuna.
 
-**Active candidate:** NR7 + bb_squeeze + h4_context_aligned
-(`crypt_ensemble_h1_discovery_nr7_bb_squeeze_h4.json`). TP-first execution
-(`exit_geometry=tp_pct`, ADR-0027) with execution context in strategy layer
-(ADR-0028). Jan 2025 Optuna slice: **+6.30%** — mandate floor **+15%/month**
-not yet met; owner-run full-year tuning in progress (`IN_PROGRESS.md`).
+**Active candidate:** NR4 breakout + VWAP band + avoid-doji
+(`crypt_ensemble_h1_discovery_nr4_vwap_robust.json`). Best discovery→execution
+result: **+164.75%** capped sum on SOL 2025, **8/12** months ≥15%, **2** DD
+breaches (Feb, Mar); formal **discard** — see
+`docs/candidates/nr4_vwap_robust.md`. NR7 and VWAP reclaim archived under
+`docs/archive/candidates/`.
 
 See `docs/tasks/ROADMAP.md` for milestones.
 

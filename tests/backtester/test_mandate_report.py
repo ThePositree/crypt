@@ -38,8 +38,8 @@ def test_monthly_mandate_caps_positive_outliers_and_counts_gates():
     assert monthly.loc["2025-01", "excess_return_pct"] == 10.0
     assert bool(monthly.loc["2025-01", "passes_return_floor"])
     assert monthly.loc["2025-02", "raw_monthly_return_pct"] == -10.0
-    assert monthly.loc["2025-02", "max_drawdown_pct"] == -9.23
-    assert not bool(monthly.loc["2025-02", "breaches_monthly_dd"])
+    assert monthly.loc["2025-02", "max_drawdown_pct"] == -12.0
+    assert bool(monthly.loc["2025-02", "breaches_monthly_dd"])
     assert monthly.loc["2025-02", "stop_loss_count"] == 1
     assert monthly.loc["2025-03", "trade_count"] == 0
     assert monthly.loc["2025-03", "raw_monthly_return_pct"] == 0.0
@@ -132,3 +132,25 @@ def test_mandate_trade_count_includes_open_entries_without_realized_pnl():
     row = report.monthly.iloc[0]
     assert row["trade_count"] == 2
     assert row["raw_monthly_return_pct"] == 10.0
+
+
+def test_max_drawdown_from_window_start_capital_at_closed_exits_only():
+    trades = pd.DataFrame(
+        {
+            "entry_time": ["2025-01-05T00:00:00+00:00", "2025-01-10T00:00:00+00:00"],
+            "exit_time": ["2025-01-06T00:00:00+00:00", "2025-01-11T00:00:00+00:00"],
+            "pnl_abs": [-100.0, 50.0],
+            "exit_reason": ["stop_loss", "take_profit"],
+        }
+    )
+
+    report = build_mandate_report(
+        trades,
+        initial_capital=10000.0,
+        start="2025-01-01",
+        end="2025-02-01",
+    )
+
+    row = report.monthly.iloc[0]
+    assert row["max_drawdown_pct"] == -1.0
+    assert not bool(row["breaches_monthly_dd"])

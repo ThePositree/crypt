@@ -63,7 +63,6 @@ class FixedCandidateParams:
     max_allowed_leverage: float
     max_allowed_margin: float
     risk_base_period: str
-    is_isolated_futures: bool
     exit_geometry: str = "sl_rrr"
     tp_move_pct: float | None = None
     structural_sl_mode: str = "cap"
@@ -81,7 +80,6 @@ class FixedCandidateParams:
             ttl=self.ttl,
             max_positions=self.max_positions,
             max_allowed_leverage=self.max_allowed_leverage,
-            is_isolated_futures=self.is_isolated_futures,
             max_allowed_margin=self.max_allowed_margin,
             risk_base_period=self.risk_base_period,
             max_daily_profit=None,
@@ -1172,7 +1170,6 @@ def _params_with_execution_values(
         max_allowed_leverage=params.max_allowed_leverage,
         max_allowed_margin=params.max_allowed_margin,
         risk_base_period=params.risk_base_period,
-        is_isolated_futures=params.is_isolated_futures,
         exit_geometry=params.exit_geometry,
         tp_move_pct=params.tp_move_pct,
         structural_sl_mode=params.structural_sl_mode,

@@ -8,7 +8,7 @@ from tqdm.auto import tqdm
 
 from .exit_geometry import exit_geometry_config_from_args
 from .fee_model import ExitContext, FeeModel, StaticPercentFeeModel
-from .margin_policy import per_entry_margin_cap
+from .margin_policy import ISOLATED_FUTURES_ALWAYS, per_entry_margin_cap
 from .risk_model import BasicRiskModel, EntryContext, RiskModel
 
 
@@ -164,7 +164,6 @@ class ExecutionSim:
             max_positions=3,
             position_ttl_bars=15,
             max_allowed_leverage=25.0,
-            is_isolated_futures=True,  # Enable isolated futures mode with margin checking
             bar_exit_policy="worst_case",
         )
         trades = sim.run(df)
@@ -185,7 +184,6 @@ class ExecutionSim:
         min_net_exposure: float = 0.01,
         max_allowed_leverage: float = 25.0,
         is_perpetual: bool = False,
-        is_isolated_futures: bool = False,
         max_allowed_margin: float = 1.0,
         risk_base_period: str = "trade",
         bar_exit_policy: str = "worst_case",
@@ -242,10 +240,6 @@ class ExecutionSim:
             Maximum allowed leverage for the strategy.
             If leverage > max_allowed_leverage, position is not opened.
             Example: 25.0 → 25x leverage is not allowed.
-        is_isolated_futures : bool, default False
-            Enable isolated futures mode. In this mode:
-            - All positions must have the same leverage
-            - Each position is isolated from others
         max_allowed_margin : float, default 1.0
             Maximum allowed margin for the strategy.
             If margin > max_allowed_margin, position is not opened.
@@ -338,7 +332,7 @@ class ExecutionSim:
         self.position_ttl_bars = position_ttl_bars
         self.min_net_exposure = min_net_exposure
         self.max_allowed_leverage = max_allowed_leverage
-        self.is_isolated_futures = is_isolated_futures
+        self.is_isolated_futures = ISOLATED_FUTURES_ALWAYS
         self.max_allowed_margin = max_allowed_margin
         self.risk_base_period = risk_base_period_normalized
         self.bar_exit_policy = bar_exit_policy_normalized
@@ -416,8 +410,8 @@ class ExecutionSim:
             True if position can be opened, False otherwise
         """
         # Check if we have existing positions
-        if active_positions and self.is_isolated_futures:
-            # Check leverage consistency
+        if active_positions:
+            # Isolated OKX semantics: one leverage for all open positions (ADR-0029).
             common_leverage = active_positions[0].leverage
             if common_leverage > 0 and common_leverage != new_leverage:
                 self._logger.debug(

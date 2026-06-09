@@ -37,7 +37,9 @@ evaluation window:
 - `raw_monthly_return_pct`: monthly realized PnL divided by initial capital.
 - `capped_monthly_return_pct`: `min(raw_monthly_return_pct, 20)`.
 - `excess_return_pct`: `max(raw_monthly_return_pct - 20, 0)`.
-- `max_drawdown_pct`: worst intra-month drawdown on the realized equity curve.
+- `max_drawdown_pct`: worst drop below window-start capital on the realized
+  equity curve (closed exits only; open trades ignored). Example: start
+  `$10 000`, lowest post-exit equity `$9 900` → `-1%`.
 - `trade_count`: number of trades closed during the month.
 - `stop_loss_count`: number of trades with `exit_reason = stop_loss`.
 - `passes_return_floor`: whether raw monthly return is at least `15%`.

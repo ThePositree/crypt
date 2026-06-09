@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import math
 
+# OKX perpetual backtests always model isolated-margin semantics (ADR-0029).
+ISOLATED_FUTURES_ALWAYS = True
+
 
 def effective_margin_fraction(
     *,

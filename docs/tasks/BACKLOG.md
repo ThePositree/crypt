@@ -67,25 +67,18 @@ Options (pick one with owner in chat):
    prioritize families with robust per-window label win rates. First v3 run: lower beam/depth
    or expect long runtime.
 
-**Status (2026-06-08):** NR7 is the active discovery candidate (momentum-burst
-**discarded**). Initial SL-first donor run:
-`results/crypt_h1_discovery_nr7_bb_squeeze_sol_2025/20260608_124701/` —
-formal **discard** on monthly ≥15% gate but **+25.6%** capped sum (best
-discovery→execution transfer so far).
+**Status (2026-06-09):** NR4 is the active candidate. Momentum-burst and NR7
+**discarded/archived**; VWAP reclaim archived. See `docs/archive/candidates/`.
 
-**tp_pct follow-up (2026-06-08):** ADR-0027/0028 wired; Jan single-month Optuna
-best **+6.30%** at `tp=0.008`, `rrr=1.75`, `ttl=36` — still far below mandate
-+15%/month. Owner running full-year Optuna + 12-month `compare-fixed` with
-`risk_percent` 1–2% search (see `IN_PROGRESS.md`). PC2 deep discovery may
-surface a better trigger+filter stack.
+**tp_pct follow-up (2026-06-09):** NR4 full-year Optuna + 12-month mandate
+complete — **discard** (+164.75% capped, 8/12 ≥15%, 2 DD breaches after
+ADR-0030). See `docs/candidates/nr4_vwap_robust.md`.
 
-**Why now:** discovery→donor conversion works; execution geometry and entry
-gate were the main NR7 attrition sources (222 labeled events vs ~11 Jan trades
-after filters + execution context).
+**Why now:** discovery→donor conversion works; remaining gap is mandate alignment
+(objective + weak months), not trigger conversion.
 
-**Acceptance:** owner returns overnight artifacts; next agent records
-promote/archive/discard for tp_pct-tuned NR7 and any PC2 candidate; no further
-work on momentum-burst unless owner revives it.
+**Acceptance:** NR4 path documented; next discovery run only if owner requests
+new trigger family search.
 
 ## P1 — Discovery donor-eligibility gate
 
@@ -105,19 +98,66 @@ synthetic events; optional `--donor-eligibility-mode` flag default off.
 
 **Links:** ADR-0028 consequences; `src/backtester/strategy_discovery/scoring.py`.
 
-## P1 — Candidate archive artifact layout
+## P1 — Mandate-aware Optuna objective
 
-**What:** define `results/archive/<candidate_id>/` convention for near-miss
-profiles (e.g. +8–14% capped monthly average) with mandate report, params
-JSON, and one-paragraph owner-facing verdict.
+**What:** add optimizer targets (or composite scalar) aligned with ADR-0025:
+min monthly return, DD per month ≤10%, months below 15% floor — instead of
+full-year `total_return_pct` only.
 
-**Why now:** ADR-0025 archive tier needs a consistent handoff so good-but-not-enough
-candidates are not deleted or mistaken for promote.
+**Why now:** NR4 Optuna chose risk=2% and tp geometry for +461% full-year return
+but mandate **discard** on 4 below-floor months and 2 DD breaches; current
+objective mis-ranks trials vs promote gates.
 
-**Acceptance:** documented in `docs/investment_mandate.md` §5.2 and README;
-example archive entry for current H1 short-only bounded row.
+**Expected gain:** Optuna trials optimize toward mandate-relevant outcomes;
+fewer owner cycles of “great Optuna → bad compare-fixed”.
 
-## P2 — Align H1 candidate validation window defaults and docs
+**Scope (minimal MVP):**
+
+- New `--target` choices e.g. `min_monthly_return`, `mandate_score` (scalar:
+  min monthly return minus DD penalty).
+- Log mandate metrics as trial user attrs (partially exists: `min_monthly_return`,
+  `max_drawdown`).
+- Optional pruner: fail trial when any month DD < −10%.
+- Document trade-off: continuous-year monthly metrics ≠ 12 independent windows.
+
+**Acceptance:** unit test on synthetic metrics; spec note in
+`docs/crypt_ensemble_mtf.md` or optimizer section; owner can run bounded study
+with new target.
+
+**Links:** owner chat 2026-06-09; `src/backtester/cli_runner.py`,
+`src/backtester/optimizer.py`; `docs/candidates/nr4_vwap_robust.md` Step B.
+
+## P1 — NR4 weak-month attribution + optional realism (active near-miss)
+
+**What:** analyze Feb/Mar/Sep/Oct trade charts from ADR-0030 re-baseline; optional
+`max_positions=1` compare-fixed on frozen geometry.
+
+**Why now:** re-baseline complete — economics unchanged, 2 DD breaches remain.
+Risk=1% sensitivity is **not** a new search (Optuna already explored 1.0–2.0).
+
+**Expected gain:** identify filter/signal vs execution causes before mandate Optuna
+or archive decision.
+
+**Acceptance:** short attribution note in `docs/candidates/nr4_vwap_robust.md` or
+chat; optional `max_positions=1` artifact path recorded.
+
+**Links:** `results/nr4_optuna_best_dd0030_rebaseline/20260609_124449/runs/`.
+
+## P2 — Optuna study resume via CLI
+
+**What:** add `--resume` (or reuse output dir without new timestamp) so
+`backtester optimize` continues an existing journal study instead of always
+creating a new timestamp subfolder.
+
+**Why now:** engine supports `load_if_exists=True` on journal storage, but CLI
+`make_output_folder()` always appends a new timestamp — resume is awkward.
+
+**Acceptance:** `--resume PATH` continues study; documented in README optimize
+section; test on journal round-trip.
+
+**Links:** `src/backtester/optimizer.py`, `cli_runner.py`; owner chat 2026-06-09.
+
+## P1 — Discovery donor-eligibility gate
 
 **What:** make `compare-fixed` candidate-validation examples and defaults
 explicit about their window set, or add a named preset matching the current

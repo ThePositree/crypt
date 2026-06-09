@@ -41,7 +41,6 @@ def _candidate_params() -> FixedCandidateParams:
         max_allowed_leverage=25.0,
         max_allowed_margin=1.0,
         risk_base_period="monthly",
-        is_isolated_futures=False,
     )
 
 

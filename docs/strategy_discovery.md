@@ -441,9 +441,9 @@ The checked-in reference configs:
 
 ```text
 strategies/backtester/crypt_ensemble_h1_discovery_momentum_burst_short.json
-strategies/backtester/crypt_ensemble_h1_discovery_nr7_bb_squeeze_h4.json
-strategies/backtester/crypt_ensemble_h1_discovery_vwap_reclaim_robust.json
-strategies/backtester/crypt_ensemble_h1_discovery_nr4_vwap_robust.json
+strategies/backtester/crypt_ensemble_h1_discovery_nr4_vwap_robust.json   # active
+strategies/archive/crypt_ensemble_h1_discovery_nr7_bb_squeeze_h4.json   # archived
+strategies/archive/crypt_ensemble_h1_discovery_vwap_reclaim_robust.json  # archived
 ```
 
 Conversion rules:

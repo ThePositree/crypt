@@ -6,6 +6,41 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-09 — NR4 re-baseline (ADR-0029 + ADR-0030)
+
+- Owner-run 12-month `compare-fixed` on frozen Optuna best (tp=0.016, rrr=2.5,
+  ttl=48, risk=2%): `results/nr4_optuna_best_dd0030_rebaseline/20260609_124449/`.
+- Verdict **discard** unchanged: +164.75% capped sum, 8/12 months ≥15%, 4 below
+  floor. DD breaches **2** (Feb −11.4%, Mar −20.21%) under ADR-0030; was 3 under
+  rolling-peak DD. ADR-0029 isolated mode had no numeric effect.
+- Updated `docs/candidates/nr4_vwap_robust.md`, `IN_PROGRESS.md`, mandate §9.
+
+## 2026-06-09 — Drawdown from window-start capital (closed trades only)
+
+- Mandate and `ResultsAnalyzer` now define max DD as the worst realized
+  equity below **window-start capital** (not rolling peak). Only **closed**
+  trade exit points count; open positions are ignored until exit.
+- Each mandate month / compare-fixed window uses its own `initial_capital`
+  baseline (e.g. $10k per month).
+- ADR: `docs/decisions/0030-drawdown-from-window-start.md`.
+
+## 2026-06-09 — Isolated margin always on (ADR-0029)
+
+- Removed `--is-isolated-futures` CLI flag; `ExecutionSim` always enforces
+  OKX isolated-margin leverage consistency (`ISOLATED_FUTURES_ALWAYS`).
+- Dropped `is_isolated_futures` from `BacktestArgs` / strategy overrides.
+- NR4 and future runs need re-baseline — prior Optuna/mandate without flag
+  used optimistic cross-margin semantics.
+
+## 2026-06-09 — Candidate archive + NR4 active plan
+
+- Archive layout spec: `docs/backtester/candidate_archive.md`.
+- Shelved NR7 and VWAP reclaim: `docs/archive/candidates/` (mandate snapshots,
+  `execution_params.json`, `provenance.json`); frozen JSON in `strategies/archive/`.
+- Removed archived strategies from `strategies/backtester/`; NR4 remains active.
+- NR4 near-miss plan: `docs/candidates/nr4_vwap_robust.md`.
+- Updated `investment_mandate.md` §5.2/§9, README Status, `IN_PROGRESS.md`.
+
 ## 2026-06-09 — Fix v3 donor filters rejecting numpy pandas scalars
 
 - `_int_or_none` / `_finite_float_or_none` in `crypt_ensemble.py` now accept

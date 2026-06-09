@@ -1,0 +1,11 @@
+{
+  "exit_geometry": "tp_pct",
+  "structural_sl_mode": "ignore",
+  "risk_base_period": "monthly",
+  "tp_move_pct": 0.016,
+  "rrr": 2.0,
+  "ttl": 24,
+  "risk_percent": 2.0,
+  "optuna_trial": 75,
+  "optuna_objective_total_return_pct": 58.95
+}

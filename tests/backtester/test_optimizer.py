@@ -260,7 +260,6 @@ def test_run_parameter_optimization_exports_trials_and_best_run(
             ttl=24,
             max_positions=0,
             max_allowed_leverage=25.0,
-            is_isolated_futures=False,
             max_allowed_margin=1.0,
             risk_base_period="monthly",
             exit_geometry="tp_pct",
