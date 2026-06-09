@@ -6,6 +6,14 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-09 — Fix v3 donor filters rejecting numpy pandas scalars
+
+- `_int_or_none` / `_finite_float_or_none` in `crypt_ensemble.py` now accept
+  `numpy.int64` / `numpy.float64` from discovery feature columns; previously
+  `session_off_hours` and VWAP distance filters saw `missing_hour_utc` on every
+  bar and produced zero trades.
+- `temp.sh`: parse Optuna `position_ttl_bars` when `ttl` key absent.
+
 ## 2026-06-09 — v3 discovery candidates → donor crypt_ensemble
 
 - Mapped robust v3 stacks to donor execution: `h1_vwap_reclaim` and

@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
+import numpy as np
 import pandas as pd
 import pytest
 from pandas.testing import assert_frame_equal
@@ -1228,6 +1229,42 @@ def test_discovery_filter_blocks_bb_not_squeezed() -> None:
 
     assert filtered.signal == 0
     assert reason == "bb_not_squeezed:0.0600"
+
+
+def test_discovery_filter_session_off_hours_accepts_numpy_hour_utc() -> None:
+    stop = _filter_stop(signal=1)
+    discovery = _DiscoveryBarFeatures(
+        trend_strength_atr=None,
+        volume=200.0,
+        volume_median20=100.0,
+        d1_context="long",
+        h4_context="long",
+        hour_utc=np.int64(3),
+        bb_width_rank_20=0.5,
+    )
+
+    filtered, reason = _apply_signal_filters(
+        stop=stop,
+        filters=_SignalFilterConfig(
+            allowed_sides=None,
+            allowed_sl_anchor_types=None,
+            blocked_sl_anchor_types=frozenset(),
+            max_anchor_age_hours=None,
+            min_signal_sl_distance_atr=None,
+            max_signal_sl_distance_atr=None,
+            block_context_reversal=False,
+            require_session_off_hours=True,
+            min_volume_median_ratio=0.5,
+            min_bb_width_rank_20=0.2,
+        ),
+        trigger_known_at=datetime(2025, 3, 10, tzinfo=UTC),
+        context_bias="bullish",
+        setup_direction="BUY",
+        discovery=discovery,
+    )
+
+    assert filtered.signal == 1
+    assert reason is None
 
 
 def test_crypt_ensemble_h1_raw_mode_rejects_doji_without_setup_gate(

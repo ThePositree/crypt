@@ -690,10 +690,10 @@ def _discovery_bar_features(
 def _finite_float_or_none(value: object) -> float | None:
     if value is None or pd.isna(value):
         return None
-    if isinstance(value, int | float):
+    if isinstance(value, int | float | str | bytes | bytearray):
         result = float(value)
-    elif isinstance(value, str | bytes | bytearray):
-        result = float(value)
+    elif hasattr(value, "__float__"):
+        result = float(value.__float__())
     else:
         return None
     if not np.isfinite(result):
@@ -704,8 +704,12 @@ def _finite_float_or_none(value: object) -> float | None:
 def _int_or_none(value: object) -> int | None:
     if value is None or pd.isna(value):
         return None
+    if isinstance(value, bool):
+        return int(value)
     if isinstance(value, int | float | str | bytes | bytearray):
         return int(value)
+    if hasattr(value, "__index__"):
+        return int(value.__index__())
     return None
 
 
