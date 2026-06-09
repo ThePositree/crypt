@@ -5,33 +5,41 @@
 **Strategy:** `strategies/backtester/crypt_ensemble_h1_discovery_nr4_vwap_robust.json`  
 **Plan:** `docs/candidates/nr4_vwap_robust.md`
 
-**Current mandate truth (ADR-0029 + ADR-0030 re-baseline, frozen Optuna params):**
+### Mandate truth (ADR-0032 continuous, canonical)
+
+**Active params:** tp=0.016, rrr=2.5, ttl=36, risk=1.5% (mandate-score Optuna best)
 
 | Metric | Value |
 | ------ | ----- |
-| Verdict | **discard** |
-| Sum capped | **+164.75%** |
-| Months ≥ 15% | **8 / 12** |
-| Months below floor | **4** (Feb, Mar, Sep, Oct) |
-| DD breach months | **2** (Feb −11.4%, Mar −20.21%) |
-| Params | tp=0.016, rrr=2.5, ttl=48, risk=2% |
+| Verdict | **archive** |
+| Sum capped | **+185.06%** |
+| Months ≥ 15% | **9 / 12** |
+| Below floor | **3** (Jan 11.83%, Feb 0.69%, Mar −1.28%) |
+| DD breach | **1** (Mar −17.11%) |
+| Full-year return | +284.65% (continuous run) |
 
-Artifact: `results/nr4_optuna_best_dd0030_rebaseline/20260609_124449/`
+Artifact: `results/nr4_mandate_score_best_compare/20260609_150212/`
 
-ADR-0029 (isolated always on) did not change NR4 numbers — all entries already
-used max leverage. ADR-0030 removed Jan/Jun DD breaches vs v3 overnight; economics
-unchanged.
+Optuna continuous proxy and compare-fixed **match** (9/12, +185.06%, archive).
+ADR-0032 alignment confirmed.
 
-**Next steps (priority order):**
+**Why archive, not promote:** Mar intra-month DD −17.11% > 10% limit → archive
+per mandate §3.1 (no deep dive required). Also 3 months below 15% floor (within
+allowed 3, but DD gate dominates).
 
-1. **Weak-month attribution** — Feb/Mar/Sep/Oct trade charts under re-baseline
-   `runs/`; look for SL clusters, session filter edge cases, overlapping positions.
-2. **Mandate-aware Optuna** — replace `--target total_return_pct` with objective
-   aligned to monthly floor + DD gates (BACKLOG P1; owner deferred implementation).
-3. Optional realism knob: `max_positions=1` on frozen geometry (not yet run).
+### Historical (pre-ADR-0032 isolated mode — do not use for decisions)
 
-**Do not** re-run `compare-fixed` at risk=1% as a “search” — Optuna already
-explored risk 1.0–2.0 and chose 2% for full-year return.
+| Params | Verdict | Sum capped | Months ≥15% |
+| ------ | ------- | ---------- | ----------- |
+| Legacy risk=2%, ttl=48 isolated | discard | +164.75% | 8/12 |
+| Mandate-score isolated | discard | +131.31% | 3/12 |
+
+### Next steps
+
+1. **Owner-run legacy continuous** (tp=0.016, rrr=2.5, ttl=48, risk=2%) — compare
+   vs current best under ADR-0032; command in `docs/candidates/nr4_vwap_robust.md`.
+2. **Mar attribution** — `.../150212/runs/sol_continuous/trade_chart.html` + Mar
+   SL cluster (DD breach month).
+3. Filter/signal tweak or archive NR4 as near-miss if Mar DD cannot be fixed.
 
 **Archived (2026-06-09):** NR7 and VWAP reclaim → `docs/archive/candidates/`.
-Frozen JSON in `strategies/archive/`.

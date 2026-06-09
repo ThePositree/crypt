@@ -17,7 +17,6 @@ from typing import Any
 import pandas as pd
 
 from backtester.data_contracts import StrategyData, StrategyInput
-from backtester.execution_context import execution_context_from_run_kwargs
 from backtester.data_loader import (
     BaseDataLoader,
     BingxApiDataLoader,
@@ -25,6 +24,7 @@ from backtester.data_loader import (
     CsvDataLoader,
     ParquetDataLoader,
 )
+from backtester.execution_context import execution_context_from_run_kwargs
 from backtester.optimizer import ParameterOptimizer, TargetFunction
 from backtester.registry import STRATEGIES
 from backtester.results_analyzer import ResultsAnalyzer
@@ -492,21 +492,31 @@ def _target_function(name: str) -> TargetFunction:
         return TargetFunction(
             fn=lambda results: float(results.metrics.get("total_return_pct", -100.0)),
             direction="maximize",
+            name=target_name,
         )
     if target_name == "profit_factor":
         return TargetFunction(
             fn=lambda results: float(results.metrics.get("profit_factor", 0.0)),
             direction="maximize",
+            name=target_name,
         )
     if target_name == "sharpe_ratio":
         return TargetFunction(
             fn=lambda results: float(results.metrics.get("sharpe_ratio", -999.0)),
             direction="maximize",
+            name=target_name,
         )
     if target_name == "max_drawdown":
         return TargetFunction(
             fn=lambda results: float(results.metrics.get("max_drawdown", -100.0)),
             direction="maximize",
+            name=target_name,
+        )
+    if target_name == "mandate_score":
+        return TargetFunction(
+            fn=lambda _results: -float("inf"),
+            direction="maximize",
+            name=target_name,
         )
     raise ValueError(f"Unsupported optimizer target: {name!r}")
 

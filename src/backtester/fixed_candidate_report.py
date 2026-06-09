@@ -400,7 +400,7 @@ def run_fixed_candidate_comparison(
     output_folder: str,
     jobs: int,
     logger: logging.Logger,
-    continuous: bool = False,
+    continuous: bool = True,
 ) -> pd.DataFrame:
     if jobs < 1:
         raise ValueError("jobs must be >= 1")

@@ -98,35 +98,6 @@ synthetic events; optional `--donor-eligibility-mode` flag default off.
 
 **Links:** ADR-0028 consequences; `src/backtester/strategy_discovery/scoring.py`.
 
-## P1 — Mandate-aware Optuna objective
-
-**What:** add optimizer targets (or composite scalar) aligned with ADR-0025:
-min monthly return, DD per month ≤10%, months below 15% floor — instead of
-full-year `total_return_pct` only.
-
-**Why now:** NR4 Optuna chose risk=2% and tp geometry for +461% full-year return
-but mandate **discard** on 4 below-floor months and 2 DD breaches; current
-objective mis-ranks trials vs promote gates.
-
-**Expected gain:** Optuna trials optimize toward mandate-relevant outcomes;
-fewer owner cycles of “great Optuna → bad compare-fixed”.
-
-**Scope (minimal MVP):**
-
-- New `--target` choices e.g. `min_monthly_return`, `mandate_score` (scalar:
-  min monthly return minus DD penalty).
-- Log mandate metrics as trial user attrs (partially exists: `min_monthly_return`,
-  `max_drawdown`).
-- Optional pruner: fail trial when any month DD < −10%.
-- Document trade-off: continuous-year monthly metrics ≠ 12 independent windows.
-
-**Acceptance:** unit test on synthetic metrics; spec note in
-`docs/crypt_ensemble_mtf.md` or optimizer section; owner can run bounded study
-with new target.
-
-**Links:** owner chat 2026-06-09; `src/backtester/cli_runner.py`,
-`src/backtester/optimizer.py`; `docs/candidates/nr4_vwap_robust.md` Step B.
-
 ## P1 — NR4 weak-month attribution + optional realism (active near-miss)
 
 **What:** analyze Feb/Mar/Sep/Oct trade charts from ADR-0030 re-baseline; optional

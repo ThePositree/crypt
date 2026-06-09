@@ -1,85 +1,54 @@
 # Active candidate: NR4 + VWAP band + avoid doji
 
-**Status:** near-miss — **not archived**, **not promoted** (2026-06-09)  
+**Status:** near-miss — **archive** under ADR-0032 continuous mandate (2026-06-09)  
 **Strategy:** `strategies/backtester/crypt_ensemble_h1_discovery_nr4_vwap_robust.json`
 
-## Why this one matters
+## Active params (mandate-score Optuna best)
 
-Best discovery→execution transfer so far on SOL 2025 tp_pct pipeline:
+`tp=0.016`, `rrr=2.5`, `ttl=36`, `risk=1.5%`
 
-| Metric | NR4 Optuna best | NR7 (archived) | VWAP reclaim (archived) |
-| ------ | --------------- | -------------- | ----------------------- |
-| Sum capped monthly | **+164.75%** | +58.82% | +50.26% |
-| Months ≥ 15% | **8 / 12** | 2 / 12 | 1 / 12 |
-| Full-year Optuna objective | **+461%** | +159% | +59% |
-| Verdict | discard | discard | discard |
+## Mandate truth (ADR-0032 continuous — canonical)
 
-## Mandate truth (ADR-0029 + ADR-0030 re-baseline)
-
-**Artifact:** `results/nr4_optuna_best_dd0030_rebaseline/20260609_124449/`
+**Artifact:** `results/nr4_mandate_score_best_compare/20260609_150212/`
 
 | Metric | Value |
 | ------ | ----- |
-| Verdict | **discard** |
-| Sum capped | **+164.75%** |
-| Months ≥ 15% | **8 / 12** |
-| Months below 15% floor | **4** — Feb, Mar, Sep, Oct |
-| DD breach months (>10%) | **2** — Feb −11.4%, Mar −20.21% |
-| Frozen params (trial #59) | tp=0.016, rrr=2.5, ttl=48, risk=2% |
+| Verdict | **archive** |
+| Sum capped | **+185.06%** |
+| Months ≥ 15% | **9 / 12** |
+| Below floor | **3** — Jan 11.83%, Feb 0.69%, Mar −1.28% |
+| DD breach | **1** — Mar −17.11% |
+| Full-year return | +284.65% |
 
-### Why discard, not promote
+### Why archive, not promote
 
-1. **4 months below 15% floor** (mandate allows max 3).
-2. **2 DD breach months** after ADR-0030 window-start DD (was 3 under old rolling-peak DD: Jan, Mar, Jun).
-3. Optuna optimized **full-year `total_return_pct`** (+461%), not mandate monthly gates — misaligned objective.
+1. **Mar DD −17.11%** > 10% → **archive immediately** (mandate §3.1).
+2. **9/12** months ≥15% — meets promote count, but DD gate blocks.
+3. **3** months below floor — at the allowed limit (not auto-discard).
 
-### Re-baseline notes
+Optuna `mandate_score` continuous proxy **matches** this compare-fixed run
+(9/12, +185.06%, archive). ADR-0032 alignment confirmed.
 
-- **ADR-0029** (isolated always on): no numeric change vs v3 overnight — all trades already used 25× leverage.
-- **ADR-0030** (DD from window-start): Jan and Jun no longer DD-breach; economics unchanged.
+## Historical (isolated windows — superseded by ADR-0032)
 
-## Recommended next steps
+| Profile | Mode | Verdict | Sum capped | Months ≥15% |
+| ------- | ---- | ------- | ---------- | ----------- |
+| Legacy ttl=48 risk=2% | isolated | discard | +164.75% | 8/12 |
+| Mandate-score best | isolated | discard | +131.31% | 3/12 |
+| Legacy ttl=48 risk=2% | continuous | *not run* | — | — |
 
-### Step A — weak-month attribution (cheap, do first)
+Isolated mode reset capital each month — unrealistic; do not use for decisions.
 
-Inspect Feb, Mar, Sep, Oct under re-baseline:
+## Next steps
 
-`results/nr4_optuna_best_dd0030_rebaseline/20260609_124449/runs/sol_2025_0{2,3,9,10}/trade_chart.html`
-
-Look for: clustered SL streaks, session filter edge cases, overlapping positions
-(`max_positions=0` = unlimited in Optuna).
-
-### Step B — mandate-aware Optuna (requires code)
-
-Replace `--target total_return_pct` with objective aligned to mandate:
-
-- maximize min monthly return (or mandate capped sum);
-- hard constraint or penalty for DD > 10% per month;
-- optionally 12-window evaluation per trial (expensive, exact mandate match).
-
-See BACKLOG **P1 — Mandate-aware Optuna objective**. Owner deferred implementation
-(2026-06-09 chat).
-
-**Not useful:** re-run `compare-fixed` at risk=1% only — Optuna already searched
-risk 1.0–2.0 and chose 2% for full-year return.
-
-### Step C — realism knob
-
-Re-run frozen geometry with **`max_positions=1`** — unlimited concurrent positions
-in Optuna may inflate returns and DD.
-
-## Decision matrix
-
-| Outcome | Action |
-| ------- | ------ |
-| ≥9 months ≥15%, all DD ≤10% | **Promote path** — TON validation, margin sim |
-| 8 months ≥15%, 0–1 DD breach after mandate Optuna | **Full Optuna §5.4** with DD constraint |
-| Still 2+ DD breaches after mandate Optuna | Filter/label tweak or archive as near-miss |
-| <7 months ≥15% | Trade-off: economics vs risk — owner call |
+1. Optional: continuous re-baseline **legacy** params (ttl=48, risk=2%) for A/B.
+2. **Mar attribution** — DD breach month on continuous run:
+   `.../150212/runs/sol_continuous/trade_chart.html`
+3. Filter/signal work on Mar/Feb/Jan weakness, or formal **archive** NR4.
 
 ## Artifacts
 
+- **Current truth:** `results/nr4_mandate_score_best_compare/20260609_150212/`
+- Mandate-score Optuna: `results/nr4_mandate_score_optuna/20260609_133450/`
+- Legacy isolated (historical): `results/nr4_optuna_best_dd0030_rebaseline/20260609_124449/`
 - v3 overnight: `results/v3_robust_overnight_20260609/nr4_vwap/`
-- Optuna: `.../02_optuna_full_year/20260609_095346/best_trial.json`
-- v3 mandate (pre-ADR-0030): `.../03_optuna_best_compare/20260609_104342/`
-- **Current truth:** `results/nr4_optuna_best_dd0030_rebaseline/20260609_124449/`

@@ -457,7 +457,13 @@ def run(
 @click.option(
     "--target",
     type=click.Choice(
-        ["total_return_pct", "profit_factor", "sharpe_ratio", "max_drawdown"],
+        [
+            "total_return_pct",
+            "profit_factor",
+            "sharpe_ratio",
+            "max_drawdown",
+            "mandate_score",
+        ],
         case_sensitive=False,
     ),
     default="total_return_pct",
@@ -795,11 +801,13 @@ def optimize(
 )
 @click.option("--ttl", type=int, default=36, help="Fixed position TTL in bars. 0 disables TTL.")
 @click.option(
-    "--continuous",
-    is_flag=True,
+    "--continuous/--isolated-windows",
+    default=True,
+    show_default=True,
     help=(
-        "Run one continuous backtest per symbol across all windows so open positions "
-        "carry until TP/SL (auto-enabled when ttl=0)."
+        "Continuous (default): one backtest per symbol; open positions carry through "
+        "calendar month boundaries — canonical mandate evaluation. Isolated-windows: "
+        "reset each window to fresh capital (diagnostic only)."
     ),
 )
 @click.option(
@@ -888,8 +896,17 @@ def compare_fixed(
     use_continuous = continuous or ttl == 0
     if ttl == 0 and not continuous:
         logger.info(
-            "ttl=0 enables continuous execution automatically so open positions "
-            "are not orphaned at each monthly window boundary."
+            "ttl=0 forces continuous execution so open positions are not orphaned "
+            "at each monthly window boundary."
+        )
+    elif continuous:
+        logger.info(
+            "Continuous mandate mode: one backtest per symbol; monthly rows derived "
+            "from calendar-month PnL on that run."
+        )
+    else:
+        logger.info(
+            "Isolated-window mode (diagnostic): each window resets capital and positions."
         )
     summary = run_fixed_candidate_comparison(
         windows=window_specs,

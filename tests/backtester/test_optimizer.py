@@ -359,3 +359,79 @@ def test_parameter_optimizer_suggests_tp_move_pct_when_range_enabled(monkeypatch
     assert value == 1.5
     assert captured["run_kwargs"]["exit_geometry"] == "tp_pct"
     assert captured["run_kwargs"]["tp_move_pct"] == pytest.approx(0.012)
+
+
+def test_parameter_optimizer_mandate_score_uses_monthly_floor_and_dd(monkeypatch):
+    class _MandateResults:
+        metrics = {
+            "total_return_pct": 80.0,
+            "monthly_returns_pct": {"2025-01": {"ret": 80.0}},
+            "max_drawdown": -12.0,
+            "total_trades": 2,
+            "sharpe_ratio": 0.5,
+        }
+        trades = pd.DataFrame(
+            [
+                {
+                    "entry_time": "2025-01-10T00:00:00Z",
+                    "exit_time": "2025-01-10T04:00:00Z",
+                    "pnl_abs": 2000.0,
+                    "exit_reason": "take_profit",
+                },
+                {
+                    "entry_time": "2025-02-10T00:00:00Z",
+                    "exit_time": "2025-02-10T04:00:00Z",
+                    "pnl_abs": -1200.0,
+                    "exit_reason": "stop_loss",
+                },
+            ]
+        )
+
+    class Backtester:
+        def __init__(self, df, strategy):
+            self.df = df
+            self.strategy = strategy
+
+        def run(self, **_kwargs):
+            self.strategy(self.df)
+            return _MandateResults()
+
+    monkeypatch.setattr(optimizer_mod, "Backtester", Backtester)
+
+    df = pd.DataFrame(
+        {
+            "open": [1.0, 1.0],
+            "high": [1.0, 1.0],
+            "low": [1.0, 1.0],
+            "close": [1.0, 1.0],
+            "volume": [1.0, 1.0],
+        },
+        index=pd.to_datetime(["2025-01-01", "2025-02-28"], utc=True),
+    )
+    trial = optuna.trial.FixedTrial({"rrr": 1.25})
+    optimizer = ParameterOptimizer(
+        df=df,
+        strategy_class=_DummyStrategy,
+        target=TargetFunction(
+            fn=lambda _results: -999.0,
+            direction="maximize",
+            name="mandate_score",
+        ),
+        initial_capital=10000.0,
+        optimize_strategy_params=False,
+        risk_percent_range=None,
+        rrr_range=(1.0, 1.5, 0.25),
+        position_ttl_bars_range=None,
+        optimize_daily_limits=False,
+        optimize_trading_window=False,
+    )
+
+    value = optimizer._objective(trial)  # noqa: SLF001
+
+    assert value == pytest.approx(-512.0)
+    assert trial.user_attrs["mandate_score"] == pytest.approx(-512.0)
+    assert trial.user_attrs["mandate_months_passing_floor"] == 1
+    assert trial.user_attrs["mandate_months_below_floor"] == 1
+    assert trial.user_attrs["mandate_dd_breach_months"] == 1
+    assert trial.user_attrs["mandate_sum_capped_monthly_return_pct"] == pytest.approx(8.0)
+    assert trial.user_attrs["min_monthly_return"] == pytest.approx(-12.0)

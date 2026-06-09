@@ -6,6 +6,35 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-09 — Mandate-aware Optuna target
+
+- Added `backtester optimize --target mandate_score` for ADR-0025-aligned trial
+  ranking: capped monthly return minus penalties for monthly shortfall, DD
+  breaches, excess below-floor months, and 3+ losing-month streaks.
+- Optimizer trials now export mandate attrs (`mandate_score`, monthly floor
+  counts, DD breach count, capped monthly summaries, verdict) into
+  `trials.csv` / `best_trial.json`.
+- ADR: `docs/decisions/0031-mandate-aware-optuna-target.md`.
+- Files: `src/backtester/`, `tests/backtester/`, `docs/`, `README.md`.
+
+## 2026-06-09 — NR4 continuous mandate re-baseline (ADR-0032)
+
+- Owner-run continuous `compare-fixed` on mandate-score best params (tp=0.016,
+  rrr=2.5, ttl=36, risk=1.5%):
+  `results/nr4_mandate_score_best_compare/20260609_150212/`.
+- Verdict **archive**: +185.06% capped sum, **9/12** months ≥15%, **1** DD breach
+  (Mar −17.11%). Matches Optuna mandate_score proxy.
+- Supersedes isolated-window results for promotion decisions.
+
+## 2026-06-09 — Continuous mandate evaluation default (ADR-0032)
+
+- `compare-fixed` now defaults to **continuous** mode (`--continuous` /
+  `--isolated-windows`); positions carry through calendar months on one
+  year-long backtest per symbol.
+- Isolated per-month resets are diagnostic only; align mandate with
+  `investment_mandate.md` and Optuna `mandate_score`.
+- ADR: `docs/decisions/0032-continuous-mandate-evaluation.md`.
+
 ## 2026-06-09 — NR4 re-baseline (ADR-0029 + ADR-0030)
 
 - Owner-run 12-month `compare-fixed` on frozen Optuna best (tp=0.016, rrr=2.5,

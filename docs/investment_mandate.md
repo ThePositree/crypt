@@ -35,8 +35,15 @@ Each symbol uses a **separate $10 000 portfolio** (not one shared pool).
 | Starting capital | $10 000 per symbol |
 | Minimum monthly return | **+15%** (`raw_monthly_return_pct ≥ 15`) |
 | Minimum monthly profit | **$1 500** (equivalent at $10k) |
-| Evaluation period | Full calendar **2025**, continuous backtest |
+| Evaluation period | Full calendar **2025**, **one continuous backtest per symbol** |
 | Costs | **After** backtester fee and slippage model |
+
+**How to evaluate:** run `backtester compare-fixed` with the default
+**continuous** mode (one year-long simulation; positions carry through calendar
+months). Calendar-month return and DD gates are computed from **closed trades
+that exit in that month** on that run. Do **not** use `--isolated-windows` for
+promote/archive/discard — that mode resets capital and positions each month and
+is diagnostic only (ADR-0032).
 
 A calendar month **passes** when `raw_monthly_return_pct ≥ 15`.
 
@@ -214,13 +221,16 @@ the owner explicitly revives the idea.
 Any candidate evaluation report for mandate compliance must include:
 
 - Per-month: `raw_monthly_return_pct`, `capped_monthly_return_pct`,
-  `max_drawdown_pct` (intra-month), trade count, stop-loss count.
+  `max_drawdown_pct` (intra-month), trade count, stop-loss count — all derived
+  from **one continuous backtest** per symbol (default `compare-fixed` behavior).
 - Year summary: count of months ≥ 15%, count below floor, worst consecutive
   losing streak, large losing-day count.
 - Verdict: **promote** / **archive** / **discard** / **full Optuna** with one
   paragraph rationale.
 - Reference strategy params, symbol, window `2025-01-01` → `2026-01-01`, and
   artifact paths.
+- Export `execution_mode=continuous` / `continuous_derived` in `windows.csv`
+  when using the canonical path.
 
 ---
 
@@ -247,6 +257,7 @@ The legacy bounded H1 short-only row (`rrr = 1.5`, `ttl = 42`, `max_positions =
 - ADR-0024 — margin realism
 - ADR-0029 — isolated margin always on
 - ADR-0030 — drawdown from window-start capital
+- ADR-0032 — continuous mandate evaluation (default `compare-fixed`)
 - `docs/tasks/BACKLOG.md` — implementation tasks
 - `docs/paper_trading.md` — M3 validation after promotion
 - `docs/tasks/IDEAS.md` — capped profits origin (now approved here)

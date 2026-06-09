@@ -455,7 +455,7 @@ uv run backtester optimize \
     --output /tmp/crypt_donor_h1_mtf_optuna_cli \
     --trials 12 \
     --study-name sol_h1_rrr_ttl \
-    --target total_return_pct \
+    --target mandate_score \
     --rrr-low 1.0 --rrr-high 2.0 --rrr-step 0.25 \
     --ttl-low 18 --ttl-high 42 --ttl-step 6 \
     --max-positions-values 1,2,3,5 \
@@ -466,11 +466,13 @@ uv run backtester optimize \
     --export-best-run
 ```
 
-**Optimizer target vs mandate:** default `--target total_return_pct` optimizes
-full-year compound return on one continuous backtest. Mandate promote/archive
-uses per-month floors and intra-month DD on fixed windows (`compare-fixed`).
-Trials can rank well on `total_return_pct` yet fail mandate — use mandate
-reports for final decisions; mandate-aware targets are tracked in BACKLOG (P1).
+**Optimizer target vs mandate:** use `--target mandate_score` for candidate
+tuning against ADR-0025. The score maximizes capped monthly return after strong
+penalties for monthly return shortfall below 15%, monthly DD breaches, excess
+failed months, and 3+ consecutive losing months. Legacy `--target
+total_return_pct` still optimizes one continuous backtest's aggregate return
+only; it can rank trials well even when they fail mandate. Final promotion
+decisions still come from mandate reports / `compare-fixed`, not Optuna alone.
 
 The command writes:
 

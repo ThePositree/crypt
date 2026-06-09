@@ -1,19 +1,22 @@
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Literal
+from typing import Any, Literal
 
 import optuna
 import pandas as pd
 from optuna.storages import JournalStorage
 from optuna.storages.journal import JournalFileBackend
 
+from backtester.data_contracts import StrategyData, StrategyInput
 from backtester.execution_context import (
     StrategyExecutionContext,
     attach_execution_context,
     execution_context_from_run_kwargs,
 )
+from backtester.mandate_report import MONTHLY_DD_LIMIT_PCT, RETURN_FLOOR_PCT, build_mandate_report
 from backtester.results_analyzer import ResultsAnalyzer
 from backtester.strategy import BaseStrategy
 from backtester.tester import Backtester
@@ -24,10 +27,48 @@ IntChoices = tuple[int, ...]
 FloatChoices = tuple[float, ...]
 
 
+def _mandate_score(
+    *,
+    sum_capped_monthly_return_pct: float,
+    monthly_shortfall_pct: float,
+    dd_excess_pct: float,
+    months_below_floor: int,
+    dd_breach_months: int,
+    worst_consecutive_losing_months: int,
+) -> float:
+    excess_failed_months = max(months_below_floor - 3, 0)
+    excess_losing_streak = max(worst_consecutive_losing_months - 2, 0)
+    return (
+        sum_capped_monthly_return_pct
+        - monthly_shortfall_pct * 10.0
+        - dd_excess_pct * 25.0
+        - dd_breach_months * 200.0
+        - excess_failed_months * 500.0
+        - excess_losing_streak * 500.0
+    )
+
+
+def _empty_mandate_attrs() -> dict[str, Any]:
+    return {
+        "mandate_score": -float("inf"),
+        "min_monthly_return": -100.0,
+        "monthly_shortfall_pct": 0.0,
+        "mandate_months_passing_floor": 0,
+        "mandate_months_below_floor": 0,
+        "mandate_dd_breach_months": 0,
+        "mandate_worst_consecutive_losing_months": 0,
+        "mandate_worst_monthly_drawdown_pct": 0.0,
+        "mandate_avg_capped_monthly_return_pct": 0.0,
+        "mandate_sum_capped_monthly_return_pct": 0.0,
+        "mandate_verdict": "discard",
+    }
+
+
 @dataclass
 class TargetFunction:
     fn: Callable[[ResultsAnalyzer], float]
-    direction: Literal["maximize", "minimize"]
+    direction: Literal["maximize", "minimize"] | list[Literal["maximize", "minimize"]]
+    name: str = ""
 
 
 class ParameterOptimizer:
@@ -37,7 +78,7 @@ class ParameterOptimizer:
 
     def __init__(
         self,
-        df: pd.DataFrame,
+        df: StrategyInput,
         strategy_class: type[BaseStrategy],
         target: TargetFunction,
         initial_capital: float = 1000.0,
@@ -106,13 +147,14 @@ class ParameterOptimizer:
     def _objective(self, trial: optuna.Trial) -> float:
         try:
             # 1. Подбираем ПАРАМЕТРЫ СТРАТЕГИИ
+            suggested_strategy_params = (
+                self.strategy_class(self.strategy_params).suggest_params(trial)
+                if self.optimize_strategy_params
+                else {}
+            )
             strategy_params = {
                 **self.strategy_params,
-                **(
-                    self.strategy_class.suggest_params(None, trial)
-                    if self.optimize_strategy_params
-                    else {}
-                ),
+                **suggested_strategy_params,
             }
 
             # 2. Подбираем ПАРАМЕТРЫ РИСКА (относятся к тестеру)
@@ -172,7 +214,7 @@ class ParameterOptimizer:
                 execution_context,
             )
 
-            def strategy(df):
+            def strategy(df: StrategyInput) -> pd.DataFrame:
                 cached = self._signal_cache.get(strategy_cache_key)
                 if cached is not None:
                     return cached.copy()
@@ -225,6 +267,7 @@ class ParameterOptimizer:
             )
 
             m = results.metrics
+            mandate_attrs = self._mandate_trial_attrs(results)
             trial.set_user_attr("total_return_pct", m.get("total_return_pct", -100))
             trial.set_user_attr("trail_activation_rrr", trail_activation_rrr)
             trial.set_user_attr("trail_distance_atr", trail_distance_atr)
@@ -234,23 +277,93 @@ class ParameterOptimizer:
                 trial.set_user_attr("tp_move_pct", tp_move_pct)
             trial.set_user_attr("exit_geometry", exit_geometry)
             trial.set_user_attr("signal_cache_size", len(self._signal_cache))
-            trial.set_user_attr(
-                "min_monthly_return",
-                min(
-                    map(
-                        lambda x: x["ret"],
-                        m.get("monthly_returns_pct", {"ret": -100}).values(),
-                    )
-                ),
-            )
+            for name, value in mandate_attrs.items():
+                trial.set_user_attr(name, value)
             trial.set_user_attr("max_drawdown", m.get("max_drawdown", -100))
             trial.set_user_attr("total_trades", m.get("total_trades", 0))
             trial.set_user_attr("sharpe_ratio", m.get("sharpe_ratio", -999.0))
+            if self.target.name == "mandate_score":
+                return float(mandate_attrs["mandate_score"])
             return self.target.fn(results)
 
         except Exception as e:
             self._logger.debug(f"Ошибка в итерации: {e}")
             return -float("inf")
+
+    def _mandate_trial_attrs(self, results: ResultsAnalyzer) -> dict[str, Any]:
+        primary = self._primary_frame()
+        if primary.empty:
+            return _empty_mandate_attrs()
+
+        index = pd.to_datetime(primary.index, errors="coerce")
+        index = index.dropna()
+        if index.empty:
+            return _empty_mandate_attrs()
+
+        start = str(index.min().date())
+        end = str(index.max().date())
+        if pd.Timestamp(end) <= pd.Timestamp(start):
+            end = str((pd.Timestamp(start) + pd.Timedelta(days=1)).date())
+
+        try:
+            report = build_mandate_report(
+                results.trades,
+                initial_capital=self.initial_capital,
+                start=start,
+                end=end,
+            )
+        except (AttributeError, KeyError, ValueError, TypeError):
+            return _empty_mandate_attrs()
+
+        monthly = report.monthly
+        summary = report.summary.iloc[0].to_dict() if not report.summary.empty else {}
+        if monthly.empty:
+            return _empty_mandate_attrs()
+
+        raw = pd.to_numeric(monthly["raw_monthly_return_pct"], errors="coerce").fillna(0.0)
+        drawdowns = pd.to_numeric(monthly["max_drawdown_pct"], errors="coerce").fillna(0.0)
+        min_monthly_return = float(raw.min()) if not raw.empty else -100.0
+        monthly_shortfall_pct = float((RETURN_FLOOR_PCT - raw).clip(lower=0.0).sum())
+        dd_excess_pct = float((MONTHLY_DD_LIMIT_PCT - drawdowns).clip(lower=0.0).sum())
+        mandate_score = _mandate_score(
+            sum_capped_monthly_return_pct=float(
+                summary.get("sum_capped_monthly_return_pct", 0.0)
+            ),
+            monthly_shortfall_pct=monthly_shortfall_pct,
+            dd_excess_pct=dd_excess_pct,
+            months_below_floor=int(summary.get("months_below_floor", 0)),
+            dd_breach_months=int(summary.get("dd_breach_months", 0)),
+            worst_consecutive_losing_months=int(
+                summary.get("worst_consecutive_losing_months", 0)
+            ),
+        )
+
+        return {
+            "mandate_score": round(mandate_score, 4),
+            "min_monthly_return": round(min_monthly_return, 2),
+            "monthly_shortfall_pct": round(monthly_shortfall_pct, 2),
+            "mandate_months_passing_floor": int(summary.get("months_passing_floor", 0)),
+            "mandate_months_below_floor": int(summary.get("months_below_floor", 0)),
+            "mandate_dd_breach_months": int(summary.get("dd_breach_months", 0)),
+            "mandate_worst_consecutive_losing_months": int(
+                summary.get("worst_consecutive_losing_months", 0)
+            ),
+            "mandate_worst_monthly_drawdown_pct": float(
+                summary.get("worst_monthly_drawdown_pct", 0.0)
+            ),
+            "mandate_avg_capped_monthly_return_pct": float(
+                summary.get("avg_capped_monthly_return_pct", 0.0)
+            ),
+            "mandate_sum_capped_monthly_return_pct": float(
+                summary.get("sum_capped_monthly_return_pct", 0.0)
+            ),
+            "mandate_verdict": str(summary.get("verdict", "discard")),
+        }
+
+    def _primary_frame(self) -> pd.DataFrame:
+        if isinstance(self.df, StrategyData):
+            return self.df.primary
+        return self.df
 
     @staticmethod
     def _suggest_float_or_fixed(
@@ -327,8 +440,8 @@ class ParameterOptimizer:
         n_trials: int = 50,
         show_progress: bool = True,
         name: str = "no_name",
-    ) -> tuple[dict, optuna.Study]:
-        study_kwargs = {}
+    ) -> tuple[dict[str, Any], optuna.Study]:
+        study_kwargs: dict[str, Any] = {}
         if isinstance(d := self.target.direction, list):
             study_kwargs["sampler"] = optuna.samplers.NSGAIIISampler()
             study_kwargs["directions"] = d

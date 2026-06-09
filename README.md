@@ -270,7 +270,7 @@ uv run backtester optimize \
     --strategy strategies/backtester/crypt_ensemble_h1.json \
     --output results/crypt_ensemble_sol_h1_optuna \
     --trials 25 \
-    --target total_return_pct \
+    --target mandate_score \
     --rrr-low 1.0 --rrr-high 2.0 --rrr-step 0.25 \
     --ttl-low 18 --ttl-high 42 --ttl-step 6 \
     --trail-activation-rrr-values 0,0.5,0.75,1.0,1.25 \
@@ -283,27 +283,24 @@ uv run backtester optimize \
     --export-best-run
 ```
 
-The optimizer writes `trials.csv`, `best_trial.json`, the Optuna journal log,
-and donor `best_run/` diagnostics under a timestamped output directory.
+Use `--target mandate_score` for candidate tuning against the investment
+mandate. It ranks trials by capped monthly return after strong penalties for
+months below the 15% floor, monthly DD breaches, and consecutive losing months.
+Legacy scalar targets remain available: `total_return_pct`, `profit_factor`,
+`sharpe_ratio`, and `max_drawdown`. The optimizer writes `trials.csv`,
+`best_trial.json`, the Optuna journal log, and donor `best_run/` diagnostics
+under a timestamped output directory.
 
-For cheaper fixed-candidate checks across several bounded windows, use
-`compare-fixed`. With no `--window` options it compares SOL January/February/
-March 2025 and TON January/February 2025 using the fixed execution candidate
-(`rrr = 1.25`, `ttl = 36`, `risk_percent = 1.0`) and writes `windows.csv`,
-`windows.md`, `monthly_mandate.csv`, `mandate_summary.csv`,
-`mandate_summary.md`, and per-window donor run artifacts under `runs/<label>/`.
-The mandate files apply ADR-0025 gates: raw/capped monthly returns, intra-month
-max drawdown, stop-loss counts, and the promote/archive/discard/full-Optuna
-verdict, evaluated per symbol because each symbol has its own mandate portfolio.
-Use `--jobs N` to run independent windows in parallel; this does not parallelize
-Optuna strategy-parameter search.
-
-With `--ttl 0`, bar-count TTL is disabled: positions exit only on TP/SL and
-remain open at end of data (no forced close on the last bar). For meaningful
-`ttl=0` evaluation across monthly windows, use `--continuous` (auto-enabled when
-`ttl=0`): one backtest per symbol spans all windows, and monthly `windows.csv`
-rows are derived from that run so open positions are not reset at each month
-boundary.
+For mandate candidate checks across calendar months, use `compare-fixed`
+(**continuous by default**, ADR-0032): one backtest per symbol spans all
+`--window` entries; monthly mandate rows are derived from that run so open
+positions are not reset at month boundaries. With no `--window` options it
+compares SOL January/February/March 2025 and TON January/February 2025 using
+the fixed execution candidate (`rrr = 1.25`, `ttl = 36`, `risk_percent = 1.0`)
+and writes `windows.csv`, `windows.md`, `monthly_mandate.csv`,
+`mandate_summary.csv`, `mandate_summary.md`, and run artifacts under
+`runs/<symbol>_continuous/`. Use `--isolated-windows` only for diagnostics
+(legacy per-month capital reset). Use `--jobs N` only in isolated mode.
 
 **TP-first exit geometry** (`--exit-geometry tp_pct --tp-move-pct 0.015`):
 fixed gross TP move from entry; SL = TP distance / `rrr`, structural SL used

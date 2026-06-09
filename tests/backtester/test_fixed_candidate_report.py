@@ -571,6 +571,7 @@ def test_fixed_candidate_comparison_exports_mandate_report(monkeypatch, tmp_path
         output_folder=str(tmp_path),
         jobs=1,
         logger=__import__("logging").getLogger("test"),
+        continuous=False,
     )
 
     monthly = pd.read_csv(tmp_path / "monthly_mandate.csv")
@@ -652,6 +653,7 @@ def test_fixed_candidate_mandate_report_evaluates_symbols_separately(
         output_folder=str(tmp_path),
         jobs=1,
         logger=__import__("logging").getLogger("test"),
+        continuous=False,
     )
 
     monthly = pd.read_csv(tmp_path / "monthly_mandate.csv")
@@ -715,6 +717,7 @@ def test_fixed_candidate_mandate_report_handles_empty_trades_csv(
         output_folder=str(tmp_path),
         jobs=1,
         logger=__import__("logging").getLogger("test"),
+        continuous=False,
     )
 
     monthly = pd.read_csv(tmp_path / "monthly_mandate.csv")

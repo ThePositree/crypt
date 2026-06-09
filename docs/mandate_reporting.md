@@ -9,7 +9,8 @@ full-year run is promoted, archived, discarded, or eligible for full Optuna.
 ## Inputs
 
 The reporter accepts completed donor trades from a single continuous candidate
-run, or an ordered set of non-overlapping fixed windows for the same candidate.
+run (canonical), or an ordered set of non-overlapping fixed windows for the
+same candidate when using **`--isolated-windows`** (diagnostic only; ADR-0032).
 When a `compare-fixed` report contains multiple symbols, each symbol is
 evaluated independently because ADR-0025 assigns a separate `$10 000` portfolio
 per symbol.

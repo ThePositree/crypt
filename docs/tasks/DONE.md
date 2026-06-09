@@ -4,6 +4,22 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-09 — Mandate-aware Optuna target
+
+**What:** added `backtester optimize --target mandate_score`, a composite
+objective aligned with ADR-0025 monthly return and DD gates.
+
+**Result:** each trial now exports mandate user attrs (`mandate_score`,
+monthly floor counts, DD breach count, capped monthly return summary, verdict).
+`mandate_score` ranks capped monthly return after penalties for monthly
+shortfall below 15%, DD excess beyond 10%, excess below-floor months, and 3+
+consecutive losing months. Legacy targets remain available for diagnostics.
+
+**Acceptance:** `tests/backtester/test_optimizer.py` covers mandate score on
+synthetic monthly trades; ADR-0031 documents the formula and trade-off.
+
+---
+
 ## 2026-06-09 — NR4 re-baseline after ADR-0029 + ADR-0030 (owner-run)
 
 **What:** 12-month `compare-fixed` on NR4 frozen Optuna best params after
