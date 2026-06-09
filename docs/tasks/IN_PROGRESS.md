@@ -1,5 +1,26 @@
 # In progress
 
+## M4 scheduler integration — next steps (2026-06-09)
+
+Scheduler wired. Module is complete and integrated. **Next owner action: dry-run validation.**
+
+**What remains:**
+1. Deploy or start locally with `EXECUTION_ENABLED=true EXECUTION_DRY_RUN=true`.
+2. After 1 H1 close (~:02 UTC), confirm logs show:
+   - `"H1 tick at …"`
+   - `"Signal for SOL-USDT-SWAP: signal=…"` or `"No actionable signal"`
+   - `data/execution_state.json` created.
+3. Switch `EXECUTION_DRY_RUN=false` only after owner confirms dry-run logs look correct.
+
+**Key files:**
+- `src/crypt/__main__.py` — H1 scheduler wired (H1Scheduler + LiveExecutionManager)
+- `src/crypt/execution/` — complete module
+- `.env.example` — all EXECUTION_* vars documented
+- `docs/execution/live_execution.md` — spec
+- `docs/decisions/0033-m4-live-execution-architecture.md` — ADR
+
+---
+
 ## Active candidate: NR4 vwap band (2026-06-09)
 
 **Strategy:** `strategies/backtester/crypt_ensemble_h1_discovery_nr4_vwap_robust.json`  

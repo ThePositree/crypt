@@ -4,6 +4,42 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-09 — M4 live execution module + H1 scheduler integration
+
+**What:** implemented the full M4 live execution module that mirrors `ExecutionSim`
+exactly for real OKX order placement, and wired it into the H1 scheduler in `__main__.py`.
+
+**Why now:** owner explicit mandate override — proceeding with NR4 (archive verdict)
+before a promoted candidate is found.
+
+**Components:**
+- `settings.py` — `ExecutionSettings` (pydantic-settings, all keys EXECUTION_*)
+- `position_state.py` — `LivePosition` + atomic JSON persistence
+- `risk_calculator.py` — `LiveRiskCalculator` wrapping `BasicRiskModel` with identical
+  logic to `ExecutionSim._try_open_position()`
+- `signal_runner.py` — `LiveSignalRunner` running `crypt_ensemble.generate()` on live
+  Parquet data for guaranteed signal parity; CPU-bound call runs in thread pool via
+  `run_in_executor` to avoid blocking asyncio
+- `okx_order_client.py` — `OKXTradingClient` placing market + embedded SL/TP orders
+  via ccxt; dry_run=True default
+- `executor.py` — `LiveExecutionManager` orchestrating H1 ticks: candle refresh →
+  TTL/fill detection → signal check → entry
+- `src/crypt/runtime/scheduler.py` — `H1Scheduler` added (fires at `*:02 UTC` every hour)
+- `src/crypt/__main__.py` — `H1Scheduler` + `LiveExecutionManager` wired; reconcile on startup;
+  safe shutdown (close() called in finally block)
+- `.env.example` — all EXECUTION_* variables documented with inline comments
+- 21 unit tests in `tests/execution/`, all passing; ruff + mypy strict clean
+
+**ADRs:** ADR-0033 (`docs/decisions/0033-m4-live-execution-architecture.md`)
+**Spec:** `docs/execution/live_execution.md`
+
+**Acceptance:** 21/21 tests pass, ruff clean, module installable.
+
+**Remaining before live activation:** wire into H1 scheduler in `__main__.py`;
+integration test with dry_run=True; owner sign-off before dry_run=False.
+
+---
+
 ## 2026-06-09 — Mandate-aware Optuna target
 
 **What:** added `backtester optimize --target mandate_score`, a composite

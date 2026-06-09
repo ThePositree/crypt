@@ -6,6 +6,28 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-09 — M4 live execution module + scheduler integration
+
+- New `src/crypt/execution/` package: `ExecutionSettings`, `LivePosition` +
+  atomic JSON state, `LiveRiskCalculator` (mirrors `BasicRiskModel` exactly),
+  `LiveSignalRunner` (runs `crypt_ensemble.generate()` on live Parquet;
+  CPU-bound call in thread pool via `run_in_executor`),
+  `OKXTradingClient` (market entry + embedded SL/TP via ccxt), `LiveExecutionManager`.
+- Default `dry_run=True` — no real orders placed until owner sets
+  `EXECUTION_DRY_RUN=false`.
+- New `H1Scheduler` in `src/crypt/runtime/scheduler.py` (fires at `*:02` UTC every hour).
+- `src/crypt/__main__.py` updated: `H1Scheduler` + `LiveExecutionManager` wired;
+  reconcile on startup; clean shutdown; `_maybe_build_execution_manager()` guard
+  rejects `dry_run=false` without OKX credentials.
+- `.env.example`: all `EXECUTION_*` vars documented with inline comments and safe defaults.
+- 21 unit tests in `tests/execution/`; ruff + mypy strict — 0 errors.
+- Owner override applied: proceeding without a promoted candidate (NR4 is archive).
+- ADR: `docs/decisions/0033-m4-live-execution-architecture.md`.
+- Spec: `docs/execution/live_execution.md`.
+- Files: `src/crypt/execution/`, `src/crypt/__main__.py`,
+  `src/crypt/runtime/scheduler.py`, `tests/execution/`, `.env.example`,
+  `docs/execution/`, `docs/decisions/0033-*`, `docs/tasks/`.
+
 ## 2026-06-09 — Mandate-aware Optuna target
 
 - Added `backtester optimize --target mandate_score` for ADR-0025-aligned trial

@@ -14,6 +14,27 @@ when finished.
 > **+15%/month** on **$10k** SOL **2025** continuous backtest after fees;
 > max **10% intra-month DD**; auto-trading only after **promote** verdict.
 
+## P0 — Dry-run validation on real account (owner action)
+
+**What:** start the process with `EXECUTION_ENABLED=true EXECUTION_DRY_RUN=true` and
+observe 1–2 H1 ticks to confirm logs are correct before switching to live money.
+
+**Why now:** H1 scheduler and LiveExecutionManager are now wired and passing all tests.
+The only remaining step before live trading is owner verification of dry-run output.
+
+**Expected gain:** confidence that signal/sizing/SL/TP are being computed correctly.
+
+**Acceptance:**
+1. Start with `EXECUTION_ENABLED=true EXECUTION_DRY_RUN=true OKX_API_KEY=… …`
+2. After `:02` UTC: logs show `"H1 tick at …"` and per-symbol signal output.
+3. `data/execution_state.json` created.
+4. Owner reviews signal, entry_price_estimate, sl_price, tp_price, contracts.
+5. If all looks correct: set `EXECUTION_DRY_RUN=false`.
+
+**Links:** `.env.example`, `docs/execution/live_execution.md`.
+
+---
+
 ## P1 — Model round-trip friction floor in backtester (0.3% breakeven)
 
 **What:** add a configurable **round-trip friction floor** to donor execution and/or

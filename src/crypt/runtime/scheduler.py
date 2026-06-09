@@ -9,6 +9,61 @@ from apscheduler.triggers.cron import CronTrigger
 from loguru import logger
 
 
+class H1Scheduler:
+    """
+    Fires a coroutine callback on every 1h boundary (every hour at
+    ``offset_minutes`` past the hour), allowing time for candles to close.
+
+    offset_minutes: how many minutes after the boundary to wait before
+    triggering (default 2 — gives the exchange time to close the candle).
+    """
+
+    def __init__(
+        self,
+        callback: Callable[[], Coroutine[Any, Any, None]],
+        offset_minutes: int = 2,
+    ) -> None:
+        self._callback = callback
+        self._offset = offset_minutes
+        self._scheduler = AsyncIOScheduler(timezone="UTC")
+
+    def start(self) -> None:
+        trigger = CronTrigger(
+            minute=str(self._offset),
+            second=0,
+            timezone="UTC",
+        )
+        self._scheduler.add_job(
+            self._run,
+            trigger=trigger,
+            id="h1_tick",
+            max_instances=1,
+            misfire_grace_time=120,
+        )
+        self._scheduler.start()
+        logger.info(
+            "H1Scheduler started — fires at *:{}m UTC every hour",
+            str(self._offset).zfill(2),
+        )
+
+    def stop(self) -> None:
+        if self._scheduler.running:
+            self._scheduler.shutdown(wait=False)
+            logger.info("H1Scheduler stopped")
+
+    async def _run(self) -> None:
+        now = datetime.now(tz=UTC)
+        logger.debug("H1 tick at {}", now.isoformat())
+        try:
+            await self._callback()
+        except Exception as exc:
+            logger.error("H1 tick callback error: {}", exc)
+
+    async def run_now(self) -> None:
+        """Trigger one immediate tick (used for startup / manual testing)."""
+        await self._run()
+
+
 class H4Scheduler:
     """
     Fires a coroutine callback on every 4h boundary (00:00, 04:00, 08:00,
