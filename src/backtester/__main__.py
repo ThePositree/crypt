@@ -28,7 +28,7 @@ from backtester.cli_runner import (  # noqa: E402
     run_backtest,
     run_parameter_optimization,
 )
-from backtester.data_contracts import StrategyInput  # noqa: E402
+from backtester.data_contracts import StrategyData, StrategyInput  # noqa: E402
 from backtester.fixed_candidate_report import (  # noqa: E402
     FixedCandidateParams,
     WindowSpec,
@@ -45,14 +45,29 @@ from backtester.strategy_discovery import (  # noqa: E402
     DiscoveryConfig,
     DiscoveryConversionError,
     DiscoveryWindow,
+    DSSConfig,
+    DSSSearchSpace,
+    DSSWindowSpec,
     load_and_convert_discovery_strategy,
+    parameterized_filter_catalog,
+    parameterized_trigger_catalog,
+    parameterized_trigger_param_space,
+    run_dss_v2_search,
     run_strategy_discovery,
 )
 from backtester.strategy_discovery.filters import filter_catalog  # noqa: E402
+from backtester.strategy_discovery.parameterized_filters import (  # noqa: E402
+    parameterized_filter_param_space,
+)
 from backtester.strategy_discovery.triggers import trigger_catalog  # noqa: E402
 from backtester.trade_chart_report import (  # noqa: E402
     TradeChartReportConfig,
     build_trade_chart_report,
+)
+from backtester.walk_forward import (  # noqa: E402
+    generate_windows,
+    run_walk_forward,
+    write_walk_forward_report,
 )
 
 log_level = logging.getLevelNamesMapping().get(os.environ.get("LOG_LEVEL", "INFO"), logging.INFO)
@@ -1198,6 +1213,308 @@ def signal_quality(
     )
 
 
+@cli.command("walk-forward")
+@click.option("--data-dir", required=True, help="Project data directory (crypt-parquet).")
+@click.option(
+    "--primary-timeframe",
+    type=click.Choice(["1h", "4h", "1d"], case_sensitive=False),
+    default="1h",
+    help="Primary execution timeframe.",
+)
+@click.option("--symbol", required=True, help="OKX SWAP symbol, e.g. SOL-USDT-SWAP.")
+@click.option("--from", "from_date", required=True, help="Inclusive start date YYYY-MM-DD.")
+@click.option("--to", "to_date", required=True, help="Inclusive end date YYYY-MM-DD.")
+@click.option(
+    "--is-months",
+    type=click.IntRange(min=1),
+    default=12,
+    show_default=True,
+    help="In-sample window size in calendar months.",
+)
+@click.option(
+    "--oos-months",
+    type=click.IntRange(min=1),
+    default=6,
+    show_default=True,
+    help="Out-of-sample window size in calendar months.",
+)
+@click.option("--strategy", required=True, help="Strategy parameters file.")
+@click.option("--output", default="results/walk_forward", help="Folder for results.")
+@click.option("--capital", type=float, default=10000.0, help="Initial capital.")
+@click.option("--maker-fee", type=float, default=0.0002, help="Maker fee.")
+@click.option("--taker-fee", type=float, default=0.0005, help="Taker fee.")
+@click.option("--max-positions", type=int, default=0, help="Max simultaneous positions.")
+@click.option("--max-allowed-leverage", type=float, default=25.0, help="Max allowed leverage.")
+@click.option("--max-allowed-margin", type=float, default=1.0, help="Max margin.")
+@click.option(
+    "--risk-base-period",
+    type=click.Choice(["trade", "weekly", "monthly", "backtest"], case_sensitive=False),
+    default="monthly",
+    help="Capital window used for risk sizing.",
+)
+@click.option(
+    "--trials",
+    type=click.IntRange(min=0),
+    default=50,
+    show_default=True,
+    help="Optuna trials per IS window. 0 = eval-only (no optimization).",
+)
+@click.option(
+    "--target",
+    type=click.Choice(
+        ["total_return_pct", "profit_factor", "sharpe_ratio", "max_drawdown", "mandate_score"],
+        case_sensitive=False,
+    ),
+    default="mandate_score",
+    show_default=True,
+    help="Optimization objective.",
+)
+@click.option("--rrr-low", type=float, default=1.5, show_default=True, help="RRR search low.")
+@click.option("--rrr-high", type=float, default=3.5, show_default=True, help="RRR search high.")
+@click.option("--rrr-step", type=float, default=0.25, show_default=True, help="RRR search step.")
+@click.option("--ttl-low", type=int, default=None, help="TTL search low bound.")
+@click.option("--ttl-high", type=int, default=None, help="TTL search high bound.")
+@click.option("--ttl-step", type=int, default=1, help="TTL search step.")
+@click.option("--risk-percent-low", type=float, default=None, help="Risk percent search low.")
+@click.option("--risk-percent-high", type=float, default=None, help="Risk percent search high.")
+@click.option("--risk-percent-step", type=float, default=0.25, help="Risk percent search step.")
+@click.option("--risk-percent", type=float, default=1.5, help="Fixed risk percent (when not searching).")
+@click.option("--ttl", type=int, default=36, help="Fixed TTL in bars (when not searching).")
+@click.option(
+    "--exit-geometry",
+    type=click.Choice(["sl_rrr", "tp_pct"], case_sensitive=False),
+    default="sl_rrr",
+    help="Exit placement mode.",
+)
+@click.option("--tp-move-pct", type=float, default=None, help="Fixed TP move pct for tp_pct mode.")
+@click.option("--tp-move-pct-low", type=float, default=None, help="TP move pct search low.")
+@click.option("--tp-move-pct-high", type=float, default=None, help="TP move pct search high.")
+@click.option("--tp-move-pct-step", type=float, default=0.002, help="TP move pct search step.")
+@click.option(
+    "--structural-sl-mode",
+    type=click.Choice(["cap", "ignore", "reject"], case_sensitive=False),
+    default="cap",
+    help="Structural SL mode for tp_pct exit geometry.",
+)
+@click.option("--min-tp-move-pct", type=float, default=0.004, help="Breakeven floor.")
+@click.option(
+    "--progress/--no-progress",
+    default=False,
+    show_default=True,
+    help="Show Optuna progress bar per IS window.",
+)
+def walk_forward(
+    data_dir: str,
+    primary_timeframe: str,
+    symbol: str,
+    from_date: str,
+    to_date: str,
+    is_months: int,
+    oos_months: int,
+    strategy: str,
+    output: str,
+    capital: float,
+    maker_fee: float,
+    taker_fee: float,
+    max_positions: int,
+    max_allowed_leverage: float,
+    max_allowed_margin: float,
+    risk_base_period: str,
+    trials: int,
+    target: str,
+    rrr_low: float,
+    rrr_high: float,
+    rrr_step: float,
+    ttl_low: int | None,
+    ttl_high: int | None,
+    ttl_step: int,
+    risk_percent_low: float | None,
+    risk_percent_high: float | None,
+    risk_percent_step: float,
+    risk_percent: float,
+    ttl: int,
+    exit_geometry: str,
+    tp_move_pct: float | None,
+    tp_move_pct_low: float | None,
+    tp_move_pct_high: float | None,
+    tp_move_pct_step: float,
+    structural_sl_mode: str,
+    min_tp_move_pct: float,
+    progress: bool,
+) -> None:
+    """Walk-forward analysis: optimize on IS window, evaluate on OOS window.
+
+    Answers the question: does the strategy concept generalize out-of-sample,
+    or is it overfit to the training period? See ADR-0034.
+
+    Example (full optimization, 6 windows):
+
+        backtester walk-forward \\
+          --data-dir data --symbol SOL-USDT-SWAP \\
+          --from 2022-01-01 --to 2025-12-31 \\
+          --is-months 12 --oos-months 6 \\
+          --strategy strategies/backtester/crypt_ensemble_h1_discovery_nr4_vwap_robust.json \\
+          --trials 50 --target mandate_score \\
+          --ttl-low 24 --ttl-high 60 \\
+          --risk-percent-low 1.0 --risk-percent-high 3.0
+
+    Example (eval-only, no optimization):
+
+        backtester walk-forward \\
+          --data-dir data --symbol SOL-USDT-SWAP \\
+          --from 2022-01-01 --to 2025-12-31 \\
+          --is-months 12 --oos-months 12 \\
+          --strategy strategies/backtester/crypt_ensemble_h1_discovery_nr4_vwap_robust.json \\
+          --trials 0
+    """
+    logger.info("Walk-forward analysis — %s  %s → %s", symbol, from_date, to_date)
+
+    cfg = load_strategy_config(strategy, logger)
+    if cfg is None:
+        return
+    log_strategy_info(cfg, logger)
+
+    if exit_geometry.lower() == "tp_pct" and tp_move_pct is None and (
+        tp_move_pct_low is None or tp_move_pct_high is None
+    ):
+        logger.error("❌ --tp-move-pct or --tp-move-pct-low/--tp-move-pct-high required for tp_pct mode")
+        return
+
+    # Generate window list first so we can report count before loading data.
+    try:
+        windows = generate_windows(
+            symbol=symbol,
+            from_date=from_date,
+            to_date=to_date,
+            is_months=is_months,
+            oos_months=oos_months,
+        )
+    except ValueError as e:
+        logger.error("❌ Window generation failed: %s", e)
+        return
+
+    if not windows:
+        logger.error(
+            "❌ No windows generated. Check that to_date - from_date > is_months + oos_months."
+        )
+        return
+
+    logger.info(
+        "Generated %d windows  (IS=%d months, OOS=%d months)",
+        len(windows),
+        is_months,
+        oos_months,
+    )
+    for w in windows:
+        logger.info("  %s", w.label)
+
+    # Load full data once; walk-forward slices it in memory.
+    try:
+        loader = build_cli_data_loader(
+            "crypt-parquet",
+            data_dir=data_dir,
+            symbol=symbol,
+            primary_timeframe=primary_timeframe,
+            start=from_date,
+            end=to_date,
+        )
+    except ValueError as e:
+        logger.error("❌ %s", e)
+        return
+
+    full_data = load_ohlcv_via_loader(loader, logger=logger)
+    if full_data is None:
+        return
+
+    # Build BacktestArgs (strategy config overrides CLI defaults).
+    base_args = build_backtest_args(
+        cfg,
+        capital=capital,
+        risk_percent=risk_percent,
+        rrr=rrr_low,
+        trail_activation_rrr=0.0,
+        trail_distance_atr=0.0,
+        maker_fee=maker_fee,
+        taker_fee=taker_fee,
+        ttl=ttl,
+        max_positions=max_positions,
+        max_allowed_leverage=max_allowed_leverage,
+        max_allowed_margin=max_allowed_margin,
+        risk_base_period=risk_base_period,
+        max_daily_profit=None,
+        max_daily_loss=None,
+        trading_begin=None,
+        trading_end=None,
+        exit_geometry=exit_geometry,
+        tp_move_pct=tp_move_pct,
+        structural_sl_mode=structural_sl_mode,
+        min_tp_move_pct=min_tp_move_pct,
+    )
+
+    ttl_range = None if ttl_low is None or ttl_high is None else (ttl_low, ttl_high, ttl_step)
+    risk_percent_range = (
+        None
+        if risk_percent_low is None or risk_percent_high is None
+        else (risk_percent_low, risk_percent_high, risk_percent_step)
+    )
+    tp_move_pct_range = (
+        None
+        if tp_move_pct_low is None or tp_move_pct_high is None
+        else (tp_move_pct_low, tp_move_pct_high, tp_move_pct_step)
+    )
+
+    optimizer_args = OptimizerSearchArgs(
+        trials=trials,
+        study_name="wf_study",
+        target=target,
+        show_progress=progress,
+        optimize_strategy_params=False,
+        risk_percent_range=risk_percent_range,
+        rrr_range=(rrr_low, rrr_high, rrr_step),
+        trail_activation_rrr_values=None,
+        trail_distance_atr_range=None,
+        max_positions_values=None,
+        max_positions_range=None,
+        position_ttl_bars_range=ttl_range,
+        tp_move_pct_range=tp_move_pct_range,
+        optimize_daily_limits=False,
+        optimize_trading_window=False,
+        export_best_run=False,
+    )
+
+    output_folder = Path(make_output_folder(output))
+    output_folder.mkdir(parents=True, exist_ok=True)
+
+    results = run_walk_forward(
+        windows=windows,
+        cfg=cfg,
+        base_args=base_args,
+        optimizer_args=optimizer_args,
+        full_data=full_data,
+        output_folder=output_folder,
+        logger=logger,
+    )
+
+    write_walk_forward_report(
+        results=results,
+        symbol=symbol,
+        is_months=is_months,
+        oos_months=oos_months,
+        from_date=from_date,
+        to_date=to_date,
+        output_folder=output_folder,
+        logger=logger,
+    )
+
+    oos_positive = sum(1 for r in results if r.oos_metrics.total_return_pct > 0)
+    logger.info(
+        "Walk-forward complete: %d/%d windows OOS-positive. Artifacts: %s",
+        oos_positive,
+        len(results),
+        output_folder,
+    )
+
+
 @cli.command("discover-strategies")
 @click.option("--data-dir", required=True, help="Project data directory.")
 @click.option(
@@ -1437,6 +1754,204 @@ def trade_chart(
         logger.error("❌ %s", e)
         return
     logger.info("Trade chart report saved to: %s", output_path)
+
+
+@cli.command("search-signals")
+@click.option(
+    "--data-dir",
+    required=True,
+    help="Project data directory (crypt-parquet layout).",
+)
+@click.option(
+    "--symbol",
+    "symbols",
+    multiple=True,
+    required=True,
+    help="Symbol to search on. Repeatable: --symbol SOL-USDT-SWAP --symbol TON-USDT-SWAP",
+)
+@click.option(
+    "--windows",
+    "windows_spec",
+    default="2022,2023,2024,2025H1",
+    show_default=True,
+    help="Comma-separated window specs: YYYY, YYYYH1/H2, or label:start:end.",
+)
+@click.option(
+    "--primary-timeframe",
+    type=click.Choice(["1h", "4h"], case_sensitive=False),
+    default="1h",
+    show_default=True,
+    help="Primary execution timeframe.",
+)
+@click.option("--n-trials", type=int, default=50_000, show_default=True, help="Total candidate-generation budget.")
+@click.option("--n-jobs", type=int, default=1, show_default=True, help="Parallel workers where safe.")
+@click.option("--max-filters", default=None, hidden=True)
+@click.option("--sampler", default=None, hidden=True)
+@click.option("--resume", "resume_journal", default=None, hidden=True)
+@click.option(
+    "--output",
+    "output_dir",
+    default=None,
+    help="Output directory. Defaults to results/dss_{timestamp}/.",
+)
+@click.option(
+    "--top-n",
+    type=int,
+    default=20,
+    show_default=True,
+    help="Top-N candidates to export as JSON.",
+)
+@click.option("--accept-min-score", default=None, hidden=True)
+@click.option(
+    "--min-trades",
+    type=int,
+    default=20,
+    show_default=True,
+    help="Min signals per window; fewer → empty signal penalty.",
+)
+@click.option(
+    "--capital",
+    type=float,
+    default=10_000.0,
+    show_default=True,
+    help="Initial capital for backtests.",
+)
+@click.option("--risk-base-period", default="monthly", show_default=True)
+@click.option("--max-positions", type=int, default=1, show_default=True)
+def search_signals(
+    data_dir: str,
+    symbols: tuple[str, ...],
+    windows_spec: str,
+    primary_timeframe: str,
+    n_trials: int,
+    n_jobs: int,
+    max_filters: str | None,
+    sampler: str | None,
+    resume_journal: str | None,
+    output_dir: str | None,
+    top_n: int,
+    accept_min_score: str | None,
+    min_trades: int,
+    capital: float,
+    risk_base_period: str,
+    max_positions: int,
+) -> None:
+    """Direct Signal Search v2: staged quality-diversity strategy discovery.
+
+    Searches trigger + filter + execution parameters through staged viability,
+    proxy, full-score, and archive/export phases.
+
+    Example:
+
+        backtester search-signals \\
+            --data-dir data \\
+            --symbol SOL-USDT-SWAP \\
+            --windows 2022,2023,2024,2025H1 \\
+            --n-trials 50000 \\
+            --output results/dss_sol/
+    """
+    removed_options = {
+        "--sampler": sampler,
+        "--resume": resume_journal,
+        "--accept-min-score": accept_min_score,
+        "--max-filters": max_filters,
+    }
+    used_removed = [name for name, value in removed_options.items() if value is not None]
+    if used_removed:
+        raise click.ClickException(
+            "DSS v2 replaced the old Optuna sampler path; removed option(s): "
+            f"{', '.join(used_removed)}. Use the simplified search-signals command."
+        )
+
+    previous_disable = logging.root.manager.disable
+    logging.disable(logging.WARNING)
+    try:
+        symbol = symbols[0]
+
+        raw_specs = [s.strip() for s in windows_spec.split(",") if s.strip()]
+        dss_windows: list[DSSWindowSpec] = []
+        for raw in raw_specs:
+            try:
+                dss_windows.append(DSSWindowSpec.parse(raw, symbol))
+            except (ValueError, TypeError) as exc:
+                raise click.ClickException(f"Invalid window spec {raw!r}: {exc}") from exc
+
+        if not dss_windows:
+            raise click.ClickException(f"No windows parsed from --windows {windows_spec!r}")
+
+        if output_dir is None:
+            from datetime import UTC, datetime
+
+            ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+            output_dir = f"results/dss_{ts}"
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        window_data: dict[str, StrategyData] = {}
+        for spec in dss_windows:
+            try:
+                data_input = _load_discovery_window(
+                    data_dir=data_dir,
+                    primary_timeframe=primary_timeframe,
+                    symbol=spec.symbol,
+                    start=spec.start,
+                    end=spec.end,
+                )
+            except (ValueError, FileNotFoundError) as exc:
+                raise click.ClickException(f"Failed to load window {spec.label}: {exc}") from exc
+            if isinstance(data_input, StrategyData):
+                window_data[spec.label] = StrategyData(
+                    primary=data_input.primary,
+                    candles=data_input.candles,
+                    extras=data_input.extras,
+                    metadata={**data_input.metadata, "symbol": symbol},
+                )
+            else:
+                window_data[spec.label] = StrategyData(
+                    primary=data_input,
+                    candles={},
+                    extras={},
+                    metadata={"symbol": symbol},
+                )
+
+        t_catalog = parameterized_trigger_catalog()
+        f_catalog = parameterized_filter_catalog()
+        t_param_space = parameterized_trigger_param_space()
+        f_param_space = parameterized_filter_param_space()
+
+        search_space = DSSSearchSpace(
+            trigger_names=tuple(sorted(t_catalog.keys())),
+            filter_names=tuple(sorted(f_catalog.keys())),
+            trigger_param_bounds=dict(t_param_space),
+            filter_param_bounds=dict(f_param_space),
+            max_filters=4,
+        )
+
+        dss_config = DSSConfig(
+            output=output_path,
+            windows=dss_windows,
+            n_trials=n_trials,
+            n_jobs=n_jobs,
+            max_filters=4,
+            min_trades_per_window=min_trades,
+            top_n_candidates=top_n,
+            initial_capital=capital,
+            max_positions=max_positions,
+            risk_base_period=risk_base_period,
+        )
+
+        with click.progressbar(length=n_trials, label="DSS v2", show_pos=True) as bar:
+            try:
+                run_dss_v2_search(
+                    config=dss_config,
+                    search_space=search_space,
+                    window_data=window_data,
+                    progress_callback=bar.update,
+                )
+            except ValueError as exc:
+                raise click.ClickException(str(exc)) from exc
+    finally:
+        logging.disable(previous_disable)
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ from here to avoid drift.
 from typing import Final
 
 from backtester.strategies.crypt_ensemble import CryptEnsembleStrategy
+from backtester.strategies.dss_strategy import DSSStrategy
 from backtester.strategies.dual_ma import DualMAStrategy
 from backtester.strategies.forest import ForestStrategy
 from backtester.strategies.fractal_rb import FractalRbStrategy
@@ -32,4 +33,5 @@ STRATEGIES: Final[dict[str, type[BaseStrategy]]] = {
     "fractal_rb": FractalRbStrategy,
     "phase_routed": PhaseRoutedStrategy,
     "crypt_ensemble": CryptEnsembleStrategy,
+    "dss_strategy": DSSStrategy,
 }

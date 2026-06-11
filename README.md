@@ -233,6 +233,28 @@ The current full-year shortlist reference config is
 `strategies/backtester/crypt_ensemble_h1_discovery_momentum_burst_short.json`.
 See `docs/strategy_discovery.md` §13 for conversion semantics.
 
+Direct Signal Search v2 searches trigger/filter/execution parameters with a
+staged quality-diversity pipeline instead of the retired Optuna NSGA-II sampler
+path. The command writes viability, proxy, full-score, archive, and candidate
+manifest artifacts directly under the chosen output directory. Removed v1 flags
+such as `--sampler`, `--resume`, `--max-filters`, and `--accept-min-score` are
+not part of the operator interface.
+
+```bash
+uv run backtester search-signals \
+    --data-dir data \
+    --symbol SOL-USDT-SWAP \
+    --windows 2022,2023,2024,2025H1 \
+    --n-trials 50000 \
+    --n-jobs 4 \
+    --output results/dss_sol_v2
+```
+
+Inspect `summary.md`, `archive.md`, `stage1_viability.csv`,
+`stage2_proxy.csv`, `stage3_full_scores.csv`, and `candidate_manifest.md`
+first. Exported `candidates/*.json` files are replayable via
+`compare-fixed` and `walk-forward`.
+
 ```bash
 uv run backtester discover-strategies \
     --data-dir data \

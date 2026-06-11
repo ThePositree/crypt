@@ -14,6 +14,88 @@ when finished.
 > **+15%/month** on **$10k** SOL **2025** continuous backtest after fees;
 > max **10% intra-month DD**; auto-trading only after **promote** verdict.
 
+
+## P0 — Run first DSS v2 search on real SOL data (owner action)
+
+**What:** run `backtester search-signals` on SOL OHLCV data for
+`2022,2023,2024,2025H1` to generate the first staged
+quality-diversity archive and exported candidate shortlist.
+
+**Why now:** DSS v1 already proved the pipeline can execute but also proved the
+NSGA-II search path is too weak for the current search space. The next real run
+should validate the staged archive design from ADR-0036, not spend more time on
+the retired implementation.
+
+**Command:**
+```bash
+uv run backtester search-signals \
+  --data-dir data \
+  --symbol SOL-USDT-SWAP \
+  --windows 2022,2023,2024,2025H1 \
+  --n-trials 50000 \
+  --n-jobs 4 \
+  --output results/dss_sol_v2
+```
+
+**Expected artifacts:**
+- `results/dss_sol_v2/summary.md` — staged funnel, archive occupancy, verdict
+- `results/dss_sol_v2/archive.json` / `archive.md` — quality-diversity elites
+- `results/dss_sol_v2/stage*_*.csv` / `*.jsonl` — stage diagnostics
+- `results/dss_sol_v2/candidates/*.json` — ready for `compare-fixed`
+- `results/dss_sol_v2/candidate_manifest.md` — validation commands
+
+**Acceptance:** the report is interpretable even if no candidate passes; at least
+one exported candidate JSON exists only if it replayed successfully through the
+DSS strategy path.
+
+**Links:** ADR-0036, `docs/discovery/direct_signal_search_v2.md`.
+
+---
+
+## P1 — Evaluate DSS candidates with compare-fixed (owner action)
+
+**What:** after the first DSS v2 run exports candidates, take the top JSONs from
+`results/dss_sol_v2/candidates/` and evaluate them with `backtester
+compare-fixed` on the 2025 holdout year.
+
+**Why now:** DSS v2 searches on pre-2025/training windows plus `2025H1` if
+configured for regime pressure. The full continuous 2025 check remains the
+canonical SOL holdout gate before any promote/archive decision.
+
+**Command (for each candidate):**
+```bash
+uv run backtester compare-fixed \
+  --data-dir data --symbol SOL-USDT-SWAP \
+  --strategy results/dss_sol_v2/candidates/<candidate>.json \
+  --from 2025-01-01 --to 2025-12-31 \
+  --output results/dss_sol_v2_eval_2025
+```
+
+**Acceptance:** at least one candidate achieves mandate **promote** or **archive** verdict
+(vs **discard**) on 2025 holdout.
+
+---
+
+## P0 — Run walk-forward on SOL + TON (owner action)
+
+**What:** run `backtester walk-forward` for both SOL and TON to determine whether NR4
+has genuine out-of-sample edge or is overfit to 2024-2025.
+
+**Why now:** strategy shows 0/small negative on 3-year backtest. Walk-forward is the
+only principled answer to the overfit question. Decision gate for further development.
+
+**Commands:** see `docs/tasks/IN_PROGRESS.md` → "Walk-forward validation" section.
+
+**Expected artifacts:**
+- `results/walk_forward_nr4_sol/<ts>/summary.md`
+- `results/walk_forward_nr4_ton/<ts>/summary.md`
+
+**Acceptance:** owner reviews `summary.md`. Based on OOS-positive % and degradation ratio:
+- ≥ 50% OOS-positive: concept is real → continue (regime filter, re-parameter)
+- < 30% OOS-positive: overfit → discard NR4, start fresh discovery
+
+---
+
 ## P0 — Dry-run validation on real account (owner action)
 
 **What:** start the process with `EXECUTION_ENABLED=true EXECUTION_DRY_RUN=true` and

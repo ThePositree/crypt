@@ -4,6 +4,124 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-11 — DSS v2 staged quality-diversity implementation
+
+**What:** replaced the operator-facing `backtester search-signals` path with
+DSS v2 staged quality-diversity search. The old Optuna sampler mode is retired
+from CLI usage; removed v1-only options fail with a DSS v2 message.
+
+**Why now:** the owner-run DSS v1 journal showed structural search failure:
+about 16.5k complete trials, best robust `min(score)` **-4626.74**, zero trials
+above `-500`, and elite collapse into `pt_ema_cross + rrr=4.0 + wide ATR stop`.
+
+**Expected gain:** expensive full backtests are spent only after cheap signal
+viability and proxy stages, while a quality-diversity archive preserves
+different trigger/behavior families for later 2025 holdout validation.
+
+**Result:**
+- Added `DSSCandidate` and behavior descriptors.
+- Added `DSSArchive` with per-cell robust / average / low-drawdown elites.
+- Added `dss_v2.py` staged runner: Stage 0 candidates, Stage 1 viability,
+  Stage 2 proxy scores, Stage 3 full mandate scores, Stage 4 candidate export.
+- `search-signals --help` no longer exposes `--sampler`, `--resume`,
+  `--max-filters`, or `--accept-min-score`.
+- Stage artifacts include `stage1_viability.csv`, `stage1_rejections.csv`,
+  `stage2_proxy.csv`, `stage3_full_scores.csv`, `archive.json`, `archive.md`,
+  `score_history.csv`, `candidate_manifest.*`, and `candidates/*.json`.
+
+**Acceptance:** ruff clean; mypy clean on touched modules; 32 DSS tests pass,
+including archive diversity, robust replacement, stage rejections, v1 resume
+guard, exported JSON replay through `DSSStrategy`, and CLI hidden-option checks.
+
+**Links:** ADR-0036, `docs/discovery/direct_signal_search_v2.md`.
+
+---
+
+## 2026-06-11 — DSS v1 diagnosis and DSS v2 rewrite spec
+
+**What:** inspected the live DSS journal and documented the replacement design
+for `backtester search-signals`.
+
+**Why now:** the owner observed that the long DSS run looked stuck in a local
+search zone. Journal analysis confirmed the concern: about 16.5k completed
+trials in `results/dss_sol_run_5k/study.journal`, best robust `min(score)`
+only **-4626.74**, zero trials with `min_score > -500`, and top candidates
+collapsed into `pt_ema_cross + rrr=4.0 + wide ATR stop`.
+
+**Expected gain:** the next implementation session can replace the command
+directly instead of spending another session researching sampler options.
+
+**Result:**
+- ADR-0036 accepts replacing DSS v1 with staged quality-diversity search.
+- `docs/discovery/direct_signal_search_v2.md` defines the full implementation
+  contract: staged viability/proxy/full scoring, quality-diversity archive,
+  robust scalar fitness, resume behavior, reports, tests, and next-agent plan.
+- ADR-0035 and the v1 DSS spec are marked superseded.
+- `IN_PROGRESS.md` now points the next agent at the DSS v2 rewrite.
+- `BACKLOG.md` no longer asks the owner to run the retired NSGA-II DSS path.
+
+**Acceptance:** docs now clearly say to rewrite `search-signals` in place,
+remove the v1 sampler path from operator usage, and implement DSS v2 from the
+new spec.
+
+**Links:** ADR-0036, `docs/discovery/direct_signal_search_v2.md`.
+
+---
+
+## 2026-06-10 — Direct Signal Search (DSS) — full implementation
+
+**What:** implemented all five phases of the DSS system (`backtester search-signals` command):
+multi-objective Optuna (NSGA-II) directly optimizing `mandate_score` across multiple
+independent time windows, replacing beam search with proxy win-rate metric.
+
+**Why now:** walk-forward (ADR-0034) showed NR4 is regime-specific. DSS is the redesign
+that fixes both root causes: objective (proxy → mandate_score) and constants (hardcoded
+→ parameterized Optuna search space).
+
+**Components:**
+- `src/backtester/strategy_discovery/parameterized_triggers.py` — 20 trigger factories with `param_space()`
+- `src/backtester/strategy_discovery/parameterized_filters.py` — 16 filter factories with `param_space()`
+- `src/backtester/strategy_discovery/dss_config.py` — `TrialConfig`, `DSSWindowSpec`, `DSSSearchSpace`, `DSSConfig`, param types
+- `src/backtester/strategy_discovery/signal_composer.py` — `SignalComposer.build()` → `GenerateFn`, `signal_df_to_ohlcv_aligned()`
+- `src/backtester/strategy_discovery/dss_cache.py` — `DSSSignalCache` (LRU, keyed by `signal_cache_key + window_label`)
+- `src/backtester/strategy_discovery/dss_objective.py` — `DSSObjective`, `compute_mandate_score()`, `run_dss_backtest()`
+- `src/backtester/strategy_discovery/dss_report.py` — `write_dss_report()`, Pareto front, `pareto_front.json`, `summary.md`, `candidates/*.json`
+- `src/backtester/strategies/dss_strategy.py` — `DSSStrategy` (registered, replays `TrialConfig` via `compare-fixed`, `walk-forward`)
+- `src/backtester/__main__.py` — `search-signals` CLI subcommand wired
+- `src/backtester/registry.py` — `DSSStrategy` registered
+- `src/backtester/strategy_discovery/__init__.py` — all DSS exports
+- `src/backtester/strategy_discovery/features.py` — bugfix: `pd.NA` → `np.nan` in float division
+- `tests/backtester/test_signal_composer.py` — 11 unit tests (build, schema, SL/TP consistency, ATR-zero)
+- `tests/backtester/test_dss.py` — 21 unit/integration tests (TrialConfig, WindowSpec, cache, catalogs, mandate_score, Pareto, 5-trial smoke)
+
+**Acceptance:** 32/32 tests pass; `ruff check` clean; `backtester search-signals --help` works.
+
+**Links:** ADR-0035, `docs/discovery/direct_signal_search.md`, `docs/discovery/signal_composer.md`.
+
+---
+
+## 2026-06-10 — Walk-forward validation command
+
+**What:** implemented `backtester walk-forward` CLI command for IS/OOS rolling-window
+validation of strategy candidates.
+
+**Why now:** owner discovered NR4 returns ~0 or small negative on 3-year SOL/TON backtest
+despite strong 2024-2025 performance. Walk-forward is the principled way to distinguish
+genuine edge (generalizes out-of-sample) from overfitting to training regime.
+
+**Components:**
+- `src/backtester/walk_forward.py`: `generate_windows()` (rolling anchor-point), `run_walk_forward()`
+  (per-window Optuna + OOS eval), `write_walk_forward_report()` (summary.md + summary.json).
+- `src/backtester/__main__.py`: `walk-forward` CLI command wired.
+- `tests/backtester/test_walk_forward.py`: 16 unit tests covering window generation,
+  boundary conditions, degradation ratio, report building. All passing.
+- `docs/decisions/0034-walk-forward-validation.md`: ADR recording methodology.
+
+**Acceptance:** `uv run backtester walk-forward --help` shows the command;
+`tests/backtester/test_walk_forward.py` 16/16 passed; ruff + mypy clean.
+
+---
+
 ## 2026-06-09 — M4 live execution module + H1 scheduler integration
 
 **What:** implemented the full M4 live execution module that mirrors `ExecutionSim`

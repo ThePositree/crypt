@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 
 from backtester.data_contracts import StrategyData, StrategyInput
@@ -163,7 +164,7 @@ def _build_primary_features(df: pd.DataFrame) -> pd.DataFrame:
         features["bb_width_pct"].rolling(20, min_periods=10).rank(pct=True).shift(1)
     )
     features["bar_range_rank_20"] = (
-        (bar_range / atr.replace(0, pd.NA)).rolling(20, min_periods=10).rank(pct=True).shift(1)
+        (bar_range / atr.replace(0, np.nan)).rolling(20, min_periods=10).rank(pct=True).shift(1)
     )
     rolling_bb_min = features["bb_width_pct"].rolling(20, min_periods=10).min().shift(1)
     features["bb_at_20bar_low"] = features["bb_width_pct"] <= rolling_bb_min

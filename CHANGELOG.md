@@ -6,6 +6,146 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-11 — DSS v2 quiet progress output
+
+- Changed `backtester search-signals` to suppress internal INFO/WARNING logs
+  during DSS v2 loading and staged scoring, so owner-scale runs show only the
+  progress bar unless an error occurs.
+- Added progress callback support in the DSS v2 runner and wired it to
+  `click.progressbar`.
+- Added regression coverage that progress ticks once per generated candidate.
+- Validation: `tests/backtester/test_dss.py` 34/34 passed; ruff and mypy clean
+  on touched files; 1-trial smoke emitted only the progress label/bar.
+- Files touched: `src/backtester/__main__.py`,
+  `src/backtester/strategy_discovery/dss_v2.py`,
+  `tests/backtester/test_dss.py`, `CHANGELOG.md`.
+
+---
+
+## 2026-06-11 — DSS v2 state serialization fix
+
+- Fixed `search-signals` crash on startup: `DSSWindowSpec` uses slots, so
+  `state.json` writer can no longer rely on `__dict__`.
+- Added regression test for serializing slotted window specs into DSS v2
+  `state.json`.
+- Validation: `tests/backtester/test_dss.py` 33/33 passed; ruff and mypy clean
+  on touched files.
+- Files touched: `src/backtester/strategy_discovery/dss_v2.py`,
+  `tests/backtester/test_dss.py`, `CHANGELOG.md`.
+
+---
+
+## 2026-06-11 — DSS v2 staged quality-diversity implementation
+
+- Replaced the operator-facing `backtester search-signals` path with DSS v2
+  staged quality-diversity search; the retired Optuna sampler path is no longer
+  exposed as a mode.
+- Added `DSSCandidate`, behavior descriptors, `DSSArchive`, and `dss_v2.py`
+  staged runner for Stage 0 generation, Stage 1 viability, Stage 2 proxy
+  scoring, Stage 3 full mandate scoring, and Stage 4 candidate export.
+- `search-signals --help` no longer shows `--sampler`, `--resume`,
+  `--max-filters`, or `--accept-min-score`; passing removed flags fails with a
+  DSS v2 message.
+- DSS v2 artifacts now include `stage1_viability.csv`,
+  `stage1_rejections.csv`, `stage2_proxy.csv`, `stage3_full_scores.csv`,
+  `archive.json`, `archive.md`, `score_history.csv`,
+  `candidate_manifest.*`, and replayable `candidates/*.json`.
+- Tests added for candidate serialization, archive diversity/replacement,
+  robust score dispersion, staged rejections, v1 resume guard, exported JSON
+  replay via `DSSStrategy`, and CLI removed-option behavior.
+- Validation: `ruff check` clean on touched files; `mypy` clean on touched
+  modules; `tests/backtester/test_dss.py` 32/32 passed.
+- ADRs touched: ADR-0036.
+- Files touched: `src/backtester/`, `tests/backtester/`, `README.md`,
+  `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
+## 2026-06-11 — DSS v2 staged search spec
+
+- Diagnosed `results/dss_sol_run_5k/study.journal`: about 16.5k completed
+  trials, best robust `min(score)` **-4626.74**, no trial above `-500`, and
+  elite collapse into `pt_ema_cross + rrr=4.0`.
+- Added ADR-0036: replace DSS v1 NSGA-II with staged quality-diversity search.
+- Added `docs/discovery/direct_signal_search_v2.md` as the implementation
+  contract for rewriting `backtester search-signals` in place.
+- Marked ADR-0035 and DSS v1 spec superseded.
+- Updated task handoff so the next agent implements DSS v2 instead of running
+  or tuning the retired sampler path.
+- ADRs touched: ADR-0035, ADR-0036.
+- Files touched: `docs/decisions/`, `docs/discovery/`, `docs/tasks/`,
+  `CHANGELOG.md`.
+
+---
+
+## 2026-06-10 — DSS backtest fixes (structural_sl_mode + OHLCV columns)
+
+**Problem 1:** `search-signals` scored `-5000` on all signal-bearing trials —
+`structural_sl_mode="none"` rejected by `exit_geometry.py`.
+
+**Problem 2:** after fix #1, `ExecutionSim` failed with
+`Missing required columns: open, high, low, close` — `signal_df_to_ohlcv_aligned`
+returned only signal columns.
+
+**Fix:** `structural_sl_mode="ignore"` in `dss_objective.py`; merge primary OHLCV
+into aligned frame in `signal_composer.py`. Strengthened regression tests.
+
+**Files:** `src/backtester/strategy_discovery/{dss_objective,signal_composer}.py`,
+`tests/backtester/{test_dss,test_signal_composer}.py`.
+
+---
+
+## 2026-06-10 — Direct Signal Search (DSS) — full implementation
+
+- Implemented all 5 phases of DSS: parameterized catalog (P1), SignalComposer (P2),
+  DSSObjective + cache (P3), report + CLI + DSSStrategy (P4), tests (P5).
+- 20 parameterized trigger factories + 16 parameterized filter factories with Optuna
+  `param_space()` hooks; each returning a closure `TriggerFn` / `FilterFn`.
+- `SignalComposer.build(TrialConfig)` → pure `GenerateFn`; `signal_df_to_ohlcv_aligned()`
+  bridges event-list → OHLCV-aligned format expected by `Backtester`.
+- `DSSSignalCache`: LRU cache keyed by `signal_cache_key + window_label`; hits/misses tracked.
+- `DSSObjective`: Optuna objective; returns `(mandate_score_w1, …, mandate_score_wN)` tuple;
+  `compute_mandate_score` formula identical to `optimizer.py` (ADR-0031).
+- `write_dss_report`: `pareto_front.json`, `summary.md`, `candidates/*.json` (one per top-N trial).
+- `DSSStrategy` registered as `"dss_strategy"` — enables `compare-fixed` / `walk-forward` replay.
+- `backtester search-signals` CLI subcommand: NSGA-II / TPE / Random sampler, journal resume,
+  multi-window, per-symbol, parallel jobs.
+- Bugfix in `features.py`: `atr.replace(0, pd.NA)` → `atr.replace(0, np.nan)` (object-dtype crash).
+- 32 tests pass (`test_signal_composer.py` + `test_dss.py`).
+- Files: `src/backtester/strategy_discovery/{parameterized_triggers,parameterized_filters,
+  dss_config,signal_composer,dss_cache,dss_objective,dss_report,__init__}.py`,
+  `src/backtester/strategies/dss_strategy.py`, `src/backtester/{__main__,registry}.py`,
+  `tests/backtester/{test_signal_composer,test_dss}.py`.
+
+## 2026-06-10 — Direct Signal Search architecture and specifications
+
+- New discovery architecture: multi-objective Optuna (NSGA-II) searching directly on
+  `mandate_score` across multiple independent time windows, replacing beam search with
+  a proxy win-rate metric.
+- ADR-0035: `docs/decisions/0035-direct-signal-search.md` — full architecture decision
+  (parameterized catalog, SignalComposer, DSSObjective, NSGA-II, signal caching, Pareto
+  front reporting, `backtester search-signals` CLI).
+- Full system spec: `docs/discovery/direct_signal_search.md` — all data types, catalogs,
+  CLI reference, integration with compare-fixed/walk-forward, 5-phase implementation plan.
+- SignalComposer contract: `docs/discovery/signal_composer.md` — generate_fn schema,
+  ATR-based SL/TP derivation, error handling table, factory patterns, test checklist.
+- `docs/tasks/BACKLOG.md` — P0 DSS implementation task added with phase breakdown.
+- Files: `docs/decisions/0035-*`, `docs/discovery/direct_signal_search.md`,
+  `docs/discovery/signal_composer.md`, `docs/tasks/`.
+
+## 2026-06-10 — Walk-forward validation command
+
+- New `backtester walk-forward` CLI command: rolling IS/OOS Optuna optimization and
+  evaluation to distinguish genuine edge from regime-specific overfitting (ADR-0034).
+- `src/backtester/walk_forward.py`: `generate_windows()`, `run_walk_forward()`,
+  `write_walk_forward_report()`. Eval-only mode (`--trials 0`) for fast per-year audit.
+- Output: `summary.md` (IS/OOS table + interpretation verdict) + `summary.json` +
+  per-window `is_trials.csv` / `is_best_trial.json` / `oos_metrics.json`.
+- 16 unit tests in `tests/backtester/test_walk_forward.py`.
+- ADR: `docs/decisions/0034-walk-forward-validation.md`.
+- Files: `src/backtester/walk_forward.py`, `src/backtester/__main__.py`,
+  `tests/backtester/test_walk_forward.py`, `docs/decisions/0034-*`, `docs/tasks/`.
+
 ## 2026-06-09 — M4 live execution module + scheduler integration
 
 - New `src/crypt/execution/` package: `ExecutionSettings`, `LivePosition` +
