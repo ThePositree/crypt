@@ -85,6 +85,8 @@ CLI options to keep:
 
 | Option | Meaning |
 | --- | --- |
+| `--algorithm` | `staged` default, experimental `catcma_qd`, `island_qd`, `hyperband_qd`, or `smac_qd`. |
+| `--seed` | Candidate generator seed; useful for non-duplicative parallel runs. |
 | `--data-dir` | Project data directory. |
 | `--symbol` | Single symbol for now. Multi-symbol search remains out of scope. |
 | `--windows` | Comma-separated training windows. Default can stay `2022,2023,2024,2025H1`. |
@@ -137,6 +139,101 @@ Each candidate has:
 
 The archive is not a Pareto front. It is a behavior map. Each cell keeps a
 small elite list.
+
+### 4.1 Experimental CatCMA-QD backend
+
+ADR-0037 adds an opt-in `catcma_qd` backend for running a materially different
+search from the default staged generator. It keeps the same Stage 1/2/3/4
+evaluation contracts but changes candidate generation:
+
+```text
+population distribution over mixed variables
+  -> sample candidate population
+  -> DSS stage evaluation
+  -> select proxy/full-score survivors
+  -> update trigger/filter/parameter probabilities
+  -> repeat until n_trials budget is spent
+```
+
+The implementation is a lightweight CatCMA-inspired adaptation, not a full
+paper reproduction. It is acceptable because the goal is exploratory search
+diversity, while final promotion remains governed by `compare-fixed`,
+`walk-forward`, and ADR-0025.
+
+To keep long owner runs bounded, CatCMA-QD evaluates Stage 1 for every generated
+candidate but sends only the top cheap-scored, behavior-diverse slice of each
+population batch into Stage 2 proxy backtests. This preserves adaptive feedback
+without making every viable signal recipe pay the expensive backtest cost.
+
+### 4.2 Experimental Island-QD backend
+
+ADR-0038 adds `--algorithm island_qd` for Railway-scale exploratory runs. It is
+designed for the failure mode observed in CatCMA-QD where all-window robustness
+was dominated by `2022` and no candidate reached Stage 3.
+
+Island-QD rotates population batches across configured windows:
+
+```text
+island 2022    -> Stage 2 scores only 2022
+island 2023    -> Stage 2 scores only 2023
+island 2024    -> Stage 2 scores only 2024
+island 2025H1  -> Stage 2 scores only 2025H1
+periodic robust check -> Stage 3 scores all windows
+```
+
+The output adds `island_scores.csv` and per-window
+`island_qd_state_<window>.csv` files. Exported candidates still require
+`compare-fixed` validation before any mandate decision.
+
+### 4.3 Experimental Hyperband-QD backend
+
+ADR-0039 adds `--algorithm hyperband_qd` for budgeted quality-diversity search.
+It is the next distinct backend after staged, CatCMA-QD, and Island-QD:
+
+```text
+large candidate population
+  -> Stage 1 viability for all candidates
+  -> Rung 1 one-window proxy score for a behavior-diverse top fraction
+  -> Rung 2 multi-window proxy score for a smaller fraction
+  -> Rung 3 all-window Stage 3 score for the final fraction
+```
+
+The output adds `hyperband_rungs.csv` and `hyperband_qd_state.csv` while keeping
+normal DSS `stage1_viability.csv`, `stage2_proxy.csv`, `stage3_full_scores.csv`,
+archive, manifest, and candidate JSON artifacts. Exported candidates still
+require `compare-fixed` validation.
+
+### 4.4 Experimental SMAC-QD backend
+
+ADR-0040 adds `--algorithm smac_qd`, a SMAC-style conditional surrogate backend
+using `sklearn.ensemble.RandomForestRegressor`.
+
+The backend keeps a fixed conditional encoding of each candidate:
+
+- one-hot trigger choice;
+- one-hot filter presence;
+- filter depth;
+- execution parameters (`rrr`, `risk_percent`, `position_ttl_bars`,
+  `atr_sl_mult`);
+- trigger/filter parameter features, with inactive conditional parameters
+  encoded as `-1`.
+
+It runs random-design bootstrap evaluations first, then repeatedly:
+
+```text
+sample large proposal pool
+  -> encode candidates
+  -> RF predicts robust score mean
+  -> tree prediction dispersion estimates uncertainty
+  -> acquisition = mean + uncertainty weight * std
+  -> evaluate selected infill candidates through DSS Stage 1/2/3
+  -> refit RF on observed stage scores
+```
+
+The output adds `smac_qd_proposals.csv`, `smac_qd_observations.csv`, and
+`smac_qd_state.csv` while preserving normal DSS archive, manifest, and
+candidate JSON artifacts. Exported candidates still require `compare-fixed`
+validation.
 
 ---
 
@@ -251,7 +348,7 @@ Hard feasibility constraints:
 | --- | --- | --- |
 | no signals | Stage 1 | reject |
 | too few signals in any required window | Stage 1/3 | reject or mark infeasible |
-| too many signals per year | Stage 1 | reject noisy overtrading |
+| more than 10 signals per day | Stage 1 | reject noisy overtrading |
 | any full-window score is `_EMPTY_SIGNAL_PENALTY` | Stage 3 | infeasible |
 | unreplayable candidate JSON | Stage 4 | reject export |
 
@@ -325,7 +422,7 @@ For each candidate and each configured window:
 3. Count side distribution.
 4. Estimate ATR stop distance distribution.
 5. Count duplicate or near-duplicate signal timestamps.
-6. Compute cheap forward-bar proxy if available.
+6. Compute cheap path-aware barrier metrics.
 
 Reject if:
 
@@ -333,16 +430,18 @@ Reject if:
 - total trades are too high for H1 swing/intraday system;
 - side filters contradict generated sides;
 - stop distances are invalid or mostly non-finite;
+- too few signals reach the favorable barrier before the adverse barrier;
 - signal generation raises.
 
 Suggested overtrading guard:
 
 ```text
-max_signals_per_year = 800
+max_signals_per_day = 10
 ```
 
 This is a search hygiene guard, not a mandate rule. It prevents candidate
-families that fire on nearly every bar from consuming backtest budget.
+families that fire too frequently from consuming backtest budget while still
+allowing intraday strategies with up to 10 candidate entries per day.
 
 Artifacts:
 
@@ -358,12 +457,68 @@ Required columns:
 - `signals_<window>`
 - `long_ratio_<window>`
 - `median_stop_atr_<window>`
+- `barrier_tp_first_rate_<window>`
+- `barrier_sl_first_rate_<window>`
+- `barrier_timeout_rate_<window>`
+- `barrier_win_rate_<window>`
+- `barrier_median_mae_atr_<window>`
+- `barrier_median_bars_to_tp_<window>`
 - `rejection_reason`
+
+### 9.1 Path-aware barrier label
+
+The original directional discovery label asked whether price eventually moved
+in the predicted direction by at least `N ATR`. That is useful as a cheap
+directional edge screen, but it is not sufficient for strategy search because
+price can move favorably only after first moving far enough against the entry to
+hit a realistic stop.
+
+Stage 1 therefore computes a cheap **path-aware barrier label** before any
+donor backtest:
+
+```text
+LONG:
+  TP barrier = entry + (atr_sl_mult * rrr * ATR)
+  SL barrier = entry - (atr_sl_mult * ATR)
+
+SHORT:
+  TP barrier = entry - (atr_sl_mult * rrr * ATR)
+  SL barrier = entry + (atr_sl_mult * ATR)
+
+Look forward at most position_ttl_bars closed bars.
+Outcome is tp_first, sl_first, or timeout.
+If TP and SL are touched in the same bar, count SL first.
+```
+
+For each signal, also record:
+
+- `MAE_ATR`: maximum adverse excursion before outcome, divided by entry ATR;
+- `MFE_ATR`: maximum favorable excursion before outcome, divided by entry ATR;
+- bars to TP when TP is reached first.
+
+This label is not a final trading verdict. It is a cheap gate that prevents the
+search from spending Stage 2/3 backtest budget on candidates whose "correct"
+directional moves are usually not tradeable before adverse excursion.
+
+Default policy:
+
+```text
+min_barrier_tp_first_rate = 0.05
+min_barrier_win_rate = 0.55
+tp_first must be greater than sl_first
+```
+
+`barrier_win_rate` is computed over resolved TP/SL outcomes only:
+`tp_first / (tp_first + sl_first)`. Timeouts remain visible in
+`barrier_timeout_rate` but do not count as wins. The TP-first rate floor rejects
+empty/no-edge candidates, while the win-rate floor requires a directional
+candidate to be better than a coin flip before it receives Stage 2 budget.
 
 Acceptance:
 
 - Synthetic tests cover empty signals, too few signals, overtrading, invalid
-  stops, and survivor pass-through.
+  stops, adverse-before-favorable barrier rejection, same-bar SL-first
+  conservatism, and survivor pass-through.
 
 ---
 
@@ -732,4 +887,3 @@ Acceptance for the next session:
 - A small synthetic or tiny real-data smoke writes all stage artifacts.
 - The final chat reply gives the owner one bounded command for a real SOL v2
   search and the expected artifact paths.
-

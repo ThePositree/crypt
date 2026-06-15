@@ -54,13 +54,14 @@ DSS strategy path.
 
 ## P1 — Evaluate DSS candidates with compare-fixed (owner action)
 
-**What:** after the first DSS v2 run exports candidates, take the top JSONs from
-`results/dss_sol_v2/candidates/` and evaluate them with `backtester
+**What:** after any of the five DSS runs (`staged`, `catcma_qd`, `island_qd`,
+`hyperband_qd`, `smac_qd`) exports candidates, take the top JSONs from the
+matching `candidates/` directory and evaluate them with `backtester
 compare-fixed` on the 2025 holdout year.
 
-**Why now:** DSS v2 searches on pre-2025/training windows plus `2025H1` if
-configured for regime pressure. The full continuous 2025 check remains the
-canonical SOL holdout gate before any promote/archive decision.
+**Why now:** all five DSS algorithms search on pre-2025/training windows plus
+`2025H1` if configured for regime pressure. The full continuous 2025 check
+remains the canonical SOL holdout gate before any promote/archive decision.
 
 **Command (for each candidate):**
 ```bash

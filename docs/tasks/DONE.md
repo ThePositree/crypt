@@ -4,6 +4,184 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-12 — DSS Stage 1 path-aware barrier label
+
+**What:** added a cheap path-aware TP/SL/TTL barrier label to DSS Stage 1.
+Stage 1 now measures whether a signal reaches its favorable ATR barrier before
+the adverse ATR barrier, records MAE/MFE and bars-to-TP metrics, and rejects
+candidates below configurable `min_barrier_tp_first_rate` and
+`min_barrier_win_rate` floors.
+
+**Why now:** the owner challenged the earlier directional-label design. A pure
+"price eventually moved N ATR in the predicted direction" label can rank
+signals that would have hit a realistic stop before the favorable move.
+
+**Expected gain:** keep the fast directional-search idea while making it
+tradeability-aware before expensive donor backtests. CatCMA/Hyperband/Island
+cheap ranking now also rewards higher TP-first rates and penalizes SL-first,
+timeouts, and large adverse excursion.
+
+**Result:** `stage1_viability.csv` gains `barrier_*` columns; same-bar TP+SL is
+counted conservatively as `sl_first`; the barrier label now uses the same
+next-open entry and resolved `sl_rrr` levels as Stage 2 donor execution; Stage
+1 requires `barrier_win_rate >= 55%` and `tp_first > sl_first`; DSS tests cover
+TP-first pass-through, same-bar SL-first rejection, low win-rate rejection, and
+gap cases where Stage 2 would reject the trade.
+
+**Acceptance:** `tests/backtester/test_dss.py` 48/48 passed; ruff and mypy clean
+on touched DSS modules/tests.
+
+**Links:** `docs/discovery/direct_signal_search_v2.md`, `src/backtester/strategy_discovery/dss_v2.py`.
+
+---
+
+## 2026-06-12 — SMAC-QD random-forest DSS backend
+
+**What:** added `backtester search-signals --algorithm smac_qd`, a SMAC-style
+conditional surrogate backend using `sklearn.ensemble.RandomForestRegressor`.
+
+**Why now:** the owner wants five materially different DSS search algorithms to
+run before the next result-inspection session. After staged DSS, CatCMA-QD,
+Island-QD, and Hyperband-QD, a random-forest surrogate is the next distinct
+search pressure.
+
+**Expected gain:** learn promising conditional trigger/filter/execution regions
+from observed scores, then evaluate RF-selected infill candidates instead of
+only random, weighted, islanded, or rung-based candidates.
+
+**Result:**
+- Added ADR-0040.
+- Added `smac_qd.py`: fixed conditional candidate encoder,
+  `RandomForestRegressor` surrogate, tree-dispersion uncertainty, acquisition
+  scoring, random bootstrap, proposal selection, and DSS Stage 1/2/3 reuse.
+- Added `smac_qd_proposals.csv`, `smac_qd_observations.csv`, and
+  `smac_qd_state.csv` artifacts.
+- Added CLI option value `--algorithm smac_qd`.
+- Updated README, DSS spec, `IN_PROGRESS.md`, `BACKLOG.md`, and `IDEAS.md` so
+  the next agent inspects five algorithm outputs rather than continuing
+  optimizer implementation.
+
+**Acceptance:** `tests/backtester/test_dss.py` 44/44 passed; ruff and mypy
+clean on touched modules/tests.
+
+**Links:** ADR-0040, `docs/discovery/direct_signal_search_v2.md`.
+
+---
+
+## 2026-06-12 — Hyperband-QD DSS backend
+
+**What:** added `backtester search-signals --algorithm hyperband_qd`, a
+successive-halving quality-diversity backend.
+
+**Why now:** staged DSS v2, CatCMA-QD, and Island-QD were already available for
+parallel owner runs. The next distinct backend needed formal budget allocation
+instead of another sampler variant.
+
+**Expected gain:** weak candidates pay only cheap Stage 1 viability, while
+behavior-diverse top fractions advance through one-window proxy,
+multi-window proxy, and full all-window scoring.
+
+**Result:**
+- Added ADR-0039.
+- Added `hyperband_qd.py` with Stage 1 for all generated candidates, capped
+  rung promotions, `hyperband_rungs.csv`, `hyperband_qd_state.csv`, and normal
+  DSS archive/manifest/candidate artifacts.
+- Added CLI option value `--algorithm hyperband_qd`.
+- Updated README and DSS v2 docs with the command and artifact contract.
+- Removed the Hyperband implementation task from `IN_PROGRESS.md` and
+  `BACKLOG.md`.
+
+**Acceptance:** `tests/backtester/test_dss.py` 41/41 passed; ruff and mypy
+clean on touched modules/tests.
+
+**Links:** ADR-0039, `docs/discovery/direct_signal_search_v2.md`.
+
+---
+
+## 2026-06-12 — DSS optimizer handoff for next agent
+
+**What:** documented the next algorithm sequence after the current staged /
+CatCMA-QD / Island-QD runs.
+
+**Why now:** the owner plans to launch additional parallel searches on idle
+machines, but wants each launch to use a meaningfully different algorithm.
+
+**Expected gain:** the next agent can start implementing Hyperband-QD without
+reconstructing the research discussion from chat.
+
+**Result:**
+- Added an `IN_PROGRESS.md` handoff for `--algorithm hyperband_qd`.
+- Added `BACKLOG.md` tasks for Hyperband-QD and later SMAC-like surrogate QD.
+- Added `IDEAS.md` shortlist of remaining research algorithms and recommended
+  order.
+
+**Acceptance:** next-agent docs state that Hyperband-QD is first, SMAC-like is
+second, and full CatCMAwM should wait for promising families.
+
+---
+
+## 2026-06-12 — Island-QD DSS backend for Railway search
+
+**What:** added an opt-in `--algorithm island_qd` backend for
+`backtester search-signals`.
+
+**Why now:** local CatCMA-QD showed a regime/window conflict: after about 23.7k
+generated candidates, no proxy candidate had robust or min score above `-5000`.
+Best candidates could be passable on one window while failing `2022`.
+
+**Expected gain:** Railway can now run a materially different search that
+discovers per-window specialists before occasional all-window robust checks.
+
+**Result:**
+- Added ADR-0038.
+- Added `island_qd.py`: per-window models, rotating target windows, target-only
+  Stage 2 scoring, periodic robust Stage 3 checks, `island_scores.csv`, and
+  per-window state CSVs.
+- Added CLI option value `--algorithm island_qd`.
+- Changed `railway.toml` to start the Island-QD search worker and write
+  artifacts under `data/results/`.
+- Added a three-machine active search matrix to `IN_PROGRESS.md`.
+- Updated README, DSS spec, and task handoff with Railway start command.
+
+**Acceptance:** `tests/backtester/test_dss.py` 39/39 passed; ruff and mypy
+clean on touched modules/tests.
+
+**Links:** ADR-0038, `docs/discovery/direct_signal_search_v2.md`.
+
+---
+
+## 2026-06-11 — CatCMA-QD experimental DSS backend
+
+**What:** added an opt-in `--algorithm catcma_qd` backend for
+`backtester search-signals`, plus `--seed` for non-duplicative parallel search
+runs.
+
+**Why now:** the owner started a 120k default DSS v2 run on the work machine.
+Running the same deterministic staged generator at home would mostly duplicate
+that candidate sequence, so the project needed a materially different search
+pressure for the same three-day window.
+
+**Expected gain:** CatCMA-QD explores mixed trigger/filter/execution spaces with
+an adaptive probability model while preserving DSS artifacts and replayable
+candidate JSONs for `compare-fixed`.
+
+**Result:**
+- Added ADR-0037 accepting the experimental CatCMA-inspired backend.
+- Added `catcma_qd.py`: weighted mixed-variable population sampler, elite-based
+  updates, DSS Stage 1/2/3/4 reuse, and `catcma_qd_state.csv`.
+- Added CLI options `--algorithm staged|catcma_qd` and `--seed`.
+- Capped expensive Stage 2 proxy backtests per CatCMA-QD batch after the first
+  owner run showed 435 proxy evaluations in the first 591 candidates and an ETA
+  above six days.
+- Updated README, DSS v2 spec, task handoff, and candidate-validation backlog.
+
+**Acceptance:** `tests/backtester/test_dss.py` 38/38 passed; ruff clean on
+code/docs touched; mypy clean on touched modules and DSS tests.
+
+**Links:** ADR-0037, `docs/discovery/direct_signal_search_v2.md`.
+
+---
+
 ## 2026-06-11 — DSS v2 staged quality-diversity implementation
 
 **What:** replaced the operator-facing `backtester search-signals` path with

@@ -99,6 +99,7 @@ module = [
     "pandas.*",
     "pandas_ta.*",
     "pyarrow.*",
+    "sklearn.*",
     "apscheduler.*",
     "tqdm.*",
 ]

@@ -72,14 +72,11 @@ class TrialConfig:
             "trigger_params": dict(sorted(self.trigger_params.items())),
             "filters": sorted(self.filter_names),
             "filter_params": {
-                k: dict(sorted(v.items()))
-                for k, v in sorted(self.filter_params.items())
+                k: dict(sorted(v.items())) for k, v in sorted(self.filter_params.items())
             },
             "atr_sl_mult": self.atr_sl_mult,
         }
-        return hashlib.sha1(
-            json.dumps(payload, sort_keys=True).encode()
-        ).hexdigest()
+        return hashlib.sha1(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
     def to_dict(self) -> dict[str, object]:
         """Serialize for JSON export."""
@@ -87,9 +84,7 @@ class TrialConfig:
             "trigger_name": self.trigger_name,
             "trigger_params": dict(self.trigger_params),
             "filter_names": list(self.filter_names),
-            "filter_params": {
-                k: dict(v) for k, v in self.filter_params.items()
-            },
+            "filter_params": {k: dict(v) for k, v in self.filter_params.items()},
             "rrr": self.rrr,
             "risk_percent": self.risk_percent,
             "position_ttl_bars": self.position_ttl_bars,
@@ -139,10 +134,7 @@ class DSSCandidate:
             trigger_name=self.trigger_name,
             trigger_params=dict(self.trigger_params),
             filter_names=self.filter_names,
-            filter_params={
-                name: dict(params)
-                for name, params in self.filter_params.items()
-            },
+            filter_params={name: dict(params) for name, params in self.filter_params.items()},
             rrr=self.rrr,
             risk_percent=self.risk_percent,
             position_ttl_bars=self.position_ttl_bars,
@@ -164,9 +156,7 @@ class DSSCandidate:
 
     @property
     def candidate_key(self) -> str:
-        return hashlib.sha1(
-            f"{self.signal_cache_key}:{self.execution_key}".encode()
-        ).hexdigest()
+        return hashlib.sha1(f"{self.signal_cache_key}:{self.execution_key}".encode()).hexdigest()
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -330,3 +320,7 @@ class DSSConfig:
     max_positions: int = 1
     risk_base_period: str = "monthly"
     signal_cache_max_entries: int = 2_000
+    algorithm: Literal["staged", "catcma_qd", "island_qd", "hyperband_qd", "smac_qd"] = "staged"
+    seed: int = 36
+    min_barrier_tp_first_rate: float = 0.05
+    min_barrier_win_rate: float = 0.55

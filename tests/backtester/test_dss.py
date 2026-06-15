@@ -23,14 +23,24 @@ from click.testing import CliRunner
 from backtester.__main__ import cli
 from backtester.data_contracts import StrategyData
 from backtester.strategies.dss_strategy import DSSStrategy
+from backtester.strategy_discovery.catcma_qd import (
+    _EvaluatedCandidate,
+    _select_stage2_candidates,
+    _Stage1Candidate,
+    _WeightedModel,
+    run_catcma_qd_search,
+)
 from backtester.strategy_discovery.dss_archive import DSSArchive, DSSScore
 from backtester.strategy_discovery.dss_cache import DSSSignalCache
 from backtester.strategy_discovery.dss_config import (
+    CategoricalParam,
     DSSBehavior,
     DSSCandidate,
     DSSConfig,
     DSSSearchSpace,
     DSSWindowSpec,
+    FloatParam,
+    IntParam,
     TrialConfig,
 )
 from backtester.strategy_discovery.dss_objective import (
@@ -40,15 +50,29 @@ from backtester.strategy_discovery.dss_objective import (
 )
 from backtester.strategy_discovery.dss_report import _extract_pareto_front, _is_dominated
 from backtester.strategy_discovery.dss_v2 import (
+    BarrierMetrics,
+    Stage1Result,
+    _append_stage1,
     _guard_output_dir,
     _write_state,
     evaluate_stage1,
     export_stage4_candidates,
     run_dss_v2_search,
 )
+from backtester.strategy_discovery.hyperband_qd import (
+    _RungCandidate,
+    _select_rung_promotions,
+    run_hyperband_qd_search,
+)
+from backtester.strategy_discovery.island_qd import run_island_qd_search
 from backtester.strategy_discovery.parameterized_filters import parameterized_filter_catalog
 from backtester.strategy_discovery.parameterized_triggers import parameterized_trigger_catalog
 from backtester.strategy_discovery.signal_composer import SignalComposer
+from backtester.strategy_discovery.smac_qd import (
+    _CandidateEncoder,
+    _RandomForestSurrogate,
+    run_smac_qd_search,
+)
 
 # ---------------------------------------------------------------------------
 # Synthetic data helpers
@@ -118,6 +142,66 @@ def _make_signal_df(primary: pd.DataFrame, n: int, side: str = "long") -> pd.Dat
             "tp_price": primary.loc[times, "close"].to_numpy() * 1.02,
         }
     )
+
+
+def _make_barrier_primary(*, same_bar_stop: bool = False) -> pd.DataFrame:
+    index = pd.date_range("2024-01-01", periods=40, freq="1h", tz="UTC")
+    frame = pd.DataFrame(
+        {
+            "open": [100.0] * len(index),
+            "high": [101.0] * len(index),
+            "low": [99.0] * len(index),
+            "close": [100.0] * len(index),
+            "volume": [1_000.0] * len(index),
+        },
+        index=index,
+    )
+    if same_bar_stop:
+        frame.iloc[11, frame.columns.get_loc("high")] = 103.0
+        frame.iloc[11, frame.columns.get_loc("low")] = 97.0
+    else:
+        frame.iloc[11, frame.columns.get_loc("high")] = 101.0
+        frame.iloc[11, frame.columns.get_loc("low")] = 99.5
+        frame.iloc[12, frame.columns.get_loc("high")] = 103.0
+        frame.iloc[12, frame.columns.get_loc("low")] = 100.0
+    return frame
+
+
+def _make_one_signal(primary: pd.DataFrame, side: str = "long") -> pd.DataFrame:
+    time = primary.index[10]
+    return pd.DataFrame(
+        {
+            "bar_time": [time],
+            "symbol": ["TEST-USDT-SWAP"],
+            "side": [side],
+            "confidence": [80.0],
+            "rationale": ["test"],
+            "entry_price": [100.0],
+            "stop_price": [98.0 if side == "long" else 102.0],
+            "tp_price": [102.0 if side == "long" else 98.0],
+        }
+    )
+
+
+def _make_multi_signal(
+    primary: pd.DataFrame, offsets: list[int], side: str = "long"
+) -> pd.DataFrame:
+    rows = []
+    for offset in offsets:
+        time = primary.index[offset]
+        rows.append(
+            {
+                "bar_time": time,
+                "symbol": "TEST-USDT-SWAP",
+                "side": side,
+                "confidence": 80.0,
+                "rationale": "test",
+                "entry_price": 100.0,
+                "stop_price": 98.0 if side == "long" else 102.0,
+                "tp_price": 102.0 if side == "long" else 98.0,
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 class _FakeComposer:
@@ -293,7 +377,9 @@ def test_window_spec_parse_invalid_raises() -> None:
 
 def test_stage1_rejects_empty_signals(tmp_path: Path) -> None:
     primary = _make_primary(200)
-    windows = [DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")]
+    windows = [
+        DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
+    ]
     config = DSSConfig(output=tmp_path, windows=windows, min_trades_per_window=1)
     result = evaluate_stage1(
         _make_candidate(),
@@ -307,7 +393,9 @@ def test_stage1_rejects_empty_signals(tmp_path: Path) -> None:
 
 def test_stage1_rejects_too_few_signals_in_one_window(tmp_path: Path) -> None:
     primary = _make_primary(200)
-    windows = [DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")]
+    windows = [
+        DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
+    ]
     config = DSSConfig(output=tmp_path, windows=windows, min_trades_per_window=3)
     result = evaluate_stage1(
         _make_candidate(),
@@ -319,18 +407,233 @@ def test_stage1_rejects_too_few_signals_in_one_window(tmp_path: Path) -> None:
     assert result.rejection_reason == "too_few_signals:w1"
 
 
+def test_stage1_accepts_tp_first_barrier_signal(tmp_path: Path) -> None:
+    primary = _make_barrier_primary()
+    windows = [
+        DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
+    ]
+    config = DSSConfig(
+        output=tmp_path,
+        windows=windows,
+        min_trades_per_window=1,
+        min_barrier_tp_first_rate=0.5,
+    )
+    candidate = DSSCandidate(
+        candidate_id="barrier_pass",
+        trigger_name="pt_nr4_breakout",
+        trigger_params={"lookback": 4},
+        filter_names=(),
+        filter_params={},
+        rrr=1.0,
+        risk_percent=1.0,
+        position_ttl_bars=6,
+        atr_sl_mult=1.0,
+        generation=0,
+    )
+    result = evaluate_stage1(
+        candidate,
+        {"w1": _make_strategy_data(primary)},
+        config,
+        _FakeComposer(_make_one_signal(primary)),
+    )
+    metrics = result.barrier_metrics["w1"]
+    assert result.passed is True
+    assert metrics.tp_first_rate == 1.0
+    assert metrics.sl_first_rate == 0.0
+    assert metrics.median_bars_to_tp == 2.0
+
+
+def test_stage1_counts_same_bar_tp_and_sl_as_sl_first(tmp_path: Path) -> None:
+    primary = _make_barrier_primary(same_bar_stop=True)
+    windows = [
+        DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
+    ]
+    config = DSSConfig(
+        output=tmp_path,
+        windows=windows,
+        min_trades_per_window=1,
+        min_barrier_tp_first_rate=0.1,
+    )
+    candidate = DSSCandidate(
+        candidate_id="barrier_reject",
+        trigger_name="pt_nr4_breakout",
+        trigger_params={"lookback": 4},
+        filter_names=(),
+        filter_params={},
+        rrr=1.0,
+        risk_percent=1.0,
+        position_ttl_bars=6,
+        atr_sl_mult=1.0,
+        generation=0,
+    )
+    result = evaluate_stage1(
+        candidate,
+        {"w1": _make_strategy_data(primary)},
+        config,
+        _FakeComposer(_make_one_signal(primary)),
+    )
+    metrics = result.barrier_metrics["w1"]
+    assert result.passed is False
+    assert result.rejection_reason == "weak_barrier_edge:w1"
+    assert metrics.tp_first_rate == 0.0
+    assert metrics.sl_first_rate == 1.0
+
+
+def test_stage1_barrier_uses_next_open_entry_like_stage2(tmp_path: Path) -> None:
+    primary = _make_barrier_primary()
+    primary.iloc[11, primary.columns.get_loc("open")] = 97.5
+    primary.iloc[12, primary.columns.get_loc("high")] = 103.0
+    windows = [
+        DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
+    ]
+    config = DSSConfig(
+        output=tmp_path,
+        windows=windows,
+        min_trades_per_window=1,
+        min_barrier_tp_first_rate=0.1,
+    )
+    candidate = DSSCandidate(
+        candidate_id="gap_reject",
+        trigger_name="pt_nr4_breakout",
+        trigger_params={"lookback": 4},
+        filter_names=(),
+        filter_params={},
+        rrr=1.0,
+        risk_percent=1.0,
+        position_ttl_bars=6,
+        atr_sl_mult=1.0,
+        generation=0,
+    )
+    result = evaluate_stage1(
+        candidate,
+        {"w1": _make_strategy_data(primary)},
+        config,
+        _FakeComposer(_make_one_signal(primary)),
+    )
+    metrics = result.barrier_metrics["w1"]
+    assert result.passed is False
+    assert result.rejection_reason == "weak_barrier_edge:w1"
+    assert metrics.total == 0
+
+
+def test_stage1_rejects_barrier_win_rate_below_floor(tmp_path: Path) -> None:
+    index = pd.date_range("2024-01-01", periods=80, freq="1h", tz="UTC")
+    primary = pd.DataFrame(
+        {
+            "open": [100.0] * len(index),
+            "high": [101.0] * len(index),
+            "low": [99.0] * len(index),
+            "close": [100.0] * len(index),
+            "volume": [1_000.0] * len(index),
+        },
+        index=index,
+    )
+    signal_offsets = [10, 20, 30, 40, 50, 60]
+    for offset in signal_offsets[:3]:
+        primary.iloc[offset + 2, primary.columns.get_loc("high")] = 103.0
+        primary.iloc[offset + 2, primary.columns.get_loc("low")] = 100.0
+    for offset in signal_offsets[3:]:
+        primary.iloc[offset + 2, primary.columns.get_loc("high")] = 101.0
+        primary.iloc[offset + 2, primary.columns.get_loc("low")] = 97.0
+
+    windows = [
+        DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
+    ]
+    config = DSSConfig(
+        output=tmp_path,
+        windows=windows,
+        min_trades_per_window=1,
+        min_barrier_tp_first_rate=0.0,
+        min_barrier_win_rate=0.55,
+    )
+    candidate = DSSCandidate(
+        candidate_id="low_win_rate",
+        trigger_name="pt_nr4_breakout",
+        trigger_params={"lookback": 4},
+        filter_names=(),
+        filter_params={},
+        rrr=1.0,
+        risk_percent=1.0,
+        position_ttl_bars=6,
+        atr_sl_mult=1.0,
+        generation=0,
+    )
+    result = evaluate_stage1(
+        candidate,
+        {"w1": _make_strategy_data(primary)},
+        config,
+        _FakeComposer(_make_multi_signal(primary, signal_offsets)),
+    )
+    metrics = result.barrier_metrics["w1"]
+    assert result.passed is False
+    assert result.rejection_reason == "weak_barrier_win_rate:w1"
+    assert metrics.tp_first == 3
+    assert metrics.sl_first == 3
+    assert metrics.win_rate == 0.5
+
+
+def test_stage1_csv_header_includes_barrier_columns_after_early_reject(tmp_path: Path) -> None:
+    windows = [
+        DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10"),
+        DSSWindowSpec(label="w2", symbol="TEST-USDT-SWAP", start="2024-02-01", end="2024-02-10"),
+    ]
+    candidate = _make_candidate("early_reject")
+    result = Stage1Result(
+        candidate_id=candidate.candidate_id,
+        passed=False,
+        rejection_reason="too_few_signals:w1",
+        signal_counts={"w1": 0},
+        long_ratios={},
+        median_stop_atr={},
+        barrier_metrics={},
+        behavior=None,
+    )
+    _append_stage1(tmp_path, candidate, result, windows)
+    header = (tmp_path / "stage1_viability.csv").read_text(encoding="utf-8").splitlines()[0]
+    assert "barrier_tp_first_rate_w1" in header
+    assert "barrier_tp_first_rate_w2" in header
+    assert len(header.split(",")) == len(
+        (tmp_path / "stage1_viability.csv").read_text().splitlines()[1].split(",")
+    )
+
+
 def test_stage1_rejects_overtrading(tmp_path: Path) -> None:
-    primary = _make_primary(2000)
-    windows = [DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-03-01")]
+    primary = _make_primary(120)
+    windows = [
+        DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-06")
+    ]
     config = DSSConfig(output=tmp_path, windows=windows, min_trades_per_window=1)
     result = evaluate_stage1(
         _make_candidate(),
         {"w1": _make_strategy_data(primary)},
         config,
-        _FakeComposer(_make_signal_df(primary, 500)),
+        _FakeComposer(_make_signal_df(primary, 51)),
     )
     assert result.passed is False
     assert result.rejection_reason == "overtrading:w1"
+
+
+def test_stage1_allows_up_to_ten_signals_per_day(tmp_path: Path) -> None:
+    primary = _make_barrier_primary()
+    primary = pd.concat([primary] * 4, ignore_index=True)
+    primary.index = pd.date_range("2024-01-01", periods=len(primary), freq="1h", tz="UTC")
+    windows = [
+        DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-07")
+    ]
+    config = DSSConfig(
+        output=tmp_path,
+        windows=windows,
+        min_trades_per_window=1,
+        min_barrier_tp_first_rate=0.0,
+        min_barrier_win_rate=0.0,
+    )
+    result = evaluate_stage1(
+        _make_candidate(),
+        {"w1": _make_strategy_data(primary)},
+        config,
+        _FakeComposer(_make_signal_df(primary, 49)),
+    )
+    assert result.rejection_reason != "overtrading:w1"
 
 
 def test_stage4_exported_json_replays_through_dss_strategy(tmp_path: Path) -> None:
@@ -348,7 +651,9 @@ def test_stage4_exported_json_replays_through_dss_strategy(tmp_path: Path) -> No
     )
     config = DSSConfig(
         output=tmp_path,
-        windows=[DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")],
+        windows=[
+            DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
+        ],
         top_n_candidates=1,
     )
     paths = export_stage4_candidates(archive, config)
@@ -422,10 +727,382 @@ def test_dss_v2_progress_callback_ticks_per_candidate(tmp_path: Path) -> None:
     assert ticks == [1, 1, 1]
 
 
+def test_catcma_weighted_model_updates_toward_elites() -> None:
+    search_space = DSSSearchSpace(
+        trigger_names=("pt_a", "pt_b"),
+        filter_names=("pf_a", "pf_b"),
+        trigger_param_bounds={"pt_a": {}, "pt_b": {}},
+        filter_param_bounds={"pf_a": {}, "pf_b": {}},
+        max_filters=2,
+    )
+    model = _WeightedModel(search_space, seed=123)
+    elite = DSSCandidate(
+        candidate_id="elite",
+        trigger_name="pt_b",
+        trigger_params={},
+        filter_names=("pf_b",),
+        filter_params={"pf_b": {}},
+        rrr=2.0,
+        risk_percent=1.5,
+        position_ttl_bars=36,
+        atr_sl_mult=1.0,
+        generation=0,
+    )
+    model.update([_EvaluatedCandidate(elite, robust_score=10.0, promoted_to_stage3=False)])
+    sampled = [model.sample(f"c{i}", generation=1).trigger_name for i in range(100)]
+    assert sampled.count("pt_b") > sampled.count("pt_a")
+
+
+def test_catcma_qd_progress_callback_ticks_per_candidate(tmp_path: Path) -> None:
+    primary = _make_primary(200)
+    windows = [
+        DSSWindowSpec(
+            label="w1",
+            symbol="TEST-USDT-SWAP",
+            start="2024-01-01",
+            end="2024-01-10",
+        )
+    ]
+    config = DSSConfig(
+        output=tmp_path,
+        windows=windows,
+        n_trials=4,
+        min_trades_per_window=10_000,
+        algorithm="catcma_qd",
+        seed=777,
+    )
+    search_space = DSSSearchSpace(
+        trigger_names=("pt_nr4_breakout",),
+        filter_names=(),
+        trigger_param_bounds={"pt_nr4_breakout": {}},
+        filter_param_bounds={},
+        max_filters=0,
+    )
+    ticks: list[int] = []
+    result = run_catcma_qd_search(
+        config=config,
+        search_space=search_space,
+        window_data={"w1": _make_strategy_data(primary)},
+        progress_callback=ticks.append,
+    )
+    assert ticks == [1, 1, 1, 1]
+    assert result.generated == 4
+    assert (tmp_path / "catcma_qd_state.csv").exists()
+
+
+def test_catcma_qd_stage2_selection_caps_batch_cost() -> None:
+    candidates = [
+        _Stage1Candidate(
+            candidate=(candidate := _make_candidate(f"c{i}", trigger_name=f"pt_{i % 12}")),
+            result=Stage1Result(
+                candidate_id=candidate.candidate_id,
+                passed=True,
+                rejection_reason="",
+                signal_counts={"w1": 20},
+                long_ratios={"w1": 1.0},
+                median_stop_atr={"w1": 0.01},
+                barrier_metrics={
+                    "w1": BarrierMetrics(
+                        total=20,
+                        tp_first=12,
+                        sl_first=8,
+                        timeout=0,
+                        tp_first_rate=0.6,
+                        sl_first_rate=0.4,
+                        timeout_rate=0.0,
+                        win_rate=0.6,
+                        median_mae_atr=0.5,
+                        median_mfe_atr=1.5,
+                        median_bars_to_tp=4.0,
+                    )
+                },
+                behavior=_make_behavior(candidate.trigger_name),
+            ),
+            cheap_score=float(i),
+        )
+        for i in range(40)
+    ]
+    selected = _select_stage2_candidates(candidates, batch_size=48)
+    assert len(selected) == 5
+    assert len({item.result.behavior.cell_key for item in selected if item.result.behavior}) > 1
+
+
+def test_catcma_qd_resume_continues_after_existing_stage0(tmp_path: Path) -> None:
+    existing = _make_candidate("catcma_000001").to_dict()
+    (tmp_path / "stage0_candidates.jsonl").write_text(
+        json.dumps(existing) + "\n",
+        encoding="utf-8",
+    )
+    primary = _make_primary(200)
+    config = DSSConfig(
+        output=tmp_path,
+        windows=[
+            DSSWindowSpec(
+                label="w1",
+                symbol="TEST-USDT-SWAP",
+                start="2024-01-01",
+                end="2024-01-10",
+            )
+        ],
+        n_trials=3,
+        min_trades_per_window=10_000,
+        algorithm="catcma_qd",
+        seed=777,
+    )
+    search_space = DSSSearchSpace(
+        trigger_names=("pt_nr4_breakout",),
+        filter_names=(),
+        trigger_param_bounds={"pt_nr4_breakout": {}},
+        filter_param_bounds={},
+        max_filters=0,
+    )
+    ticks: list[int] = []
+    run_catcma_qd_search(
+        config=config,
+        search_space=search_space,
+        window_data={"w1": _make_strategy_data(primary)},
+        progress_callback=ticks.append,
+    )
+    lines = (tmp_path / "stage0_candidates.jsonl").read_text(encoding="utf-8").splitlines()
+    ids = [json.loads(line)["candidate_id"] for line in lines]
+    assert ticks == [1, 1, 1]
+    assert ids == ["catcma_000001", "catcma_000002", "catcma_000003"]
+
+
+def test_island_qd_progress_callback_ticks_per_candidate(tmp_path: Path) -> None:
+    primary = _make_primary(200)
+    windows = [
+        DSSWindowSpec(
+            label="w1",
+            symbol="TEST-USDT-SWAP",
+            start="2024-01-01",
+            end="2024-01-10",
+        ),
+        DSSWindowSpec(
+            label="w2",
+            symbol="TEST-USDT-SWAP",
+            start="2024-02-01",
+            end="2024-02-10",
+        ),
+    ]
+    config = DSSConfig(
+        output=tmp_path,
+        windows=windows,
+        n_trials=4,
+        min_trades_per_window=10_000,
+        algorithm="island_qd",
+        seed=888,
+    )
+    search_space = DSSSearchSpace(
+        trigger_names=("pt_nr4_breakout",),
+        filter_names=(),
+        trigger_param_bounds={"pt_nr4_breakout": {}},
+        filter_param_bounds={},
+        max_filters=0,
+    )
+    ticks: list[int] = []
+    result = run_island_qd_search(
+        config=config,
+        search_space=search_space,
+        window_data={
+            "w1": _make_strategy_data(primary),
+            "w2": _make_strategy_data(primary),
+        },
+        progress_callback=ticks.append,
+    )
+    assert ticks == [1, 1, 1, 1]
+    assert result.generated == 4
+    assert (tmp_path / "stage0_candidates.jsonl").exists()
+
+
+def test_hyperband_qd_progress_callback_ticks_per_candidate(tmp_path: Path) -> None:
+    primary = _make_primary(200)
+    windows = [
+        DSSWindowSpec(
+            label="w1",
+            symbol="TEST-USDT-SWAP",
+            start="2024-01-01",
+            end="2024-01-10",
+        )
+    ]
+    config = DSSConfig(
+        output=tmp_path,
+        windows=windows,
+        n_trials=4,
+        min_trades_per_window=10_000,
+        algorithm="hyperband_qd",
+        seed=999,
+    )
+    search_space = DSSSearchSpace(
+        trigger_names=("pt_nr4_breakout",),
+        filter_names=(),
+        trigger_param_bounds={"pt_nr4_breakout": {}},
+        filter_param_bounds={},
+        max_filters=0,
+    )
+    ticks: list[int] = []
+    result = run_hyperband_qd_search(
+        config=config,
+        search_space=search_space,
+        window_data={"w1": _make_strategy_data(primary)},
+        progress_callback=ticks.append,
+    )
+    assert ticks == [1, 1, 1, 1]
+    assert result.generated == 4
+    assert (tmp_path / "hyperband_qd_state.csv").exists()
+
+
+def test_hyperband_qd_rung_selection_caps_expensive_evaluations() -> None:
+    items: list[_RungCandidate] = []
+    for i in range(40):
+        candidate = _make_candidate(f"c{i}", trigger_name=f"pt_{i % 16}")
+        behavior = _make_behavior(candidate.trigger_name)
+        stage1 = _Stage1Candidate(
+            candidate=candidate,
+            result=Stage1Result(
+                candidate_id=candidate.candidate_id,
+                passed=True,
+                rejection_reason="",
+                signal_counts={"w1": 20},
+                long_ratios={"w1": 0.5},
+                median_stop_atr={"w1": 0.01},
+                barrier_metrics={
+                    "w1": BarrierMetrics(
+                        total=20,
+                        tp_first=10,
+                        sl_first=5,
+                        timeout=5,
+                        tp_first_rate=0.5,
+                        sl_first_rate=0.25,
+                        timeout_rate=0.25,
+                        win_rate=2 / 3,
+                        median_mae_atr=0.5,
+                        median_mfe_atr=1.5,
+                        median_bars_to_tp=4.0,
+                    )
+                },
+                behavior=behavior,
+            ),
+            cheap_score=float(i),
+        )
+        items.append(_RungCandidate(stage1))
+
+    selected = _select_rung_promotions(
+        items,
+        fraction=0.30,
+        minimum=3,
+        score_getter=lambda item: item.stage1.cheap_score,
+    )
+    assert len(selected) == 12
+    selected_cells = {
+        item.stage1.result.behavior.cell_key
+        for item in selected
+        if item.stage1.result.behavior is not None
+    }
+    assert len(selected_cells) > 1
+
+
+def test_smac_qd_encoder_is_fixed_width_for_conditional_candidates() -> None:
+    search_space = DSSSearchSpace(
+        trigger_names=("pt_a", "pt_b"),
+        filter_names=("pf_a", "pf_b"),
+        trigger_param_bounds={
+            "pt_a": {"lookback": IntParam(2, 6, 1)},
+            "pt_b": {"threshold": FloatParam(0.1, 0.5, 0.1)},
+        },
+        filter_param_bounds={
+            "pf_a": {"mode": CategoricalParam(("x", "y"))},
+            "pf_b": {},
+        },
+        max_filters=2,
+    )
+    encoder = _CandidateEncoder(search_space)
+    c1 = DSSCandidate(
+        candidate_id="c1",
+        trigger_name="pt_a",
+        trigger_params={"lookback": 4},
+        filter_names=("pf_a",),
+        filter_params={"pf_a": {"mode": "y"}},
+        rrr=2.0,
+        risk_percent=1.0,
+        position_ttl_bars=36,
+        atr_sl_mult=1.0,
+        generation=0,
+    )
+    c2 = DSSCandidate(
+        candidate_id="c2",
+        trigger_name="pt_b",
+        trigger_params={"threshold": 0.3},
+        filter_names=("pf_b",),
+        filter_params={"pf_b": {}},
+        rrr=2.5,
+        risk_percent=1.5,
+        position_ttl_bars=48,
+        atr_sl_mult=1.5,
+        generation=0,
+    )
+    assert len(encoder.encode(c1)) == len(encoder.feature_names)
+    assert len(encoder.encode(c2)) == len(encoder.feature_names)
+    assert encoder.encode(c1) != encoder.encode(c2)
+
+
+def test_smac_qd_random_forest_surrogate_predicts_elite_region() -> None:
+    surrogate = _RandomForestSurrogate(seed=123)
+    x_rows = [[0.0], [0.1], [0.9], [1.0]]
+    y = [-100.0, -80.0, 50.0, 60.0]
+    surrogate.fit(x_rows, y)
+    means, stds = surrogate.predict([[0.05], [0.95]])
+    assert surrogate.fitted
+    assert means[1] > means[0]
+    assert len(stds) == 2
+
+
+def test_smac_qd_progress_callback_ticks_per_candidate(tmp_path: Path) -> None:
+    primary = _make_primary(200)
+    windows = [
+        DSSWindowSpec(
+            label="w1",
+            symbol="TEST-USDT-SWAP",
+            start="2024-01-01",
+            end="2024-01-10",
+        )
+    ]
+    config = DSSConfig(
+        output=tmp_path,
+        windows=windows,
+        n_trials=4,
+        min_trades_per_window=10_000,
+        algorithm="smac_qd",
+        seed=1001,
+    )
+    search_space = DSSSearchSpace(
+        trigger_names=("pt_nr4_breakout",),
+        filter_names=(),
+        trigger_param_bounds={"pt_nr4_breakout": {}},
+        filter_param_bounds={},
+        max_filters=0,
+    )
+    ticks: list[int] = []
+    result = run_smac_qd_search(
+        config=config,
+        search_space=search_space,
+        window_data={"w1": _make_strategy_data(primary)},
+        progress_callback=ticks.append,
+    )
+    assert ticks == [1, 1, 1, 1]
+    assert result.generated == 4
+    assert (tmp_path / "smac_qd_state.csv").exists()
+    assert (tmp_path / "smac_qd_observations.csv").exists()
+
+
 def test_search_signals_help_no_longer_exposes_sampler() -> None:
     result = CliRunner().invoke(cli, ["search-signals", "--help"])
     assert result.exit_code == 0
     assert "--sampler" not in result.output
+    assert "--algorithm" in result.output
+    assert "island_qd" in result.output
+    assert "hyperband_qd" in result.output
+    assert "smac_qd" in result.output
 
 
 def test_search_signals_rejects_removed_sampler_option() -> None:
@@ -514,6 +1191,7 @@ def test_cache_different_windows_cached_separately() -> None:
         def _compute() -> pd.DataFrame:
             calls[label] += 1
             return pd.DataFrame({"label": [label]})
+
         return _compute
 
     cache.get_or_compute(config, "2022", make_compute("2022"))
@@ -686,8 +1364,12 @@ def test_dss_objective_smoke(tmp_path: Path) -> None:
     primary_w2 = primary.loc["2024-07-01":"2024-12-31"]
 
     window_data = {
-        "w1": StrategyData(primary=primary_w1, candles={}, extras={}, metadata={"symbol": "TEST-USDT-SWAP"}),
-        "w2": StrategyData(primary=primary_w2, candles={}, extras={}, metadata={"symbol": "TEST-USDT-SWAP"}),
+        "w1": StrategyData(
+            primary=primary_w1, candles={}, extras={}, metadata={"symbol": "TEST-USDT-SWAP"}
+        ),
+        "w2": StrategyData(
+            primary=primary_w2, candles={}, extras={}, metadata={"symbol": "TEST-USDT-SWAP"}
+        ),
     }
 
     t_catalog = parameterized_trigger_catalog()

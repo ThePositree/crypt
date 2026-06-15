@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+from typing import Literal, cast
 
 _SRC_ROOT = Path(__file__).resolve().parents[1]
 _SRC_ROOT_STR = str(_SRC_ROOT)
@@ -52,7 +53,11 @@ from backtester.strategy_discovery import (  # noqa: E402
     parameterized_filter_catalog,
     parameterized_trigger_catalog,
     parameterized_trigger_param_space,
+    run_catcma_qd_search,
     run_dss_v2_search,
+    run_hyperband_qd_search,
+    run_island_qd_search,
+    run_smac_qd_search,
     run_strategy_discovery,
 )
 from backtester.strategy_discovery.filters import filter_catalog  # noqa: E402
@@ -1803,6 +1808,20 @@ def trade_chart(
 )
 @click.option("--accept-min-score", default=None, hidden=True)
 @click.option(
+    "--algorithm",
+    type=click.Choice(["staged", "catcma_qd", "island_qd", "hyperband_qd", "smac_qd"], case_sensitive=False),
+    default="staged",
+    show_default=True,
+    help="DSS backend: staged, CatCMA-QD, Island-QD, Hyperband-QD, or SMAC-QD.",
+)
+@click.option(
+    "--seed",
+    type=int,
+    default=36,
+    show_default=True,
+    help="Candidate generator seed.",
+)
+@click.option(
     "--min-trades",
     type=int,
     default=20,
@@ -1831,6 +1850,8 @@ def search_signals(
     output_dir: str | None,
     top_n: int,
     accept_min_score: str | None,
+    algorithm: str,
+    seed: int,
     min_trades: int,
     capital: float,
     risk_base_period: str,
@@ -1938,11 +1959,31 @@ def search_signals(
             initial_capital=capital,
             max_positions=max_positions,
             risk_base_period=risk_base_period,
+            algorithm=cast(
+                Literal["staged", "catcma_qd", "island_qd", "hyperband_qd", "smac_qd"],
+                algorithm.lower(),
+            ),
+            seed=seed,
         )
 
-        with click.progressbar(length=n_trials, label="DSS v2", show_pos=True) as bar:
+        if dss_config.algorithm == "catcma_qd":
+            runner = run_catcma_qd_search
+            label = "DSS CatCMA-QD"
+        elif dss_config.algorithm == "island_qd":
+            runner = run_island_qd_search
+            label = "DSS Island-QD"
+        elif dss_config.algorithm == "hyperband_qd":
+            runner = run_hyperband_qd_search
+            label = "DSS Hyperband-QD"
+        elif dss_config.algorithm == "smac_qd":
+            runner = run_smac_qd_search
+            label = "DSS SMAC-QD"
+        else:
+            runner = run_dss_v2_search
+            label = "DSS v2"
+        with click.progressbar(length=n_trials, label=label, show_pos=True) as bar:
             try:
-                run_dss_v2_search(
+                runner(
                     config=dss_config,
                     search_space=search_space,
                     window_data=window_data,

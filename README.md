@@ -239,6 +239,19 @@ path. The command writes viability, proxy, full-score, archive, and candidate
 manifest artifacts directly under the chosen output directory. Removed v1 flags
 such as `--sampler`, `--resume`, `--max-filters`, and `--accept-min-score` are
 not part of the operator interface.
+The default backend is `--algorithm staged`. For non-duplicative exploratory
+runs, `--algorithm catcma_qd` enables the experimental CatCMA-inspired
+quality-diversity backend from ADR-0037. `--algorithm island_qd` enables the
+window-specialist island backend from ADR-0038 for Railway-scale runs where
+each island optimizes one training window before occasional robust checks.
+`--algorithm hyperband_qd` enables the ADR-0039 successive-halving backend:
+large batches pay cheap Stage 1 first, then only behavior-diverse top fractions
+advance to progressively more expensive proxy/full scoring. `--algorithm
+smac_qd` enables the ADR-0040 random-forest surrogate backend: bootstrap random
+design first, then score large proposal pools with RF mean + tree-dispersion
+uncertainty before evaluating selected infill candidates. CatCMA-QD, Island-QD,
+Hyperband-QD, and SMAC-QD cap expensive Stage 2+ backtests per candidate batch;
+most generated candidates only pay the cheap Stage 1 signal-viability check.
 
 ```bash
 uv run backtester search-signals \
@@ -250,10 +263,58 @@ uv run backtester search-signals \
     --output results/dss_sol_v2
 ```
 
+```bash
+uv run backtester search-signals \
+    --algorithm catcma_qd \
+    --seed 777 \
+    --data-dir data \
+    --symbol SOL-USDT-SWAP \
+    --windows 2022,2023,2024,2025H1 \
+    --n-trials 120000 \
+    --output results/dss_sol_catcma_seed777_fast
+```
+
+```bash
+uv run backtester search-signals \
+    --algorithm island_qd \
+    --seed 2026 \
+    --data-dir data \
+    --symbol SOL-USDT-SWAP \
+    --windows 2022,2023,2024,2025H1 \
+    --n-trials 120000 \
+    --output data/results/dss_sol_island_qd_railway_seed2026
+```
+
+```bash
+uv run backtester search-signals \
+    --algorithm hyperband_qd \
+    --seed 4242 \
+    --data-dir data \
+    --symbol SOL-USDT-SWAP \
+    --windows 2022,2023,2024,2025H1 \
+    --n-trials 120000 \
+    --output results/dss_sol_hyperband_seed4242
+```
+
+```bash
+uv run backtester search-signals \
+    --algorithm smac_qd \
+    --seed 5151 \
+    --data-dir data \
+    --symbol SOL-USDT-SWAP \
+    --windows 2022,2023,2024,2025H1 \
+    --n-trials 120000 \
+    --output results/dss_sol_smac_seed5151
+```
+
 Inspect `summary.md`, `archive.md`, `stage1_viability.csv`,
 `stage2_proxy.csv`, `stage3_full_scores.csv`, and `candidate_manifest.md`
 first. Exported `candidates/*.json` files are replayable via
 `compare-fixed` and `walk-forward`.
+
+`railway.toml` currently starts the `island_qd` search worker, not the live
+alerting process. Revert its `deploy.startCommand` before using the Railway
+service for live alerts again.
 
 ```bash
 uv run backtester discover-strategies \

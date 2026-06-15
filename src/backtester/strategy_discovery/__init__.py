@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from backtester.strategy_discovery.catcma_qd import run_catcma_qd_search
 from backtester.strategy_discovery.convert import (
     DiscoveryConversionError,
     convert_discovery_strategy,
@@ -17,6 +18,8 @@ from backtester.strategy_discovery.dss_config import (
 from backtester.strategy_discovery.dss_objective import DSSObjective
 from backtester.strategy_discovery.dss_report import write_dss_report
 from backtester.strategy_discovery.dss_v2 import run_dss_v2_search
+from backtester.strategy_discovery.hyperband_qd import run_hyperband_qd_search
+from backtester.strategy_discovery.island_qd import run_island_qd_search
 from backtester.strategy_discovery.parameterized_filters import parameterized_filter_catalog
 from backtester.strategy_discovery.parameterized_triggers import (
     parameterized_trigger_catalog,
@@ -28,6 +31,7 @@ from backtester.strategy_discovery.search import (
     run_strategy_discovery,
 )
 from backtester.strategy_discovery.signal_composer import SignalComposer
+from backtester.strategy_discovery.smac_qd import run_smac_qd_search
 
 __all__ = [
     "DSSBehavior",
@@ -47,7 +51,11 @@ __all__ = [
     "parameterized_filter_catalog",
     "parameterized_trigger_catalog",
     "parameterized_trigger_param_space",
+    "run_catcma_qd_search",
     "run_dss_v2_search",
+    "run_hyperband_qd_search",
+    "run_island_qd_search",
+    "run_smac_qd_search",
     "run_strategy_discovery",
     "write_dss_report",
 ]
