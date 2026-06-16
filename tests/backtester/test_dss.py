@@ -20,6 +20,7 @@ import pandas as pd
 import pytest
 from click.testing import CliRunner
 
+import backtester.strategy_discovery.dss_v2 as dss_v2_module
 from backtester.__main__ import cli
 from backtester.data_contracts import StrategyData
 from backtester.strategies.dss_strategy import DSSStrategy
@@ -429,6 +430,27 @@ def test_stage1_rejects_too_few_signals_in_one_window(tmp_path: Path) -> None:
         {"w1": _make_strategy_data(primary)},
         config,
         _FakeComposer(_make_signal_df(primary, 2)),
+    )
+    assert result.passed is False
+    assert result.rejection_reason == "too_few_signals:w1"
+
+
+def test_stage1_uses_weekly_signal_frequency_gate(tmp_path: Path) -> None:
+    primary = _make_primary(24 * 14)
+    windows = [
+        DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-14")
+    ]
+    config = DSSConfig(
+        output=tmp_path,
+        windows=windows,
+        min_trades_per_window=1,
+        min_signals_per_week=4.0,
+    )
+    result = evaluate_stage1(
+        _make_candidate(),
+        {"w1": _make_strategy_data(primary)},
+        config,
+        _FakeComposer(_make_signal_df(primary, 4)),
     )
     assert result.passed is False
     assert result.rejection_reason == "too_few_signals:w1"
@@ -1208,6 +1230,89 @@ def test_smac_qd_progress_callback_ticks_per_candidate(tmp_path: Path) -> None:
     assert result.generated == 4
     assert (tmp_path / "smac_qd_state.csv").exists()
     assert (tmp_path / "smac_qd_observations.csv").exists()
+
+
+def test_dss_stage1_mode_stops_before_backtest_and_exports_shortlist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    primary = _make_primary(80)
+    windows = [
+        DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
+    ]
+    config = DSSConfig(
+        output=tmp_path,
+        windows=windows,
+        n_trials=1,
+        min_trades_per_window=1,
+        stage_mode="stage1",
+    )
+    search_space = DSSSearchSpace(
+        trigger_names=("pt_nr4_breakout",),
+        filter_names=(),
+        trigger_param_bounds={"pt_nr4_breakout": {}},
+        filter_param_bounds={},
+        max_filters=0,
+    )
+    behavior = DSSBehavior(
+        trigger_family="pt_nr4_breakout",
+        side_profile="balanced",
+        trade_count_bucket="medium",
+        hold_time_bucket="medium",
+        risk_geometry="medium_sl",
+        regime_strength="balanced",
+        filter_depth="0",
+    )
+
+    def _fake_stage1(
+        candidate: DSSCandidate,
+        _window_data: dict[str, StrategyData],
+        _config: DSSConfig,
+        _composer: object | None = None,
+    ) -> Stage1Result:
+        return Stage1Result(
+            candidate_id=candidate.candidate_id,
+            passed=True,
+            rejection_reason="",
+            signal_counts={"w1": 12},
+            long_ratios={"w1": 0.5},
+            median_stop_atr={"w1": 1.0},
+            barrier_metrics={
+                "w1": BarrierMetrics(
+                    total=12,
+                    tp_first=8,
+                    sl_first=4,
+                    timeout=0,
+                    tp_first_rate=8 / 12,
+                    sl_first_rate=4 / 12,
+                    timeout_rate=0.0,
+                    win_rate=8 / 12,
+                    median_mae_atr=0.8,
+                    median_mfe_atr=1.4,
+                    median_bars_to_tp=3.0,
+                )
+            },
+            behavior=behavior,
+            candidate_class="balanced",
+        )
+
+    def _stage2_must_not_run(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("Stage 2 should not run in stage1 mode")
+
+    monkeypatch.setattr(dss_v2_module, "evaluate_stage1", _fake_stage1)
+    monkeypatch.setattr(dss_v2_module, "evaluate_stage_scores", _stage2_must_not_run)
+
+    result = dss_v2_module.run_dss_v2_search(
+        config=config,
+        search_space=search_space,
+        window_data={"w1": _make_strategy_data(primary)},
+    )
+
+    assert result.stage1_survivors == 1
+    assert result.stage2_survivors == 0
+    assert (tmp_path / "stage1_ranked.csv").exists()
+    assert (tmp_path / "stage1_candidates").exists()
+    assert not (tmp_path / "stage2_proxy.csv").exists()
+    assert "Stage mode: **stage1**" in (tmp_path / "summary.md").read_text(encoding="utf-8")
 
 
 def test_search_signals_help_no_longer_exposes_sampler() -> None:

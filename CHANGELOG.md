@@ -16,13 +16,18 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 - Added `backtester search-signals --catalog legacy|pinescript_v1|all`; default
   remains `legacy`, while the active next owner run uses only
   `--catalog pinescript_v1`.
+- Added `--stage-mode stage1` for Stage 1-only catalog discovery: the run
+  stops before backtests, writes `stage1_ranked.csv`, and exports research
+  configs under `stage1_candidates/`.
+- Added `--min-signals-per-week`; the PineScript handoff now uses 4 signals per
+  week, so 20 signals/year no longer passes Stage 1 on full-year windows.
 - Extended `SignalComposer` so PineScript-derived candidate JSONs replay
   through the normal DSS strategy/backtest path.
 - Persisted the selected catalog in DSS state and documented the new catalog
   contract in `docs/discovery/pinescript_catalog_v1.md`.
 - Updated README and task state so the next validation run searches the new
   PineScript catalog instead of repeating the legacy space.
-- Validation: `tests/backtester/test_dss.py` 56/56 passed; ruff clean and mypy
+- Validation: `tests/backtester/test_dss.py` 58/58 passed; ruff clean and mypy
   clean on touched DSS feature/catalog/CLI/test files.
 - Files touched: `src/backtester/strategy_discovery/`, `src/backtester/__main__.py`,
   `tests/backtester/`, `docs/discovery/`, `docs/tasks/`, `README.md`,

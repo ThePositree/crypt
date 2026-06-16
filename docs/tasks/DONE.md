@@ -22,12 +22,15 @@ filters.
 **Result:** `backtester search-signals` now accepts
 `--catalog legacy|pinescript_v1|all`; default remains `legacy` for backwards
 compatibility, while the active handoff instructs the owner to run
-`--catalog pinescript_v1` only. New closed-candle feature columns are computed
-in the discovery dataset, the catalog is exported from
+`--catalog pinescript_v1` only. `--stage-mode stage1` now stops before
+backtests and exports `stage1_ranked.csv` plus `stage1_candidates/*.json`.
+`--min-signals-per-week 4` makes the effective Stage 1 frequency gate about
+209 signals on a full-year window. New closed-candle feature columns are
+computed in the discovery dataset, the catalog is exported from
 `backtester.strategy_discovery`, `SignalComposer` can replay PineScript
-candidate JSONs, and `dss_state.json` records the selected catalog.
+candidate JSONs, and `dss_state.json` records the selected catalog/mode.
 
-**Acceptance:** `tests/backtester/test_dss.py` 56/56 passed; ruff clean and
+**Acceptance:** `tests/backtester/test_dss.py` 58/58 passed; ruff clean and
 mypy clean on touched DSS feature/catalog/CLI/test files.
 
 **Links:** `docs/discovery/pinescript_catalog_v1.md`,

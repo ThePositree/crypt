@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import logging
+import math
 import random
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -140,6 +141,8 @@ def run_dss_v2_search(
             if not stage1.passed or stage1.behavior is None:
                 continue
             stage1_survivors += 1
+            if config.stage_mode == "stage1":
+                continue
 
             stage2 = evaluate_stage_scores(
                 candidate=candidate,
@@ -175,8 +178,12 @@ def run_dss_v2_search(
             if progress_callback is not None:
                 progress_callback(1)
 
-    _write_archive(output, archive)
-    exported = export_stage4_candidates(archive, config)
+    stage1_ranked = write_stage1_ranked(output, config)
+    if config.stage_mode == "stage1":
+        exported = export_stage1_candidates(stage1_ranked, output, config)
+    else:
+        _write_archive(output, archive)
+        exported = export_stage4_candidates(archive, config)
     _write_summary(
         output=output,
         config=config,
@@ -186,6 +193,7 @@ def run_dss_v2_search(
         stage3_evaluations=stage3_evaluations,
         exported=exported,
         archive=archive,
+        stage1_ranked=len(stage1_ranked),
     )
     return DSSV2Result(
         output=output,
@@ -227,7 +235,8 @@ def evaluate_stage1(
         count = len(signals)
         signal_counts[window.label] = count
         total_signals += count
-        if count < config.min_trades_per_window:
+        min_signals = _min_signals_for_window(window, data, config)
+        if count < min_signals:
             first_rejection_reason = first_rejection_reason or f"too_few_signals:{window.label}"
             if not config.specialist_windows:
                 return Stage1Result(
@@ -486,6 +495,129 @@ def export_stage4_candidates(archive: DSSArchive, config: DSSConfig) -> list[Pat
     _write_csv(config.output / "candidate_manifest.csv", manifest_rows)
     _write_manifest_md(config.output / "candidate_manifest.md", manifest_rows)
     return exports
+
+
+def write_stage1_ranked(output: Path, config: DSSConfig) -> list[dict[str, object]]:
+    source = output / "stage1_viability.csv"
+    if not source.exists():
+        return []
+    rows: list[dict[str, object]] = []
+    with source.open("r", encoding="utf-8", newline="") as fh:
+        for row in csv.DictReader(fh):
+            if str(row.get("passed", "")).lower() != "true":
+                continue
+            scored = dict(row)
+            scored["stage1_score"] = _stage1_row_score(scored, config.windows)
+            rows.append(scored)
+    rows.sort(key=lambda row: cast(float, row["stage1_score"]), reverse=True)
+    ranked_path = output / "stage1_ranked.csv"
+    if rows:
+        fieldnames = ["rank", "stage1_score", *[key for key in rows[0] if key != "stage1_score"]]
+        with ranked_path.open("w", encoding="utf-8", newline="") as fh:
+            writer = csv.DictWriter(fh, fieldnames=fieldnames)
+            writer.writeheader()
+            for idx, row in enumerate(rows, 1):
+                writer.writerow({"rank": idx, **row})
+    elif ranked_path.exists():
+        ranked_path.unlink()
+    return rows
+
+
+def export_stage1_candidates(
+    ranked_rows: list[dict[str, object]], output: Path, config: DSSConfig
+) -> list[Path]:
+    candidates_by_id = {
+        candidate.candidate_id: candidate
+        for candidate in _read_stage0_candidates(output / "stage0_candidates.jsonl")
+    }
+    candidates_dir = output / "stage1_candidates"
+    candidates_dir.mkdir(exist_ok=True)
+    exports: list[Path] = []
+    manifest_rows: list[dict[str, object]] = []
+    for idx, row in enumerate(ranked_rows[: config.top_n_candidates], 1):
+        candidate_id = str(row["candidate_id"])
+        candidate = candidates_by_id.get(candidate_id)
+        if candidate is None:
+            continue
+        path = candidates_dir / f"stage1_{idx:03d}_{candidate_id}_{candidate.trigger_name}.json"
+        payload = {
+            "name": "dss_strategy",
+            "version": "2.0-stage1",
+            "candidate_id": candidate.candidate_id,
+            "stage1_score": row["stage1_score"],
+            "stage1_metrics": row,
+            "params": candidate.trial_config.to_dict(),
+            "backtest_args": {
+                "rrr": candidate.rrr,
+                "risk_percent": candidate.risk_percent,
+                "position_ttl_bars": candidate.position_ttl_bars,
+                "risk_base_period": config.risk_base_period,
+                "exit_geometry": "sl_rrr",
+            },
+        }
+        path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        exports.append(path)
+        manifest_rows.append(
+            {
+                "rank": idx,
+                "candidate_id": candidate.candidate_id,
+                "candidate_path": str(path),
+                "trigger_name": candidate.trigger_name,
+                "filter_names": "+".join(candidate.filter_names),
+                "stage1_score": row["stage1_score"],
+            }
+        )
+    if manifest_rows:
+        _write_stage1_manifest(output / "stage1_candidate_manifest.md", manifest_rows)
+    return exports
+
+
+def _stage1_row_score(row: dict[str, object], windows: list[DSSWindowSpec]) -> float:
+    parts: list[float] = []
+    for window in windows:
+        label = window.label
+        win_rate = _row_float(row, f"barrier_win_rate_{label}")
+        tp_rate = _row_float(row, f"barrier_tp_first_rate_{label}")
+        sl_rate = _row_float(row, f"barrier_sl_first_rate_{label}")
+        timeout_rate = _row_float(row, f"barrier_timeout_rate_{label}")
+        signals = max(0.0, _row_float(row, f"signals_{label}"))
+        parts.append(
+            win_rate * 100.0
+            + tp_rate * 50.0
+            + math.log1p(signals) * 5.0
+            - sl_rate * 25.0
+            - timeout_rate * 10.0
+        )
+    return float(sum(parts) / max(len(parts), 1))
+
+
+def _row_float(row: dict[str, object], key: str) -> float:
+    try:
+        return float(cast(Any, row.get(key, 0.0) or 0.0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _write_stage1_manifest(path: Path, rows: list[dict[str, object]]) -> None:
+    lines = [
+        "# DSS Stage 1 candidate manifest",
+        "",
+        "These candidates passed Stage 1 only. They are signal-family research artifacts, not promotion-ready backtest results.",
+        "",
+    ]
+    for row in rows:
+        lines.extend(
+            [
+                f"## {row['rank']}. {row['candidate_id']}",
+                "",
+                f"- Path: `{row['candidate_path']}`",
+                f"- Trigger: `{row['trigger_name']}`",
+                f"- Filters: `{row['filter_names']}`",
+                f"- Stage 1 score: `{cast(float, row['stage1_score']):.2f}`",
+                "",
+            ]
+        )
+    path.write_text("\n".join(lines), encoding="utf-8")
 
 
 def _generate_stage0_candidates(
@@ -842,6 +974,23 @@ def _max_signals_for_window(window: DSSWindowSpec, data: StrategyData) -> int:
     return max(_MAX_SIGNALS_PER_DAY, int(covered_days * _MAX_SIGNALS_PER_DAY))
 
 
+def _min_signals_for_window(
+    window: DSSWindowSpec, data: StrategyData, config: DSSConfig
+) -> int:
+    del window
+    absolute = max(0, config.min_trades_per_window)
+    if config.min_signals_per_week <= 0:
+        return absolute
+    primary = data.primary
+    if primary.empty:
+        return absolute
+    index = pd.to_datetime(primary.index)
+    elapsed_days = float(max((index.max() - index.min()).total_seconds() / 86_400, 0.0))
+    covered_weeks = float(max(1.0 / 7.0, (elapsed_days + 1.0 / 24.0) / 7.0))
+    weekly: int = math.ceil(covered_weeks * config.min_signals_per_week)
+    return max(absolute, weekly)
+
+
 def _guard_output_dir(output: Path) -> None:
     if (output / "study.journal").exists() and not (output / "state.json").exists():
         raise ValueError(
@@ -855,6 +1004,9 @@ def _write_state(output: Path, config: DSSConfig) -> None:
         "version": _STATE_VERSION,
         "n_trials": config.n_trials,
         "catalog": config.catalog,
+        "stage_mode": config.stage_mode,
+        "min_trades_per_window": config.min_trades_per_window,
+        "min_signals_per_week": config.min_signals_per_week,
         "windows": [
             {
                 "label": window.label,
@@ -1042,19 +1194,33 @@ def _write_summary(
     exported: list[Path],
     archive: DSSArchive,
     stage1_specialists: int | None = None,
+    stage1_ranked: int | None = None,
 ) -> None:
     if stage1_specialists is None:
         stage1_specialists = _count_csv_rows(output / "stage1_specialists.csv")
+    if stage1_ranked is None:
+        stage1_ranked = _count_csv_rows(output / "stage1_ranked.csv")
     best = archive.elites()[0] if archive.elites() else None
-    verdict = "candidates exported" if exported else "no candidate"
-    reason = "archive has replay JSONs" if exported else "no archive elite reached export"
+    if config.stage_mode == "stage1":
+        verdict = "stage1 shortlist exported" if exported else "no stage1 candidate"
+        reason = (
+            "Stage 1-only mode stopped before backtest scoring"
+            if exported
+            else "no candidate passed Stage 1"
+        )
+    else:
+        verdict = "candidates exported" if exported else "no candidate"
+        reason = "archive has replay JSONs" if exported else "no archive elite reached export"
     lines = [
         "# DSS v2 run summary",
         "",
         f"Verdict: **{verdict}**",
         f"Reason: {reason}",
+        f"Stage mode: **{config.stage_mode}**",
+        f"Min signals per week: **{config.min_signals_per_week:g}**",
         f"Generated candidates: **{generated}**",
         f"Stage 1 survivors: **{stage1_survivors}**",
+        f"Stage 1 ranked candidates: **{stage1_ranked}**",
         f"Stage 1 specialists: **{stage1_specialists}**",
         f"Stage 2 survivors: **{stage2_survivors}**",
         f"Stage 3 full evaluations: **{stage3_evaluations}**",
@@ -1071,6 +1237,7 @@ def _write_summary(
         "| --- | ---: |",
         f"| Generated | {generated} |",
         f"| Stage 1 survivors | {stage1_survivors} |",
+        f"| Stage 1 ranked candidates | {stage1_ranked} |",
         f"| Stage 1 specialists | {stage1_specialists} |",
         f"| Stage 2 survivors | {stage2_survivors} |",
         f"| Stage 3 full evaluations | {stage3_evaluations} |",
@@ -1081,7 +1248,15 @@ def _write_summary(
         "",
     ]
     if exported:
-        lines.extend(["```bash", _validation_command(config, exported[0]), "```", ""])
+        if config.stage_mode == "stage1":
+            lines.extend(
+                [
+                    "Stage 1-only exports are under `stage1_candidates/`. Pick a candidate manually before running validation.",
+                    "",
+                ]
+            )
+        else:
+            lines.extend(["```bash", _validation_command(config, exported[0]), "```", ""])
     (output / "summary.md").write_text("\n".join(lines), encoding="utf-8")
 
 

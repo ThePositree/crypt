@@ -458,12 +458,18 @@ For each candidate and each configured window:
 
 Reject if:
 
-- any required training window has fewer than `min_trades`;
+- any required training window has fewer than the effective minimum signal
+  count: `max(min_trades, ceil(window_weeks * min_signals_per_week))`;
 - total trades are too high for H1 swing/intraday system;
 - side filters contradict generated sides;
 - stop distances are invalid or mostly non-finite;
 - too few signals reach the favorable barrier before the adverse barrier;
 - signal generation raises.
+
+`--stage-mode stage1` stops after this stage. It writes `stage1_ranked.csv`,
+exports top Stage 1 research configs under `stage1_candidates/`, and does not
+call the backtester. Use this mode for catalog discovery before deciding which
+candidate families deserve execution/backtest work.
 
 Suggested overtrading guard:
 
@@ -478,10 +484,13 @@ allowing intraday strategies with up to 10 candidate entries per day.
 Artifacts:
 
 - `stage1_viability.csv`
+- `stage1_ranked.csv`
 - `stage1_rejections.csv`
 - `stage1_specialists.csv`
 - `stage1_specialists.jsonl`
 - `stage1_survivors.jsonl`
+- `stage1_candidates/*.json` when `--stage-mode stage1`
+- `stage1_candidate_manifest.md` when `--stage-mode stage1`
 
 Required columns:
 

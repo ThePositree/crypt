@@ -16,6 +16,8 @@ slice is now exposed as `--catalog pinescript_v1`.
 ```bash
 uv run backtester search-signals \
   --catalog pinescript_v1 \
+  --stage-mode stage1 \
+  --min-signals-per-week 4 \
   --data-dir data \
   --symbol SOL-USDT-SWAP \
   --windows 2023 \
@@ -25,19 +27,21 @@ uv run backtester search-signals \
   --output results/dss_sol_pinescript_v1_2023_seed73023
 ```
 
-This target-only run treats 2023-pass candidates as normal Stage 1 survivors
-inside the new catalog. Use it to answer whether the PineScript-derived
-primitives produce a healthier 2023 tail. Do not mix the legacy catalog back in
-until the pure `pinescript_v1` result is inspected.
+This target-only run stops after Stage 1, so it does not run backtests or
+mandate scoring. Use `stage1_ranked.csv` and `stage1_candidates/*.json` to
+inspect signal families manually. The effective frequency gate is 4 signals per
+week, so a full-year 2023 candidate needs roughly 209 signals before barrier
+quality is considered. Do not mix the legacy catalog back in until the pure
+`pinescript_v1` result is inspected.
 
 **Expected gain:** test a materially different trigger/filter vocabulary before
 spending more compute on routing/composition around a stale legacy space.
 
 **Acceptance:** next agent inspects `summary.md`, `stage1_viability.csv`,
-`stage2_proxy.csv`, and any normal `candidates/*.json`; if useful families
-exist, prepare a smaller cross-window diagnostic against 2022/2024/2025H1.
-Target-only candidates must be analyzed as routing research only, not as
-promotion-ready candidates.
+`stage1_ranked.csv`, and `stage1_candidates/*.json`; if useful families exist,
+prepare a smaller cross-window diagnostic against 2022/2024/2025H1.
+Target-only Stage 1 candidates must be analyzed as routing research only, not
+as promotion-ready candidates.
 
 **Links:** `docs/discovery/pinescript_catalog_v1.md`;
 `docs/discovery/dss_wr55_10pd_tail_analysis.md`.

@@ -19,6 +19,8 @@ and filters.
 ```bash
 uv run backtester search-signals \
   --catalog pinescript_v1 \
+  --stage-mode stage1 \
+  --min-signals-per-week 4 \
   --data-dir data \
   --symbol SOL-USDT-SWAP \
   --windows 2023 \
@@ -107,12 +109,20 @@ Required feature columns include:
 - `--catalog legacy` keeps current behavior.
 - `--catalog pinescript_v1` uses only the new catalog.
 - `--catalog all` combines both, for later comparison only.
+- `--stage-mode stage1` stops after Stage 1 signal/barrier checks, writes
+  `stage1_ranked.csv`, exports replayable research configs under
+  `stage1_candidates/`, and does not run backtests.
 
 The selected catalog is written into `dss_state.json` so resumed/inspected runs
 can be tied back to the trigger/filter vocabulary that produced them.
 
 The first real run should use `--catalog pinescript_v1` and one target window
-(`2023`) to answer whether the new primitives produce a healthier 2023 tail.
+(`2023`) in Stage 1-only mode to answer whether the new primitives produce a
+healthier 2023 signal tail.
+
+Use `--min-signals-per-week 4` for this catalog. A full-year window then needs
+roughly 209 signals before barrier quality is considered. Candidates with only
+20 signals/year are too sparse for this discovery phase.
 
 Do not promote target-window candidates directly. They remain research
 candidates until cross-window diagnostics and mandate `compare-fixed`

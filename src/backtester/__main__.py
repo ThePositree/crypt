@@ -1850,7 +1850,21 @@ def trade_chart(
     type=int,
     default=20,
     show_default=True,
-    help="Min signals per window; fewer → empty signal penalty.",
+    help="Absolute min signals per window; effective Stage 1 threshold also uses --min-signals-per-week.",
+)
+@click.option(
+    "--min-signals-per-week",
+    type=float,
+    default=4.0,
+    show_default=True,
+    help="Min Stage 1 signal frequency per week in each window.",
+)
+@click.option(
+    "--stage-mode",
+    type=click.Choice(["full", "stage1"], case_sensitive=False),
+    default="full",
+    show_default=True,
+    help="Use stage1 to stop after signal/barrier ranking without backtests.",
 )
 @click.option(
     "--capital",
@@ -1887,6 +1901,8 @@ def search_signals(
     catalog: str,
     seed: int,
     min_trades: int,
+    min_signals_per_week: float,
+    stage_mode: str,
     capital: float,
     risk_base_period: str,
     max_positions: int,
@@ -1998,12 +2014,14 @@ def search_signals(
             n_jobs=n_jobs,
             max_filters=4,
             min_trades_per_window=min_trades,
+            min_signals_per_week=min_signals_per_week,
             top_n_candidates=top_n,
             initial_capital=capital,
             max_positions=max_positions,
             risk_base_period=risk_base_period,
             specialist_windows=specialist_window_labels,
             catalog=cast(Literal["legacy", "pinescript_v1", "all"], catalog.lower()),
+            stage_mode=cast(Literal["full", "stage1"], stage_mode.lower()),
             algorithm=cast(
                 Literal["staged", "catcma_qd", "island_qd", "hyperband_qd", "smac_qd"],
                 algorithm.lower(),

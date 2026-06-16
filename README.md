@@ -270,6 +270,8 @@ uv run backtester search-signals \
 ```bash
 uv run backtester search-signals \
     --catalog pinescript_v1 \
+    --stage-mode stage1 \
+    --min-signals-per-week 4 \
     --data-dir data \
     --symbol SOL-USDT-SWAP \
     --windows 2023 \
@@ -324,13 +326,16 @@ uv run backtester search-signals \
 ```
 
 Inspect `summary.md`, `archive.md`, `stage1_viability.csv`,
-`stage1_specialists.csv`, `stage2_proxy.csv`, `stage3_full_scores.csv`, and
-`candidate_manifest.md` first. `stage1_specialists.*` preserves
-target-window specialists for later routing analysis; those rows are not
-promotion-ready exports and are only produced when `--specialist-windows` is
-set. Leave `--specialist-windows` empty for the fast all-window early-reject
-path. Exported `candidates/*.json` files are replayable via `compare-fixed` and
-`walk-forward`.
+`stage1_ranked.csv`, `stage1_specialists.csv`, `stage2_proxy.csv`,
+`stage3_full_scores.csv`, and `candidate_manifest.md` first. In
+`--stage-mode stage1`, DSS stops before backtests, writes a Stage 1-only
+shortlist to `stage1_ranked.csv`, and exports research configs under
+`stage1_candidates/`. `stage1_specialists.*` preserves target-window
+specialists for later routing analysis; those rows are not promotion-ready
+exports and are only produced when `--specialist-windows` is set. Leave
+`--specialist-windows` empty for the fast all-window early-reject path.
+Exported full-mode `candidates/*.json` files are replayable via
+`compare-fixed` and `walk-forward`.
 
 `railway.toml` currently starts the `island_qd` search worker, not the live
 alerting process. Revert its `deploy.startCommand` before using the Railway

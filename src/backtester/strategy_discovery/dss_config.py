@@ -310,6 +310,7 @@ class DSSConfig:
     n_jobs: int = 1
     max_filters: int = 4
     min_trades_per_window: int = 20
+    min_signals_per_week: float = 0.0
     resume_journal: Path | None = None
     sampler: Literal["nsga2", "tpe", "random"] = "nsga2"
     accept_min_score_per_window: float = -500.0
@@ -322,6 +323,7 @@ class DSSConfig:
     signal_cache_max_entries: int = 2_000
     algorithm: Literal["staged", "catcma_qd", "island_qd", "hyperband_qd", "smac_qd"] = "staged"
     catalog: Literal["legacy", "pinescript_v1", "all"] = "legacy"
+    stage_mode: Literal["full", "stage1"] = "full"
     seed: int = 36
     min_barrier_tp_first_rate: float = 0.05
     min_barrier_win_rate: float = 0.55
