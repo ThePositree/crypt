@@ -16,9 +16,16 @@ import pandas as pd
 
 from backtester.strategy_discovery.dss_config import TrialConfig
 from backtester.strategy_discovery.events import DiscoveryEvent
-from backtester.strategy_discovery.features import build_discovery_dataset
-from backtester.strategy_discovery.parameterized_filters import parameterized_filter_catalog
+from backtester.strategy_discovery.features import DiscoveryDataset, build_discovery_dataset
+from backtester.strategy_discovery.parameterized_filters import (
+    FilterFn,
+    parameterized_filter_catalog,
+)
 from backtester.strategy_discovery.parameterized_triggers import parameterized_trigger_catalog
+from backtester.strategy_discovery.pinescript_catalog import (
+    pinescript_filter_catalog,
+    pinescript_trigger_catalog,
+)
 
 if TYPE_CHECKING:
     from backtester.data_contracts import StrategyInput
@@ -37,6 +44,7 @@ _SIGNAL_ROW_COLUMNS = [
 ]
 
 GenerateFn = Callable[["StrategyInput"], pd.DataFrame]
+SignalRow = dict[str, object]
 
 _CONTEXT_CONFIDENCE_BONUS: dict[str, float] = {
     "pf_context_aligned": 5.0,
@@ -50,8 +58,14 @@ class SignalComposer:
     """Converts a TrialConfig into a pure generate function."""
 
     def __init__(self) -> None:
-        self._trigger_catalog = parameterized_trigger_catalog()
-        self._filter_catalog = parameterized_filter_catalog()
+        self._trigger_catalog = {
+            **parameterized_trigger_catalog(),
+            **pinescript_trigger_catalog(),
+        }
+        self._filter_catalog = {
+            **parameterized_filter_catalog(),
+            **pinescript_filter_catalog(),
+        }
 
     # ------------------------------------------------------------------
     # Public API
@@ -124,7 +138,7 @@ class SignalComposer:
                 )
                 return _empty_signal_df()
 
-            surviving: list[dict] = []
+            surviving: list[SignalRow] = []
             for event in raw_events:
                 if not _apply_filters(event, dataset, filter_fns):
                     continue
@@ -176,7 +190,9 @@ class SignalComposer:
 # ---------------------------------------------------------------------------
 
 
-def _apply_filters(event: DiscoveryEvent, dataset, filter_fns: list) -> bool:
+def _apply_filters(
+    event: DiscoveryEvent, dataset: DiscoveryDataset, filter_fns: list[FilterFn]
+) -> bool:
     for filt in filter_fns:
         try:
             result = filt(event, dataset)

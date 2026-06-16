@@ -364,6 +364,38 @@ Soft feasibility constraints:
 The report must show constraints separately from score. Do not hide why a
 candidate failed.
 
+### 7.1 Regime-specialist follow-up
+
+The 2026-06-16 WR55/10pd tail analysis showed that a hard all-window Stage 1
+gate can discard useful evidence before Stage 2:
+
+- the completed 2022-first run found 31,241 candidates that passed 2022, but
+  none passed 2023;
+- the 2023-first snapshots found 38 candidates that passed 2023, but all were
+  rejected by `too_few_signals:2022`;
+- the 2022-pass tail was mostly short/trend/context behavior, while the
+  2023-pass tail was sparse mean-reversion, compression, BB/RSI, and
+  session-volume behavior.
+
+Future DSS work must distinguish two candidate classes:
+
+| Class | Stage 1 requirement | Archive/report handling |
+| --- | --- | --- |
+| `balanced` | passes signal count, overtrading, and barrier gates on all required windows | eligible for normal robust Stage 2/3 scoring and export |
+| `specialist:<window>` | passes strict gates on an explicitly requested specialist window; non-target windows may be diagnostic only | stored in specialist artifacts; not eligible for direct promotion |
+
+Specialist candidates are research artifacts until a routing or composition
+layer exists. They may be scored on one or more adverse windows for diagnostics,
+but reports must never label them all-window robust.
+
+Keep specialist capture opt-in. The normal all-window Stage 1 path must retain
+early rejection on the first failed window so owner-scale DSS runs remain
+practical. For first-pass specialist discovery, prefer a single target window
+such as `--windows 2023`; run cross-window diagnostics afterward on a smaller
+candidate set.
+
+Reference analysis: `docs/discovery/dss_wr55_10pd_tail_analysis.md`.
+
 ---
 
 ## 8. Stage 0 — stratified coverage
@@ -373,8 +405,8 @@ the optimizer exploits local winners.
 
 Inputs:
 
-- parameterized trigger catalog;
-- parameterized filter catalog;
+- selected trigger catalog (`legacy`, `pinescript_v1`, or `all`);
+- selected filter catalog (`legacy`, `pinescript_v1`, or `all`);
 - search-space bounds;
 - `n_trials` budget.
 
@@ -447,6 +479,8 @@ Artifacts:
 
 - `stage1_viability.csv`
 - `stage1_rejections.csv`
+- `stage1_specialists.csv`
+- `stage1_specialists.jsonl`
 - `stage1_survivors.jsonl`
 
 Required columns:
@@ -454,6 +488,8 @@ Required columns:
 - `candidate_id`
 - `trigger_name`
 - `filter_names`
+- `candidate_class`
+- `target_window`
 - `signals_<window>`
 - `long_ratio_<window>`
 - `median_stop_atr_<window>`

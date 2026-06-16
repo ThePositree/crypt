@@ -321,6 +321,8 @@ class DSSConfig:
     risk_base_period: str = "monthly"
     signal_cache_max_entries: int = 2_000
     algorithm: Literal["staged", "catcma_qd", "island_qd", "hyperband_qd", "smac_qd"] = "staged"
+    catalog: Literal["legacy", "pinescript_v1", "all"] = "legacy"
     seed: int = 36
     min_barrier_tp_first_rate: float = 0.05
     min_barrier_win_rate: float = 0.55
+    specialist_windows: tuple[str, ...] = ()

@@ -1,53 +1,46 @@
 # In progress
 
-## Cross-machine DSS WR55/10pd search handoff (2026-06-16)
+## PineScript DSS catalog v1 real-data validation (2026-06-16)
 
-**Why this exists:** `results/` is gitignored and the owner works from several
-PCs. Agents on another machine may not have the local CSV/JSONL artifacts, so
-this markdown snapshot is the source of truth for what the recent searches
-proved.
+**What remains:** owner-run a target-window 2023 DSS search with the new
+`pinescript_v1` trigger/filter catalog after pulling this change. Stop any
+slow legacy 4-window specialist run if it is still consuming compute.
 
-**Current code/search policy:** DSS Stage 1 uses the path-aware next-open
-barrier label with resolved `sl_rrr` levels, requires `barrier_win_rate >= 55%`
-and `tp_first > sl_first` on each checked window, and uses the updated
-overtrading cap of at most `10 signals/day`.
+**Why now:** the legacy DSS catalog has already been searched hard and keeps
+walking the same trigger/filter families. The owner supplied popular
+TradingView/PineScript ideas under `pinescript/` and asked to replace the old
+catalog space rather than continue exploring it. The first implementation
+slice is now exposed as `--catalog pinescript_v1`.
 
-**Most recent local snapshot:** 2026-06-16 09:53 MSK.
+**Command:**
+```bash
+uv run backtester search-signals \
+  --catalog pinescript_v1 \
+  --data-dir data \
+  --symbol SOL-USDT-SWAP \
+  --windows 2023 \
+  --n-trials 50000 \
+  --n-jobs 4 \
+  --seed 73023 \
+  --output results/dss_sol_pinescript_v1_2023_seed73023
+```
 
-| Output | Windows | Trials observed | Stage 1 survivors | Exported candidates | Status |
-| --- | --- | ---: | ---: | ---: | --- |
-| `results/dss_sol_v2_barrier_wr55_10pd_seed60616` | `2022,2023,2024,2025H1` | 1,200,000 / 1,200,000 | 0 | 0 | Finished, no candidate |
-| `results/dss_sol_v2_barrier_wr55_10pd_seed60617` | `2022,2023,2024,2025H1` | ~646,580 / 1,200,000 | 0 | 0 | Running at snapshot |
-| `results/dss_sol_v2_barrier_wr55_10pd_seed60618` | `2022,2023,2024,2025H1` | ~644,888 / 1,200,000 | 0 | 0 | Running at snapshot |
-| `results/dss_sol_v2_barrier_wr55_10pd_2023first_seed60619` | `2023,2022,2024,2025H1` | ~61,603 / 1,200,000 | 0 | 0 | Running at snapshot |
-| `results/dss_sol_v2_barrier_wr55_10pd_2023first_seed60620` | `2023,2022,2024,2025H1` | ~61,700 / 1,200,000 | 0 | 0 | Running at snapshot |
+This target-only run treats 2023-pass candidates as normal Stage 1 survivors
+inside the new catalog. Use it to answer whether the PineScript-derived
+primitives produce a healthier 2023 tail. Do not mix the legacy catalog back in
+until the pure `pinescript_v1` result is inspected.
 
-**Important result:** simply adding more trials to the same constructor is
-unlikely to solve the problem. The completed 1.2M-trial `seed60616` run found
-31,241 configurations that passed WR55 on 2022, but **zero** that also passed
-WR55 on 2023. Its best observed `barrier_win_rate_2023` was about `0.5354`,
-below the required `0.55`.
+**Expected gain:** test a materially different trigger/filter vocabulary before
+spending more compute on routing/composition around a stale legacy space.
 
-**2023-first evidence:** the two `2023first` runs prove that 2023 edge exists
-in the tail, but it is rare and does not transfer to 2022 under the current
-constructor. At the 2026-06-16 09:53 MSK snapshot each had 38 configurations
-passing WR55 on 2023, with best `barrier_win_rate_2023` about `0.7143`, but
-all were rejected afterward, mostly by `too_few_signals:2022`.
+**Acceptance:** next agent inspects `summary.md`, `stage1_viability.csv`,
+`stage2_proxy.csv`, and any normal `candidates/*.json`; if useful families
+exist, prepare a smaller cross-window diagnostic against 2022/2024/2025H1.
+Target-only candidates must be analyzed as routing research only, not as
+promotion-ready candidates.
 
-**Interpretation for next agent:** current one-trigger plus up-to-four/five
-filters constructor can find 2022-specialists and rare 2023-specialists, but
-has not found a robust intersection across both regimes. Treat this as a
-regime-conflict finding, not as an implementation failure. Before launching
-more identical seed runs, inspect the 2023-first tail and/or implement a
-regime-aware search path.
-
-**Next useful checks if local artifacts are available:**
-1. Inspect rows in `stage1_viability.csv` for the 2023-first candidates with
-   `barrier_win_rate_2023 >= 0.55`.
-2. Compare their trigger/filter/parameter families against the 2022-first
-   near-misses with `barrier_win_rate_2023` around `0.5354`.
-3. Decide whether to add regime-aware routing, relax the per-window minimum
-   signal rule for specialist discovery, or expand the trigger/filter catalog.
+**Links:** `docs/discovery/pinescript_catalog_v1.md`;
+`docs/discovery/dss_wr55_10pd_tail_analysis.md`.
 
 
 ## Active DSS search matrix — inspect all five (2026-06-12)

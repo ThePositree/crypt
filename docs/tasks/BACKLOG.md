@@ -15,31 +15,50 @@ when finished.
 > max **10% intra-month DD**; auto-trading only after **promote** verdict.
 
 
-## P1 — Analyze WR55 2023-first tail and design regime-aware DSS search
+## P1 — Diagnose PineScript DSS catalog v1 cross-window behavior
 
-**What:** inspect the `2023first` DSS WR55/10pd tail and design the next search
-step for regime-conflicting SOL years. Focus on configurations that pass
-`barrier_win_rate >= 55%` on 2023, compare them with 2022-first near-misses,
-and decide whether the next implementation should add regime-aware routing,
-specialist discovery, or new trigger/filter families.
+**What:** after the first `--catalog pinescript_v1 --windows 2023` run
+finishes, inspect the best trigger/filter families and run a smaller
+cross-window diagnostic against 2022, 2024, and 2025H1.
 
-**Why now:** `results/` is gitignored and the owner works across several PCs,
-so the raw artifacts may not be present everywhere. The latest recorded local
-snapshot in `IN_PROGRESS.md` shows one completed 1.2M-trial WR55/10pd run with
-0 Stage 1 survivors: 31,241 candidates passed WR55 on 2022 but 0 passed WR55 on
-2023. Two 2023-first runs found rare 2023 WR55 candidates, but they failed 2022
-mostly due to too few signals.
+**Why now:** target-window 2023 search can reveal whether the new
+TradingView/PineScript-derived primitives produce useful event families, but a
+target-only candidate is not promotion-ready. The next decision is whether the
+new catalog reduces the old 2022/2023 conflict or simply creates different
+specialists.
 
-**Expected gain:** avoid wasting compute on more identical seed runs when the
-evidence points to a 2022/2023 regime conflict. The project should get either a
-clear regime-aware search spec or a concrete reason to expand the constructor.
+**Expected gain:** decide whether to continue expanding `pinescript_v1`,
+combine it with routing/composition, or discard weak families before spending a
+large all-window budget.
 
-**Acceptance:** an agent produces a short analysis of the 2023-first passing
-families and records the next implementation choice in docs. If code is needed,
-write or update the DSS spec before implementation.
+**Acceptance:** a short report identifies top trigger/filter families, their
+2023 signal counts and proxy scores, and whether the same families survive
+smaller checks on 2022/2024/2025H1.
 
-**Links:** `docs/tasks/IN_PROGRESS.md` section "Cross-machine DSS WR55/10pd
-search handoff"; `docs/discovery/direct_signal_search_v2.md`.
+**Links:** `docs/discovery/pinescript_catalog_v1.md`;
+`docs/tasks/IN_PROGRESS.md`.
+
+---
+
+## P2 — Expand PineScript catalog v2 with SMC/ICT primitives
+
+**What:** implement a second PineScript-derived slice from `smc.pine` and the
+remaining ICT/session ideas: BOS/CHoCH, fair-value gaps, equal highs/lows,
+premium/discount zones, and more explicit killzone pivot sweeps.
+
+**Why now:** the first slice intentionally avoided the large SMC surface to keep
+validation fast and readable. Expand only if `pinescript_v1` shows enough
+signal quality to justify adding more structure.
+
+**Expected gain:** add market-structure primitives that the legacy catalog does
+not express cleanly, without immediately exploding the search space.
+
+**Acceptance:** a `pinescript_v2` spec or superseding section documents inputs,
+feature columns, trigger/filter names, closed-candle rules, tests, and the
+first owner-run command.
+
+**Links:** `pinescript/smc.pine`;
+`docs/discovery/pinescript_catalog_v1.md`.
 
 ---
 

@@ -239,6 +239,10 @@ path. The command writes viability, proxy, full-score, archive, and candidate
 manifest artifacts directly under the chosen output directory. Removed v1 flags
 such as `--sampler`, `--resume`, `--max-filters`, and `--accept-min-score` are
 not part of the operator interface.
+By default DSS searches the legacy trigger/filter catalog. Use
+`--catalog pinescript_v1` to search only the PineScript-derived catalog built
+from the local TradingView idea set, or `--catalog all` for later comparison
+after the pure catalog has been inspected.
 The default backend is `--algorithm staged`. For non-duplicative exploratory
 runs, `--algorithm catcma_qd` enables the experimental CatCMA-inspired
 quality-diversity backend from ADR-0037. `--algorithm island_qd` enables the
@@ -261,6 +265,18 @@ uv run backtester search-signals \
     --n-trials 50000 \
     --n-jobs 4 \
     --output results/dss_sol_v2
+```
+
+```bash
+uv run backtester search-signals \
+    --catalog pinescript_v1 \
+    --data-dir data \
+    --symbol SOL-USDT-SWAP \
+    --windows 2023 \
+    --n-trials 50000 \
+    --n-jobs 4 \
+    --seed 73023 \
+    --output results/dss_sol_pinescript_v1_2023_seed73023
 ```
 
 ```bash
@@ -308,9 +324,13 @@ uv run backtester search-signals \
 ```
 
 Inspect `summary.md`, `archive.md`, `stage1_viability.csv`,
-`stage2_proxy.csv`, `stage3_full_scores.csv`, and `candidate_manifest.md`
-first. Exported `candidates/*.json` files are replayable via
-`compare-fixed` and `walk-forward`.
+`stage1_specialists.csv`, `stage2_proxy.csv`, `stage3_full_scores.csv`, and
+`candidate_manifest.md` first. `stage1_specialists.*` preserves
+target-window specialists for later routing analysis; those rows are not
+promotion-ready exports and are only produced when `--specialist-windows` is
+set. Leave `--specialist-windows` empty for the fast all-window early-reject
+path. Exported `candidates/*.json` files are replayable via `compare-fixed` and
+`walk-forward`.
 
 `railway.toml` currently starts the `island_qd` search worker, not the live
 alerting process. Revert its `deploy.startCommand` before using the Railway

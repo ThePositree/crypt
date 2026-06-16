@@ -59,6 +59,8 @@ from backtester.strategy_discovery.dss_v2 import (
     export_stage4_candidates,
     run_dss_v2_search,
 )
+from backtester.strategy_discovery.events import DiscoveryEvent
+from backtester.strategy_discovery.features import build_discovery_dataset
 from backtester.strategy_discovery.hyperband_qd import (
     _RungCandidate,
     _select_rung_promotions,
@@ -67,6 +69,10 @@ from backtester.strategy_discovery.hyperband_qd import (
 from backtester.strategy_discovery.island_qd import run_island_qd_search
 from backtester.strategy_discovery.parameterized_filters import parameterized_filter_catalog
 from backtester.strategy_discovery.parameterized_triggers import parameterized_trigger_catalog
+from backtester.strategy_discovery.pinescript_catalog import (
+    pinescript_filter_catalog,
+    pinescript_trigger_catalog,
+)
 from backtester.strategy_discovery.signal_composer import SignalComposer
 from backtester.strategy_discovery.smac_qd import (
     _CandidateEncoder,
@@ -210,6 +216,27 @@ class _FakeComposer:
 
     def build(self, _config: TrialConfig) -> Callable[[StrategyData], pd.DataFrame]:
         return lambda _data: self._signals
+
+
+class _WindowAwareFakeComposer:
+    def __init__(self, signals_by_primary_id: dict[int, pd.DataFrame]) -> None:
+        self._signals_by_primary_id = signals_by_primary_id
+
+    def build(self, _config: TrialConfig) -> Callable[[StrategyData], pd.DataFrame]:
+        return lambda data: self._signals_by_primary_id[id(data.primary)]
+
+
+class _CountingWindowAwareFakeComposer:
+    def __init__(self, signals_by_primary_id: dict[int, pd.DataFrame]) -> None:
+        self._signals_by_primary_id = signals_by_primary_id
+        self.calls = 0
+
+    def build(self, _config: TrialConfig) -> Callable[[StrategyData], pd.DataFrame]:
+        def _generate(data: StrategyData) -> pd.DataFrame:
+            self.calls += 1
+            return self._signals_by_primary_id[id(data.primary)]
+
+        return _generate
 
 
 # ---------------------------------------------------------------------------
@@ -441,6 +468,94 @@ def test_stage1_accepts_tp_first_barrier_signal(tmp_path: Path) -> None:
     assert metrics.tp_first_rate == 1.0
     assert metrics.sl_first_rate == 0.0
     assert metrics.median_bars_to_tp == 2.0
+
+
+def test_stage1_records_window_specialist_without_survivor_export(tmp_path: Path) -> None:
+    w1_primary = _make_barrier_primary()
+    w2_primary = _make_barrier_primary()
+    windows = [
+        DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10"),
+        DSSWindowSpec(label="w2", symbol="TEST-USDT-SWAP", start="2024-02-01", end="2024-02-10"),
+    ]
+    config = DSSConfig(
+        output=tmp_path,
+        windows=windows,
+        min_trades_per_window=1,
+        min_barrier_tp_first_rate=0.5,
+        specialist_windows=("w1",),
+    )
+    candidate = DSSCandidate(
+        candidate_id="specialist",
+        trigger_name="pt_nr4_breakout",
+        trigger_params={"lookback": 4},
+        filter_names=(),
+        filter_params={},
+        rrr=1.0,
+        risk_percent=1.0,
+        position_ttl_bars=6,
+        atr_sl_mult=1.0,
+        generation=0,
+    )
+    result = evaluate_stage1(
+        candidate,
+        {
+            "w1": _make_strategy_data(w1_primary),
+            "w2": _make_strategy_data(w2_primary),
+        },
+        config,
+        _WindowAwareFakeComposer(
+            {
+                id(w1_primary): _make_one_signal(w1_primary),
+                id(w2_primary): pd.DataFrame(),
+            }
+        ),
+    )
+
+    assert result.passed is False
+    assert result.candidate_class == "specialist:w1"
+    assert result.target_window == "w1"
+    assert result.rejection_reason == "specialist:w1"
+    assert result.behavior is not None
+    assert result.behavior.regime_strength == "w1"
+
+    _append_stage1(tmp_path, candidate, result, windows)
+
+    assert not (tmp_path / "stage1_survivors.jsonl").exists()
+    assert not (tmp_path / "stage1_rejections.csv").exists()
+    specialist_csv = (tmp_path / "stage1_specialists.csv").read_text(encoding="utf-8")
+    assert "candidate_class" in specialist_csv.splitlines()[0]
+    assert "specialist:w1" in specialist_csv
+
+
+def test_stage1_default_path_still_rejects_early(tmp_path: Path) -> None:
+    w1_primary = _make_barrier_primary()
+    w2_primary = _make_barrier_primary()
+    windows = [
+        DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10"),
+        DSSWindowSpec(label="w2", symbol="TEST-USDT-SWAP", start="2024-02-01", end="2024-02-10"),
+    ]
+    config = DSSConfig(output=tmp_path, windows=windows, min_trades_per_window=1)
+    composer = _CountingWindowAwareFakeComposer(
+        {
+            id(w1_primary): pd.DataFrame(),
+            id(w2_primary): _make_one_signal(w2_primary),
+        }
+    )
+
+    result = evaluate_stage1(
+        _make_candidate(),
+        {
+            "w1": _make_strategy_data(w1_primary),
+            "w2": _make_strategy_data(w2_primary),
+        },
+        config,
+        composer,
+    )
+
+    assert result.passed is False
+    assert result.rejection_reason == "too_few_signals:w1"
+    assert result.candidate_class == "rejected"
+    assert composer.calls == 1
 
 
 def test_stage1_counts_same_bar_tp_and_sl_as_sl_first(tmp_path: Path) -> None:
@@ -1230,10 +1345,102 @@ def test_all_filters_callable() -> None:
         assert callable(fn), f"Factory {name!r} did not return a callable"
 
 
+def test_pinescript_catalog_is_separate_from_legacy_catalog() -> None:
+    legacy_triggers = set(parameterized_trigger_catalog())
+    legacy_filters = set(parameterized_filter_catalog())
+    ps_triggers = set(pinescript_trigger_catalog())
+    ps_filters = set(pinescript_filter_catalog())
+
+    assert "pt_ps_supertrend_flip" in ps_triggers
+    assert "pt_ps_macd_signal_cross" in ps_triggers
+    assert "pf_ps_adx_di_aligned" in ps_filters
+    assert "pf_ps_killzone_session" in ps_filters
+    assert legacy_triggers.isdisjoint(ps_triggers)
+    assert legacy_filters.isdisjoint(ps_filters)
+
+
+def test_pinescript_macd_cross_trigger_emits_events() -> None:
+    primary = _make_primary(140)
+    primary["close"] = list(np.linspace(120, 90, 70)) + list(np.linspace(90, 130, 70))
+    primary["open"] = primary["close"].shift(1).fillna(primary["close"])
+    primary["high"] = primary[["open", "close"]].max(axis=1) + 1.0
+    primary["low"] = primary[["open", "close"]].min(axis=1) - 1.0
+    dataset = build_discovery_dataset(
+        data=_make_strategy_data(primary),
+        window_label="w1",
+        symbol="TEST-USDT-SWAP",
+    )
+
+    trigger = pinescript_trigger_catalog()["pt_ps_macd_signal_cross"]({"zero_filter": "off"})
+    events = trigger(dataset)
+
+    assert events
+    assert {event.trigger_name for event in events} == {"pt_ps_macd_signal_cross_off"}
+    assert {event.side for event in events} <= {"long", "short"}
+    assert "ps_macd_hist" in events[0].metadata
+
+
+def test_signal_composer_replays_pinescript_catalog_config() -> None:
+    primary = _make_primary(140)
+    primary["close"] = list(np.linspace(120, 90, 70)) + list(np.linspace(90, 130, 70))
+    primary["open"] = primary["close"].shift(1).fillna(primary["close"])
+    primary["high"] = primary[["open", "close"]].max(axis=1) + 1.0
+    primary["low"] = primary[["open", "close"]].min(axis=1) - 1.0
+    config = TrialConfig(
+        trigger_name="pt_ps_macd_signal_cross",
+        trigger_params={"zero_filter": "off"},
+        filter_names=(),
+        filter_params={},
+        rrr=2.0,
+        risk_percent=1.0,
+        position_ttl_bars=24,
+        atr_sl_mult=1.0,
+    )
+
+    composer = SignalComposer()
+    assert composer.validate_config(config) == []
+    signals = composer.build(config)(_make_strategy_data(primary))
+
+    assert not signals.empty
+    assert set(signals["side"]) <= {"long", "short"}
+
+
+def test_pinescript_adx_di_filter_uses_side_alignment() -> None:
+    primary = _make_primary(80)
+    dataset = build_discovery_dataset(
+        data=_make_strategy_data(primary),
+        window_label="w1",
+        symbol="TEST-USDT-SWAP",
+    )
+    event_time = primary.index[-1]
+    event = DiscoveryEvent(
+        event_time=event_time,
+        side="long",
+        trigger_name="test",
+        entry_reference_price=100.0,
+        window_label="w1",
+        symbol="TEST-USDT-SWAP",
+        metadata={"ps_adx": 25.0, "ps_di_plus": 30.0, "ps_di_minus": 10.0},
+    )
+    filter_fn = pinescript_filter_catalog()["pf_ps_adx_di_aligned"]({"min_adx": 20.0})
+
+    assert filter_fn(event, dataset).passed is True
+    assert filter_fn(
+        DiscoveryEvent(
+            event_time=event_time,
+            side="short",
+            trigger_name="test",
+            entry_reference_price=100.0,
+            window_label="w1",
+            symbol="TEST-USDT-SWAP",
+            metadata={"ps_adx": 25.0, "ps_di_plus": 30.0, "ps_di_minus": 10.0},
+        ),
+        dataset,
+    ).passed is False
+
+
 def test_trigger_produces_events_on_synthetic_data() -> None:
     """At least one trigger fires on synthetic noisy data."""
-    from backtester.strategy_discovery.features import build_discovery_dataset
-
     primary = _make_primary(400)
     data = _make_strategy_data(primary)
     dataset = build_discovery_dataset(data=data, window_label="test", symbol="TEST")

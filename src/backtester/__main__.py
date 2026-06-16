@@ -53,6 +53,10 @@ from backtester.strategy_discovery import (  # noqa: E402
     parameterized_filter_catalog,
     parameterized_trigger_catalog,
     parameterized_trigger_param_space,
+    pinescript_filter_catalog,
+    pinescript_filter_param_space,
+    pinescript_trigger_catalog,
+    pinescript_trigger_param_space,
     run_catcma_qd_search,
     run_dss_v2_search,
     run_hyperband_qd_search,
@@ -60,10 +64,13 @@ from backtester.strategy_discovery import (  # noqa: E402
     run_smac_qd_search,
     run_strategy_discovery,
 )
+from backtester.strategy_discovery.dss_config import ParamDef  # noqa: E402
 from backtester.strategy_discovery.filters import filter_catalog  # noqa: E402
 from backtester.strategy_discovery.parameterized_filters import (  # noqa: E402
+    FilterFactory,
     parameterized_filter_param_space,
 )
+from backtester.strategy_discovery.parameterized_triggers import TriggerFactory  # noqa: E402
 from backtester.strategy_discovery.triggers import trigger_catalog  # noqa: E402
 from backtester.trade_chart_report import (  # noqa: E402
     TradeChartReportConfig,
@@ -1788,8 +1795,16 @@ def trade_chart(
     show_default=True,
     help="Primary execution timeframe.",
 )
-@click.option("--n-trials", type=int, default=50_000, show_default=True, help="Total candidate-generation budget.")
-@click.option("--n-jobs", type=int, default=1, show_default=True, help="Parallel workers where safe.")
+@click.option(
+    "--n-trials",
+    type=int,
+    default=50_000,
+    show_default=True,
+    help="Total candidate-generation budget.",
+)
+@click.option(
+    "--n-jobs", type=int, default=1, show_default=True, help="Parallel workers where safe."
+)
 @click.option("--max-filters", default=None, hidden=True)
 @click.option("--sampler", default=None, hidden=True)
 @click.option("--resume", "resume_journal", default=None, hidden=True)
@@ -1809,10 +1824,19 @@ def trade_chart(
 @click.option("--accept-min-score", default=None, hidden=True)
 @click.option(
     "--algorithm",
-    type=click.Choice(["staged", "catcma_qd", "island_qd", "hyperband_qd", "smac_qd"], case_sensitive=False),
+    type=click.Choice(
+        ["staged", "catcma_qd", "island_qd", "hyperband_qd", "smac_qd"], case_sensitive=False
+    ),
     default="staged",
     show_default=True,
     help="DSS backend: staged, CatCMA-QD, Island-QD, Hyperband-QD, or SMAC-QD.",
+)
+@click.option(
+    "--catalog",
+    type=click.Choice(["legacy", "pinescript_v1", "all"], case_sensitive=False),
+    default="legacy",
+    show_default=True,
+    help="Trigger/filter catalog to search.",
 )
 @click.option(
     "--seed",
@@ -1837,6 +1861,15 @@ def trade_chart(
 )
 @click.option("--risk-base-period", default="monthly", show_default=True)
 @click.option("--max-positions", type=int, default=1, show_default=True)
+@click.option(
+    "--specialist-windows",
+    default="",
+    show_default=True,
+    help=(
+        "Comma-separated window labels to preserve as specialist diagnostics. "
+        "Empty keeps the fast all-window early-reject path."
+    ),
+)
 def search_signals(
     data_dir: str,
     symbols: tuple[str, ...],
@@ -1851,11 +1884,13 @@ def search_signals(
     top_n: int,
     accept_min_score: str | None,
     algorithm: str,
+    catalog: str,
     seed: int,
     min_trades: int,
     capital: float,
     risk_base_period: str,
     max_positions: int,
+    specialist_windows: str,
 ) -> None:
     """Direct Signal Search v2: staged quality-diversity strategy discovery.
 
@@ -1899,6 +1934,17 @@ def search_signals(
 
         if not dss_windows:
             raise click.ClickException(f"No windows parsed from --windows {windows_spec!r}")
+        specialist_window_labels = tuple(
+            label.strip() for label in specialist_windows.split(",") if label.strip()
+        )
+        unknown_specialist_windows = sorted(
+            set(specialist_window_labels) - {window.label for window in dss_windows}
+        )
+        if unknown_specialist_windows:
+            raise click.ClickException(
+                "--specialist-windows contains labels not present in --windows: "
+                + ", ".join(unknown_specialist_windows)
+            )
 
         if output_dir is None:
             from datetime import UTC, datetime
@@ -1935,10 +1981,7 @@ def search_signals(
                     metadata={"symbol": symbol},
                 )
 
-        t_catalog = parameterized_trigger_catalog()
-        f_catalog = parameterized_filter_catalog()
-        t_param_space = parameterized_trigger_param_space()
-        f_param_space = parameterized_filter_param_space()
+        t_catalog, f_catalog, t_param_space, f_param_space = _dss_catalogs(catalog.lower())
 
         search_space = DSSSearchSpace(
             trigger_names=tuple(sorted(t_catalog.keys())),
@@ -1959,6 +2002,8 @@ def search_signals(
             initial_capital=capital,
             max_positions=max_positions,
             risk_base_period=risk_base_period,
+            specialist_windows=specialist_window_labels,
+            catalog=cast(Literal["legacy", "pinescript_v1", "all"], catalog.lower()),
             algorithm=cast(
                 Literal["staged", "catcma_qd", "island_qd", "hyperband_qd", "smac_qd"],
                 algorithm.lower(),
@@ -1993,6 +2038,36 @@ def search_signals(
                 raise click.ClickException(str(exc)) from exc
     finally:
         logging.disable(previous_disable)
+
+
+def _dss_catalogs(
+    catalog: str,
+) -> tuple[
+    dict[str, TriggerFactory],
+    dict[str, FilterFactory],
+    dict[str, dict[str, ParamDef]],
+    dict[str, dict[str, ParamDef]],
+]:
+    legacy_triggers = parameterized_trigger_catalog()
+    legacy_filters = parameterized_filter_catalog()
+    legacy_trigger_params = parameterized_trigger_param_space()
+    legacy_filter_params = parameterized_filter_param_space()
+    ps_triggers = pinescript_trigger_catalog()
+    ps_filters = pinescript_filter_catalog()
+    ps_trigger_params = pinescript_trigger_param_space()
+    ps_filter_params = pinescript_filter_param_space()
+    if catalog == "legacy":
+        return legacy_triggers, legacy_filters, legacy_trigger_params, legacy_filter_params
+    if catalog == "pinescript_v1":
+        return ps_triggers, ps_filters, ps_trigger_params, ps_filter_params
+    if catalog == "all":
+        return (
+            {**legacy_triggers, **ps_triggers},
+            {**legacy_filters, **ps_filters},
+            {**legacy_trigger_params, **ps_trigger_params},
+            {**legacy_filter_params, **ps_filter_params},
+        )
+    raise click.ClickException(f"Unknown DSS catalog: {catalog}")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -183,7 +184,174 @@ def _build_primary_features(df: pd.DataFrame) -> pd.DataFrame:
     ema26 = df["close"].ewm(span=26, adjust=False).mean().shift(1)
     features["macd_proxy"] = ema12 - ema26
     features["macd_signal_proxy"] = features["macd_proxy"].ewm(span=9, adjust=False).mean()
+    _add_pinescript_features(df, features, true_range)
     return features
+
+
+def _add_pinescript_features(
+    df: pd.DataFrame, features: pd.DataFrame, true_range: pd.Series
+) -> None:
+    close = df["close"]
+    high = df["high"]
+    low = df["low"]
+    atr10 = true_range.rolling(10, min_periods=10).mean()
+    hl2 = (high + low) / 2
+    upper_basic = hl2 - 3.0 * atr10
+    lower_basic = hl2 + 3.0 * atr10
+    upper_band = _supertrend_upper_band(upper_basic, close)
+    lower_band = _supertrend_lower_band(lower_basic, close)
+    supertrend_dir = _supertrend_direction(close, upper_band, lower_band)
+    features["ps_supertrend_upper"] = upper_band
+    features["ps_supertrend_lower"] = lower_band
+    features["ps_supertrend_dir"] = supertrend_dir
+
+    ut_trail = _atr_trailing_stop(close, atr10)
+    features["ps_ut_trail"] = ut_trail
+
+    bb_mid = close.rolling(20, min_periods=20).mean()
+    bb_std = close.rolling(20, min_periods=20).std()
+    bb_upper = bb_mid + 2.0 * bb_std
+    bb_lower = bb_mid - 2.0 * bb_std
+    kc_mid = close.rolling(20, min_periods=20).mean()
+    range_ma = true_range.rolling(20, min_periods=20).mean()
+    kc_upper = kc_mid + 1.5 * range_ma
+    kc_lower = kc_mid - 1.5 * range_ma
+    squeeze_on = (bb_lower > kc_lower) & (bb_upper < kc_upper)
+    squeeze_off = (bb_lower < kc_lower) & (bb_upper > kc_upper)
+    squeeze_basis = (high.rolling(20, min_periods=20).max() + low.rolling(20, min_periods=20).min()) / 2
+    squeeze_source = close - ((squeeze_basis + bb_mid) / 2)
+    squeeze_momentum = _rolling_linreg_last(squeeze_source, 20)
+    features["ps_squeeze_on"] = squeeze_on
+    features["ps_squeeze_off"] = squeeze_off
+    features["ps_squeeze_release"] = squeeze_off & squeeze_on.shift(1).fillna(False)
+    features["ps_squeeze_momentum"] = squeeze_momentum
+    features["ps_squeeze_momentum_slope"] = squeeze_momentum - squeeze_momentum.shift(1)
+
+    ap = (high + low + close) / 3
+    esa = ap.ewm(span=10, adjust=False).mean()
+    dev = (ap - esa).abs().ewm(span=10, adjust=False).mean()
+    ci = (ap - esa) / (0.015 * dev.replace(0, np.nan))
+    wt1 = ci.ewm(span=21, adjust=False).mean()
+    wt2 = wt1.rolling(4, min_periods=4).mean()
+    features["ps_wt1"] = wt1
+    features["ps_wt2"] = wt2
+
+    ema12_now = close.ewm(span=12, adjust=False).mean()
+    ema26_now = close.ewm(span=26, adjust=False).mean()
+    macd = ema12_now - ema26_now
+    macd_signal = macd.rolling(9, min_periods=9).mean()
+    macd_hist = macd - macd_signal
+    features["ps_macd"] = macd
+    features["ps_macd_signal"] = macd_signal
+    features["ps_macd_hist"] = macd_hist
+    features["ps_macd_hist_slope"] = macd_hist - macd_hist.shift(1)
+
+    up_move = high.diff()
+    down_move = -low.diff()
+    dm_plus = up_move.where((up_move > down_move) & (up_move > 0), 0.0)
+    dm_minus = down_move.where((down_move > up_move) & (down_move > 0), 0.0)
+    smoothed_tr = true_range.ewm(alpha=1 / 14, adjust=False).mean()
+    di_plus = 100 * dm_plus.ewm(alpha=1 / 14, adjust=False).mean() / smoothed_tr.replace(0, np.nan)
+    di_minus = 100 * dm_minus.ewm(alpha=1 / 14, adjust=False).mean() / smoothed_tr.replace(0, np.nan)
+    dx = ((di_plus - di_minus).abs() / (di_plus + di_minus).replace(0, np.nan)) * 100
+    features["ps_di_plus"] = di_plus
+    features["ps_di_minus"] = di_minus
+    features["ps_adx"] = dx.rolling(14, min_periods=14).mean()
+
+    vixfix = ((close.rolling(22, min_periods=22).max() - low) / close.rolling(22, min_periods=22).max()) * 100
+    vix_mid = vixfix.rolling(20, min_periods=20).mean()
+    vix_upper = vix_mid + 2.0 * vixfix.rolling(20, min_periods=20).std()
+    vix_range_high = vixfix.rolling(50, min_periods=20).max() * 0.85
+    features["ps_vixfix"] = vixfix
+    features["ps_vixfix_spike"] = (vixfix >= vix_upper) | (vixfix >= vix_range_high)
+
+    features["ps_pivot_high"] = high.rolling(31, center=True, min_periods=31).max().shift(15)
+    features["ps_pivot_low"] = low.rolling(31, center=True, min_periods=31).min().shift(15)
+    vol_ema5 = df["volume"].ewm(span=5, adjust=False).mean()
+    vol_ema10 = df["volume"].ewm(span=10, adjust=False).mean()
+    features["ps_volume_osc"] = 100 * (vol_ema5 - vol_ema10) / vol_ema10.replace(0, np.nan)
+
+    pivot_high_fast = high.rolling(15, min_periods=15).max().shift(1)
+    pivot_low_fast = low.rolling(15, min_periods=15).min().shift(1)
+    features["ps_trendline_upper"] = pivot_high_fast - (features["atr"] / 14.0)
+    features["ps_trendline_lower"] = pivot_low_fast + (features["atr"] / 14.0)
+    features["ps_trendline_upper_slope"] = features["ps_trendline_upper"].diff()
+    features["ps_trendline_lower_slope"] = features["ps_trendline_lower"].diff()
+    features["ps_killzone"] = pd.Series(df.index.hour, index=df.index).map(_killzone_label)
+
+
+def _supertrend_upper_band(basic: pd.Series, close: pd.Series) -> pd.Series:
+    values = basic.copy()
+    for idx in range(1, len(values)):
+        prev = values.iat[idx - 1]
+        if pd.notna(prev) and close.iat[idx - 1] > prev:
+            values.iat[idx] = max(values.iat[idx], prev)
+    return values
+
+
+def _supertrend_lower_band(basic: pd.Series, close: pd.Series) -> pd.Series:
+    values = basic.copy()
+    for idx in range(1, len(values)):
+        prev = values.iat[idx - 1]
+        if pd.notna(prev) and close.iat[idx - 1] < prev:
+            values.iat[idx] = min(values.iat[idx], prev)
+    return values
+
+
+def _supertrend_direction(close: pd.Series, upper: pd.Series, lower: pd.Series) -> pd.Series:
+    direction = pd.Series(1, index=close.index, dtype="int64")
+    for idx in range(1, len(close)):
+        prev_dir = direction.iat[idx - 1]
+        if prev_dir == -1 and pd.notna(lower.iat[idx - 1]) and close.iat[idx] > lower.iat[idx - 1]:
+            direction.iat[idx] = 1
+        elif prev_dir == 1 and pd.notna(upper.iat[idx - 1]) and close.iat[idx] < upper.iat[idx - 1]:
+            direction.iat[idx] = -1
+        else:
+            direction.iat[idx] = prev_dir
+    return direction
+
+
+def _atr_trailing_stop(close: pd.Series, atr: pd.Series, multiplier: float = 1.0) -> pd.Series:
+    trail = pd.Series(index=close.index, dtype="float64")
+    for idx in range(len(close)):
+        loss = multiplier * atr.iat[idx]
+        if idx == 0 or pd.isna(loss):
+            trail.iat[idx] = close.iat[idx]
+            continue
+        prev = trail.iat[idx - 1]
+        if close.iat[idx] > prev and close.iat[idx - 1] > prev:
+            trail.iat[idx] = max(prev, close.iat[idx] - loss)
+        elif close.iat[idx] < prev and close.iat[idx - 1] < prev:
+            trail.iat[idx] = min(prev, close.iat[idx] + loss)
+        elif close.iat[idx] > prev:
+            trail.iat[idx] = close.iat[idx] - loss
+        else:
+            trail.iat[idx] = close.iat[idx] + loss
+    return trail
+
+
+def _rolling_linreg_last(series: pd.Series, window: int) -> pd.Series:
+    x = np.arange(window, dtype="float64")
+
+    def _fit(values: Any) -> float:
+        if np.isnan(values).any():
+            return np.nan
+        slope, intercept = np.polyfit(x, values, 1)
+        return float(intercept + slope * (window - 1))
+
+    return series.rolling(window, min_periods=window).apply(_fit, raw=True)
+
+
+def _killzone_label(hour: int) -> str:
+    if 0 <= hour < 4:
+        return "asia"
+    if 7 <= hour < 10:
+        return "london"
+    if 13 <= hour < 16:
+        return "nyam"
+    if 17 <= hour < 20:
+        return "nypm"
+    return "other"
 
 
 def _consecutive_true_count(mask: pd.Series) -> pd.Series:

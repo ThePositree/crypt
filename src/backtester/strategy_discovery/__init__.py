@@ -25,6 +25,12 @@ from backtester.strategy_discovery.parameterized_triggers import (
     parameterized_trigger_catalog,
     parameterized_trigger_param_space,
 )
+from backtester.strategy_discovery.pinescript_catalog import (
+    pinescript_filter_catalog,
+    pinescript_filter_param_space,
+    pinescript_trigger_catalog,
+    pinescript_trigger_param_space,
+)
 from backtester.strategy_discovery.search import (
     DiscoveryConfig,
     DiscoveryWindow,
@@ -51,6 +57,10 @@ __all__ = [
     "parameterized_filter_catalog",
     "parameterized_trigger_catalog",
     "parameterized_trigger_param_space",
+    "pinescript_filter_catalog",
+    "pinescript_filter_param_space",
+    "pinescript_trigger_catalog",
+    "pinescript_trigger_param_space",
     "run_catcma_qd_search",
     "run_dss_v2_search",
     "run_hyperband_qd_search",

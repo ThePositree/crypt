@@ -6,6 +6,56 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-16 — PineScript-derived DSS catalog v1
+
+- Added a separate `pinescript_v1` DSS trigger/filter catalog derived from the
+  local PineScript idea set under `pinescript/`.
+- Added closed-candle discovery features for Supertrend, UT Bot-style ATR
+  trail, squeeze release, WaveTrend, MACD, ADX/DI, Williams Vix Fix,
+  pivot/volume breaks, simple trendline breaks, and killzone sessions.
+- Added `backtester search-signals --catalog legacy|pinescript_v1|all`; default
+  remains `legacy`, while the active next owner run uses only
+  `--catalog pinescript_v1`.
+- Extended `SignalComposer` so PineScript-derived candidate JSONs replay
+  through the normal DSS strategy/backtest path.
+- Persisted the selected catalog in DSS state and documented the new catalog
+  contract in `docs/discovery/pinescript_catalog_v1.md`.
+- Updated README and task state so the next validation run searches the new
+  PineScript catalog instead of repeating the legacy space.
+- Validation: `tests/backtester/test_dss.py` 56/56 passed; ruff clean and mypy
+  clean on touched DSS feature/catalog/CLI/test files.
+- Files touched: `src/backtester/strategy_discovery/`, `src/backtester/__main__.py`,
+  `tests/backtester/`, `docs/discovery/`, `docs/tasks/`, `README.md`,
+  `CHANGELOG.md`.
+
+---
+
+## 2026-06-16 — DSS WR55/10pd tail analysis
+
+- Analyzed owner-supplied `dss_wr55_10pd_searches_20260616_142549_tar.gz`
+  without committing the raw `results/` artifacts.
+- Confirmed the WR55/10pd failure is a 2022/2023 regime conflict: 31,241
+  candidates passed 2022 in the completed 1.2M-trial run, none passed 2023;
+  38 candidates passed 2023 in the 2023-first snapshots, all failed 2022 due to
+  too few signals.
+- Added `docs/discovery/dss_wr55_10pd_tail_analysis.md` and updated the DSS v2
+  spec with `balanced` vs `specialist:<window>` candidate classes.
+- Implemented DSS Stage 1 specialist artifacts:
+  `candidate_class`, `target_window`, `stage1_specialists.csv`, and
+  `stage1_specialists.jsonl`; only balanced candidates remain eligible for
+  Stage 2/export.
+- Restored the fast default Stage 1 early-reject path; specialist diagnostics
+  require explicit `--specialist-windows` so normal all-window searches do not
+  accidentally multiply runtime.
+- Updated `summary.md` output to include Stage 1 specialist counts and updated
+  task state so the next step is owner-run real-data validation.
+- Validation: `tests/backtester/test_dss.py` 51/51 passed; ruff clean on
+  touched Python files; mypy clean on touched DSS module/test.
+- Files touched: `src/backtester/strategy_discovery/`, `tests/backtester/`,
+  `docs/discovery/`, `docs/tasks/`, `README.md`, `CHANGELOG.md`.
+
+---
+
 ## 2026-06-16 — Cross-machine DSS WR55 search handoff
 
 - Added a markdown handoff for gitignored `results/` artifacts so agents on

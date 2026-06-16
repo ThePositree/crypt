@@ -4,6 +4,95 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-16 — PineScript-derived DSS catalog v1
+
+**What:** added a separate `pinescript_v1` DSS trigger/filter catalog derived
+from the PineScript files supplied under `pinescript/`.
+
+**Why now:** the legacy DSS catalog has been heavily explored and the latest
+WR55/10pd analysis showed it keeps collapsing into regime conflict rather than
+finding robust 2022/2023 intersections. The owner asked to stop walking the old
+space and try a fresh set of TradingView/PineScript-derived primitives.
+
+**Expected gain:** give DSS a materially different vocabulary: Supertrend, UT
+Bot-style ATR trail, squeeze release, WaveTrend, MACD phase, ADX/DI, Williams
+Vix Fix, pivot/volume breaks, simple trendline breaks, and killzone/session
+filters.
+
+**Result:** `backtester search-signals` now accepts
+`--catalog legacy|pinescript_v1|all`; default remains `legacy` for backwards
+compatibility, while the active handoff instructs the owner to run
+`--catalog pinescript_v1` only. New closed-candle feature columns are computed
+in the discovery dataset, the catalog is exported from
+`backtester.strategy_discovery`, `SignalComposer` can replay PineScript
+candidate JSONs, and `dss_state.json` records the selected catalog.
+
+**Acceptance:** `tests/backtester/test_dss.py` 56/56 passed; ruff clean and
+mypy clean on touched DSS feature/catalog/CLI/test files.
+
+**Links:** `docs/discovery/pinescript_catalog_v1.md`,
+`src/backtester/strategy_discovery/pinescript_catalog.py`.
+
+---
+
+## 2026-06-16 — DSS regime-specialist Stage 1 artifacts
+
+**What:** implemented DSS Stage 1 classification for `balanced` vs
+`specialist:<window>` candidates.
+
+**Why now:** WR55/10pd tail analysis showed the all-window Stage 1 gate was
+discarding sparse regime-specific edge before Stage 2. The project needed the
+artifact surface to preserve those specialists without pretending they are
+mandate-ready.
+
+**Expected gain:** future DSS runs can separate all-window robust candidates
+from target-window specialists and decide later whether a routing/composition
+layer is worth building.
+
+**Result:** `stage1_viability.csv` now includes `candidate_class` and
+`target_window`; specialists are written to `stage1_specialists.csv` and
+`stage1_specialists.jsonl` only when explicit specialist capture is requested;
+only balanced candidates remain `passed=True` and continue toward Stage
+2/export. `summary.md` reports Stage 1 specialist count. The default all-window
+path keeps the old early-reject behavior so owner-scale runs stay practical.
+
+**Acceptance:** `tests/backtester/test_dss.py` 52/52 passed; ruff clean on
+touched files; mypy clean on touched DSS CLI/config/module/test files.
+
+**Links:** `src/backtester/strategy_discovery/dss_v2.py`,
+`docs/discovery/direct_signal_search_v2.md` §7.1.
+
+---
+
+## 2026-06-16 — DSS WR55/10pd tail analysis
+
+**What:** analyzed the owner-supplied
+`dss_wr55_10pd_searches_20260616_142549_tar.gz` archive containing five
+WR55/10pd DSS Stage 1 searches.
+
+**Why now:** `results/` artifacts are gitignored and the previous handoff only
+had a markdown snapshot. The project needed a concrete decision before running
+more identical DSS seeds.
+
+**Expected gain:** identify whether the current failure was an implementation
+bug, a compute-budget issue, or a real 2022/2023 regime conflict.
+
+**Result:** documented that the completed 1.2M-trial 2022-first run produced
+31,241 2022-pass candidates and none that also passed 2023; the 2023-first
+snapshots produced 38 2023-pass candidates, all rejected by
+`too_few_signals:2022`. The next implementation choice is a DSS
+regime-specialist Stage 1/archive path, not a sixth optimizer backend.
+
+**Acceptance:** analysis recorded in
+`docs/discovery/dss_wr55_10pd_tail_analysis.md`; DSS v2 spec updated with
+`balanced` vs `specialist:<window>` candidate classes; backlog now points at
+the implementation task.
+
+**Links:** `docs/discovery/dss_wr55_10pd_tail_analysis.md`,
+`docs/discovery/direct_signal_search_v2.md`.
+
+---
+
 ## 2026-06-12 — DSS Stage 1 path-aware barrier label
 
 **What:** added a cheap path-aware TP/SL/TTL barrier label to DSS Stage 1.

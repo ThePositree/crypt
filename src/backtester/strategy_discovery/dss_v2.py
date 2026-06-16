@@ -70,6 +70,8 @@ class Stage1Result:
     median_stop_atr: dict[str, float]
     barrier_metrics: dict[str, BarrierMetrics]
     behavior: DSSBehavior | None
+    candidate_class: str = "rejected"
+    target_window: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,6 +215,8 @@ def evaluate_stage1(
     median_stop_atr: dict[str, float] = {}
     barrier_metrics: dict[str, BarrierMetrics] = {}
     total_signals = 0
+    first_rejection_reason = ""
+    passing_windows: list[str] = []
 
     for window in config.windows:
         data = window_data[window.label]
@@ -224,27 +228,33 @@ def evaluate_stage1(
         signal_counts[window.label] = count
         total_signals += count
         if count < config.min_trades_per_window:
-            return Stage1Result(
-                candidate_id=candidate.candidate_id,
-                passed=False,
-                rejection_reason=f"too_few_signals:{window.label}",
-                signal_counts=signal_counts,
-                long_ratios=long_ratios,
-                median_stop_atr=median_stop_atr,
-                barrier_metrics=barrier_metrics,
-                behavior=None,
-            )
+            first_rejection_reason = first_rejection_reason or f"too_few_signals:{window.label}"
+            if not config.specialist_windows:
+                return Stage1Result(
+                    candidate_id=candidate.candidate_id,
+                    passed=False,
+                    rejection_reason=f"too_few_signals:{window.label}",
+                    signal_counts=signal_counts,
+                    long_ratios=long_ratios,
+                    median_stop_atr=median_stop_atr,
+                    barrier_metrics=barrier_metrics,
+                    behavior=None,
+                )
+            continue
         if count > _max_signals_for_window(window, data):
-            return Stage1Result(
-                candidate_id=candidate.candidate_id,
-                passed=False,
-                rejection_reason=f"overtrading:{window.label}",
-                signal_counts=signal_counts,
-                long_ratios=long_ratios,
-                median_stop_atr=median_stop_atr,
-                barrier_metrics=barrier_metrics,
-                behavior=None,
-            )
+            first_rejection_reason = first_rejection_reason or f"overtrading:{window.label}"
+            if not config.specialist_windows:
+                return Stage1Result(
+                    candidate_id=candidate.candidate_id,
+                    passed=False,
+                    rejection_reason=f"overtrading:{window.label}",
+                    signal_counts=signal_counts,
+                    long_ratios=long_ratios,
+                    median_stop_atr=median_stop_atr,
+                    barrier_metrics=barrier_metrics,
+                    behavior=None,
+                )
+            continue
         long_ratios[window.label] = _long_ratio(signals)
         median_stop_atr[window.label] = _median_stop_atr(signals, data.primary)
         metrics = _barrier_metrics(
@@ -255,42 +265,112 @@ def evaluate_stage1(
         )
         barrier_metrics[window.label] = metrics
         if metrics.tp_first_rate < config.min_barrier_tp_first_rate:
-            return Stage1Result(
-                candidate_id=candidate.candidate_id,
-                passed=False,
-                rejection_reason=f"weak_barrier_edge:{window.label}",
-                signal_counts=signal_counts,
-                long_ratios=long_ratios,
-                median_stop_atr=median_stop_atr,
-                barrier_metrics=barrier_metrics,
-                behavior=None,
-            )
+            first_rejection_reason = first_rejection_reason or f"weak_barrier_edge:{window.label}"
+            if not config.specialist_windows:
+                return Stage1Result(
+                    candidate_id=candidate.candidate_id,
+                    passed=False,
+                    rejection_reason=f"weak_barrier_edge:{window.label}",
+                    signal_counts=signal_counts,
+                    long_ratios=long_ratios,
+                    median_stop_atr=median_stop_atr,
+                    barrier_metrics=barrier_metrics,
+                    behavior=None,
+                )
+            continue
         if metrics.win_rate < config.min_barrier_win_rate or metrics.tp_first <= metrics.sl_first:
-            return Stage1Result(
-                candidate_id=candidate.candidate_id,
-                passed=False,
-                rejection_reason=f"weak_barrier_win_rate:{window.label}",
-                signal_counts=signal_counts,
-                long_ratios=long_ratios,
-                median_stop_atr=median_stop_atr,
-                barrier_metrics=barrier_metrics,
-                behavior=None,
+            first_rejection_reason = (
+                first_rejection_reason or f"weak_barrier_win_rate:{window.label}"
             )
+            if not config.specialist_windows:
+                return Stage1Result(
+                    candidate_id=candidate.candidate_id,
+                    passed=False,
+                    rejection_reason=f"weak_barrier_win_rate:{window.label}",
+                    signal_counts=signal_counts,
+                    long_ratios=long_ratios,
+                    median_stop_atr=median_stop_atr,
+                    barrier_metrics=barrier_metrics,
+                    behavior=None,
+                )
+            continue
+        passing_windows.append(window.label)
 
-    behavior = _behavior_from_metrics(
-        candidate,
-        total_signals=total_signals,
-        long_ratio=sum(long_ratios.values()) / max(len(long_ratios), 1),
-    )
+    if len(passing_windows) == len(config.windows):
+        behavior = _balanced_behavior(
+            candidate, total_signals=total_signals, long_ratios=long_ratios
+        )
+        return Stage1Result(
+            candidate_id=candidate.candidate_id,
+            passed=True,
+            rejection_reason="",
+            signal_counts=signal_counts,
+            long_ratios=long_ratios,
+            median_stop_atr=median_stop_atr,
+            barrier_metrics=barrier_metrics,
+            behavior=behavior,
+            candidate_class="balanced",
+        )
+
+    specialist_passing_windows = [
+        label for label in passing_windows if label in set(config.specialist_windows)
+    ]
+    if specialist_passing_windows:
+        target_window = _best_specialist_window(specialist_passing_windows, barrier_metrics)
+        behavior = _behavior_from_metrics(
+            candidate,
+            total_signals=total_signals,
+            long_ratio=sum(long_ratios.values()) / max(len(long_ratios), 1),
+            regime_strength=target_window,
+        )
+        return Stage1Result(
+            candidate_id=candidate.candidate_id,
+            passed=False,
+            rejection_reason=f"specialist:{target_window}",
+            signal_counts=signal_counts,
+            long_ratios=long_ratios,
+            median_stop_atr=median_stop_atr,
+            barrier_metrics=barrier_metrics,
+            behavior=behavior,
+            candidate_class=f"specialist:{target_window}",
+            target_window=target_window,
+        )
+
     return Stage1Result(
         candidate_id=candidate.candidate_id,
-        passed=True,
-        rejection_reason="",
+        passed=False,
+        rejection_reason=first_rejection_reason or "no_viable_window",
         signal_counts=signal_counts,
         long_ratios=long_ratios,
         median_stop_atr=median_stop_atr,
         barrier_metrics=barrier_metrics,
-        behavior=behavior,
+        behavior=None,
+    )
+
+
+def _best_specialist_window(
+    passing_windows: list[str], barrier_metrics: dict[str, BarrierMetrics]
+) -> str:
+    return max(
+        passing_windows,
+        key=lambda label: (
+            barrier_metrics[label].win_rate,
+            barrier_metrics[label].tp_first_rate,
+            barrier_metrics[label].total,
+        ),
+    )
+
+
+def _balanced_behavior(
+    candidate: DSSCandidate,
+    *,
+    total_signals: int,
+    long_ratios: dict[str, float],
+) -> DSSBehavior:
+    return _behavior_from_metrics(
+        candidate,
+        total_signals=total_signals,
+        long_ratio=sum(long_ratios.values()) / max(len(long_ratios), 1),
     )
 
 
@@ -509,7 +589,11 @@ def _stage1_reject(candidate: DSSCandidate, reason: str) -> Stage1Result:
 
 
 def _behavior_from_metrics(
-    candidate: DSSCandidate, *, total_signals: int, long_ratio: float
+    candidate: DSSCandidate,
+    *,
+    total_signals: int,
+    long_ratio: float,
+    regime_strength: str = "balanced",
 ) -> DSSBehavior:
     if long_ratio >= 0.95:
         side = "long_only"
@@ -549,7 +633,7 @@ def _behavior_from_metrics(
         trade_count_bucket=trade_bucket,
         hold_time_bucket=hold,
         risk_geometry=risk,
-        regime_strength="balanced",
+        regime_strength=regime_strength,
         filter_depth=filter_depth,
     )
 
@@ -770,6 +854,7 @@ def _write_state(output: Path, config: DSSConfig) -> None:
     payload = {
         "version": _STATE_VERSION,
         "n_trials": config.n_trials,
+        "catalog": config.catalog,
         "windows": [
             {
                 "label": window.label,
@@ -779,6 +864,7 @@ def _write_state(output: Path, config: DSSConfig) -> None:
             }
             for window in config.windows
         ],
+        "specialist_windows": list(config.specialist_windows),
     }
     (output / "state.json").write_text(
         json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
@@ -818,6 +904,8 @@ def _append_stage1(
         "trigger_name": candidate.trigger_name,
         "filter_names": "+".join(candidate.filter_names),
         "passed": result.passed,
+        "candidate_class": result.candidate_class,
+        "target_window": result.target_window,
         "rejection_reason": result.rejection_reason,
     }
     for window in windows:
@@ -840,6 +928,12 @@ def _append_stage1(
     _append_csv_row(output / "stage1_viability.csv", row)
     if result.passed:
         _append_jsonl(output / "stage1_survivors.jsonl", candidate.to_dict())
+    elif result.candidate_class.startswith("specialist:"):
+        payload = candidate.to_dict()
+        payload["candidate_class"] = result.candidate_class
+        payload["target_window"] = result.target_window
+        _append_jsonl(output / "stage1_specialists.jsonl", payload)
+        _append_csv_row(output / "stage1_specialists.csv", row)
     else:
         _append_csv_row(output / "stage1_rejections.csv", row)
 
@@ -947,7 +1041,10 @@ def _write_summary(
     stage3_evaluations: int,
     exported: list[Path],
     archive: DSSArchive,
+    stage1_specialists: int | None = None,
 ) -> None:
+    if stage1_specialists is None:
+        stage1_specialists = _count_csv_rows(output / "stage1_specialists.csv")
     best = archive.elites()[0] if archive.elites() else None
     verdict = "candidates exported" if exported else "no candidate"
     reason = "archive has replay JSONs" if exported else "no archive elite reached export"
@@ -958,6 +1055,7 @@ def _write_summary(
         f"Reason: {reason}",
         f"Generated candidates: **{generated}**",
         f"Stage 1 survivors: **{stage1_survivors}**",
+        f"Stage 1 specialists: **{stage1_specialists}**",
         f"Stage 2 survivors: **{stage2_survivors}**",
         f"Stage 3 full evaluations: **{stage3_evaluations}**",
         f"Archive occupied cells: **{archive.occupied_cells}**",
@@ -973,6 +1071,7 @@ def _write_summary(
         "| --- | ---: |",
         f"| Generated | {generated} |",
         f"| Stage 1 survivors | {stage1_survivors} |",
+        f"| Stage 1 specialists | {stage1_specialists} |",
         f"| Stage 2 survivors | {stage2_survivors} |",
         f"| Stage 3 full evaluations | {stage3_evaluations} |",
         f"| Archive cells | {archive.occupied_cells} |",
@@ -984,6 +1083,13 @@ def _write_summary(
     if exported:
         lines.extend(["```bash", _validation_command(config, exported[0]), "```", ""])
     (output / "summary.md").write_text("\n".join(lines), encoding="utf-8")
+
+
+def _count_csv_rows(path: Path) -> int:
+    if not path.exists() or path.stat().st_size == 0:
+        return 0
+    with path.open(encoding="utf-8", newline="") as fh:
+        return max(sum(1 for _ in fh) - 1, 0)
 
 
 def _validation_command(config: DSSConfig, candidate_path: Path) -> str:
