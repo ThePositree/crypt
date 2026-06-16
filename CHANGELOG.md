@@ -6,6 +6,23 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-16 — Cross-machine DSS WR55 search handoff
+
+- Added a markdown handoff for gitignored `results/` artifacts so agents on
+  other PCs can understand the WR55/10pd DSS search state without local CSVs.
+- Recorded the 2026-06-16 09:53 MSK snapshot: completed `seed60616` reached
+  1.2M trials with 0 Stage 1 survivors and 0 exported candidates; active
+  `seed60617`, `seed60618`, `2023first_seed60619`, and
+  `2023first_seed60620` were still running with 0 survivors.
+- Captured the main finding: the current constructor finds many 2022 WR55
+  specialists and rare 2023 WR55 specialists, but no robust 2022/2023
+  intersection so far.
+- Added a backlog item to analyze the 2023-first tail and design the next
+  regime-aware DSS search step before launching more identical seed runs.
+- Files touched: `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
 ## 2026-06-12 — DSS Stage 1 path-aware barrier label
 
 - Added Stage 1 barrier metrics for DSS candidates: `tp_first`, `sl_first`,

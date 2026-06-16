@@ -15,6 +15,34 @@ when finished.
 > max **10% intra-month DD**; auto-trading only after **promote** verdict.
 
 
+## P1 — Analyze WR55 2023-first tail and design regime-aware DSS search
+
+**What:** inspect the `2023first` DSS WR55/10pd tail and design the next search
+step for regime-conflicting SOL years. Focus on configurations that pass
+`barrier_win_rate >= 55%` on 2023, compare them with 2022-first near-misses,
+and decide whether the next implementation should add regime-aware routing,
+specialist discovery, or new trigger/filter families.
+
+**Why now:** `results/` is gitignored and the owner works across several PCs,
+so the raw artifacts may not be present everywhere. The latest recorded local
+snapshot in `IN_PROGRESS.md` shows one completed 1.2M-trial WR55/10pd run with
+0 Stage 1 survivors: 31,241 candidates passed WR55 on 2022 but 0 passed WR55 on
+2023. Two 2023-first runs found rare 2023 WR55 candidates, but they failed 2022
+mostly due to too few signals.
+
+**Expected gain:** avoid wasting compute on more identical seed runs when the
+evidence points to a 2022/2023 regime conflict. The project should get either a
+clear regime-aware search spec or a concrete reason to expand the constructor.
+
+**Acceptance:** an agent produces a short analysis of the 2023-first passing
+families and records the next implementation choice in docs. If code is needed,
+write or update the DSS spec before implementation.
+
+**Links:** `docs/tasks/IN_PROGRESS.md` section "Cross-machine DSS WR55/10pd
+search handoff"; `docs/discovery/direct_signal_search_v2.md`.
+
+---
+
 ## P0 — Run first DSS v2 search on real SOL data (owner action)
 
 **What:** run `backtester search-signals` on SOL OHLCV data for
