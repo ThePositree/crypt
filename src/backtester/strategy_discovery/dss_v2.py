@@ -5,17 +5,13 @@ from __future__ import annotations
 import csv
 import json
 import logging
-import math
 import random
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol, cast
-
-import pandas as pd
+from typing import cast
 
 from backtester.data_contracts import StrategyData
-from backtester.exit_geometry import ExitGeometryConfig, resolve_exit_levels
 from backtester.strategy_discovery.dss_archive import DSSArchive, DSSArchiveElite, DSSScore
 from backtester.strategy_discovery.dss_config import (
     CategoricalParam,
@@ -34,45 +30,33 @@ from backtester.strategy_discovery.dss_objective import (
     compute_mandate_score,
     run_dss_backtest,
 )
+from backtester.strategy_discovery.dss_stage1 import (
+    BarrierMetrics,
+    Stage1Result,
+    evaluate_stage1,
+    stage1_rank_score,
+)
+from backtester.strategy_discovery.dss_stage1 import (
+    ComposerProtocol as _Composer,
+)
 from backtester.strategy_discovery.signal_composer import SignalComposer
 
 logger = logging.getLogger(__name__)
 
 _STATE_VERSION = 2
-_MAX_SIGNALS_PER_DAY = 10
 
-
-class _Composer(Protocol):
-    def build(self, config: Any) -> Any: ...
-
-
-@dataclass(frozen=True, slots=True)
-class BarrierMetrics:
-    total: int
-    tp_first: int
-    sl_first: int
-    timeout: int
-    tp_first_rate: float
-    sl_first_rate: float
-    timeout_rate: float
-    win_rate: float
-    median_mae_atr: float
-    median_mfe_atr: float
-    median_bars_to_tp: float
-
-
-@dataclass(frozen=True, slots=True)
-class Stage1Result:
-    candidate_id: str
-    passed: bool
-    rejection_reason: str
-    signal_counts: dict[str, int]
-    long_ratios: dict[str, float]
-    median_stop_atr: dict[str, float]
-    barrier_metrics: dict[str, BarrierMetrics]
-    behavior: DSSBehavior | None
-    candidate_class: str = "rejected"
-    target_window: str = ""
+__all__ = [
+    "BarrierMetrics",
+    "DSSV2Result",
+    "Stage1Result",
+    "StageScoreResult",
+    "evaluate_stage1",
+    "evaluate_stage_scores",
+    "export_stage1_candidates",
+    "export_stage4_candidates",
+    "run_dss_v2_search",
+    "write_stage1_ranked",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,15 +122,17 @@ def run_dss_v2_search(
 
             stage1 = evaluate_stage1(candidate, window_data, config, composer)
             _append_stage1(output, candidate, stage1, config.windows)
-            if not stage1.passed or stage1.behavior is None:
+            if not stage1.should_promote:
                 continue
+            behavior = stage1.behavior
+            assert behavior is not None
             stage1_survivors += 1
             if config.stage_mode == "stage1":
                 continue
 
             stage2 = evaluate_stage_scores(
                 candidate=candidate,
-                behavior=stage1.behavior,
+                behavior=behavior,
                 windows=_proxy_windows(config.windows),
                 window_data=window_data,
                 config=config,
@@ -162,7 +148,7 @@ def run_dss_v2_search(
 
             stage3 = evaluate_stage_scores(
                 candidate=candidate,
-                behavior=stage1.behavior,
+                behavior=behavior,
                 windows=config.windows,
                 window_data=window_data,
                 config=config,
@@ -203,183 +189,6 @@ def run_dss_v2_search(
         stage3_evaluations=stage3_evaluations,
         exported_candidates=exported,
         archive=archive,
-    )
-
-
-def evaluate_stage1(
-    candidate: DSSCandidate,
-    window_data: dict[str, StrategyData],
-    config: DSSConfig,
-    composer: _Composer | None = None,
-) -> Stage1Result:
-    composer = composer or SignalComposer()
-    try:
-        generate = composer.build(candidate.trial_config)
-    except ValueError as exc:
-        return _stage1_reject(candidate, f"invalid_config:{exc}")
-
-    signal_counts: dict[str, int] = {}
-    long_ratios: dict[str, float] = {}
-    median_stop_atr: dict[str, float] = {}
-    barrier_metrics: dict[str, BarrierMetrics] = {}
-    total_signals = 0
-    first_rejection_reason = ""
-    passing_windows: list[str] = []
-
-    for window in config.windows:
-        data = window_data[window.label]
-        try:
-            signals = generate(data)
-        except Exception as exc:
-            return _stage1_reject(candidate, f"signal_generation_error:{type(exc).__name__}")
-        count = len(signals)
-        signal_counts[window.label] = count
-        total_signals += count
-        min_signals = _min_signals_for_window(window, data, config)
-        if count < min_signals:
-            first_rejection_reason = first_rejection_reason or f"too_few_signals:{window.label}"
-            if not config.specialist_windows:
-                return Stage1Result(
-                    candidate_id=candidate.candidate_id,
-                    passed=False,
-                    rejection_reason=f"too_few_signals:{window.label}",
-                    signal_counts=signal_counts,
-                    long_ratios=long_ratios,
-                    median_stop_atr=median_stop_atr,
-                    barrier_metrics=barrier_metrics,
-                    behavior=None,
-                )
-            continue
-        if count > _max_signals_for_window(window, data):
-            first_rejection_reason = first_rejection_reason or f"overtrading:{window.label}"
-            if not config.specialist_windows:
-                return Stage1Result(
-                    candidate_id=candidate.candidate_id,
-                    passed=False,
-                    rejection_reason=f"overtrading:{window.label}",
-                    signal_counts=signal_counts,
-                    long_ratios=long_ratios,
-                    median_stop_atr=median_stop_atr,
-                    barrier_metrics=barrier_metrics,
-                    behavior=None,
-                )
-            continue
-        long_ratios[window.label] = _long_ratio(signals)
-        median_stop_atr[window.label] = _median_stop_atr(signals, data.primary)
-        metrics = _barrier_metrics(
-            signals=signals,
-            primary=data.primary,
-            rrr=candidate.rrr,
-            ttl_bars=candidate.position_ttl_bars,
-        )
-        barrier_metrics[window.label] = metrics
-        if metrics.tp_first_rate < config.min_barrier_tp_first_rate:
-            first_rejection_reason = first_rejection_reason or f"weak_barrier_edge:{window.label}"
-            if not config.specialist_windows:
-                return Stage1Result(
-                    candidate_id=candidate.candidate_id,
-                    passed=False,
-                    rejection_reason=f"weak_barrier_edge:{window.label}",
-                    signal_counts=signal_counts,
-                    long_ratios=long_ratios,
-                    median_stop_atr=median_stop_atr,
-                    barrier_metrics=barrier_metrics,
-                    behavior=None,
-                )
-            continue
-        if metrics.win_rate < config.min_barrier_win_rate or metrics.tp_first <= metrics.sl_first:
-            first_rejection_reason = (
-                first_rejection_reason or f"weak_barrier_win_rate:{window.label}"
-            )
-            if not config.specialist_windows:
-                return Stage1Result(
-                    candidate_id=candidate.candidate_id,
-                    passed=False,
-                    rejection_reason=f"weak_barrier_win_rate:{window.label}",
-                    signal_counts=signal_counts,
-                    long_ratios=long_ratios,
-                    median_stop_atr=median_stop_atr,
-                    barrier_metrics=barrier_metrics,
-                    behavior=None,
-                )
-            continue
-        passing_windows.append(window.label)
-
-    if len(passing_windows) == len(config.windows):
-        behavior = _balanced_behavior(
-            candidate, total_signals=total_signals, long_ratios=long_ratios
-        )
-        return Stage1Result(
-            candidate_id=candidate.candidate_id,
-            passed=True,
-            rejection_reason="",
-            signal_counts=signal_counts,
-            long_ratios=long_ratios,
-            median_stop_atr=median_stop_atr,
-            barrier_metrics=barrier_metrics,
-            behavior=behavior,
-            candidate_class="balanced",
-        )
-
-    specialist_passing_windows = [
-        label for label in passing_windows if label in set(config.specialist_windows)
-    ]
-    if specialist_passing_windows:
-        target_window = _best_specialist_window(specialist_passing_windows, barrier_metrics)
-        behavior = _behavior_from_metrics(
-            candidate,
-            total_signals=total_signals,
-            long_ratio=sum(long_ratios.values()) / max(len(long_ratios), 1),
-            regime_strength=target_window,
-        )
-        return Stage1Result(
-            candidate_id=candidate.candidate_id,
-            passed=False,
-            rejection_reason=f"specialist:{target_window}",
-            signal_counts=signal_counts,
-            long_ratios=long_ratios,
-            median_stop_atr=median_stop_atr,
-            barrier_metrics=barrier_metrics,
-            behavior=behavior,
-            candidate_class=f"specialist:{target_window}",
-            target_window=target_window,
-        )
-
-    return Stage1Result(
-        candidate_id=candidate.candidate_id,
-        passed=False,
-        rejection_reason=first_rejection_reason or "no_viable_window",
-        signal_counts=signal_counts,
-        long_ratios=long_ratios,
-        median_stop_atr=median_stop_atr,
-        barrier_metrics=barrier_metrics,
-        behavior=None,
-    )
-
-
-def _best_specialist_window(
-    passing_windows: list[str], barrier_metrics: dict[str, BarrierMetrics]
-) -> str:
-    return max(
-        passing_windows,
-        key=lambda label: (
-            barrier_metrics[label].win_rate,
-            barrier_metrics[label].tp_first_rate,
-            barrier_metrics[label].total,
-        ),
-    )
-
-
-def _balanced_behavior(
-    candidate: DSSCandidate,
-    *,
-    total_signals: int,
-    long_ratios: dict[str, float],
-) -> DSSBehavior:
-    return _behavior_from_metrics(
-        candidate,
-        total_signals=total_signals,
-        long_ratio=sum(long_ratios.values()) / max(len(long_ratios), 1),
     )
 
 
@@ -502,14 +311,17 @@ def write_stage1_ranked(output: Path, config: DSSConfig) -> list[dict[str, objec
     if not source.exists():
         return []
     rows: list[dict[str, object]] = []
+    near_misses: list[dict[str, object]] = []
     with source.open("r", encoding="utf-8", newline="") as fh:
         for row in csv.DictReader(fh):
-            if str(row.get("passed", "")).lower() != "true":
-                continue
             scored = dict(row)
-            scored["stage1_score"] = _stage1_row_score(scored, config.windows)
-            rows.append(scored)
+            scored["stage1_score"] = stage1_rank_score(scored, config.windows)
+            if str(row.get("should_promote", row.get("passed", ""))).lower() == "true":
+                rows.append(scored)
+            else:
+                near_misses.append(scored)
     rows.sort(key=lambda row: cast(float, row["stage1_score"]), reverse=True)
+    near_misses.sort(key=lambda row: cast(float, row["stage1_score"]), reverse=True)
     ranked_path = output / "stage1_ranked.csv"
     if rows:
         fieldnames = ["rank", "stage1_score", *[key for key in rows[0] if key != "stage1_score"]]
@@ -520,6 +332,20 @@ def write_stage1_ranked(output: Path, config: DSSConfig) -> list[dict[str, objec
                 writer.writerow({"rank": idx, **row})
     elif ranked_path.exists():
         ranked_path.unlink()
+    near_miss_path = output / "stage1_near_misses.csv"
+    if near_misses:
+        fieldnames = [
+            "rank",
+            "stage1_score",
+            *[key for key in near_misses[0] if key != "stage1_score"],
+        ]
+        with near_miss_path.open("w", encoding="utf-8", newline="") as fh:
+            writer = csv.DictWriter(fh, fieldnames=fieldnames)
+            writer.writeheader()
+            for idx, row in enumerate(near_misses, 1):
+                writer.writerow({"rank": idx, **row})
+    elif near_miss_path.exists():
+        near_miss_path.unlink()
     return rows
 
 
@@ -570,32 +396,6 @@ def export_stage1_candidates(
     if manifest_rows:
         _write_stage1_manifest(output / "stage1_candidate_manifest.md", manifest_rows)
     return exports
-
-
-def _stage1_row_score(row: dict[str, object], windows: list[DSSWindowSpec]) -> float:
-    parts: list[float] = []
-    for window in windows:
-        label = window.label
-        win_rate = _row_float(row, f"barrier_win_rate_{label}")
-        tp_rate = _row_float(row, f"barrier_tp_first_rate_{label}")
-        sl_rate = _row_float(row, f"barrier_sl_first_rate_{label}")
-        timeout_rate = _row_float(row, f"barrier_timeout_rate_{label}")
-        signals = max(0.0, _row_float(row, f"signals_{label}"))
-        parts.append(
-            win_rate * 100.0
-            + tp_rate * 50.0
-            + math.log1p(signals) * 5.0
-            - sl_rate * 25.0
-            - timeout_rate * 10.0
-        )
-    return float(sum(parts) / max(len(parts), 1))
-
-
-def _row_float(row: dict[str, object], key: str) -> float:
-    try:
-        return float(cast(Any, row.get(key, 0.0) or 0.0))
-    except (TypeError, ValueError):
-        return 0.0
 
 
 def _write_stage1_manifest(path: Path, rows: list[dict[str, object]]) -> None:
@@ -707,290 +507,6 @@ def _should_promote_to_stage3(
     return len(per_cell_ids) < max(5, int(config.n_trials * 0.02))
 
 
-def _stage1_reject(candidate: DSSCandidate, reason: str) -> Stage1Result:
-    return Stage1Result(
-        candidate_id=candidate.candidate_id,
-        passed=False,
-        rejection_reason=reason,
-        signal_counts={},
-        long_ratios={},
-        median_stop_atr={},
-        barrier_metrics={},
-        behavior=None,
-    )
-
-
-def _behavior_from_metrics(
-    candidate: DSSCandidate,
-    *,
-    total_signals: int,
-    long_ratio: float,
-    regime_strength: str = "balanced",
-) -> DSSBehavior:
-    if long_ratio >= 0.95:
-        side = "long_only"
-    elif long_ratio <= 0.05:
-        side = "short_only"
-    elif long_ratio >= 0.65:
-        side = "mixed_long_bias"
-    elif long_ratio <= 0.35:
-        side = "mixed_short_bias"
-    else:
-        side = "balanced"
-    if total_signals < 100:
-        trade_bucket = "low"
-    elif total_signals < 400:
-        trade_bucket = "medium"
-    elif total_signals < 900:
-        trade_bucket = "high"
-    else:
-        trade_bucket = "too_high"
-    if candidate.position_ttl_bars <= 30:
-        hold = "short"
-    elif candidate.position_ttl_bars <= 54:
-        hold = "medium"
-    else:
-        hold = "long"
-    if candidate.atr_sl_mult < 1.0:
-        risk = "tight_sl"
-    elif candidate.atr_sl_mult <= 1.75:
-        risk = "medium_sl"
-    else:
-        risk = "wide_sl"
-    depth = len(candidate.filter_names)
-    filter_depth = "3plus" if depth >= 3 else str(depth)
-    return DSSBehavior(
-        trigger_family=candidate.trigger_name,
-        side_profile=side,
-        trade_count_bucket=trade_bucket,
-        hold_time_bucket=hold,
-        risk_geometry=risk,
-        regime_strength=regime_strength,
-        filter_depth=filter_depth,
-    )
-
-
-def _long_ratio(signals: pd.DataFrame) -> float:
-    if signals.empty or "side" not in signals:
-        return 0.0
-    return float((signals["side"] == "long").mean())
-
-
-def _median_stop_atr(signals: pd.DataFrame, primary: pd.DataFrame) -> float:
-    if signals.empty:
-        return 0.0
-    merged = signals.copy()
-    merged["bar_time"] = pd.to_datetime(merged["bar_time"], utc=True)
-    values: list[float] = []
-    for _, row in merged.iterrows():
-        bar_time = row["bar_time"]
-        if bar_time not in primary.index:
-            continue
-        close = float(primary.loc[bar_time, "close"])
-        stop = float(row["stop_price"])
-        values.append(abs(close - stop) / max(close, 1e-9))
-    if not values:
-        return 0.0
-    return float(pd.Series(values).median())
-
-
-def _barrier_metrics(
-    *,
-    signals: pd.DataFrame,
-    primary: pd.DataFrame,
-    rrr: float,
-    ttl_bars: int,
-) -> BarrierMetrics:
-    if signals.empty or primary.empty:
-        return _empty_barrier_metrics()
-    required = {"bar_time", "side"}
-    if not required.issubset(signals.columns):
-        return _empty_barrier_metrics()
-
-    candles = primary.sort_index()
-    atr = _entry_atr(candles)
-    positions = {timestamp: idx for idx, timestamp in enumerate(candles.index)}
-    outcomes = {"tp_first": 0, "sl_first": 0, "timeout": 0}
-    mae_values: list[float] = []
-    mfe_values: list[float] = []
-    bars_to_tp: list[int] = []
-
-    for _, row in signals.iterrows():
-        bar_time = pd.Timestamp(row["bar_time"])
-        if bar_time.tzinfo is None:
-            bar_time = bar_time.tz_localize("UTC")
-        else:
-            bar_time = bar_time.tz_convert("UTC")
-        idx = positions.get(bar_time)
-        if idx is None:
-            continue
-        entry_atr = float(atr.iloc[idx])
-        if not pd.notna(entry_atr) or entry_atr <= 0:
-            continue
-        side = str(row["side"]).lower()
-        if idx + 1 >= len(candles):
-            continue
-        entry = float(candles.iloc[idx + 1]["open"])
-        signal = 1 if side == "long" else -1 if side == "short" else 0
-        resolved = resolve_exit_levels(
-            signal=signal,
-            entry_price=entry,
-            structural_sl_price=_signal_stop_price(row),
-            rrr=rrr,
-            config=ExitGeometryConfig(mode="sl_rrr"),
-        )
-        if resolved is None:
-            continue
-        outcome, mae_atr, mfe_atr, tp_bars = _first_barrier_outcome(
-            candles=candles,
-            start_idx=idx,
-            side=side,
-            entry_atr=entry_atr,
-            tp_price=resolved.tp_price,
-            sl_price=resolved.sl_price,
-            ttl_bars=ttl_bars,
-        )
-        outcomes[outcome] += 1
-        mae_values.append(mae_atr)
-        mfe_values.append(mfe_atr)
-        if tp_bars is not None:
-            bars_to_tp.append(tp_bars)
-
-    total = sum(outcomes.values())
-    if total == 0:
-        return _empty_barrier_metrics()
-    return BarrierMetrics(
-        total=total,
-        tp_first=outcomes["tp_first"],
-        sl_first=outcomes["sl_first"],
-        timeout=outcomes["timeout"],
-        tp_first_rate=outcomes["tp_first"] / total,
-        sl_first_rate=outcomes["sl_first"] / total,
-        timeout_rate=outcomes["timeout"] / total,
-        win_rate=_barrier_win_rate(outcomes["tp_first"], outcomes["sl_first"]),
-        median_mae_atr=float(pd.Series(mae_values).median()) if mae_values else 0.0,
-        median_mfe_atr=float(pd.Series(mfe_values).median()) if mfe_values else 0.0,
-        median_bars_to_tp=float(pd.Series(bars_to_tp).median()) if bars_to_tp else 0.0,
-    )
-
-
-def _empty_barrier_metrics() -> BarrierMetrics:
-    return BarrierMetrics(
-        total=0,
-        tp_first=0,
-        sl_first=0,
-        timeout=0,
-        tp_first_rate=0.0,
-        sl_first_rate=0.0,
-        timeout_rate=0.0,
-        win_rate=0.0,
-        median_mae_atr=0.0,
-        median_mfe_atr=0.0,
-        median_bars_to_tp=0.0,
-    )
-
-
-def _barrier_win_rate(tp_first: int, sl_first: int) -> float:
-    resolved = tp_first + sl_first
-    if resolved <= 0:
-        return 0.0
-    return tp_first / resolved
-
-
-def _entry_atr(primary: pd.DataFrame, window: int = 14) -> pd.Series:
-    previous_close = primary["close"].shift(1)
-    true_range = pd.concat(
-        [
-            primary["high"] - primary["low"],
-            (primary["high"] - previous_close).abs(),
-            (primary["low"] - previous_close).abs(),
-        ],
-        axis=1,
-    ).max(axis=1)
-    return true_range.rolling(window=window, min_periods=1).mean()
-
-
-def _signal_stop_price(row: pd.Series) -> float:
-    value = row.get("stop_price")
-    if pd.notna(value):
-        return float(value)
-    return float("nan")
-
-
-def _first_barrier_outcome(
-    *,
-    candles: pd.DataFrame,
-    start_idx: int,
-    side: str,
-    entry_atr: float,
-    tp_price: float,
-    sl_price: float,
-    ttl_bars: int,
-) -> tuple[str, float, float, int | None]:
-    if side not in {"long", "short"}:
-        return ("timeout", 0.0, 0.0, None)
-
-    entry = (
-        float(candles.iloc[start_idx + 1]["open"]) if start_idx + 1 < len(candles) else float("nan")
-    )
-    if not pd.notna(entry):
-        return ("timeout", 0.0, 0.0, None)
-
-    max_adverse = 0.0
-    max_favorable = 0.0
-    end_idx = min(len(candles) - 1, start_idx + max(ttl_bars, 1))
-    for offset, idx in enumerate(range(start_idx + 1, end_idx + 1), 1):
-        high = float(candles.iloc[idx]["high"])
-        low = float(candles.iloc[idx]["low"])
-        if side == "long":
-            favorable = max(0.0, high - entry)
-            adverse = max(0.0, entry - low)
-            hit_tp = high >= tp_price
-            hit_sl = low <= sl_price
-        else:
-            favorable = max(0.0, entry - low)
-            adverse = max(0.0, high - entry)
-            hit_tp = low <= tp_price
-            hit_sl = high >= sl_price
-        max_favorable = max(max_favorable, favorable)
-        max_adverse = max(max_adverse, adverse)
-        if hit_sl:
-            return ("sl_first", max_adverse / entry_atr, max_favorable / entry_atr, None)
-        if hit_tp:
-            return ("tp_first", max_adverse / entry_atr, max_favorable / entry_atr, offset)
-    return ("timeout", max_adverse / entry_atr, max_favorable / entry_atr, None)
-
-
-def _max_signals_for_window(window: DSSWindowSpec, data: StrategyData) -> int:
-    del window
-    primary = data.primary
-    if primary.empty:
-        return _MAX_SIGNALS_PER_DAY
-    index = pd.DatetimeIndex(primary.index)
-    if len(index) <= 1:
-        return _MAX_SIGNALS_PER_DAY
-    elapsed_days = max((index.max() - index.min()).total_seconds() / 86_400, 0.0)
-    covered_days = max(1.0, elapsed_days + 1.0 / 24.0)
-    return max(_MAX_SIGNALS_PER_DAY, int(covered_days * _MAX_SIGNALS_PER_DAY))
-
-
-def _min_signals_for_window(
-    window: DSSWindowSpec, data: StrategyData, config: DSSConfig
-) -> int:
-    del window
-    absolute = max(0, config.min_trades_per_window)
-    if config.min_signals_per_week <= 0:
-        return absolute
-    primary = data.primary
-    if primary.empty:
-        return absolute
-    index = pd.to_datetime(primary.index)
-    elapsed_days = float(max((index.max() - index.min()).total_seconds() / 86_400, 0.0))
-    covered_weeks = float(max(1.0 / 7.0, (elapsed_days + 1.0 / 24.0) / 7.0))
-    weekly: int = math.ceil(covered_weeks * config.min_signals_per_week)
-    return max(absolute, weekly)
-
-
 def _guard_output_dir(output: Path) -> None:
     if (output / "study.journal").exists() and not (output / "state.json").exists():
         raise ValueError(
@@ -1007,6 +523,9 @@ def _write_state(output: Path, config: DSSConfig) -> None:
         "stage_mode": config.stage_mode,
         "min_trades_per_window": config.min_trades_per_window,
         "min_signals_per_week": config.min_signals_per_week,
+        "stage1_tp_move_pct": config.stage1_tp_move_pct,
+        "stage1_sl_move_pct": config.stage1_sl_move_pct,
+        "stage1_reference_atr_pct": config.stage1_reference_atr_pct,
         "windows": [
             {
                 "label": window.label,
@@ -1056,6 +575,8 @@ def _append_stage1(
         "trigger_name": candidate.trigger_name,
         "filter_names": "+".join(candidate.filter_names),
         "passed": result.passed,
+        "should_promote": result.should_promote,
+        "stage1_score": result.advisory_score if result.advisory_score is not None else "",
         "candidate_class": result.candidate_class,
         "target_window": result.target_window,
         "rejection_reason": result.rejection_reason,
@@ -1073,9 +594,14 @@ def _append_stage1(
         row[f"barrier_tp_first_rate_{label}"] = metrics.tp_first_rate if metrics else ""
         row[f"barrier_sl_first_rate_{label}"] = metrics.sl_first_rate if metrics else ""
         row[f"barrier_timeout_rate_{label}"] = metrics.timeout_rate if metrics else ""
+        row[f"barrier_unresolved_tail_rate_{label}"] = (
+            metrics.unresolved_tail_rate if metrics else ""
+        )
         row[f"barrier_win_rate_{label}"] = metrics.win_rate if metrics else ""
         row[f"barrier_median_mae_atr_{label}"] = metrics.median_mae_atr if metrics else ""
         row[f"barrier_median_mfe_atr_{label}"] = metrics.median_mfe_atr if metrics else ""
+        row[f"barrier_median_mae_pct_{label}"] = metrics.median_mae_pct if metrics else ""
+        row[f"barrier_median_mfe_pct_{label}"] = metrics.median_mfe_pct if metrics else ""
         row[f"barrier_median_bars_to_tp_{label}"] = metrics.median_bars_to_tp if metrics else ""
     _append_csv_row(output / "stage1_viability.csv", row)
     if result.passed:
@@ -1200,6 +726,7 @@ def _write_summary(
         stage1_specialists = _count_csv_rows(output / "stage1_specialists.csv")
     if stage1_ranked is None:
         stage1_ranked = _count_csv_rows(output / "stage1_ranked.csv")
+    stage1_near_misses = _count_csv_rows(output / "stage1_near_misses.csv")
     best = archive.elites()[0] if archive.elites() else None
     if config.stage_mode == "stage1":
         verdict = "stage1 shortlist exported" if exported else "no stage1 candidate"
@@ -1221,6 +748,7 @@ def _write_summary(
         f"Generated candidates: **{generated}**",
         f"Stage 1 survivors: **{stage1_survivors}**",
         f"Stage 1 ranked candidates: **{stage1_ranked}**",
+        f"Stage 1 near misses: **{stage1_near_misses}**",
         f"Stage 1 specialists: **{stage1_specialists}**",
         f"Stage 2 survivors: **{stage2_survivors}**",
         f"Stage 3 full evaluations: **{stage3_evaluations}**",
@@ -1238,6 +766,7 @@ def _write_summary(
         f"| Generated | {generated} |",
         f"| Stage 1 survivors | {stage1_survivors} |",
         f"| Stage 1 ranked candidates | {stage1_ranked} |",
+        f"| Stage 1 near misses | {stage1_near_misses} |",
         f"| Stage 1 specialists | {stage1_specialists} |",
         f"| Stage 2 survivors | {stage2_survivors} |",
         f"| Stage 3 full evaluations | {stage3_evaluations} |",

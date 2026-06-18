@@ -23,8 +23,6 @@ from backtester.tester import Backtester
 
 FloatRange = tuple[float, float, float]
 IntRange = tuple[int, int, int]
-IntChoices = tuple[int, ...]
-FloatChoices = tuple[float, ...]
 
 
 def _mandate_score(
@@ -84,7 +82,6 @@ class ParameterOptimizer:
         initial_capital: float = 1000.0,
         taker_fee: float = 0.001,
         maker_fee: float = 0.0002,
-        max_positions: int = 5,
         position_ttl_bars: int = 20,
         min_net_exposure: float = 0.01,
         max_allowed_margin: float = 1.0,
@@ -96,11 +93,8 @@ class ParameterOptimizer:
         risk_percent_range: FloatRange | None = (0.1, 0.5, 0.1),
         rrr_range: FloatRange | None = (1.0, 5.0, 1.0),
         trail_activation_rrr: float = 0.0,
-        trail_activation_rrr_values: FloatChoices | None = None,
         trail_distance_atr: float = 0.0,
         trail_distance_atr_range: FloatRange | None = None,
-        max_positions_values: IntChoices | None = None,
-        max_positions_range: IntRange | None = None,
         position_ttl_bars_range: IntRange | None = None,
         tp_move_pct_range: FloatRange | None = None,
         exit_geometry: str = "sl_rrr",
@@ -116,7 +110,6 @@ class ParameterOptimizer:
         self.initial_capital = initial_capital
         self.taker_fee = taker_fee
         self.maker_fee = maker_fee
-        self.max_positions = max_positions
         self.position_ttl_bars = position_ttl_bars
         self.min_net_exposure = min_net_exposure
         self.max_allowed_margin = max_allowed_margin
@@ -128,11 +121,8 @@ class ParameterOptimizer:
         self.risk_percent_range = risk_percent_range
         self.rrr_range = rrr_range
         self.trail_activation_rrr = trail_activation_rrr
-        self.trail_activation_rrr_values = trail_activation_rrr_values
         self.trail_distance_atr = trail_distance_atr
         self.trail_distance_atr_range = trail_distance_atr_range
-        self.max_positions_values = max_positions_values
-        self.max_positions_range = max_positions_range
         self.position_ttl_bars_range = position_ttl_bars_range
         self.tp_move_pct_range = tp_move_pct_range
         self.exit_geometry = exit_geometry
@@ -165,25 +155,14 @@ class ParameterOptimizer:
                 self.risk_percent,
             )
             rrr = self._suggest_float_or_fixed(trial, "rrr", self.rrr_range, 2.0)
-            trail_activation_rrr = self._suggest_float_choice_or_fixed(
-                trial,
-                "trail_activation_rrr",
-                self.trail_activation_rrr_values,
-                self.trail_activation_rrr,
-            )
             trail_distance_atr = self._suggest_float_or_fixed(
                 trial,
                 "trail_distance_atr",
                 self.trail_distance_atr_range,
                 self.trail_distance_atr,
             )
-            max_positions = self._suggest_int_choice_range_or_fixed(
-                trial,
-                "max_positions",
-                self.max_positions_values,
-                self.max_positions_range,
-                self.max_positions,
-            )
+            trail_activation_rrr = rrr if trail_distance_atr > 0 else 0.0
+            max_positions = 0
             position_ttl_bars = self._suggest_int_or_fixed(
                 trial,
                 "position_ttl_bars",
@@ -271,7 +250,7 @@ class ParameterOptimizer:
             trial.set_user_attr("total_return_pct", m.get("total_return_pct", -100))
             trial.set_user_attr("trail_activation_rrr", trail_activation_rrr)
             trial.set_user_attr("trail_distance_atr", trail_distance_atr)
-            trial.set_user_attr("max_positions", max_positions)
+            trial.set_user_attr("max_positions", 0)
             trial.set_user_attr("position_ttl_bars", position_ttl_bars)
             if tp_move_pct is not None:
                 trial.set_user_attr("tp_move_pct", tp_move_pct)
@@ -378,17 +357,6 @@ class ParameterOptimizer:
         return trial.suggest_float(name, low, high, step=step)
 
     @staticmethod
-    def _suggest_float_choice_or_fixed(
-        trial: optuna.Trial,
-        name: str,
-        values: FloatChoices | None,
-        fixed: float,
-    ) -> float:
-        if values is None:
-            return fixed
-        return float(trial.suggest_categorical(name, list(values)))
-
-    @staticmethod
     def _suggest_int_or_fixed(
         trial: optuna.Trial,
         name: str,
@@ -399,18 +367,6 @@ class ParameterOptimizer:
             return fixed
         low, high, step = value_range
         return trial.suggest_int(name, low, high, step=step)
-
-    @staticmethod
-    def _suggest_int_choice_range_or_fixed(
-        trial: optuna.Trial,
-        name: str,
-        values: IntChoices | None,
-        value_range: IntRange | None,
-        fixed: int,
-    ) -> int:
-        if values is not None:
-            return int(trial.suggest_categorical(name, list(values)))
-        return ParameterOptimizer._suggest_int_or_fixed(trial, name, value_range, fixed)
 
     @staticmethod
     def _strategy_cache_key(

@@ -325,6 +325,9 @@ class DSSConfig:
     catalog: Literal["legacy", "pinescript_v1", "all"] = "legacy"
     stage_mode: Literal["full", "stage1"] = "full"
     seed: int = 36
+    stage1_tp_move_pct: float = 0.007
+    stage1_sl_move_pct: float = 0.004
+    stage1_reference_atr_pct: float = 0.007
     min_barrier_tp_first_rate: float = 0.05
     min_barrier_win_rate: float = 0.55
     specialist_windows: tuple[str, ...] = ()

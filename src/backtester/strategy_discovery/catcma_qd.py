@@ -21,6 +21,7 @@ from backtester.strategy_discovery.dss_config import (
     ParamDef,
     ParamValue,
 )
+from backtester.strategy_discovery.dss_stage1 import stage1_advisory_score
 from backtester.strategy_discovery.dss_v2 import (
     DSSV2Result,
     Stage1Result,
@@ -38,7 +39,9 @@ from backtester.strategy_discovery.dss_v2 import (
     _write_summary,
     evaluate_stage1,
     evaluate_stage_scores,
+    export_stage1_candidates,
     export_stage4_candidates,
+    write_stage1_ranked,
 )
 from backtester.strategy_discovery.signal_composer import SignalComposer
 
@@ -226,7 +229,7 @@ def run_catcma_qd_search(
                     continue
                 stage1 = evaluate_stage1(candidate, window_data, config, composer)
                 _append_stage1(output, candidate, stage1, config.windows)
-                if not stage1.passed or stage1.behavior is None:
+                if not stage1.should_promote:
                     continue
                 stage1_survivors += 1
                 stage1_passed.append(
@@ -239,6 +242,10 @@ def run_catcma_qd_search(
             finally:
                 if progress_callback is not None:
                     progress_callback(1)
+
+        if config.stage_mode == "stage1":
+            generation += 1
+            continue
 
         stage2_candidates = _select_stage2_candidates(stage1_passed, batch_size=batch_size)
         for item in stage2_candidates:
@@ -292,9 +299,13 @@ def run_catcma_qd_search(
         model.update(evaluated)
         generation += 1
 
-    _write_archive(output, archive)
     _write_model_summary(output / "catcma_qd_state.csv", model)
-    exported = export_stage4_candidates(archive, config)
+    stage1_ranked = write_stage1_ranked(output, config)
+    if config.stage_mode == "stage1":
+        exported = export_stage1_candidates(stage1_ranked, output, config)
+    else:
+        _write_archive(output, archive)
+        exported = export_stage4_candidates(archive, config)
     _write_summary(
         output=output,
         config=config,
@@ -304,6 +315,7 @@ def run_catcma_qd_search(
         stage3_evaluations=stage3_evaluations,
         exported=exported,
         archive=archive,
+        stage1_ranked=len(stage1_ranked),
     )
     return DSSV2Result(
         output=output,
@@ -349,47 +361,9 @@ def _select_stage2_candidates(
 
 
 def _stage1_cheap_score(result: Stage1Result) -> float:
-    if result.behavior is None:
-        return -10_000.0
-    total_signals = sum(result.signal_counts.values())
-    windows = max(len(result.signal_counts), 1)
-    avg_signals = total_signals / windows
-    count_score = 100.0 - abs(avg_signals - 180.0) * 0.25
-    bucket_bonus = {
-        "low": 25.0,
-        "medium": 35.0,
-        "high": 5.0,
-        "too_high": -80.0,
-    }.get(result.behavior.trade_count_bucket, 0.0)
-    stop_values = list(result.median_stop_atr.values())
-    if stop_values:
-        avg_stop = sum(stop_values) / len(stop_values)
-        stop_score = 20.0 if 0.004 <= avg_stop <= 0.025 else -20.0
-    else:
-        stop_score = -20.0
-    long_ratio_values = list(result.long_ratios.values())
-    if long_ratio_values:
-        side_dispersion = max(long_ratio_values) - min(long_ratio_values)
-        stability_score = max(0.0, 20.0 - side_dispersion * 20.0)
-    else:
-        stability_score = 0.0
-    barrier_values = list(result.barrier_metrics.values())
-    if barrier_values:
-        avg_tp_first = sum(item.tp_first_rate for item in barrier_values) / len(barrier_values)
-        avg_sl_first = sum(item.sl_first_rate for item in barrier_values) / len(barrier_values)
-        avg_timeout = sum(item.timeout_rate for item in barrier_values) / len(barrier_values)
-        avg_win_rate = sum(item.win_rate for item in barrier_values) / len(barrier_values)
-        avg_mae = sum(item.median_mae_atr for item in barrier_values) / len(barrier_values)
-        barrier_score = (
-            avg_tp_first * 120.0
-            + avg_win_rate * 80.0
-            - avg_sl_first * 80.0
-            - avg_timeout * 20.0
-            - avg_mae * 10.0
-        )
-    else:
-        barrier_score = -50.0
-    return count_score + bucket_bonus + stop_score + stability_score + barrier_score
+    if result.advisory_score is not None:
+        return result.advisory_score
+    return stage1_advisory_score(result)
 
 
 def _write_model_summary(path: Path, model: _WeightedModel) -> None:

@@ -256,6 +256,12 @@ design first, then score large proposal pools with RF mean + tree-dispersion
 uncertainty before evaluating selected infill candidates. CatCMA-QD, Island-QD,
 Hyperband-QD, and SMAC-QD cap expensive Stage 2+ backtests per candidate batch;
 most generated candidates only pay the cheap Stage 1 signal-viability check.
+Stage 1 is a volatility-normalized directional label: next-open entry,
+ATR-scaled favorable/adverse barriers calibrated from the SOL reference
+`0.7% / 0.4%`, same-bar TP+SL counted as SL, and unresolved end-of-window tails
+excluded from the Stage 1 win-rate denominator. Candidate `rrr`, risk percent,
+ATR stop distance, TTL, fees, sizing, and execution overlap are searched or
+scored only in later stages.
 
 ```bash
 uv run backtester search-signals \
@@ -326,8 +332,8 @@ uv run backtester search-signals \
 ```
 
 Inspect `summary.md`, `archive.md`, `stage1_viability.csv`,
-`stage1_ranked.csv`, `stage1_specialists.csv`, `stage2_proxy.csv`,
-`stage3_full_scores.csv`, and `candidate_manifest.md` first. In
+`stage1_ranked.csv`, `stage1_near_misses.csv`, `stage1_specialists.csv`,
+`stage2_proxy.csv`, `stage3_full_scores.csv`, and `candidate_manifest.md` first. In
 `--stage-mode stage1`, DSS stops before backtests, writes a Stage 1-only
 shortlist to `stage1_ranked.csv`, and exports research configs under
 `stage1_candidates/`. `stage1_specialists.*` preserves target-window
@@ -378,12 +384,9 @@ uv run backtester optimize \
     --strategy strategies/backtester/crypt_ensemble_h1.json \
     --output results/crypt_ensemble_sol_h1_optuna \
     --trials 25 \
-    --target mandate_score \
     --rrr-low 1.0 --rrr-high 2.0 --rrr-step 0.25 \
     --ttl-low 18 --ttl-high 42 --ttl-step 6 \
-    --trail-activation-rrr-values 0,0.5,0.75,1.0,1.25 \
-    --trail-distance-atr-low 0.5 --trail-distance-atr-high 2.0 --trail-distance-atr-step 0.5 \
-    --max-positions-values 1,2,3,5 \
+    --trail-distance-atr-low 0.0 --trail-distance-atr-high 2.0 --trail-distance-atr-step 0.5 \
     --risk-percent 1.0 \
     --no-strategy-param-search \
     --no-daily-limit-search \
@@ -391,13 +394,18 @@ uv run backtester optimize \
     --export-best-run
 ```
 
-Use `--target mandate_score` for candidate tuning against the investment
-mandate. It ranks trials by capped monthly return after strong penalties for
-months below the 15% floor, monthly DD breaches, and consecutive losing months.
-Legacy scalar targets remain available: `total_return_pct`, `profit_factor`,
-`sharpe_ratio`, and `max_drawdown`. The optimizer writes `trials.csv`,
+Optimizer tuning always uses `mandate_score`: capped monthly return after
+strong penalties for months below the 15% floor, monthly DD breaches, and
+consecutive losing months. Scalar targets such as `total_return_pct` are not
+available through the optimizer CLI. The optimizer writes `trials.csv`,
 `best_trial.json`, the Optuna journal log, and donor `best_run/` diagnostics
-under a timestamped output directory.
+under a timestamped output directory. `max_positions` is fixed to `0` across
+backtest/diagnostic CLIs.
+
+Use `--trail-distance-atr-low/high/step` for trailing-stop search. In Optuna
+mode, trailing activation is not a separate parameter: if `trail_distance_atr`
+is positive, the trailing stop activates at the selected `rrr`; if
+`trail_distance_atr` is `0`, trailing is disabled.
 
 For mandate candidate checks across calendar months, use `compare-fixed`
 (**continuous by default**, ADR-0032): one backtest per symbol spans all
@@ -459,7 +467,6 @@ uv run backtester compare-grid \
     --window sol_2025_03:SOL-USDT-SWAP:2025-03-01:2025-04-01 \
     --rrr-values 1.0,1.25,1.5 \
     --ttl-values 30,36,42 \
-    --max-positions-values 1,2,3,5 \
     --risk-percent 1.0 \
     --jobs 3
 ```

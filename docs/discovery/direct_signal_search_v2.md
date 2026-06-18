@@ -128,6 +128,10 @@ candidate generator
   -> quality-diversity archive + reports
 ```
 
+`discover-strategies` is legacy and remains outside this contract. It can still
+be used to inspect old beam-search artifacts, but new search work should add
+backends under `search-signals` instead of extending the legacy constructor.
+
 Each candidate has:
 
 - a signal recipe: trigger, trigger params, filters, filter params;
@@ -139,6 +143,47 @@ Each candidate has:
 
 The archive is not a Pareto front. It is a behavior map. Each cell keeps a
 small elite list.
+
+### 4.0 Stage contract
+
+Search backends own only candidate generation and budget allocation. Stages own
+evaluation and promotion decisions.
+
+Every `search-signals` backend must use the same contract:
+
+```python
+stage1 = evaluate_stage1(candidate, window_data, config, composer)
+append_stage1_artifacts(candidate, stage1)
+backend.observe_stage1(candidate, stage1)  # optional
+
+if not stage1.should_promote:
+    continue
+
+if config.stage_mode == "stage1":
+    continue
+
+backend.promote_to_next_stage(candidate, stage1)
+```
+
+`Stage1Result` must expose:
+
+- a boolean promotion decision (`should_promote`);
+- a stable rejection reason when not promoted;
+- optional advisory score / metadata for ranking and near-miss reports;
+- behavior descriptors required by later quality-diversity stages;
+- per-window barrier and signal diagnostics.
+
+Backends may use the advisory score to allocate Stage 2 budget, but they must
+not reimplement Stage 1 pass/fail policy. Stage 1-only mode applies to every
+backend: the selected algorithm may generate candidates in its own way, but no
+backend may run Stage 2 or Stage 3 when `--stage-mode stage1` is set.
+
+Rejected and near-miss candidates must remain visible in artifacts. At minimum,
+all generated candidates write `stage1_viability.csv`; hard rejects write
+`stage1_rejections.csv`; ranked rejects and specialists write
+`stage1_near_misses.csv`; window specialists write `stage1_specialists.*`; and
+Stage 1-only runs write `stage1_ranked.csv` plus replayable research configs
+under `stage1_candidates/` for any candidate promoted by Stage 1.
 
 ### 4.1 Experimental CatCMA-QD backend
 
@@ -452,9 +497,9 @@ For each candidate and each configured window:
 1. Build signals via `SignalComposer`.
 2. Count raw signals.
 3. Count side distribution.
-4. Estimate ATR stop distance distribution.
+4. Count side distribution.
 5. Count duplicate or near-duplicate signal timestamps.
-6. Compute cheap path-aware barrier metrics.
+6. Compute cheap path-aware percent-barrier metrics.
 
 Reject if:
 
@@ -462,7 +507,6 @@ Reject if:
   count: `max(min_trades, ceil(window_weeks * min_signals_per_week))`;
 - total trades are too high for H1 swing/intraday system;
 - side filters contradict generated sides;
-- stop distances are invalid or mostly non-finite;
 - too few signals reach the favorable barrier before the adverse barrier;
 - signal generation raises.
 
@@ -485,6 +529,7 @@ Artifacts:
 
 - `stage1_viability.csv`
 - `stage1_ranked.csv`
+- `stage1_near_misses.csv`
 - `stage1_rejections.csv`
 - `stage1_specialists.csv`
 - `stage1_specialists.jsonl`
@@ -501,69 +546,99 @@ Required columns:
 - `target_window`
 - `signals_<window>`
 - `long_ratio_<window>`
-- `median_stop_atr_<window>`
 - `barrier_tp_first_rate_<window>`
 - `barrier_sl_first_rate_<window>`
-- `barrier_timeout_rate_<window>`
+- `barrier_unresolved_tail_rate_<window>`
 - `barrier_win_rate_<window>`
-- `barrier_median_mae_atr_<window>`
+- `barrier_median_mae_pct_<window>`
+- `barrier_median_mfe_pct_<window>`
 - `barrier_median_bars_to_tp_<window>`
 - `rejection_reason`
 
-### 9.1 Path-aware barrier label
+### 9.1 Path-aware ATR-scaled directional label
 
-The original directional discovery label asked whether price eventually moved
-in the predicted direction by at least `N ATR`. That is useful as a cheap
-directional edge screen, but it is not sufficient for strategy search because
-price can move favorably only after first moving far enough against the entry to
-hit a realistic stop.
+Stage 1 evaluates directional prediction quality only. It must not use `rrr`,
+`risk_percent`, `atr_sl_mult`, structural stop prices, execution sizing,
+position overlap, fees, margin, or the donor execution simulator.
 
-Stage 1 therefore computes a cheap **path-aware barrier label** before any
-donor backtest:
+For each signal:
 
 ```text
+entry = next candle open
+atr = ATR14 from candles closed at signal time
+atr_pct = atr / entry
+
+SOL reference:
+  reference_atr_pct = 0.007
+  reference TP move = 0.007
+  reference SL move = 0.004
+
+Scaled distances:
+  tp_distance_pct = atr_pct * (0.007 / reference_atr_pct)
+  sl_distance_pct = atr_pct * (0.004 / reference_atr_pct)
+
 LONG:
-  TP barrier = entry + (atr_sl_mult * rrr * ATR)
-  SL barrier = entry - (atr_sl_mult * ATR)
+  TP barrier = entry * (1 + tp_distance_pct)
+  SL barrier = entry * (1 - sl_distance_pct)
 
 SHORT:
-  TP barrier = entry - (atr_sl_mult * rrr * ATR)
-  SL barrier = entry + (atr_sl_mult * ATR)
+  TP barrier = entry * (1 - tp_distance_pct)
+  SL barrier = entry * (1 + sl_distance_pct)
 
-Look forward at most position_ttl_bars closed bars.
-Outcome is tp_first, sl_first, or timeout.
+Look forward until the configured window ends.
+Outcome is tp_first, sl_first, or unresolved_tail.
 If TP and SL are touched in the same bar, count SL first.
 ```
 
 For each signal, also record:
 
-- `MAE_ATR`: maximum adverse excursion before outcome, divided by entry ATR;
-- `MFE_ATR`: maximum favorable excursion before outcome, divided by entry ATR;
+- `MAE_PCT`: maximum adverse excursion before outcome, divided by entry;
+- `MFE_PCT`: maximum favorable excursion before outcome, divided by entry;
 - bars to TP when TP is reached first.
 
-This label is not a final trading verdict. It is a cheap gate that prevents the
-search from spending Stage 2/3 backtest budget on candidates whose "correct"
-directional moves are usually not tradeable before adverse excursion.
+`unresolved_tail` rows are excluded from `barrier_win_rate`; they are reported
+only so tail attrition is visible. This avoids penalizing signals near the end
+of a window that did not have enough future candles to resolve. The resolved
+sample is:
+
+```text
+resolved = tp_first + sl_first
+barrier_win_rate = tp_first / resolved
+```
+
+This label is not a final trading verdict. It is a cheap gate that asks whether
+the candidate can predict a volatility-normalized move in the forecast
+direction before price first moves against it. The default calibration preserves
+the SOL rule where 1 ATR is treated as 0.7% TP distance and the adverse barrier
+is `0.004 / 0.007 = 0.5714` ATR. For a more volatile symbol whose closed-candle
+ATR is 1.2% of entry, the Stage 1 TP distance becomes 1.2% and the SL distance
+becomes about 0.686%. Stage 2 and later stages own RRR, TTL, trailing stops,
+sizing, fees, position overlap, and mandate scoring.
 
 Default policy:
 
 ```text
 min_barrier_tp_first_rate = 0.05
 min_barrier_win_rate = 0.55
+stage1_tp_move_pct = 0.007
+stage1_sl_move_pct = 0.004
+stage1_reference_atr_pct = 0.007
 tp_first must be greater than sl_first
 ```
 
 `barrier_win_rate` is computed over resolved TP/SL outcomes only:
-`tp_first / (tp_first + sl_first)`. Timeouts remain visible in
-`barrier_timeout_rate` but do not count as wins. The TP-first rate floor rejects
-empty/no-edge candidates, while the win-rate floor requires a directional
-candidate to be better than a coin flip before it receives Stage 2 budget.
+`tp_first / (tp_first + sl_first)`. Unresolved tails remain visible in
+`barrier_unresolved_tail_rate` but do not count as wins or losses. The TP-first
+rate floor rejects empty/no-edge candidates, while the win-rate floor requires
+a directional candidate to be better than a coin flip before it receives Stage
+2 budget.
 
 Acceptance:
 
 - Synthetic tests cover empty signals, too few signals, overtrading, invalid
-  stops, adverse-before-favorable barrier rejection, same-bar SL-first
-  conservatism, and survivor pass-through.
+  stops, ATR-scaled barriers, adverse-before-favorable barrier rejection,
+  same-bar SL-first conservatism, unresolved-tail exclusion, and survivor
+  pass-through.
 
 ---
 

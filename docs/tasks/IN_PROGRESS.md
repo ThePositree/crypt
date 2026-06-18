@@ -1,52 +1,5 @@
 # In progress
 
-## PineScript DSS catalog v1 real-data validation (2026-06-16)
-
-**What remains:** owner-run a target-window 2023 DSS search with the new
-`pinescript_v1` trigger/filter catalog after pulling this change. Stop any
-slow legacy 4-window specialist run if it is still consuming compute.
-
-**Why now:** the legacy DSS catalog has already been searched hard and keeps
-walking the same trigger/filter families. The owner supplied popular
-TradingView/PineScript ideas under `pinescript/` and asked to replace the old
-catalog space rather than continue exploring it. The first implementation
-slice is now exposed as `--catalog pinescript_v1`.
-
-**Command:**
-```bash
-uv run backtester search-signals \
-  --catalog pinescript_v1 \
-  --stage-mode stage1 \
-  --min-signals-per-week 4 \
-  --data-dir data \
-  --symbol SOL-USDT-SWAP \
-  --windows 2023 \
-  --n-trials 50000 \
-  --n-jobs 4 \
-  --seed 73023 \
-  --output results/dss_sol_pinescript_v1_2023_seed73023
-```
-
-This target-only run stops after Stage 1, so it does not run backtests or
-mandate scoring. Use `stage1_ranked.csv` and `stage1_candidates/*.json` to
-inspect signal families manually. The effective frequency gate is 4 signals per
-week, so a full-year 2023 candidate needs roughly 209 signals before barrier
-quality is considered. Do not mix the legacy catalog back in until the pure
-`pinescript_v1` result is inspected.
-
-**Expected gain:** test a materially different trigger/filter vocabulary before
-spending more compute on routing/composition around a stale legacy space.
-
-**Acceptance:** next agent inspects `summary.md`, `stage1_viability.csv`,
-`stage1_ranked.csv`, and `stage1_candidates/*.json`; if useful families exist,
-prepare a smaller cross-window diagnostic against 2022/2024/2025H1.
-Target-only Stage 1 candidates must be analyzed as routing research only, not
-as promotion-ready candidates.
-
-**Links:** `docs/discovery/pinescript_catalog_v1.md`;
-`docs/discovery/dss_wr55_10pd_tail_analysis.md`.
-
-
 ## Active DSS search matrix — inspect all five (2026-06-12)
 
 **Context for next agent:** the owner is intentionally running five different
@@ -63,6 +16,15 @@ The first barrier implementation used trigger reference price; the fixed
 version uses the same next-open entry and resolved `sl_rrr` levels as Stage 2.
 Restart any barrier run that began before this note if Stage 1/Stage 2
 alignment matters for analysis.
+
+**Superseded version note (2026-06-18):** fresh DSS Stage 1 runs no longer use
+candidate `rrr`, `risk_percent`, `atr_sl_mult`, structural stops, TTL, or
+`sl_rrr` levels. The active Stage 1 label is next-open entry, closed-candle
+ATR14 as symbol volatility scale, SOL reference calibration of 0.7% favorable
+TP and 0.4% adverse SL, same-bar TP+SL counted as SL, and unresolved
+end-of-window tails excluded from `barrier_win_rate`. Compare results only
+against artifacts produced after this note when evaluating the current Stage 1
+policy.
 
 | Machine | Algorithm | Output | Status / next check |
 | --- | --- | --- | --- |
@@ -241,7 +203,7 @@ uv run backtester walk-forward \
   --from 2022-01-01 --to 2025-12-31 \
   --is-months 12 --oos-months 6 \
   --strategy strategies/backtester/crypt_ensemble_h1_discovery_nr4_vwap_robust.json \
-  --trials 50 --target mandate_score \
+  --trials 50 \
   --ttl-low 24 --ttl-high 60 \
   --risk-percent-low 1.0 --risk-percent-high 3.0 \
   --output results/walk_forward_nr4_sol

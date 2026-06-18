@@ -156,19 +156,12 @@ def cli() -> None:
 @click.option("--maker-fee", type=float, default=0.0002, help="Maker fee")
 @click.option("--taker-fee", type=float, default=0.0005, help="Taker fee")
 @click.option(
-    "--trail-activation-rrr",
-    type=float,
-    default=0.0,
-    help="RRR threshold that activates trailing stop. 0 disables trailing.",
-)
-@click.option(
     "--trail-distance-atr",
     type=float,
     default=0.0,
     help="Trailing stop distance in ATR units after activation.",
 )
 @click.option("--ttl", type=int, default=0, help="Max position duration")
-@click.option("--max-positions", type=int, default=0, help="Max simultaneous positions")
 @click.option("--max-allowed-leverage", type=float, default=25.0, help="Max allowed leverage")
 @click.option("--ts-col", type=str, default="timestamp", help="timestamp column name")
 @click.option(
@@ -314,10 +307,8 @@ def run(
     rrr: float,
     maker_fee: float,
     taker_fee: float,
-    trail_activation_rrr: float,
     trail_distance_atr: float,
     ttl: int,
-    max_positions: int,
     max_allowed_leverage: float,
     ts_col: str,
     analyze_conditions: bool,
@@ -408,12 +399,12 @@ def run(
         capital=capital,
         risk_percent=risk_percent,
         rrr=rrr,
-        trail_activation_rrr=trail_activation_rrr,
+        trail_activation_rrr=rrr if trail_distance_atr > 0 else 0.0,
         trail_distance_atr=trail_distance_atr,
         maker_fee=maker_fee,
         taker_fee=taker_fee,
         ttl=ttl,
-        max_positions=max_positions,
+        max_positions=0,
         max_allowed_leverage=max_allowed_leverage,
         max_allowed_margin=max_allowed_margin,
         risk_base_period=risk_base_period,
@@ -469,7 +460,6 @@ def run(
 @click.option("--maker-fee", type=float, default=0.0002, help="Maker fee.")
 @click.option("--taker-fee", type=float, default=0.0005, help="Taker fee.")
 @click.option("--ttl", type=int, default=20, help="Fixed TTL if no TTL range.")
-@click.option("--max-positions", type=int, default=0, help="Max simultaneous positions.")
 @click.option("--max-allowed-leverage", type=float, default=25.0, help="Max allowed leverage.")
 @click.option("--max-allowed-margin", type=float, default=1.0, help="Max margin.")
 @click.option(
@@ -481,21 +471,6 @@ def run(
 @click.option("--ts-col", type=str, default="timestamp", help="timestamp column name")
 @click.option("--trials", type=int, default=25, help="Number of Optuna trials.")
 @click.option("--study-name", default="optimization", help="Optuna study/log name.")
-@click.option(
-    "--target",
-    type=click.Choice(
-        [
-            "total_return_pct",
-            "profit_factor",
-            "sharpe_ratio",
-            "max_drawdown",
-            "mandate_score",
-        ],
-        case_sensitive=False,
-    ),
-    default="total_return_pct",
-    help="Objective metric.",
-)
 @click.option("--rrr-low", type=float, default=1.0, help="RRR search low bound.")
 @click.option("--rrr-high", type=float, default=3.0, help="RRR search high bound.")
 @click.option("--rrr-step", type=float, default=0.25, help="RRR search step.")
@@ -527,17 +502,6 @@ def run(
     help="Breakeven floor for tp_move_pct in TP-first mode.",
 )
 @click.option(
-    "--trail-activation-rrr",
-    type=float,
-    default=0.0,
-    help="Fixed trailing activation RRR when activation values are not provided.",
-)
-@click.option(
-    "--trail-activation-rrr-values",
-    default=None,
-    help="Comma-separated trailing activation RRR values. Include 0 to test fixed TP.",
-)
-@click.option(
     "--trail-distance-atr",
     type=float,
     default=0.0,
@@ -546,32 +510,6 @@ def run(
 @click.option("--trail-distance-atr-low", type=float, default=None, help="Trail ATR low.")
 @click.option("--trail-distance-atr-high", type=float, default=None, help="Trail ATR high.")
 @click.option("--trail-distance-atr-step", type=float, default=0.5, help="Trail ATR step.")
-@click.option(
-    "--max-positions-values",
-    default=None,
-    help=(
-        "Comma-separated max simultaneous positions values. "
-        "Overrides max-positions low/high/step when set."
-    ),
-)
-@click.option(
-    "--max-positions-low",
-    type=int,
-    default=None,
-    help="Max-positions search low bound.",
-)
-@click.option(
-    "--max-positions-high",
-    type=int,
-    default=None,
-    help="Max-positions search high bound.",
-)
-@click.option(
-    "--max-positions-step",
-    type=int,
-    default=1,
-    help="Max-positions search step.",
-)
 @click.option("--ttl-low", type=int, default=None, help="TTL search low bound.")
 @click.option("--ttl-high", type=int, default=None, help="TTL search high bound.")
 @click.option("--ttl-step", type=int, default=1, help="TTL search step.")
@@ -624,14 +562,12 @@ def optimize(
     maker_fee: float,
     taker_fee: float,
     ttl: int,
-    max_positions: int,
     max_allowed_leverage: float,
     max_allowed_margin: float,
     risk_base_period: str,
     ts_col: str,
     trials: int,
     study_name: str,
-    target: str,
     rrr_low: float,
     rrr_high: float,
     rrr_step: float,
@@ -642,16 +578,10 @@ def optimize(
     tp_move_pct_step: float,
     structural_sl_mode: str,
     min_tp_move_pct: float,
-    trail_activation_rrr: float,
-    trail_activation_rrr_values: str | None,
     trail_distance_atr: float,
     trail_distance_atr_low: float | None,
     trail_distance_atr_high: float | None,
     trail_distance_atr_step: float,
-    max_positions_values: str | None,
-    max_positions_low: int | None,
-    max_positions_high: int | None,
-    max_positions_step: int,
     ttl_low: int | None,
     ttl_high: int | None,
     ttl_step: int,
@@ -697,12 +627,12 @@ def optimize(
         capital=capital,
         risk_percent=risk_percent,
         rrr=rrr_low,
-        trail_activation_rrr=trail_activation_rrr,
+        trail_activation_rrr=0.0,
         trail_distance_atr=trail_distance_atr,
         maker_fee=maker_fee,
         taker_fee=taker_fee,
         ttl=ttl,
-        max_positions=max_positions,
+        max_positions=0,
         max_allowed_leverage=max_allowed_leverage,
         max_allowed_margin=max_allowed_margin,
         risk_base_period=risk_base_period,
@@ -733,14 +663,6 @@ def optimize(
             risk_percent_step,
         )
     ttl_range = None if ttl_low is None or ttl_high is None else (ttl_low, ttl_high, ttl_step)
-    if max_positions_low is None or max_positions_high is None:
-        max_positions_range = None
-    else:
-        max_positions_range = (
-            max_positions_low,
-            max_positions_high,
-            max_positions_step,
-        )
     if trail_distance_atr_low is None or trail_distance_atr_high is None:
         trail_distance_atr_range = None
     else:
@@ -749,21 +671,6 @@ def optimize(
             trail_distance_atr_high,
             trail_distance_atr_step,
         )
-    try:
-        parsed_max_positions_values = (
-            tuple(parse_int_values(max_positions_values))
-            if max_positions_values is not None
-            else None
-        )
-        parsed_trail_activation_rrr_values = (
-            tuple(parse_float_values(trail_activation_rrr_values))
-            if trail_activation_rrr_values is not None
-            else None
-        )
-    except ValueError as e:
-        logger.error("❌ %s", e)
-        return
-
     output_folder = make_output_folder(output)
     run_parameter_optimization(
         df=df,
@@ -772,15 +679,12 @@ def optimize(
         optimizer_args=OptimizerSearchArgs(
             trials=trials,
             study_name=study_name,
-            target=target,
+            target="mandate_score",
             show_progress=progress,
             optimize_strategy_params=strategy_param_search,
             risk_percent_range=risk_percent_range,
             rrr_range=(rrr_low, rrr_high, rrr_step),
-            trail_activation_rrr_values=parsed_trail_activation_rrr_values,
             trail_distance_atr_range=trail_distance_atr_range,
-            max_positions_values=parsed_max_positions_values,
-            max_positions_range=max_positions_range,
             position_ttl_bars_range=ttl_range,
             tp_move_pct_range=tp_move_pct_range,
             optimize_daily_limits=daily_limit_search,
@@ -815,12 +719,6 @@ def optimize(
 @click.option("--risk-percent", type=float, default=1.0, help="Fixed risk percent.")
 @click.option("--rrr", type=float, default=1.25, help="Fixed reward/risk ratio.")
 @click.option(
-    "--trail-activation-rrr",
-    type=float,
-    default=0.0,
-    help="RRR threshold that activates trailing stop. 0 disables trailing.",
-)
-@click.option(
     "--trail-distance-atr",
     type=float,
     default=0.0,
@@ -846,7 +744,6 @@ def optimize(
 )
 @click.option("--maker-fee", type=float, default=0.0002, help="Maker fee.")
 @click.option("--taker-fee", type=float, default=0.0005, help="Taker fee.")
-@click.option("--max-positions", type=int, default=0, help="Max simultaneous positions.")
 @click.option("--max-allowed-leverage", type=float, default=25.0, help="Max allowed leverage.")
 @click.option("--max-allowed-margin", type=float, default=1.0, help="Max margin.")
 @click.option(
@@ -888,14 +785,12 @@ def compare_fixed(
     capital: float,
     risk_percent: float,
     rrr: float,
-    trail_activation_rrr: float,
     trail_distance_atr: float,
     ttl: int,
     continuous: bool,
     jobs: int,
     maker_fee: float,
     taker_fee: float,
-    max_positions: int,
     max_allowed_leverage: float,
     max_allowed_margin: float,
     risk_base_period: str,
@@ -942,12 +837,12 @@ def compare_fixed(
             capital=capital,
             risk_percent=risk_percent,
             rrr=rrr,
-            trail_activation_rrr=trail_activation_rrr,
+            trail_activation_rrr=rrr if trail_distance_atr > 0 else 0.0,
             trail_distance_atr=trail_distance_atr,
             ttl=ttl,
             maker_fee=maker_fee,
             taker_fee=taker_fee,
-            max_positions=max_positions,
+            max_positions=0,
             max_allowed_leverage=max_allowed_leverage,
             max_allowed_margin=max_allowed_margin,
             risk_base_period=risk_base_period,
@@ -1000,21 +895,10 @@ def compare_fixed(
     help="Comma-separated position TTL values in bars.",
 )
 @click.option(
-    "--trail-activation-rrr-values",
-    default="0",
-    show_default=True,
-    help="Comma-separated trailing activation RRR values. 0 disables trailing.",
-)
-@click.option(
     "--trail-distance-atr-values",
     default="0",
     show_default=True,
     help="Comma-separated trailing distance ATR values.",
-)
-@click.option(
-    "--max-positions-values",
-    default=None,
-    help=("Comma-separated max simultaneous positions values. Defaults to fixed --max-positions."),
 )
 @click.option(
     "--jobs",
@@ -1025,7 +909,6 @@ def compare_fixed(
 )
 @click.option("--maker-fee", type=float, default=0.0002, help="Maker fee.")
 @click.option("--taker-fee", type=float, default=0.0005, help="Taker fee.")
-@click.option("--max-positions", type=int, default=0, help="Max simultaneous positions.")
 @click.option("--max-allowed-leverage", type=float, default=25.0, help="Max allowed leverage.")
 @click.option("--max-allowed-margin", type=float, default=1.0, help="Max margin.")
 @click.option(
@@ -1044,18 +927,15 @@ def compare_grid(
     risk_percent: float,
     rrr_values: str,
     ttl_values: str,
-    trail_activation_rrr_values: str,
     trail_distance_atr_values: str,
-    max_positions_values: str | None,
     jobs: int,
     maker_fee: float,
     taker_fee: float,
-    max_positions: int,
     max_allowed_leverage: float,
     max_allowed_margin: float,
     risk_base_period: str,
 ) -> None:
-    """Run a tiny execution-only rrr/ttl/max_positions grid across bounded windows."""
+    """Run a tiny execution-only rrr/ttl grid across bounded windows."""
     logger.info("🚀 Starting execution-grid comparison...")
     cfg = load_strategy_config(strategy, logger)
     if cfg is None:
@@ -1065,13 +945,7 @@ def compare_grid(
         window_specs = parse_window_specs(windows)
         parsed_rrr_values = parse_float_values(rrr_values)
         parsed_ttl_values = parse_int_values(ttl_values)
-        parsed_trail_activation_rrr_values = parse_float_values(trail_activation_rrr_values)
         parsed_trail_distance_atr_values = parse_float_values(trail_distance_atr_values)
-        parsed_max_positions_values = (
-            parse_int_values(max_positions_values)
-            if max_positions_values is not None
-            else [max_positions]
-        )
     except ValueError as e:
         logger.error("❌ %s", e)
         return
@@ -1084,21 +958,21 @@ def compare_grid(
             capital=capital,
             risk_percent=risk_percent,
             rrr=parsed_rrr_values[0],
-            trail_activation_rrr=parsed_trail_activation_rrr_values[0],
+            trail_activation_rrr=(
+                parsed_rrr_values[0] if parsed_trail_distance_atr_values[0] > 0 else 0.0
+            ),
             trail_distance_atr=parsed_trail_distance_atr_values[0],
             ttl=parsed_ttl_values[0],
             maker_fee=maker_fee,
             taker_fee=taker_fee,
-            max_positions=max_positions,
+            max_positions=0,
             max_allowed_leverage=max_allowed_leverage,
             max_allowed_margin=max_allowed_margin,
             risk_base_period=risk_base_period,
         ),
         rrr_values=parsed_rrr_values,
         ttl_values=parsed_ttl_values,
-        trail_activation_rrr_values=parsed_trail_activation_rrr_values,
         trail_distance_atr_values=parsed_trail_distance_atr_values,
-        max_positions_values=parsed_max_positions_values,
         data_dir=data_dir,
         primary_timeframe=primary_timeframe,
         output_folder=output_folder,
@@ -1131,12 +1005,6 @@ def compare_grid(
 @click.option("--risk-percent", type=float, default=1.0, help="Fixed risk percent.")
 @click.option("--rrr", type=float, default=1.25, help="Fixed reward/risk ratio.")
 @click.option(
-    "--trail-activation-rrr",
-    type=float,
-    default=0.0,
-    help="RRR threshold that activates trailing stop. 0 disables trailing.",
-)
-@click.option(
     "--trail-distance-atr",
     type=float,
     default=0.0,
@@ -1152,7 +1020,6 @@ def compare_grid(
 )
 @click.option("--maker-fee", type=float, default=0.0002, help="Maker fee.")
 @click.option("--taker-fee", type=float, default=0.0005, help="Taker fee.")
-@click.option("--max-positions", type=int, default=0, help="Max simultaneous positions.")
 @click.option("--max-allowed-leverage", type=float, default=25.0, help="Max allowed leverage.")
 @click.option("--max-allowed-margin", type=float, default=1.0, help="Max margin.")
 @click.option(
@@ -1170,13 +1037,11 @@ def signal_quality(
     capital: float,
     risk_percent: float,
     rrr: float,
-    trail_activation_rrr: float,
     trail_distance_atr: float,
     ttl: int,
     jobs: int,
     maker_fee: float,
     taker_fee: float,
-    max_positions: int,
     max_allowed_leverage: float,
     max_allowed_margin: float,
     risk_base_period: str,
@@ -1201,12 +1066,12 @@ def signal_quality(
             capital=capital,
             risk_percent=risk_percent,
             rrr=rrr,
-            trail_activation_rrr=trail_activation_rrr,
+            trail_activation_rrr=rrr if trail_distance_atr > 0 else 0.0,
             trail_distance_atr=trail_distance_atr,
             ttl=ttl,
             maker_fee=maker_fee,
             taker_fee=taker_fee,
-            max_positions=max_positions,
+            max_positions=0,
             max_allowed_leverage=max_allowed_leverage,
             max_allowed_margin=max_allowed_margin,
             risk_base_period=risk_base_period,
@@ -1255,7 +1120,6 @@ def signal_quality(
 @click.option("--capital", type=float, default=10000.0, help="Initial capital.")
 @click.option("--maker-fee", type=float, default=0.0002, help="Maker fee.")
 @click.option("--taker-fee", type=float, default=0.0005, help="Taker fee.")
-@click.option("--max-positions", type=int, default=0, help="Max simultaneous positions.")
 @click.option("--max-allowed-leverage", type=float, default=25.0, help="Max allowed leverage.")
 @click.option("--max-allowed-margin", type=float, default=1.0, help="Max margin.")
 @click.option(
@@ -1270,16 +1134,6 @@ def signal_quality(
     default=50,
     show_default=True,
     help="Optuna trials per IS window. 0 = eval-only (no optimization).",
-)
-@click.option(
-    "--target",
-    type=click.Choice(
-        ["total_return_pct", "profit_factor", "sharpe_ratio", "max_drawdown", "mandate_score"],
-        case_sensitive=False,
-    ),
-    default="mandate_score",
-    show_default=True,
-    help="Optimization objective.",
 )
 @click.option("--rrr-low", type=float, default=1.5, show_default=True, help="RRR search low.")
 @click.option("--rrr-high", type=float, default=3.5, show_default=True, help="RRR search high.")
@@ -1328,12 +1182,10 @@ def walk_forward(
     capital: float,
     maker_fee: float,
     taker_fee: float,
-    max_positions: int,
     max_allowed_leverage: float,
     max_allowed_margin: float,
     risk_base_period: str,
     trials: int,
-    target: str,
     rrr_low: float,
     rrr_high: float,
     rrr_step: float,
@@ -1366,7 +1218,7 @@ def walk_forward(
           --from 2022-01-01 --to 2025-12-31 \\
           --is-months 12 --oos-months 6 \\
           --strategy strategies/backtester/crypt_ensemble_h1_discovery_nr4_vwap_robust.json \\
-          --trials 50 --target mandate_score \\
+          --trials 50 \\
           --ttl-low 24 --ttl-high 60 \\
           --risk-percent-low 1.0 --risk-percent-high 3.0
 
@@ -1449,7 +1301,7 @@ def walk_forward(
         maker_fee=maker_fee,
         taker_fee=taker_fee,
         ttl=ttl,
-        max_positions=max_positions,
+        max_positions=0,
         max_allowed_leverage=max_allowed_leverage,
         max_allowed_margin=max_allowed_margin,
         risk_base_period=risk_base_period,
@@ -1478,15 +1330,12 @@ def walk_forward(
     optimizer_args = OptimizerSearchArgs(
         trials=trials,
         study_name="wf_study",
-        target=target,
+        target="mandate_score",
         show_progress=progress,
         optimize_strategy_params=False,
         risk_percent_range=risk_percent_range,
         rrr_range=(rrr_low, rrr_high, rrr_step),
-        trail_activation_rrr_values=None,
         trail_distance_atr_range=None,
-        max_positions_values=None,
-        max_positions_range=None,
         position_ttl_bars_range=ttl_range,
         tp_move_pct_range=tp_move_pct_range,
         optimize_daily_limits=False,
@@ -1874,7 +1723,6 @@ def trade_chart(
     help="Initial capital for backtests.",
 )
 @click.option("--risk-base-period", default="monthly", show_default=True)
-@click.option("--max-positions", type=int, default=1, show_default=True)
 @click.option(
     "--specialist-windows",
     default="",
@@ -1905,7 +1753,6 @@ def search_signals(
     stage_mode: str,
     capital: float,
     risk_base_period: str,
-    max_positions: int,
     specialist_windows: str,
 ) -> None:
     """Direct Signal Search v2: staged quality-diversity strategy discovery.
@@ -2017,7 +1864,7 @@ def search_signals(
             min_signals_per_week=min_signals_per_week,
             top_n_candidates=top_n,
             initial_capital=capital,
-            max_positions=max_positions,
+            max_positions=0,
             risk_base_period=risk_base_period,
             specialist_windows=specialist_window_labels,
             catalog=cast(Literal["legacy", "pinescript_v1", "all"], catalog.lower()),

@@ -1,0 +1,46 @@
+{
+  "backtest_args": {
+    "exit_geometry": "sl_rrr",
+    "risk_base_period": "monthly",
+    "structural_sl_mode": "ignore",
+    "position_ttl_bars": 56,
+    "risk_percent": 1.25,
+    "rrr": 2.0,
+    "max_positions": 0,
+    "trail_distance_atr": 0.25
+  },
+  "candidate_id": "dssv2_013321",
+  "name": "dss_strategy",
+  "notes": {
+    "source": "results/dss_sol_pinescript_v1_2023_stage1_seed73024",
+    "stage1": {
+      "barrier_median_bars_to_tp_2023": 4.0,
+      "barrier_median_mae_atr_2023": 0.7087273654843714,
+      "barrier_median_mfe_atr_2023": 1.131295616868413,
+      "barrier_sl_first_rate_2023": 0.4921259842519685,
+      "barrier_timeout_rate_2023": 0.0,
+      "barrier_tp_first_rate_2023": 0.5078740157480315,
+      "barrier_win_rate_2023": 0.5078740157480315,
+      "long_ratio_2023": 0.5196850393700787,
+      "median_stop_atr_2023": 0.009671450643302652,
+      "signals_2023": 254
+    }
+  },
+  "params": {
+    "atr_sl_mult": 0.75,
+    "filter_names": ["pf_ps_squeeze_recent"],
+    "filter_params": {
+      "pf_ps_squeeze_recent": {
+        "lookback": 12
+      }
+    },
+    "position_ttl_bars": 24,
+    "risk_percent": 1.0,
+    "rrr": 1.5,
+    "trigger_name": "pt_ps_macd_signal_cross",
+    "trigger_params": {
+      "zero_filter": "against_zero"
+    }
+  },
+  "version": "2.0-stage1-manual"
+}

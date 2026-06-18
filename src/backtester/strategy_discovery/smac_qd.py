@@ -42,7 +42,9 @@ from backtester.strategy_discovery.dss_v2 import (
     _write_summary,
     evaluate_stage1,
     evaluate_stage_scores,
+    export_stage1_candidates,
     export_stage4_candidates,
+    write_stage1_ranked,
 )
 from backtester.strategy_discovery.signal_composer import SignalComposer
 
@@ -236,7 +238,7 @@ def run_smac_qd_search(
                     continue
                 stage1 = evaluate_stage1(candidate, window_data, config, composer)
                 _append_stage1(output, candidate, stage1, config.windows)
-                if not stage1.passed or stage1.behavior is None:
+                if not stage1.should_promote:
                     observation = _SMACObservation(
                         candidate=candidate,
                         target_score=_EMPTY_SIGNAL_PENALTY,
@@ -246,10 +248,14 @@ def run_smac_qd_search(
                     _append_observation(output, observation)
                     continue
                 stage1_survivors += 1
+                if config.stage_mode == "stage1":
+                    continue
+                behavior = stage1.behavior
+                assert behavior is not None
 
                 stage2 = evaluate_stage_scores(
                     candidate=candidate,
-                    behavior=stage1.behavior,
+                    behavior=behavior,
                     windows=_proxy_windows(config.windows),
                     window_data=window_data,
                     config=config,
@@ -257,7 +263,7 @@ def run_smac_qd_search(
                     novelty_bonus=10.0 if archive.occupied_cells == 0 else 0.0,
                 )
                 _append_stage_score(output / "stage2_proxy.csv", stage2, config.windows)
-                archive.consider(stage2.candidate, stage1.behavior, stage2.score)
+                archive.consider(stage2.candidate, behavior, stage2.score)
                 target_score = stage2.score.robust_score
                 fidelity = "stage2_proxy"
 
@@ -265,7 +271,7 @@ def run_smac_qd_search(
                     stage2_survivors += 1
                     stage3 = evaluate_stage_scores(
                         candidate=candidate,
-                        behavior=stage1.behavior,
+                        behavior=behavior,
                         windows=config.windows,
                         window_data=window_data,
                         config=config,
@@ -274,7 +280,7 @@ def run_smac_qd_search(
                     )
                     _append_stage_score(output / "stage3_full_scores.csv", stage3, config.windows)
                     _append_score_history(output / "score_history.csv", stage3)
-                    archive.consider(stage3.candidate, stage1.behavior, stage3.score)
+                    archive.consider(stage3.candidate, behavior, stage3.score)
                     completed_stage3.add(candidate.candidate_id)
                     stage3_evaluations += 1
                     target_score = stage3.score.robust_score
@@ -294,9 +300,13 @@ def run_smac_qd_search(
         _fit_surrogate(surrogate, encoder, observations)
         generation += 1
 
-    _write_archive(output, archive)
     _write_smac_state(output / "smac_qd_state.csv", encoder, observations)
-    exported = export_stage4_candidates(archive, config)
+    stage1_ranked = write_stage1_ranked(output, config)
+    if config.stage_mode == "stage1":
+        exported = export_stage1_candidates(stage1_ranked, output, config)
+    else:
+        _write_archive(output, archive)
+        exported = export_stage4_candidates(archive, config)
     _write_summary(
         output=output,
         config=config,
@@ -306,6 +316,7 @@ def run_smac_qd_search(
         stage3_evaluations=stage3_evaluations,
         exported=exported,
         archive=archive,
+        stage1_ranked=len(stage1_ranked),
     )
     return DSSV2Result(
         output=output,

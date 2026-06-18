@@ -6,6 +6,63 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-18 — Archived dssv2_013321 near-miss
+
+- Archived `dssv2_013321_ps_macd_squeeze_recent` as a PineScript-derived
+  near-miss after owner review.
+- Added mandate snapshot, monthly mandate CSV, execution params, and
+  provenance under `docs/archive/candidates/dssv2_013321_macd_squeeze_recent/`.
+- Added frozen runnable strategy copy under
+  `strategies/archive/dssv2_013321_ps_macd_squeeze_recent.json`.
+- Files touched: `docs/archive/candidates/`, `strategies/archive/`,
+  `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
+## 2026-06-18 — DSS Stage 1 ATR-scaled directional label
+
+- Replaced DSS Stage 1 candidate-geometry labeling with a volatility-normalized
+  directional label: next-open entry, closed-candle ATR14, SOL reference
+  calibration of 0.7% favorable TP and 0.4% adverse SL, and conservative
+  SL-first handling when both barriers touch in one candle.
+- Stage 1 ATR is only a symbol volatility scale; candidate `rrr`, `risk_percent`,
+  `atr_sl_mult`, structural stops, TTL, fees, sizing, and execution overlap are
+  still excluded from Stage 1.
+- Unresolved end-of-window tails are now reported as `unresolved_tail` and
+  excluded from `barrier_win_rate`; the minimum signal gate uses resolved
+  TP/SL outcomes.
+- Added `stage1_tp_move_pct`, `stage1_sl_move_pct`, and
+  `stage1_reference_atr_pct` config/state fields plus new CSV columns for
+  `barrier_unresolved_tail_rate_*`, `barrier_median_mae_pct_*`, and
+  `barrier_median_mfe_pct_*`.
+- Removed Stage 1 advisory-score dependence on stop distance; CatCMA-QD now
+  uses the shared Stage 1 advisory scorer.
+- Validation: `tests/backtester/test_dss.py` 67/67 passed; ruff and mypy clean
+  on touched DSS modules/tests.
+- Files touched: `src/backtester/strategy_discovery/`, `tests/backtester/`,
+  `docs/discovery/`, `docs/tasks/`, `README.md`, `CHANGELOG.md`.
+
+---
+
+## 2026-06-17 — Unified DSS Stage 1 contract
+
+- Split DSS Stage 1 signal viability into `dss_stage1.py` and kept
+  `dss_v2.py` as the staged runner/artifact surface.
+- Added `Stage1Result.should_promote` and `advisory_score`; DSS backends now
+  use the stage result as the single pass/fail contract before Stage 2.
+- Made `--stage-mode stage1` apply to all `search-signals` algorithms:
+  `staged`, `catcma_qd`, `island_qd`, `hyperband_qd`, and `smac_qd`.
+- Added `stage1_near_misses.csv` so rejected/specialist candidates remain
+  ranked and inspectable after long Stage 1 runs.
+- Documented `discover-strategies` as legacy for this contract; new search
+  work should add `search-signals` backends instead.
+- Validation: `tests/backtester/test_dss.py` 64/64 passed; ruff clean and
+  mypy clean on touched DSS modules/tests.
+- Files touched: `src/backtester/strategy_discovery/`, `tests/backtester/`,
+  `docs/discovery/`, `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
 ## 2026-06-16 — PineScript-derived DSS catalog v1
 
 - Added a separate `pinescript_v1` DSS trigger/filter catalog derived from the
@@ -21,14 +78,29 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
   configs under `stage1_candidates/`.
 - Added `--min-signals-per-week`; the PineScript handoff now uses 4 signals per
   week, so 20 signals/year no longer passes Stage 1 on full-year windows.
+- Changed execution tuning so trailing activation is derived from the selected
+  `rrr` whenever `trail_distance_atr > 0`; user-facing backtest/diagnostic
+  CLIs no longer expose separate `--trail-activation-rrr*` flags.
+- Enforced optimizer/backtest policy: `max_positions` is fixed to `0` across
+  user-facing CLIs and internal best-run export, and optimizer targets are
+  locked to `mandate_score`.
+- Fixed strategy `backtest_args` compatibility: `position_ttl_bars` is now
+  accepted as an alias for runner `ttl`, so DSS/Optuna candidate JSONs override
+  the CLI `--ttl` default correctly.
+- Fixed replay of trailing-stop candidates: `BacktestArgs` now derives
+  `trail_activation_rrr` from the final merged `rrr` whenever
+  `trail_distance_atr > 0`, so `backtester run` matches Optuna best-run
+  trailing behavior.
 - Extended `SignalComposer` so PineScript-derived candidate JSONs replay
   through the normal DSS strategy/backtest path.
 - Persisted the selected catalog in DSS state and documented the new catalog
   contract in `docs/discovery/pinescript_catalog_v1.md`.
 - Updated README and task state so the next validation run searches the new
   PineScript catalog instead of repeating the legacy space.
-- Validation: `tests/backtester/test_dss.py` 58/58 passed; ruff clean and mypy
-  clean on touched DSS feature/catalog/CLI/test files.
+- Validation: `tests/backtester/test_dss.py` 58/58 passed;
+  `tests/backtester/test_optimizer.py` and
+  `tests/backtester/test_fixed_candidate_report.py` 21/21 passed; ruff and
+  mypy clean on touched optimizer/grid/walk-forward files.
 - Files touched: `src/backtester/strategy_discovery/`, `src/backtester/__main__.py`,
   `tests/backtester/`, `docs/discovery/`, `docs/tasks/`, `README.md`,
   `CHANGELOG.md`.

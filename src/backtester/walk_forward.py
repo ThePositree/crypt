@@ -10,7 +10,7 @@ Typical usage (via CLI):
         --from 2022-01-01 --to 2025-12-31 \\
         --is-months 12 --oos-months 6 \\
         --strategy strategies/backtester/.../nr4.json \\
-        --trials 50 --target mandate_score \\
+        --trials 50 \\
         --output results/walk_forward
 
 When --trials 0: skip optimization; evaluate each OOS window with base strategy
@@ -352,7 +352,6 @@ def run_walk_forward(
                 initial_capital=base_args.capital,
                 taker_fee=base_args.taker_fee,
                 maker_fee=base_args.maker_fee,
-                max_positions=base_args.max_positions,
                 position_ttl_bars=base_args.ttl,
                 max_allowed_margin=base_args.max_allowed_margin,
                 risk_base_period=base_args.risk_base_period,
@@ -362,11 +361,8 @@ def run_walk_forward(
                 risk_percent_range=optimizer_args.risk_percent_range,
                 rrr_range=optimizer_args.rrr_range,
                 trail_activation_rrr=base_args.trail_activation_rrr,
-                trail_activation_rrr_values=optimizer_args.trail_activation_rrr_values,
                 trail_distance_atr=base_args.trail_distance_atr,
                 trail_distance_atr_range=optimizer_args.trail_distance_atr_range,
-                max_positions_values=optimizer_args.max_positions_values,
-                max_positions_range=optimizer_args.max_positions_range,
                 position_ttl_bars_range=optimizer_args.position_ttl_bars_range,
                 tp_move_pct_range=optimizer_args.tp_move_pct_range,
                 exit_geometry=base_args.exit_geometry,

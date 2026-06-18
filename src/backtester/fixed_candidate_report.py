@@ -68,6 +68,9 @@ class FixedCandidateParams:
     structural_sl_mode: str = "cap"
     min_tp_move_pct: float = 0.004
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "max_positions", 0)
+
     def to_backtest_args(self) -> BacktestArgs:
         return BacktestArgs(
             capital=self.capital,
@@ -482,9 +485,7 @@ def run_execution_grid_comparison(
     base_params: FixedCandidateParams,
     rrr_values: list[float],
     ttl_values: list[int],
-    trail_activation_rrr_values: list[float],
     trail_distance_atr_values: list[float],
-    max_positions_values: list[int],
     data_dir: str,
     primary_timeframe: str,
     output_folder: str,
@@ -497,12 +498,8 @@ def run_execution_grid_comparison(
         raise ValueError("rrr_values must not be empty")
     if not ttl_values:
         raise ValueError("ttl_values must not be empty")
-    if not trail_activation_rrr_values:
-        raise ValueError("trail_activation_rrr_values must not be empty")
     if not trail_distance_atr_values:
         raise ValueError("trail_distance_atr_values must not be empty")
-    if not max_positions_values:
-        raise ValueError("max_positions_values must not be empty")
     _validate_unique_labels(windows)
 
     output_path = Path(output_folder)
@@ -518,26 +515,22 @@ def run_execution_grid_comparison(
                 base_params,
                 rrr=rrr,
                 ttl=ttl,
-                trail_activation_rrr=trail_activation_rrr,
+                trail_activation_rrr=rrr if trail_distance_atr > 0 else 0.0,
                 trail_distance_atr=trail_distance_atr,
-                max_positions=max_positions,
+                max_positions=0,
             ),
         )
         for index, (
             window,
             rrr,
             ttl,
-            trail_activation_rrr,
             trail_distance_atr,
-            max_positions,
         ) in enumerate(
-            (window, rrr, ttl, trail_activation_rrr, trail_distance_atr, max_positions)
+            (window, rrr, ttl, trail_distance_atr)
             for window in windows
             for rrr in rrr_values
             for ttl in ttl_values
-            for trail_activation_rrr in trail_activation_rrr_values
             for trail_distance_atr in trail_distance_atr_values
-            for max_positions in max_positions_values
         )
     ]
     tasks_by_window: dict[str, list[tuple[int, WindowSpec, FixedCandidateParams]]] = {}

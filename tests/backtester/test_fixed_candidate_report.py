@@ -405,7 +405,7 @@ def test_execution_grid_window_reuses_one_signal_build(monkeypatch, tmp_path):
     assert [index for index, _ in rows] == [0, 1]
     assert [row["rrr"] for _, row in rows] == [1.0, 1.25]
     assert [row["ttl"] for _, row in rows] == [3, 6]
-    assert [row["max_positions"] for _, row in rows] == [1, 3]
+    assert [row["max_positions"] for _, row in rows] == [0, 0]
     assert [row["signal_long"] for _, row in rows] == [1, 1]
 
 
@@ -483,9 +483,7 @@ def test_execution_grid_writes_partial_summary_when_window_fails(
         base_params=_candidate_params(),
         rrr_values=[1.0],
         ttl_values=[30],
-        trail_activation_rrr_values=[0.0],
         trail_distance_atr_values=[0.0],
-        max_positions_values=[1, 3],
         data_dir="/unused",
         primary_timeframe="1h",
         output_folder=str(tmp_path),
@@ -493,8 +491,8 @@ def test_execution_grid_writes_partial_summary_when_window_fails(
         logger=__import__("logging").getLogger("test"),
     )
 
-    assert summary["label"].tolist() == ["ok_window", "ok_window"]
-    assert summary["max_positions"].tolist() == [1, 3]
+    assert summary["label"].tolist() == ["ok_window"]
+    assert summary["max_positions"].tolist() == [0]
     assert (tmp_path / "grid.csv").exists()
     assert (tmp_path / "grid.md").exists()
 

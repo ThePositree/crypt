@@ -33,7 +33,9 @@ from backtester.strategy_discovery.dss_v2 import (
     _write_summary,
     evaluate_stage1,
     evaluate_stage_scores,
+    export_stage1_candidates,
     export_stage4_candidates,
+    write_stage1_ranked,
 )
 from backtester.strategy_discovery.signal_composer import SignalComposer
 
@@ -89,7 +91,7 @@ def run_hyperband_qd_search(
                     continue
                 stage1 = evaluate_stage1(candidate, window_data, config, composer)
                 _append_stage1(output, candidate, stage1, config.windows)
-                if not stage1.passed or stage1.behavior is None:
+                if not stage1.should_promote:
                     continue
                 stage1_survivors += 1
                 stage1_passed.append(
@@ -102,6 +104,10 @@ def run_hyperband_qd_search(
             finally:
                 if progress_callback is not None:
                     progress_callback(1)
+
+        if config.stage_mode == "stage1":
+            batch_index += 1
+            continue
 
         rung1_items = _select_rung_promotions(
             [_RungCandidate(item) for item in stage1_passed],
@@ -215,9 +221,13 @@ def run_hyperband_qd_search(
         model.update(evaluated_for_model)
         batch_index += 1
 
-    _write_archive(output, archive)
     _write_model_summary(output / "hyperband_qd_state.csv", model)
-    exported = export_stage4_candidates(archive, config)
+    stage1_ranked = write_stage1_ranked(output, config)
+    if config.stage_mode == "stage1":
+        exported = export_stage1_candidates(stage1_ranked, output, config)
+    else:
+        _write_archive(output, archive)
+        exported = export_stage4_candidates(archive, config)
     _write_summary(
         output=output,
         config=config,
@@ -227,6 +237,7 @@ def run_hyperband_qd_search(
         stage3_evaluations=stage3_evaluations,
         exported=exported,
         archive=archive,
+        stage1_ranked=len(stage1_ranked),
     )
     return DSSV2Result(
         output=output,

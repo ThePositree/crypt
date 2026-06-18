@@ -1,0 +1,12 @@
+{
+  "candidate_id": "dssv2_013321_ps_macd_squeeze_recent",
+  "archived_at": "2026-06-18",
+  "archive_reason": "near_miss",
+  "superseded_by": null,
+  "strategy_path": "strategies/archive/dssv2_013321_ps_macd_squeeze_recent.json",
+  "strategy_source": "results/dss_sol_pinescript_v1_2023_stage1_seed73024/manual_candidates/dssv2_013321_ps_macd_squeeze_recent.json",
+  "discovery_artifact": "results/dss_sol_pinescript_v1_2023_stage1_seed73024/",
+  "optuna_artifact": "results/dssv2_013321_big_optuna_2023_trail_atr/20260617_132218/",
+  "mandate_artifact": "results/dssv2_013321_big_optuna_2023_trail_atr/20260617_132218/best_run/",
+  "git_commit": "7f5f0fc2e1a8c5cba2992c9f22a99c81636eab8a"
+}

@@ -4,6 +4,138 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-18 — Archived dssv2_013321 MACD/squeeze near-miss
+
+**What:** shelved the manual PineScript candidate
+`dssv2_013321_ps_macd_squeeze_recent` under the git-tracked candidate archive
+and froze its best execution parameters.
+
+**Why now:** the owner reviewed the 2023 Optuna best-run and decided to stop
+active work on this candidate after the mandate snapshot showed 5 months below
+the 15% floor and 2 monthly DD breaches despite strong single-year return.
+
+**Expected gain:** future agents can inspect or revive the candidate without
+reconstructing the PineScript Stage 1 run, Optuna artifact, or exact trailing
+ATR execution settings.
+
+**Result:** added `docs/archive/candidates/dssv2_013321_macd_squeeze_recent/`
+with README, mandate snapshot, monthly mandate CSV, execution params, and
+provenance; added frozen strategy JSON under `strategies/archive/`.
+
+**Acceptance:** archive index links to the candidate; provenance points to the
+discovery, Optuna, and best-run artifacts.
+
+**Links:** `docs/backtester/candidate_archive.md`;
+`results/dssv2_013321_big_optuna_2023_trail_atr/20260617_132218/best_trial.json`.
+
+---
+
+## 2026-06-18 — DSS Stage 1 ATR-scaled directional label
+
+**What:** replaced DSS Stage 1 candidate-geometry evaluation with an
+ATR-scaled directional label. Stage 1 now enters at next candle open, uses
+closed-candle ATR14 as the symbol volatility scale, preserves the SOL reference
+calibration of 0.7% favorable TP and 0.4% adverse SL, counts same-bar TP+SL
+conservatively as SL, and reports unresolved end-of-window tails separately
+from resolved TP/SL outcomes.
+
+**Why now:** the owner clarified that fixed 0.7%/0.4% barriers are acceptable
+for SOL but too strict for more volatile symbols such as TON. Stage 1 should
+test whether a candidate predicts direction under comparable volatility, not
+whether it already has a tuned execution geometry. Candidate RRR, risk percent,
+TTL, `atr_sl_mult`, structural stops, fees, sizing, and trailing behavior
+belong in later stages.
+
+**Expected gain:** search algorithms can keep exploring different trigger and
+filter spaces while Stage 1 uses one clean pass/fail contract. Good candidates
+near the end of a window are no longer miscounted as losses just because their
+future path is truncated.
+
+**Result:** added `stage1_tp_move_pct`, `stage1_sl_move_pct`, and
+`stage1_reference_atr_pct`; Stage 1 artifacts now include unresolved-tail and
+percent MAE/MFE columns while keeping legacy column aliases for compatibility.
+CatCMA-QD uses the shared Stage 1 advisory score instead of a local
+stop-distance copy.
+
+**Acceptance:** `tests/backtester/test_dss.py` 67/67 passed; ruff and mypy
+clean on touched DSS modules/tests.
+
+**Links:** `src/backtester/strategy_discovery/dss_stage1.py`,
+`docs/discovery/direct_signal_search_v2.md`, `README.md`.
+
+---
+
+## 2026-06-17 — Unified DSS Stage 1 promotion contract
+
+**What:** split DSS Stage 1 signal-viability evaluation into a shared
+`dss_stage1` module and made every `search-signals` backend use the same
+`Stage1Result.should_promote` contract before moving candidates to Stage 2.
+`discover-strategies` remains legacy and outside this contract.
+
+**Why now:** the owner wanted the search algorithms to own only candidate-space
+exploration while Stage 1 owns pass/fail and diagnostic scoring. The old code
+already shared most Stage 1 logic, but alternative backends did not all honor
+`--stage-mode stage1` and the promotion condition was duplicated as
+`passed + behavior`.
+
+**Expected gain:** `staged`, `catcma_qd`, `island_qd`, `hyperband_qd`, and
+`smac_qd` now search in different ways but feed candidates through one Stage 1
+gate and artifact surface. Stage 1-only runs can compare catalogs/backend
+proposal behavior without paying proxy/full backtest cost.
+
+**Result:** added `stage1_near_misses.csv` so ranked rejected/specialist rows
+remain visible after long runs; `stage1_ranked.csv` still contains only
+promoted Stage 1 candidates. All DSS backends now stop before Stage 2/3 when
+`--stage-mode stage1` is set.
+
+**Acceptance:** `tests/backtester/test_dss.py` 64/64 passed; ruff clean and
+mypy clean on touched DSS modules/tests.
+
+**Links:** `src/backtester/strategy_discovery/dss_stage1.py`,
+`docs/discovery/direct_signal_search_v2.md`.
+
+---
+
+## 2026-06-17 — Optuna trailing ATR search cleanup
+
+**What:** removed trailing activation from the Optuna search space and kept
+only trailing ATR distance as the tunable trailing-stop parameter. Also locked
+execution tuning to the project policy: `max_positions = 0` and optimizer
+target `mandate_score`.
+
+**Why now:** the owner-run Optuna trial selected `rrr=2.75` with
+`trail_activation_rrr=3.0`, which exposed that activation should not be an
+independent parameter. In this model the activation point is the selected
+`rrr`; the only question is how far the ATR trailing stop should sit after
+activation.
+
+**Expected gain:** reduce optimizer degrees of freedom and prevent misleading
+trials caused by searching both the target level and a separate activation
+level.
+
+**Result:** user-facing backtest/diagnostic CLIs no longer expose
+`--trail-activation-rrr*` options. `ParameterOptimizer` derives
+`trail_activation_rrr = rrr` whenever `trail_distance_atr > 0`; if
+`trail_distance_atr` is `0`, trailing is disabled. Best-run export uses the
+same derivation.
+
+`max_positions` is now normalized to `0` in `BacktestArgs` and
+`FixedCandidateParams`, removed from user-facing CLI flags, ignored in
+best-run params, and no longer searched by `ParameterOptimizer`. Optimizer
+CLI/walk-forward no longer expose `--target`; they use `mandate_score`.
+
+**Acceptance:** `tests/backtester/test_optimizer.py` and
+`tests/backtester/test_fixed_candidate_report.py` 21/21 passed; ruff passed on
+touched optimizer/CLI/grid/walk-forward files except pre-existing
+`cli_runner.py` path-style lint debt; mypy passed on touched optimizer/grid and
+walk-forward files; CLI help for `run`, `optimize`, `compare-fixed`,
+`compare-grid`, and `signal-quality` shows only trail ATR controls.
+
+**Links:** `src/backtester/optimizer.py`, `src/backtester/__main__.py`,
+`README.md`.
+
+---
+
 ## 2026-06-16 — PineScript-derived DSS catalog v1
 
 **What:** added a separate `pinescript_v1` DSS trigger/filter catalog derived

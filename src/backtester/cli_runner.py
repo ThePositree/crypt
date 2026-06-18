@@ -121,6 +121,14 @@ class BacktestArgs:
     structural_sl_mode: str = "cap"
     min_tp_move_pct: float = 0.004
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "max_positions", 0)
+        object.__setattr__(
+            self,
+            "trail_activation_rrr",
+            self.rrr if self.trail_distance_atr > 0 else 0.0,
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class OptimizerSearchArgs:
@@ -133,10 +141,7 @@ class OptimizerSearchArgs:
     optimize_strategy_params: bool
     risk_percent_range: tuple[float, float, float] | None
     rrr_range: tuple[float, float, float] | None
-    trail_activation_rrr_values: tuple[float, ...] | None
     trail_distance_atr_range: tuple[float, float, float] | None
-    max_positions_values: tuple[int, ...] | None
-    max_positions_range: tuple[int, int, int] | None
     position_ttl_bars_range: tuple[int, int, int] | None
     tp_move_pct_range: tuple[float, float, float] | None
     optimize_daily_limits: bool
@@ -227,6 +232,10 @@ _BACKTEST_ARG_KEYS = frozenset(
     }
 )
 
+_BACKTEST_ARG_ALIASES = {
+    "position_ttl_bars": "ttl",
+}
+
 
 def build_backtest_args(cfg: StrategyConfig | None, **cli_kwargs: Any) -> BacktestArgs:
     """Build BacktestArgs from CLI kwargs, with strategy ``backtest_args`` overrides.
@@ -249,6 +258,9 @@ def build_backtest_args(cfg: StrategyConfig | None, **cli_kwargs: Any) -> Backte
     """
     kwargs = dict(cli_kwargs)
     if cfg is not None:
+        for source_key, target_key in _BACKTEST_ARG_ALIASES.items():
+            if source_key in cfg.backtest_args and target_key not in cfg.backtest_args:
+                kwargs[target_key] = cfg.backtest_args[source_key]
         for key in _BACKTEST_ARG_KEYS:
             if key in cfg.backtest_args:
                 kwargs[key] = cfg.backtest_args[key]
@@ -488,30 +500,6 @@ def run_backtest(*, df: StrategyInput, strategy: BaseStrategy, args: BacktestArg
 
 def _target_function(name: str) -> TargetFunction:
     target_name = name.lower().replace("-", "_")
-    if target_name == "total_return_pct":
-        return TargetFunction(
-            fn=lambda results: float(results.metrics.get("total_return_pct", -100.0)),
-            direction="maximize",
-            name=target_name,
-        )
-    if target_name == "profit_factor":
-        return TargetFunction(
-            fn=lambda results: float(results.metrics.get("profit_factor", 0.0)),
-            direction="maximize",
-            name=target_name,
-        )
-    if target_name == "sharpe_ratio":
-        return TargetFunction(
-            fn=lambda results: float(results.metrics.get("sharpe_ratio", -999.0)),
-            direction="maximize",
-            name=target_name,
-        )
-    if target_name == "max_drawdown":
-        return TargetFunction(
-            fn=lambda results: float(results.metrics.get("max_drawdown", -100.0)),
-            direction="maximize",
-            name=target_name,
-        )
     if target_name == "mandate_score":
         return TargetFunction(
             fn=lambda _results: -float("inf"),
@@ -548,22 +536,25 @@ def _best_strategy_params(*, cfg: StrategyConfig, best_params: dict[str, Any]) -
 
 
 def _best_backtest_args(*, base: BacktestArgs, best_params: dict[str, Any]) -> BacktestArgs:
+    rrr = best_params.get("rrr", base.rrr)
+    trail_distance_atr = best_params.get(
+        "trail_distance_atr",
+        base.trail_distance_atr,
+    )
+    trail_activation_rrr = best_params.get(
+        "trail_activation_rrr",
+        rrr if trail_distance_atr > 0 else 0.0,
+    )
     kwargs = {
         "capital": base.capital,
         "risk_percent": best_params.get("risk_percent", base.risk_percent),
-        "rrr": best_params.get("rrr", base.rrr),
-        "trail_activation_rrr": best_params.get(
-            "trail_activation_rrr",
-            base.trail_activation_rrr,
-        ),
-        "trail_distance_atr": best_params.get(
-            "trail_distance_atr",
-            base.trail_distance_atr,
-        ),
+        "rrr": rrr,
+        "trail_activation_rrr": trail_activation_rrr,
+        "trail_distance_atr": trail_distance_atr,
         "maker_fee": base.maker_fee,
         "taker_fee": base.taker_fee,
         "ttl": best_params.get("position_ttl_bars", base.ttl),
-        "max_positions": best_params.get("max_positions", base.max_positions),
+        "max_positions": 0,
         "max_allowed_leverage": base.max_allowed_leverage,
         "max_allowed_margin": base.max_allowed_margin,
         "risk_base_period": base.risk_base_period,
@@ -612,7 +603,6 @@ def run_parameter_optimization(
         initial_capital=backtest_args.capital,
         taker_fee=backtest_args.taker_fee,
         maker_fee=backtest_args.maker_fee,
-        max_positions=backtest_args.max_positions,
         position_ttl_bars=backtest_args.ttl,
         max_allowed_margin=backtest_args.max_allowed_margin,
         risk_base_period=backtest_args.risk_base_period,
@@ -622,11 +612,8 @@ def run_parameter_optimization(
         risk_percent_range=optimizer_args.risk_percent_range,
         rrr_range=optimizer_args.rrr_range,
         trail_activation_rrr=backtest_args.trail_activation_rrr,
-        trail_activation_rrr_values=optimizer_args.trail_activation_rrr_values,
         trail_distance_atr=backtest_args.trail_distance_atr,
         trail_distance_atr_range=optimizer_args.trail_distance_atr_range,
-        max_positions_values=optimizer_args.max_positions_values,
-        max_positions_range=optimizer_args.max_positions_range,
         position_ttl_bars_range=optimizer_args.position_ttl_bars_range,
         tp_move_pct_range=optimizer_args.tp_move_pct_range,
         exit_geometry=backtest_args.exit_geometry,
