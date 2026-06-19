@@ -37,6 +37,10 @@ Current active work is **M2 donor backtester migration and candidate search**.
 `backtester` is a root-integrated package under `src/backtester` (ADR-0023).
 `discover-strategies` ranks H1 trigger+filter stacks; converted candidates run
 through donor `crypt_ensemble` + mandate `compare-fixed` / Optuna.
+The longer-term research direction is regime-aware routing: keep searching and
+archiving useful strategy families, then infer market regimes from the archived
+strategy performance matrix and train an online detector/router
+(`docs/regime_detection.md`, ADR-0041).
 
 **Active candidate:** NR4 breakout + VWAP band + avoid-doji
 (`crypt_ensemble_h1_discovery_nr4_vwap_robust.json`). Best discovery→execution
@@ -243,6 +247,9 @@ By default DSS searches the legacy trigger/filter catalog. Use
 `--catalog pinescript_v1` to search only the PineScript-derived catalog built
 from the local TradingView idea set, or `--catalog all` for later comparison
 after the pure catalog has been inspected.
+The PineScript catalog now includes both the first indicator slice and the
+SMC/ICT slice from `smc.pine`: BOS/CHoCH, FVG, equal highs/lows,
+premium/discount, and order-block retest primitives.
 The default backend is `--algorithm staged`. For non-duplicative exploratory
 runs, `--algorithm catcma_qd` enables the experimental CatCMA-inspired
 quality-diversity backend from ADR-0037. `--algorithm island_qd` enables the
@@ -262,6 +269,10 @@ ATR-scaled favorable/adverse barriers calibrated from the SOL reference
 excluded from the Stage 1 win-rate denominator. Candidate `rrr`, risk percent,
 ATR stop distance, TTL, fees, sizing, and execution overlap are searched or
 scored only in later stages.
+DSS strategy JSON replay treats flat `params` execution fields
+(`rrr`, `risk_percent`, `trail_distance_atr`, `position_ttl_bars`) as
+backtest defaults when `backtest_args` is absent, so manual `backtester run`
+matches the execution settings printed for optimizer/manual candidates.
 
 ```bash
 uv run backtester search-signals \
@@ -319,6 +330,30 @@ uv run backtester search-signals \
     --n-trials 120000 \
     --output results/dss_sol_hyperband_seed4242
 ```
+
+To launch the full five-algorithm DSS matrix at once, use
+`search-signals-matrix`. It starts one child `search-signals` process per
+algorithm and writes each process log under its output directory:
+
+```bash
+uv run backtester search-signals-matrix \
+    --data-dir data \
+    --symbol SOL-USDT-SWAP \
+    --windows 2023 \
+    --catalog all \
+    --stage-mode stage1 \
+    --min-signals-per-week 4 \
+    --stage1-min-wr 0.45 \
+    --n-trials 50000 \
+    --n-jobs-per-algorithm 1 \
+    --output-root results/dss_stage1_matrix_all_2023
+```
+
+Default algorithms are `staged`, `catcma_qd`, `island_qd`, `hyperband_qd`, and
+`smac_qd` with the standard seeds used in DSS handoffs. Total requested workers
+are `algorithm_count * n_jobs_per_algorithm`. `--stage1-min-wr` controls only
+the Stage 1 barrier win-rate gate; signal-count and overtrading gates still
+apply unchanged.
 
 ```bash
 uv run backtester search-signals \

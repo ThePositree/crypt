@@ -4,6 +4,136 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-19 — Stage 1 WR threshold exposed in CLI
+
+**What:** added `--stage1-min-wr` to `backtester search-signals` and
+`backtester search-signals-matrix`.
+
+**Why now:** the owner wants to rerun the all-catalog matrix with a softer WR45
+Stage 1 gate while keeping the existing signal-count and overtrading filters
+unchanged.
+
+**Expected gain:** operator runs can explore lower-WR candidates without code
+edits, while the Stage 1 promotion contract remains centralized in
+`DSSConfig`.
+
+**Result:** the flag sets `DSSConfig.min_barrier_win_rate` for direct searches
+and is passed through to every child process launched by the matrix command.
+
+**Acceptance:** DSS tests pass, ruff is clean for the touched CLI/tests, and
+both command help outputs show `--stage1-min-wr`.
+
+**Links:** `src/backtester/__main__.py`, `README.md`.
+
+---
+
+## 2026-06-19 — Full PineScript SMC/ICT DSS catalog slice
+
+**What:** completed the remaining PineScript-derived catalog transfer from
+`smc.pine` into native DSS primitives.
+
+**Why now:** the first PineScript slice intentionally skipped the large
+SMC/ICT surface. The owner asked to continue and finish the catalog transfer in
+this session so future `pinescript_v1` / `all` searches include the full
+TradingView idea set.
+
+**Expected gain:** DSS can now search BOS/CHoCH, fair-value gaps, equal
+highs/lows, premium/discount zones, and order-block retests in the same staged
+Stage 1 pipeline as the earlier Supertrend, UT Bot, Squeeze, WaveTrend, MACD,
+ADX/DI, VixFix, pivot-volume, trendline, and killzone primitives.
+
+**Result:** added SMC feature columns, five SMC triggers, and five SMC filters
+to `pinescript_v1`. Updated the PineScript catalog spec and removed the
+completed backlog item.
+
+**Acceptance:** DSS tests pass, ruff is clean, and mypy reports no issues on
+the touched PineScript catalog/features/tests.
+
+**Links:** `docs/discovery/pinescript_catalog_v1.md`,
+`src/backtester/strategy_discovery/features.py`,
+`src/backtester/strategy_discovery/pinescript_catalog.py`.
+
+---
+
+## 2026-06-19 — DSS matrix launch command
+
+**What:** added `backtester search-signals-matrix`, an operator command that
+launches the standard DSS algorithm set in parallel.
+
+**Why now:** the owner was repeatedly starting five separate commands for
+`staged`, `catcma_qd`, `island_qd`, `hyperband_qd`, and `smac_qd` when testing
+the same catalog/window setup.
+
+**Expected gain:** one command can start all search backends, distribute them
+across OS-scheduled cores, keep per-algorithm output directories, and collect
+child logs.
+
+**Result:** the wrapper starts one `search-signals` subprocess per algorithm,
+uses the standard seeds, writes `run.log` in each output directory, waits for
+all children, and fails if any child exits non-zero.
+
+**Acceptance:** CLI help and invalid-algorithm tests cover the new command.
+
+**Links:** `src/backtester/__main__.py`, `README.md`.
+
+---
+
+## 2026-06-19 — Regime detection roadmap documented
+
+**What:** converted the owner-provided `test.md` notes into project
+documentation and removed the temporary source file.
+
+**Why now:** the owner defined the next strategic direction: continue running
+strategy searches while building regime infrastructure, archive useful
+non-mandate strategies, and later use that archive to train a regime detector
+and portfolio router.
+
+**Expected gain:** future agents can work from durable specs and backlog items
+instead of reconstructing the plan from chat or a temporary note.
+
+**Result:** added `docs/regime_detection.md`, ADR-0041, and backlog tasks for
+the archived-strategy performance matrix, Regime Discovery/Labeler, online
+Detector, Portfolio Router scoring, and future non-OHLCV detector features.
+Updated candidate archive policy to allow `regime_seed` and `research_seed`
+entries.
+
+**Acceptance:** `test.md` was removed; README, archive docs, backlog, ADR, and
+changelog all point to the regime-aware routing direction.
+
+**Links:** `docs/regime_detection.md`,
+`docs/decisions/0041-regime-discovery-from-strategy-behavior.md`,
+`docs/backtester/candidate_archive.md`.
+
+---
+
+## 2026-06-19 — DSS manual replay execution defaults
+
+**What:** fixed `backtester run` replay for DSS manual/optimizer candidate JSONs
+that store execution values directly in flat `params`.
+
+**Why now:** the owner replayed
+`dssv2_013321_macd_squeeze_wr4685_cli_exec.json` and saw the strategy log print
+`risk_percent=0.5`, `rrr=6.0`, `trail_distance_atr=0.25`, and
+`position_ttl_bars=92`, while the actual backtest engine still used CLI
+defaults (`risk_percent=1.0`, `rrr=2.0`, no trailing, no TTL).
+
+**Expected gain:** manual DSS replays now match the execution parameters carried
+by the candidate file, making Optuna best-run comparisons reproducible without
+extra flags when `backtest_args` is absent.
+
+**Result:** `build_backtest_args` now treats DSS flat execution params as
+strategy-file defaults and still lets explicit `backtest_args` take precedence.
+
+**Acceptance:** `tests/backtester/test_optimizer.py` passes; a direct
+`build_backtest_args` check on the owner's WR46.85 JSON now returns
+`risk_percent=0.5`, `rrr=6.0`, `trail_distance_atr=0.25`,
+`trail_activation_rrr=6.0`, and `ttl=92`.
+
+**Links:** `src/backtester/cli_runner.py`,
+`results/dss_stage1_staged_pinescript_2023_atr_seed73023/manual_candidates/dssv2_013321_macd_squeeze_wr4685_cli_exec.json`.
+
+---
+
 ## 2026-06-18 — Archived dssv2_013321 MACD/squeeze near-miss
 
 **What:** shelved the manual PineScript candidate

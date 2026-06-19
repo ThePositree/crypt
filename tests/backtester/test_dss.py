@@ -1633,6 +1633,31 @@ def test_search_signals_rejects_removed_sampler_option() -> None:
     assert "DSS v2 replaced the old Optuna sampler path" in result.output
 
 
+def test_search_signals_matrix_help() -> None:
+    result = CliRunner().invoke(cli, ["search-signals-matrix", "--help"])
+    assert result.exit_code == 0
+    assert "--n-jobs-per-algorithm" in result.output
+    assert "--algorithms" in result.output
+
+
+def test_search_signals_matrix_rejects_unknown_algorithm() -> None:
+    result = CliRunner().invoke(
+        cli,
+        [
+            "search-signals-matrix",
+            "--data-dir",
+            "data",
+            "--symbol",
+            "SOL-USDT-SWAP",
+            "--algorithms",
+            "staged,nope",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "unknown value" in result.output
+    assert "nope" in result.output
+
+
 # ---------------------------------------------------------------------------
 # DSSSignalCache
 # ---------------------------------------------------------------------------
@@ -1749,8 +1774,13 @@ def test_pinescript_catalog_is_separate_from_legacy_catalog() -> None:
 
     assert "pt_ps_supertrend_flip" in ps_triggers
     assert "pt_ps_macd_signal_cross" in ps_triggers
+    assert "pt_ps_smc_structure_break" in ps_triggers
+    assert "pt_ps_smc_fvg" in ps_triggers
+    assert "pt_ps_smc_order_block_retest" in ps_triggers
     assert "pf_ps_adx_di_aligned" in ps_filters
     assert "pf_ps_killzone_session" in ps_filters
+    assert "pf_ps_smc_bias" in ps_filters
+    assert "pf_ps_smc_premium_discount" in ps_filters
     assert legacy_triggers.isdisjoint(ps_triggers)
     assert legacy_filters.isdisjoint(ps_filters)
 
@@ -1787,6 +1817,71 @@ def test_signal_composer_replays_pinescript_catalog_config() -> None:
         trigger_params={"zero_filter": "off"},
         filter_names=(),
         filter_params={},
+        rrr=2.0,
+        risk_percent=1.0,
+        position_ttl_bars=24,
+        atr_sl_mult=1.0,
+    )
+
+    composer = SignalComposer()
+    assert composer.validate_config(config) == []
+    signals = composer.build(config)(_make_strategy_data(primary))
+
+    assert not signals.empty
+    assert set(signals["side"]) <= {"long", "short"}
+
+
+def _make_smc_primary() -> pd.DataFrame:
+    index = pd.date_range("2024-01-01", periods=90, freq="1h", tz="UTC")
+    close = np.array([100.0 + np.sin(i / 3) * 2 + i * 0.08 for i in range(90)])
+    close[30:36] = [101, 100, 99, 98, 99, 100]
+    close[50:56] = [103, 104, 106, 109, 111, 114]
+    open_ = np.roll(close, 1)
+    open_[0] = close[0]
+    high = np.maximum(open_, close) + 1.0
+    low = np.minimum(open_, close) - 1.0
+    high[40] = 104.0
+    low[42] = 106.0
+    high[60] = 112.0
+    low[62] = 108.0
+    volume = np.full(90, 1_000.0)
+    return pd.DataFrame(
+        {"open": open_, "high": high, "low": low, "close": close, "volume": volume},
+        index=index,
+    )
+
+
+def test_pinescript_smc_features_and_triggers_emit_events() -> None:
+    primary = _make_smc_primary()
+    dataset = build_discovery_dataset(
+        data=_make_strategy_data(primary),
+        window_label="w1",
+        symbol="TEST-USDT-SWAP",
+    )
+
+    assert "ps_smc_internal_bias" in dataset.features
+    assert "ps_smc_bullish_fvg" in dataset.features
+    assert dataset.features["ps_smc_bullish_fvg"].fillna(False).any()
+
+    structure_trigger = pinescript_trigger_catalog()["pt_ps_smc_structure_break"](
+        {"structure": "internal", "event": "all"}
+    )
+    fvg_trigger = pinescript_trigger_catalog()["pt_ps_smc_fvg"]({"min_gap_atr": 0.0})
+
+    assert structure_trigger(dataset)
+    fvg_events = fvg_trigger(dataset)
+    assert fvg_events
+    assert {event.side for event in fvg_events} <= {"long", "short"}
+    assert "ps_smc_zone" in fvg_events[0].metadata
+
+
+def test_signal_composer_replays_pinescript_smc_config() -> None:
+    primary = _make_smc_primary()
+    config = TrialConfig(
+        trigger_name="pt_ps_smc_fvg",
+        trigger_params={"min_gap_atr": 0.0},
+        filter_names=("pf_ps_smc_fvg_recent",),
+        filter_params={"pf_ps_smc_fvg_recent": {"lookback": 12}},
         rrr=2.0,
         risk_percent=1.0,
         position_ttl_bars=24,

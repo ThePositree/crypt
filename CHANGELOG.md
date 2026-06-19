@@ -6,6 +6,88 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-19 — Stage 1 WR threshold CLI flag
+
+- Added `--stage1-min-wr` to `backtester search-signals` and
+  `backtester search-signals-matrix`.
+- The flag feeds `DSSConfig.min_barrier_win_rate` without changing Stage 1
+  signal-count, TP-first, or overtrading gates.
+- Validation: DSS tests passed; ruff clean on the touched CLI/test files; both
+  command help outputs show the new flag.
+- Files touched: `src/backtester/__main__.py`, `README.md`, `docs/tasks/`,
+  `CHANGELOG.md`.
+
+---
+
+## 2026-06-19 — Full PineScript SMC/ICT DSS catalog slice
+
+- Completed the remaining PineScript-derived DSS catalog transfer from
+  `pinescript/smc.pine`.
+- Added native OHLCV-safe SMC features for internal/swing BOS/CHoCH, fair-value
+  gaps, equal highs/lows, premium/discount zones, and active order-block zones.
+- Added five SMC triggers: `pt_ps_smc_structure_break`, `pt_ps_smc_fvg`,
+  `pt_ps_smc_equal_sweep`, `pt_ps_smc_premium_discount_reversal`, and
+  `pt_ps_smc_order_block_retest`.
+- Added five SMC filters: `pf_ps_smc_bias`, `pf_ps_smc_fvg_recent`,
+  `pf_ps_smc_premium_discount`, `pf_ps_smc_equal_level_recent`, and
+  `pf_ps_smc_order_block_active`.
+- Updated `docs/discovery/pinescript_catalog_v1.md` and removed the completed
+  SMC/ICT catalog backlog item.
+- Validation: `tests/backtester/test_dss.py` passed; ruff clean and mypy clean
+  on touched PineScript catalog/features/tests.
+- Files touched: `src/backtester/strategy_discovery/`, `tests/backtester/`,
+  `docs/discovery/`, `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
+## 2026-06-19 — DSS matrix launch command
+
+- Added `backtester search-signals-matrix` to launch `staged`, `catcma_qd`,
+  `island_qd`, `hyperband_qd`, and `smac_qd` concurrently with one command.
+- The wrapper creates per-algorithm output directories, writes child
+  `run.log` files, uses the standard DSS seeds, and exits non-zero if any
+  child search fails.
+- Documented the command in README and added CLI tests for help and unknown
+  algorithm validation.
+- Files touched: `src/backtester/__main__.py`, `tests/backtester/`,
+  `README.md`, `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
+## 2026-06-19 — Regime detection roadmap and archive policy
+
+- Converted owner notes from `test.md` into `docs/regime_detection.md`.
+- Added ADR-0041: regimes will be discovered from archived strategy behavior,
+  with separate offline Labeler, online Detector, and Portfolio Router.
+- Updated the candidate archive contract so useful non-mandate strategies can
+  be kept as `regime_seed` or `research_seed` for future detector training.
+- Added backlog tasks for the archived-strategy performance matrix, offline
+  Regime Discovery/Labeler, rule-based online Detector, Portfolio Router
+  utility scoring, and later non-OHLCV detector features.
+- Updated README with the regime-aware routing research direction.
+- Removed the temporary `test.md` handoff file after converting it.
+- Files touched: `docs/regime_detection.md`, `docs/decisions/`,
+  `docs/backtester/`, `docs/archive/candidates/`, `docs/tasks/`,
+  `README.md`, `CHANGELOG.md`.
+
+---
+
+## 2026-06-19 — DSS manual replay uses flat execution params
+
+- Fixed `backtester run` replay for DSS candidate JSONs that carry execution
+  fields in flat `params` but no `backtest_args`; `risk_percent`, `rrr`,
+  `trail_distance_atr`, and `position_ttl_bars` now become backtest defaults.
+- Kept `backtest_args` as the highest-precedence strategy-file override.
+- Added regression coverage for flat DSS params and `backtest_args` precedence.
+- Validation: `tests/backtester/test_optimizer.py` passed; direct
+  `build_backtest_args` check on the owner's WR46.85 JSON returns the expected
+  Optuna execution values. Full ruff/mypy on the touched files still report
+  pre-existing unrelated issues in those files.
+- Files touched: `src/backtester/`, `tests/backtester/`, `docs/tasks/`,
+  `README.md`, `CHANGELOG.md`.
+
+---
+
 ## 2026-06-18 — Archived dssv2_013321 near-miss
 
 - Archived `dssv2_013321_ps_macd_squeeze_recent` as a PineScript-derived

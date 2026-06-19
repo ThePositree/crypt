@@ -14,6 +14,120 @@ when finished.
 > **+15%/month** on **$10k** SOL **2025** continuous backtest after fees;
 > max **10% intra-month DD**; auto-trading only after **promote** verdict.
 
+## P1 — Build archived-strategy performance matrix for regime discovery
+
+**What:** create a reproducible pipeline that takes archived and active
+strategy JSONs, runs or reads their backtest artifacts, and exports a
+time-indexed strategy performance matrix for regime research.
+
+**Why now:** owner direction on 2026-06-19 changed the archive role: while new
+features are being built, searches should keep finding strategies that are at
+least somewhat useful, even if they do not pass the full mandate. Those
+strategies become the evidence base for future regime discovery and detector
+training.
+
+**Expected gain:** turn the archive from a shelf of near-misses into a dataset
+showing which strategy families work in which market conditions.
+
+**Acceptance:** a spec or implementation exports `time x strategy_metrics`
+with return, drawdown, trade count, win rate, profit factor, exposure,
+long/short split, exit distribution, strategy family id, config path, execution
+params, and source artifact path. At least two archived candidates can be
+included without manual CSV editing.
+
+**Links:** `docs/regime_detection.md`, ADR-0041,
+`docs/backtester/candidate_archive.md`, `docs/archive/candidates/README.md`.
+
+---
+
+## P1 — Implement offline Regime Discovery and Regime Labeler MVP
+
+**What:** build the first offline regime-discovery workflow over the archived
+strategy performance matrix. Start with simple clustering over strategy
+performance plus OHLCV regime features, then export retrospective labels per
+bar or time bucket.
+
+**Why now:** the project should stop assuming one permanent strategy must work
+across all periods. Regimes should be discovered from changes in strategy
+profitability and then interpreted through market features.
+
+**Expected gain:** create training labels for future online detectors and
+identify which archived strategy families belong in bull, bear, range,
+high-volatility, low-volatility, or unknown portfolios.
+
+**Acceptance:** `docs/regime_detection.md` is refined with concrete input/output
+schemas; an artifact exports `timestamp, regime_label, regime_confidence` plus
+cluster diagnostics; the report explains whether 4-8 regimes are stable enough
+to use.
+
+**Links:** ADR-0041, `docs/regime_detection.md`.
+
+---
+
+## P1 — Implement rule-based online Regime Detector MVP
+
+**What:** implement the first online detector that uses only past/current OHLCV
+features and attempts to reproduce the offline Labeler without look-ahead.
+
+**Why now:** the Labeler may use future data, but live routing needs a separate
+Detector that can run in backtests and eventually live trading.
+
+**Expected gain:** validate whether simple trend/volatility/volume/structure
+rules can identify enough of the discovered regimes to improve routing before
+adding heavier ML models.
+
+**Acceptance:** detector outputs regime probabilities, selected regime,
+confidence, smoothing state, and `unknown` when confidence is low. Tests prove
+no future data is used and smoothing/hysteresis prevents rapid flipping.
+
+**Links:** `docs/regime_detection.md` §6-8.
+
+---
+
+## P1 — Build Portfolio Router utility scoring
+
+**What:** add a backtest-time router that maps detector probabilities to
+strategy weights and scores the routed portfolio by utility, not just detector
+classification accuracy.
+
+**Why now:** a detector is only useful if it improves trading results. High F1
+against an offline labeler is secondary to return, drawdown, switching cost,
+uncertainty, and detection-delay behavior.
+
+**Expected gain:** establish the real selection metric for regime detectors and
+avoid promoting detectors that classify well but hurt portfolio returns.
+
+**Acceptance:** a router report includes portfolio return, drawdown, number of
+regime switches, average regime duration, unknown exposure, active strategies,
+capital weights, and utility score:
+`portfolio_return - drawdown_penalty - switching_penalty -
+uncertainty_penalty - detection_delay_penalty`.
+
+**Links:** `docs/regime_detection.md` §9-10, ADR-0041.
+
+---
+
+## P2 — Extend detector feature catalog beyond OHLCV
+
+**What:** after the OHLCV-only regime MVP works, add optional derivatives and
+cross-asset features: funding, open interest, OI change, long/short ratio,
+basis, liquidation volume, taker buy/sell ratio, BTC correlation, breadth, and
+cross-asset volatility.
+
+**Why now:** these features may improve regime detection, but they add data
+availability and reliability risk. They should not block the OHLCV MVP.
+
+**Expected gain:** richer regime separation once the Labeler/Detector/Router
+loop is measurable.
+
+**Acceptance:** missing non-OHLCV data degrades to lower confidence or
+`unknown`; it never crashes the detector. Each feature has a data-source note
+and synthetic tests.
+
+**Links:** `docs/regime_detection.md` §7.
+
+---
+
 
 ## P1 — Diagnose PineScript DSS catalog v1 cross-window behavior
 
@@ -37,28 +151,6 @@ smaller checks on 2022/2024/2025H1.
 
 **Links:** `docs/discovery/pinescript_catalog_v1.md`;
 `docs/tasks/IN_PROGRESS.md`.
-
----
-
-## P2 — Expand PineScript catalog v2 with SMC/ICT primitives
-
-**What:** implement a second PineScript-derived slice from `smc.pine` and the
-remaining ICT/session ideas: BOS/CHoCH, fair-value gaps, equal highs/lows,
-premium/discount zones, and more explicit killzone pivot sweeps.
-
-**Why now:** the first slice intentionally avoided the large SMC surface to keep
-validation fast and readable. Expand only if `pinescript_v1` shows enough
-signal quality to justify adding more structure.
-
-**Expected gain:** add market-structure primitives that the legacy catalog does
-not express cleanly, without immediately exploding the search space.
-
-**Acceptance:** a `pinescript_v2` spec or superseding section documents inputs,
-feature columns, trigger/filter names, closed-candle rules, tests, and the
-first owner-run command.
-
-**Links:** `pinescript/smc.pine`;
-`docs/discovery/pinescript_catalog_v1.md`.
 
 ---
 

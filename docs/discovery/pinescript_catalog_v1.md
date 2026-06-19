@@ -44,7 +44,7 @@ uv run backtester search-signals \
 | `support_resistance.pine` | pivot support/resistance break with volume |
 | `trendlines_with_breaks.pine` | dynamic pivot trendline breakout |
 | `ict_killzones_pivot.pine` | session/killzone high-low break concepts |
-| `smc.pine` | later SMC slice: BOS/CHoCH, FVG, equal highs/lows, premium/discount |
+| `smc.pine` | SMC/ICT slice: BOS/CHoCH, FVG, equal highs/lows, premium/discount, order-block retests |
 
 ## First implementation slice
 
@@ -78,6 +78,32 @@ one step.
 | `pf_ps_pivot_volume` | Volume oscillator/ratio is above threshold on level breaks. |
 | `pf_ps_trendline_slope` | Trendline slope is side-compatible or steep enough. |
 
+## SMC/ICT implementation slice
+
+The SMC slice is a native OHLCV-safe extraction from `smc.pine`, not a
+line-for-line LuxAlgo port. It intentionally exposes search primitives that DSS
+can combine with the rest of the PineScript catalog.
+
+### SMC Triggers
+
+| Trigger | Logic |
+| --- | --- |
+| `pt_ps_smc_structure_break` | Long/short on internal or swing bullish/bearish BOS or CHoCH. |
+| `pt_ps_smc_fvg` | Long on bullish fair-value gap, short on bearish fair-value gap. |
+| `pt_ps_smc_equal_sweep` | Long on confirmed equal-low area, short on confirmed equal-high area. |
+| `pt_ps_smc_premium_discount_reversal` | Long in discount with bullish close, short in premium with bearish close. |
+| `pt_ps_smc_order_block_retest` | Long/short when price retests the active side-aligned order-block zone. |
+
+### SMC Filters
+
+| Filter | Logic |
+| --- | --- |
+| `pf_ps_smc_bias` | Event side must align with current internal or swing structure bias. |
+| `pf_ps_smc_fvg_recent` | Side-aligned FVG formed within a configurable lookback. |
+| `pf_ps_smc_premium_discount` | Longs require discount, shorts require premium. |
+| `pf_ps_smc_equal_level_recent` | Side-aligned equal high/low condition appeared recently. |
+| `pf_ps_smc_order_block_active` | Side-aligned active order-block zone exists at event time. |
+
 ## Feature requirements
 
 All features are computed from closed candles only. The feature value available
@@ -103,6 +129,20 @@ Required feature columns include:
 - `ps_volume_osc`
 - `ps_trendline_upper`, `ps_trendline_lower`,
   `ps_trendline_upper_slope`, `ps_trendline_lower_slope`
+- `ps_smc_internal_bias`, `ps_smc_swing_bias`
+- `ps_smc_internal_bullish_bos`, `ps_smc_internal_bearish_bos`,
+  `ps_smc_internal_bullish_choch`, `ps_smc_internal_bearish_choch`
+- `ps_smc_swing_bullish_bos`, `ps_smc_swing_bearish_bos`,
+  `ps_smc_swing_bullish_choch`, `ps_smc_swing_bearish_choch`
+- `ps_smc_bullish_fvg`, `ps_smc_bearish_fvg`,
+  `ps_smc_bullish_fvg_top`, `ps_smc_bullish_fvg_bottom`,
+  `ps_smc_bearish_fvg_top`, `ps_smc_bearish_fvg_bottom`
+- `ps_smc_equal_high`, `ps_smc_equal_low`
+- `ps_smc_range_position`, `ps_smc_zone`
+- `ps_smc_bullish_ob_active`, `ps_smc_bearish_ob_active`,
+  `ps_smc_bullish_ob_high`, `ps_smc_bullish_ob_low`,
+  `ps_smc_bearish_ob_high`, `ps_smc_bearish_ob_low`,
+  `ps_smc_bullish_ob_retest`, `ps_smc_bearish_ob_retest`
 
 ## Search policy
 

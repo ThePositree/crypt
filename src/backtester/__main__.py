@@ -1,9 +1,11 @@
 import json
 import logging
 import os
+import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal, cast
+from typing import IO, Literal, cast
 
 _SRC_ROOT = Path(__file__).resolve().parents[1]
 _SRC_ROOT_STR = str(_SRC_ROOT)
@@ -87,6 +89,14 @@ log_level = logging.getLevelNamesMapping().get(os.environ.get("LOG_LEVEL", "INFO
 # Configure logging
 logging.basicConfig(level=log_level, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("backtester")
+
+_DSS_MATRIX_DEFAULT_SEEDS = {
+    "staged": 73023,
+    "catcma_qd": 777,
+    "island_qd": 2026,
+    "hyperband_qd": 4242,
+    "smac_qd": 5151,
+}
 
 
 @click.group()
@@ -1617,6 +1627,200 @@ def trade_chart(
     logger.info("Trade chart report saved to: %s", output_path)
 
 
+def _parse_dss_matrix_algorithms(raw: str) -> list[str]:
+    algorithms = [item.strip().lower() for item in raw.split(",") if item.strip()]
+    if not algorithms:
+        raise click.ClickException("--algorithms must contain at least one algorithm")
+
+    allowed = set(_DSS_MATRIX_DEFAULT_SEEDS)
+    unknown = sorted(set(algorithms) - allowed)
+    if unknown:
+        raise click.ClickException(
+            "--algorithms contains unknown value(s): "
+            + ", ".join(unknown)
+            + ". Allowed: "
+            + ", ".join(sorted(allowed))
+        )
+    return algorithms
+
+
+@cli.command("search-signals-matrix")
+@click.option("--data-dir", required=True, help="Project data directory (crypt-parquet layout).")
+@click.option(
+    "--symbol",
+    "symbols",
+    multiple=True,
+    required=True,
+    help="Symbol to search on. Passed through to search-signals.",
+)
+@click.option(
+    "--windows",
+    "windows_spec",
+    default="2022,2023,2024,2025H1",
+    show_default=True,
+    help="Comma-separated window specs passed through to search-signals.",
+)
+@click.option(
+    "--primary-timeframe",
+    type=click.Choice(["1h", "4h"], case_sensitive=False),
+    default="1h",
+    show_default=True,
+    help="Primary execution timeframe.",
+)
+@click.option("--n-trials", type=int, default=50_000, show_default=True)
+@click.option(
+    "--n-jobs-per-algorithm",
+    type=click.IntRange(min=1),
+    default=1,
+    show_default=True,
+    help="Worker count passed to each child search-signals process.",
+)
+@click.option(
+    "--algorithms",
+    default="staged,catcma_qd,island_qd,hyperband_qd,smac_qd",
+    show_default=True,
+    help="Comma-separated DSS algorithms to launch in parallel.",
+)
+@click.option(
+    "--catalog",
+    type=click.Choice(["legacy", "pinescript_v1", "all"], case_sensitive=False),
+    default="all",
+    show_default=True,
+    help="Trigger/filter catalog to search.",
+)
+@click.option(
+    "--stage-mode",
+    type=click.Choice(["full", "stage1"], case_sensitive=False),
+    default="stage1",
+    show_default=True,
+    help="Stage mode passed to each child search.",
+)
+@click.option("--output-root", default=None, help="Root directory for per-algorithm outputs.")
+@click.option("--top-n", type=int, default=20, show_default=True)
+@click.option("--min-trades", type=int, default=20, show_default=True)
+@click.option("--min-signals-per-week", type=float, default=4.0, show_default=True)
+@click.option(
+    "--stage1-min-wr",
+    type=click.FloatRange(min=0.0, max=1.0),
+    default=0.55,
+    show_default=True,
+    help="Minimum Stage 1 barrier win rate required in each window.",
+)
+@click.option("--capital", type=float, default=10_000.0, show_default=True)
+@click.option("--risk-base-period", default="monthly", show_default=True)
+@click.option("--specialist-windows", default="", show_default=True)
+def search_signals_matrix(
+    data_dir: str,
+    symbols: tuple[str, ...],
+    windows_spec: str,
+    primary_timeframe: str,
+    n_trials: int,
+    n_jobs_per_algorithm: int,
+    algorithms: str,
+    catalog: str,
+    stage_mode: str,
+    output_root: str | None,
+    top_n: int,
+    min_trades: int,
+    min_signals_per_week: float,
+    stage1_min_wr: float,
+    capital: float,
+    risk_base_period: str,
+    specialist_windows: str,
+) -> None:
+    """Launch several DSS search-signals algorithms concurrently."""
+    parsed_algorithms = _parse_dss_matrix_algorithms(algorithms)
+    if output_root is None:
+        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        output_root = f"results/dss_matrix_{catalog.lower()}_{stage_mode.lower()}_{ts}"
+    root = Path(output_root)
+    root.mkdir(parents=True, exist_ok=True)
+
+    click.echo(
+        "Launching DSS matrix: "
+        f"{len(parsed_algorithms)} algorithms x {n_jobs_per_algorithm} jobs each "
+        f"({len(parsed_algorithms) * n_jobs_per_algorithm} workers requested)"
+    )
+    click.echo(f"Output root: {root}")
+
+    processes: list[tuple[str, Path, subprocess.Popen[bytes], IO[bytes]]] = []
+    try:
+        for algorithm in parsed_algorithms:
+            seed = _DSS_MATRIX_DEFAULT_SEEDS[algorithm]
+            output_dir = root / f"{algorithm}_seed{seed}"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            log_path = output_dir / "run.log"
+            cmd = [
+                sys.executable,
+                "-m",
+                "backtester",
+                "search-signals",
+                "--data-dir",
+                data_dir,
+                "--windows",
+                windows_spec,
+                "--primary-timeframe",
+                primary_timeframe,
+                "--n-trials",
+                str(n_trials),
+                "--n-jobs",
+                str(n_jobs_per_algorithm),
+                "--algorithm",
+                algorithm,
+                "--catalog",
+                catalog.lower(),
+                "--stage-mode",
+                stage_mode.lower(),
+                "--seed",
+                str(seed),
+                "--output",
+                str(output_dir),
+                "--top-n",
+                str(top_n),
+                "--min-trades",
+                str(min_trades),
+                "--min-signals-per-week",
+                str(min_signals_per_week),
+                "--stage1-min-wr",
+                str(stage1_min_wr),
+                "--capital",
+                str(capital),
+                "--risk-base-period",
+                risk_base_period,
+                "--specialist-windows",
+                specialist_windows,
+            ]
+            for symbol in symbols:
+                cmd.extend(["--symbol", symbol])
+
+            log_file = log_path.open("wb")
+            process = subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT)
+            processes.append((algorithm, log_path, process, log_file))
+            click.echo(f"Started {algorithm} pid={process.pid} output={output_dir}")
+
+        failures: list[str] = []
+        for algorithm, log_path, process, log_file in processes:
+            code = process.wait()
+            log_file.close()
+            status = "ok" if code == 0 else f"failed:{code}"
+            click.echo(f"Finished {algorithm}: {status} log={log_path}")
+            if code != 0:
+                failures.append(f"{algorithm} exit={code} log={log_path}")
+
+        if failures:
+            raise click.ClickException("DSS matrix failures: " + "; ".join(failures))
+    except KeyboardInterrupt:
+        for _algorithm, _log_path, process, log_file in processes:
+            if process.poll() is None:
+                process.terminate()
+            log_file.close()
+        raise
+    finally:
+        for _algorithm, _log_path, process, log_file in processes:
+            if process.poll() is not None and not log_file.closed:
+                log_file.close()
+
+
 @cli.command("search-signals")
 @click.option(
     "--data-dir",
@@ -1709,6 +1913,13 @@ def trade_chart(
     help="Min Stage 1 signal frequency per week in each window.",
 )
 @click.option(
+    "--stage1-min-wr",
+    type=click.FloatRange(min=0.0, max=1.0),
+    default=0.55,
+    show_default=True,
+    help="Minimum Stage 1 barrier win rate required in each window.",
+)
+@click.option(
     "--stage-mode",
     type=click.Choice(["full", "stage1"], case_sensitive=False),
     default="full",
@@ -1750,6 +1961,7 @@ def search_signals(
     seed: int,
     min_trades: int,
     min_signals_per_week: float,
+    stage1_min_wr: float,
     stage_mode: str,
     capital: float,
     risk_base_period: str,
@@ -1862,6 +2074,7 @@ def search_signals(
             max_filters=4,
             min_trades_per_window=min_trades,
             min_signals_per_week=min_signals_per_week,
+            min_barrier_win_rate=stage1_min_wr,
             top_n_candidates=top_n,
             initial_capital=capital,
             max_positions=0,

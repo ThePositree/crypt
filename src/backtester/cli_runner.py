@@ -236,13 +236,37 @@ _BACKTEST_ARG_ALIASES = {
     "position_ttl_bars": "ttl",
 }
 
+_DSS_PARAM_BACKTEST_ARG_KEYS = frozenset(
+    {
+        "risk_percent",
+        "rrr",
+        "trail_distance_atr",
+        "position_ttl_bars",
+    }
+)
+
+
+def _strategy_param_backtest_overrides(cfg: StrategyConfig) -> dict[str, Any]:
+    """Extract DSS execution defaults from legacy flat strategy params."""
+    if cfg.name != "dss_strategy":
+        return {}
+
+    overrides: dict[str, Any] = {}
+    for key in _DSS_PARAM_BACKTEST_ARG_KEYS:
+        if key in cfg.params:
+            target_key = _BACKTEST_ARG_ALIASES.get(key, key)
+            overrides[target_key] = cfg.params[key]
+    return overrides
+
 
 def build_backtest_args(cfg: StrategyConfig | None, **cli_kwargs: Any) -> BacktestArgs:
-    """Build BacktestArgs from CLI kwargs, with strategy ``backtest_args`` overrides.
+    """Build BacktestArgs from CLI kwargs and strategy JSON overrides.
 
-    Any key present in the strategy JSON ``backtest_args`` overrides the
-    corresponding CLI value. Only keys that are valid BacktestArgs fields
-    are applied.
+    DSS candidate JSONs historically stored execution parameters directly in
+    ``params``. Treat those flat params as strategy-provided defaults so manual
+    replay matches optimizer/export logs. Explicit ``backtest_args`` still have
+    the highest strategy-file precedence. Only valid BacktestArgs fields are
+    applied.
 
     Parameters
     ----------
@@ -258,6 +282,7 @@ def build_backtest_args(cfg: StrategyConfig | None, **cli_kwargs: Any) -> Backte
     """
     kwargs = dict(cli_kwargs)
     if cfg is not None:
+        kwargs.update(_strategy_param_backtest_overrides(cfg))
         for source_key, target_key in _BACKTEST_ARG_ALIASES.items():
             if source_key in cfg.backtest_args and target_key not in cfg.backtest_args:
                 kwargs[target_key] = cfg.backtest_args[source_key]

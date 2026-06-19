@@ -278,6 +278,197 @@ def _add_pinescript_features(
     features["ps_trendline_upper_slope"] = features["ps_trendline_upper"].diff()
     features["ps_trendline_lower_slope"] = features["ps_trendline_lower"].diff()
     features["ps_killzone"] = pd.Series(df.index.hour, index=df.index).map(_killzone_label)
+    _add_smc_pinescript_features(df, features)
+
+
+def _add_smc_pinescript_features(df: pd.DataFrame, features: pd.DataFrame) -> None:
+    high = df["high"]
+    low = df["low"]
+    close = df["close"]
+    atr = features["atr"].replace(0, np.nan)
+
+    for name, lookback in (("internal", 5), ("swing", 20)):
+        pivot_high = _confirmed_pivot(high, lookback=lookback, mode="high")
+        pivot_low = _confirmed_pivot(low, lookback=lookback, mode="low")
+        latest_high = pivot_high.ffill().shift(1)
+        latest_low = pivot_low.ffill().shift(1)
+        bull_break = (close > latest_high) & (close.shift(1) <= latest_high.shift(1))
+        bear_break = (close < latest_low) & (close.shift(1) >= latest_low.shift(1))
+        events = _structure_event_flags(bull_break.fillna(False), bear_break.fillna(False))
+        prefix = f"ps_smc_{name}"
+        features[f"{prefix}_pivot_high"] = pivot_high
+        features[f"{prefix}_pivot_low"] = pivot_low
+        features[f"{prefix}_latest_high"] = latest_high
+        features[f"{prefix}_latest_low"] = latest_low
+        features[f"{prefix}_bias"] = events["bias"]
+        features[f"{prefix}_bullish_bos"] = events["bullish_bos"]
+        features[f"{prefix}_bearish_bos"] = events["bearish_bos"]
+        features[f"{prefix}_bullish_choch"] = events["bullish_choch"]
+        features[f"{prefix}_bearish_choch"] = events["bearish_choch"]
+
+    prev_swing_high = features["ps_smc_swing_pivot_high"].ffill().shift(1)
+    prev_swing_low = features["ps_smc_swing_pivot_low"].ffill().shift(1)
+    equal_threshold = atr * 0.1
+    features["ps_smc_equal_high"] = (
+        features["ps_smc_swing_pivot_high"].notna()
+        & prev_swing_high.notna()
+        & ((features["ps_smc_swing_pivot_high"] - prev_swing_high).abs() <= equal_threshold)
+    )
+    features["ps_smc_equal_low"] = (
+        features["ps_smc_swing_pivot_low"].notna()
+        & prev_swing_low.notna()
+        & ((features["ps_smc_swing_pivot_low"] - prev_swing_low).abs() <= equal_threshold)
+    )
+
+    bullish_fvg = (low > high.shift(2)) & (close.shift(1) > high.shift(2))
+    bearish_fvg = (high < low.shift(2)) & (close.shift(1) < low.shift(2))
+    features["ps_smc_bullish_fvg"] = bullish_fvg.fillna(False)
+    features["ps_smc_bearish_fvg"] = bearish_fvg.fillna(False)
+    features["ps_smc_bullish_fvg_top"] = low.where(bullish_fvg)
+    features["ps_smc_bullish_fvg_bottom"] = high.shift(2).where(bullish_fvg)
+    features["ps_smc_bearish_fvg_top"] = low.shift(2).where(bearish_fvg)
+    features["ps_smc_bearish_fvg_bottom"] = high.where(bearish_fvg)
+
+    range_high = features["ps_smc_swing_latest_high"]
+    range_low = features["ps_smc_swing_latest_low"]
+    range_size = (range_high - range_low).replace(0, np.nan)
+    range_position = (close - range_low) / range_size
+    features["ps_smc_range_position"] = range_position
+    features["ps_smc_zone"] = pd.Series("unknown", index=df.index, dtype="object")
+    features.loc[range_position >= 0.75, "ps_smc_zone"] = "premium"
+    features.loc[range_position <= 0.25, "ps_smc_zone"] = "discount"
+    features.loc[(range_position > 0.45) & (range_position < 0.55), "ps_smc_zone"] = "equilibrium"
+
+    ob = _order_block_state(
+        df=df,
+        bullish_break=(
+            features["ps_smc_internal_bullish_bos"] | features["ps_smc_internal_bullish_choch"]
+        ),
+        bearish_break=(
+            features["ps_smc_internal_bearish_bos"] | features["ps_smc_internal_bearish_choch"]
+        ),
+    )
+    ob_frame = pd.DataFrame({f"ps_smc_{key}": value for key, value in ob.items()})
+    features[ob_frame.columns] = ob_frame
+
+
+def _confirmed_pivot(series: pd.Series, *, lookback: int, mode: str) -> pd.Series:
+    window = lookback * 2 + 1
+    if mode == "high":
+        extreme = series.rolling(window, center=True, min_periods=window).max()
+        pivot = series.where(series == extreme)
+    else:
+        extreme = series.rolling(window, center=True, min_periods=window).min()
+        pivot = series.where(series == extreme)
+    return pivot.shift(lookback)
+
+
+def _structure_event_flags(
+    bull_break: pd.Series, bear_break: pd.Series
+) -> dict[str, pd.Series]:
+    index = bull_break.index
+    bias_values: list[int] = []
+    bullish_bos: list[bool] = []
+    bearish_bos: list[bool] = []
+    bullish_choch: list[bool] = []
+    bearish_choch: list[bool] = []
+    bias = 0
+    for is_bull, is_bear in zip(bull_break, bear_break, strict=True):
+        bull_bos = bear_bos = bull_choch = bear_choch = False
+        if bool(is_bull):
+            bull_choch = bias == -1
+            bull_bos = not bull_choch
+            bias = 1
+        elif bool(is_bear):
+            bear_choch = bias == 1
+            bear_bos = not bear_choch
+            bias = -1
+        bias_values.append(bias)
+        bullish_bos.append(bull_bos)
+        bearish_bos.append(bear_bos)
+        bullish_choch.append(bull_choch)
+        bearish_choch.append(bear_choch)
+    return {
+        "bias": pd.Series(bias_values, index=index, dtype="int64"),
+        "bullish_bos": pd.Series(bullish_bos, index=index, dtype="bool"),
+        "bearish_bos": pd.Series(bearish_bos, index=index, dtype="bool"),
+        "bullish_choch": pd.Series(bullish_choch, index=index, dtype="bool"),
+        "bearish_choch": pd.Series(bearish_choch, index=index, dtype="bool"),
+    }
+
+
+def _order_block_state(
+    *,
+    df: pd.DataFrame,
+    bullish_break: pd.Series,
+    bearish_break: pd.Series,
+    lookback: int = 12,
+) -> dict[str, pd.Series]:
+    index = df.index
+    bullish_high = pd.Series(np.nan, index=index)
+    bullish_low = pd.Series(np.nan, index=index)
+    bearish_high = pd.Series(np.nan, index=index)
+    bearish_low = pd.Series(np.nan, index=index)
+    bullish_active = pd.Series(False, index=index)
+    bearish_active = pd.Series(False, index=index)
+    bullish_retest = pd.Series(False, index=index)
+    bearish_retest = pd.Series(False, index=index)
+    current_bull: tuple[float, float] | None = None
+    current_bear: tuple[float, float] | None = None
+
+    for i, ts in enumerate(index):
+        if bool(bullish_break.iat[i]):
+            zone = _last_opposite_candle_zone(df, i, lookback=lookback, bearish=True)
+            if zone is not None:
+                current_bull = zone
+        if bool(bearish_break.iat[i]):
+            zone = _last_opposite_candle_zone(df, i, lookback=lookback, bearish=False)
+            if zone is not None:
+                current_bear = zone
+
+        close = float(df["close"].iat[i])
+        high = float(df["high"].iat[i])
+        low = float(df["low"].iat[i])
+        if current_bull is not None:
+            zone_low, zone_high = current_bull
+            if close < zone_low:
+                current_bull = None
+            else:
+                bullish_active.loc[ts] = True
+                bullish_low.loc[ts] = zone_low
+                bullish_high.loc[ts] = zone_high
+                bullish_retest.loc[ts] = low <= zone_high and close >= zone_low
+        if current_bear is not None:
+            zone_low, zone_high = current_bear
+            if close > zone_high:
+                current_bear = None
+            else:
+                bearish_active.loc[ts] = True
+                bearish_low.loc[ts] = zone_low
+                bearish_high.loc[ts] = zone_high
+                bearish_retest.loc[ts] = high >= zone_low and close <= zone_high
+
+    return {
+        "bullish_ob_active": bullish_active,
+        "bearish_ob_active": bearish_active,
+        "bullish_ob_high": bullish_high,
+        "bullish_ob_low": bullish_low,
+        "bearish_ob_high": bearish_high,
+        "bearish_ob_low": bearish_low,
+        "bullish_ob_retest": bullish_retest,
+        "bearish_ob_retest": bearish_retest,
+    }
+
+
+def _last_opposite_candle_zone(
+    df: pd.DataFrame, index_position: int, *, lookback: int, bearish: bool
+) -> tuple[float, float] | None:
+    start = max(0, index_position - lookback)
+    for pos in range(index_position - 1, start - 1, -1):
+        is_bearish = df["close"].iat[pos] < df["open"].iat[pos]
+        if is_bearish == bearish:
+            return float(df["low"].iat[pos]), float(df["high"].iat[pos])
+    return None
 
 
 def _supertrend_upper_band(basic: pd.Series, close: pd.Series) -> pd.Series:

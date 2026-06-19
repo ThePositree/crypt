@@ -78,6 +78,81 @@ def test_build_backtest_args_accepts_position_ttl_bars_alias() -> None:
     assert args.max_positions == 0
 
 
+def test_build_backtest_args_uses_flat_dss_params_as_execution_defaults() -> None:
+    args = build_backtest_args(
+        StrategyConfig(
+            name="dss_strategy",
+            version="test",
+            params={
+                "risk_percent": 0.5,
+                "rrr": 6.0,
+                "trail_distance_atr": 0.25,
+                "position_ttl_bars": 92,
+                "trigger_name": "pt_ps_macd_signal_cross",
+            },
+            backtest_args={},
+        ),
+        capital=10000.0,
+        risk_percent=1.0,
+        rrr=2.0,
+        trail_activation_rrr=0.0,
+        trail_distance_atr=0.0,
+        maker_fee=0.0002,
+        taker_fee=0.0005,
+        ttl=0,
+        max_positions=3,
+        max_allowed_leverage=25.0,
+        max_allowed_margin=1.0,
+        risk_base_period="monthly",
+    )
+
+    assert args.risk_percent == 0.5
+    assert args.rrr == 6.0
+    assert args.trail_distance_atr == 0.25
+    assert args.trail_activation_rrr == 6.0
+    assert args.ttl == 92
+    assert args.max_positions == 0
+
+
+def test_build_backtest_args_backtest_args_override_flat_dss_params() -> None:
+    args = build_backtest_args(
+        StrategyConfig(
+            name="dss_strategy",
+            version="test",
+            params={
+                "risk_percent": 0.5,
+                "rrr": 6.0,
+                "trail_distance_atr": 0.25,
+                "position_ttl_bars": 92,
+            },
+            backtest_args={
+                "risk_percent": 0.75,
+                "rrr": 3.0,
+                "trail_distance_atr": 0.5,
+                "position_ttl_bars": 44,
+            },
+        ),
+        capital=10000.0,
+        risk_percent=1.0,
+        rrr=2.0,
+        trail_activation_rrr=0.0,
+        trail_distance_atr=0.0,
+        maker_fee=0.0002,
+        taker_fee=0.0005,
+        ttl=0,
+        max_positions=3,
+        max_allowed_leverage=25.0,
+        max_allowed_margin=1.0,
+        risk_base_period="monthly",
+    )
+
+    assert args.risk_percent == 0.75
+    assert args.rrr == 3.0
+    assert args.trail_distance_atr == 0.5
+    assert args.trail_activation_rrr == 3.0
+    assert args.ttl == 44
+
+
 def test_parameter_optimizer_can_suggest_ttl_and_merge_base_strategy_params(
     monkeypatch,
 ):
