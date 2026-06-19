@@ -4,6 +4,30 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-19 — Stage 1 WR gate made threshold-only
+
+**What:** removed the hidden `tp_first > sl_first` requirement from the Stage 1
+`weak_barrier_win_rate` gate.
+
+**Why now:** after exposing `--stage1-min-wr`, the owner found that WR45 still
+rejected candidates such as `island_2022_000210` because TP-first count was
+below SL-first count. That made the CLI threshold partly ineffective below
+50% WR.
+
+**Expected gain:** research runs can intentionally use WR45 or any other
+configured threshold without an implicit second WR filter.
+
+**Result:** `DSSConfig.min_barrier_win_rate` is now the only Stage 1 win-rate
+gate. Signal-count, TP-first-rate, and overtrading gates are unchanged.
+
+**Acceptance:** added a regression test where WR is above 0.45 while
+`tp_first < sl_first`; the candidate passes Stage 1. DSS tests and ruff pass.
+
+**Links:** `src/backtester/strategy_discovery/dss_stage1.py`,
+`docs/discovery/direct_signal_search_v2.md`.
+
+---
+
 ## 2026-06-19 — Stage 1 WR threshold exposed in CLI
 
 **What:** added `--stage1-min-wr` to `backtester search-signals` and

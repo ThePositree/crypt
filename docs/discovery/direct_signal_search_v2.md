@@ -623,15 +623,14 @@ min_barrier_win_rate = 0.55
 stage1_tp_move_pct = 0.007
 stage1_sl_move_pct = 0.004
 stage1_reference_atr_pct = 0.007
-tp_first must be greater than sl_first
 ```
 
 `barrier_win_rate` is computed over resolved TP/SL outcomes only:
 `tp_first / (tp_first + sl_first)`. Unresolved tails remain visible in
 `barrier_unresolved_tail_rate` but do not count as wins or losses. The TP-first
-rate floor rejects empty/no-edge candidates, while the win-rate floor requires
-a directional candidate to be better than a coin flip before it receives Stage
-2 budget.
+rate floor rejects empty/no-edge candidates, while the win-rate floor is the
+only Stage 1 win/loss gate. Lowering `min_barrier_win_rate` below 0.50 is valid
+for research runs and no hidden `tp_first > sl_first` requirement is applied.
 
 Acceptance:
 

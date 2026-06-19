@@ -6,6 +6,22 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-19 — Stage 1 WR gate uses only configured threshold
+
+- Removed the hidden `tp_first > sl_first` requirement from DSS Stage 1
+  `weak_barrier_win_rate` gating.
+- `--stage1-min-wr` / `DSSConfig.min_barrier_win_rate` is now the only Stage 1
+  win-rate gate; signal-count, TP-first-rate, and overtrading gates are
+  unchanged.
+- Updated the DSS v2 spec and added regression coverage for a WR45 candidate
+  with fewer TP-first outcomes than SL-first outcomes.
+- Validation: `tests/backtester/test_dss.py` passed; ruff clean on touched
+  Stage 1/test files.
+- Files touched: `src/backtester/strategy_discovery/`, `tests/backtester/`,
+  `docs/discovery/`, `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
 ## 2026-06-19 — Stage 1 WR threshold CLI flag
 
 - Added `--stage1-min-wr` to `backtester search-signals` and

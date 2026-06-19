@@ -159,7 +159,7 @@ def evaluate_stage1(
                     behavior=None,
                 )
             continue
-        if metrics.win_rate < config.min_barrier_win_rate or metrics.tp_first <= metrics.sl_first:
+        if metrics.win_rate < config.min_barrier_win_rate:
             first_rejection_reason = (
                 first_rejection_reason or f"weak_barrier_win_rate:{window.label}"
             )

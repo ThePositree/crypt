@@ -21,6 +21,7 @@ import pytest
 from click.testing import CliRunner
 
 import backtester.strategy_discovery.catcma_qd as catcma_qd_module
+import backtester.strategy_discovery.dss_stage1 as dss_stage1_module
 import backtester.strategy_discovery.dss_v2 as dss_v2_module
 import backtester.strategy_discovery.hyperband_qd as hyperband_qd_module
 import backtester.strategy_discovery.island_qd as island_qd_module
@@ -895,6 +896,51 @@ def test_stage1_rejects_barrier_win_rate_below_floor(tmp_path: Path) -> None:
     assert metrics.tp_first == 3
     assert metrics.sl_first == 3
     assert metrics.win_rate == 0.5
+
+
+def test_stage1_min_wr_is_only_win_rate_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    primary = _make_primary(80)
+    windows = [
+        DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
+    ]
+    config = DSSConfig(
+        output=tmp_path,
+        windows=windows,
+        min_trades_per_window=1,
+        min_barrier_tp_first_rate=0.0,
+        min_barrier_win_rate=0.45,
+    )
+
+    def fake_barrier_metrics(**_kwargs: object) -> BarrierMetrics:
+        return BarrierMetrics(
+            total=19,
+            tp_first=9,
+            sl_first=10,
+            unresolved_tail=0,
+            tp_first_rate=9 / 19,
+            sl_first_rate=10 / 19,
+            unresolved_tail_rate=0.0,
+            win_rate=9 / 19,
+            median_mae_pct=0.4,
+            median_mfe_pct=0.7,
+            median_bars_to_tp=3.0,
+        )
+
+    monkeypatch.setattr(dss_stage1_module, "_barrier_metrics", fake_barrier_metrics)
+    result = evaluate_stage1(
+        _make_candidate("wr45_only"),
+        {"w1": _make_strategy_data(primary)},
+        config,
+        _FakeComposer(_make_signal_df(primary, 19)),
+    )
+
+    metrics = result.barrier_metrics["w1"]
+    assert metrics.tp_first < metrics.sl_first
+    assert metrics.win_rate == pytest.approx(9 / 19)
+    assert result.passed is True
+    assert result.rejection_reason == ""
 
 
 def test_stage1_csv_header_includes_barrier_columns_after_early_reject(tmp_path: Path) -> None:
