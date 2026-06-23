@@ -4,6 +4,297 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-23 — Archive matrix params regression-checked
+
+**What:** verified that the full archive matrix command resolves execution
+params from `strategies/archive/*.json` `backtest_args`, not from stale CLI
+defaults or legacy DSS `params`.
+
+**Why now:** archive matrix reruns are expensive, and stale execution params
+have caused wrong strategy replays before.
+
+**Expected gain:** prevent another long run with wrong `risk_percent`, `rrr`,
+TTL, trailing, `tp_pct`, or structural stop mode.
+
+**Result:** effective args for all six archived strategies match the intended
+archive execution params. Regression tests now lock both precedence and current
+archive-file values.
+
+**Acceptance:** focused regime tests pass and ruff is clean.
+
+**Links:** `tests/backtester/test_regime_matrix.py`.
+
+---
+
+## 2026-06-23 — Partial rolling router baseline evaluated
+
+**What:** added a reproducible `rolling-router-baseline` evaluator and scored
+simple live-safe routers over the partial daily 30-day rolling labels.
+
+**Why now:** the project needed to know whether the partial labels are enough to
+continue detector/router work without another long matrix rerun.
+
+**Expected gain:** avoid spending compute blindly, while still testing the
+Plan B router mechanics.
+
+**Result:** the partial artifact is useful for pipeline validation but not
+enough for router selection. Overall `equal_weight_available` beats the rolling
+and KNN routers, while the 2024-only subset favors KNN and the 2025-only subset
+favors simpler allocation. The inconsistent strategy universe is now the main
+limitation.
+
+**Acceptance:** report written to `docs/regime_rolling_router_baseline.md`;
+artifacts written under
+`results/regime_matrix_archive_partial_existing_trades_2022_2025/rolling_labels_day_30d/router_baseline_min3/`;
+focused tests and ruff pass.
+
+**Links:** `src/backtester/regime_router.py`,
+`docs/regime_rolling_router_baseline.md`.
+
+---
+
+## 2026-06-23 — Partial rolling label artifact from existing exact runs
+
+**What:** assembled a partial `strategy_trades/` dataset from existing raw
+trade artifacts whose execution params match the archive/Optuna best params,
+then generated daily 30-day rolling labels from it.
+
+**Why now:** the owner wanted to avoid another 9-hour matrix rerun if existing
+trade artifacts were enough to test Plan B.
+
+**Expected gain:** validate the rolling-label/router pipeline immediately while
+preserving compute for only the reruns that prove necessary.
+
+**Result:** created
+`results/regime_matrix_archive_partial_existing_trades_2022_2025/` with copied
+strategy trade CSVs, `source_trades_manifest.csv`, `strategy_coverage.csv`, and
+`rolling_labels_day_30d/rolling_labels.csv`.
+
+**Acceptance:** rolling labels built successfully with 1341 rows; focused
+regime label/matrix tests pass; ruff is clean on touched files.
+
+**Links:** `docs/regime_label_analysis.md`,
+`docs/regime_performance_matrix.md`.
+
+---
+
+## 2026-06-23 — Plan B rolling label infrastructure
+
+**What:** implemented the raw trade export and rolling label builder needed for
+Plan B.
+
+**Why now:** monthly labels were too coarse for a useful detector, and the
+owner approved moving to the denser `features at T -> best strategy over
+T..T+horizon` labeling path.
+
+**Expected gain:** after one new archive-only matrix rerun, the project can
+build daily 30-day rolling labels without additional strategy backtests.
+
+**Result:** `archived-performance-matrix` now writes
+`strategy_trades/<strategy_id>.csv`, and `backtester rolling-regime-labels`
+builds daily/hourly forward labels from those trade exports.
+
+**Acceptance:** focused regime matrix/label tests pass; ruff is clean for the
+touched files. Owner-run commands are documented in `IN_PROGRESS.md`.
+
+**Links:** `src/backtester/regime_labels.py`,
+`docs/regime_performance_matrix.md`.
+
+---
+
+## 2026-06-23 — Monthly router baseline evaluated
+
+**What:** evaluated the first monthly portfolio-router baselines over the
+archive-only oracle label dataset.
+
+**Why now:** after exact strategy classification failed, the next question was
+whether a confidence-gated top-2 router could improve portfolio utility using
+the existing monthly data.
+
+**Expected gain:** identify a practical benchmark and avoid building a complex
+detector before a simple router baseline is beaten.
+
+**Result:** the feature-KNN top-2 router returned +42.09% with -6.00% max DD
+over 2024-2025, but did not beat the simpler `rolling_top2_mean_60_40`
+benchmark, which returned +66.51% with -12.58% max DD.
+
+**Acceptance:** report compares oracle, equal-weight, rolling single best,
+rolling top-2, and feature-KNN top-2 by return, drawdown, losing months, and
+switching count.
+
+**Links:** `docs/regime_router_baseline.md`,
+`results/regime_matrix_archive_sol_2022_2025/oracle_labels/router_baseline_report.md`.
+
+---
+
+## 2026-06-23 — Regime label analysis completed
+
+**What:** analyzed the generated oracle label dataset for feature separation,
+label stability, and simple live-safe detector baselines.
+
+**Why now:** after the archive-only matrix and oracle labels were generated,
+the project needed to know whether OHLCV features can already select the best
+monthly strategy.
+
+**Expected gain:** avoid prematurely building a hard strategy classifier if the
+current labels/features do not support it.
+
+**Result:** wrote `docs/regime_label_analysis.md` and local analysis artifacts
+under `results/regime_matrix_archive_sol_2022_2025/oracle_labels/`. The best
+walk-forward model only tied rolling-majority exact accuracy, so the next MVP
+should be a confidence-gated top-2 portfolio router.
+
+**Acceptance:** report ranks feature separation, flags 12 ambiguous buckets
+with margin below 2%, and proposes the first detector/router baseline.
+
+**Links:** `docs/regime_label_analysis.md`,
+`results/regime_matrix_archive_sol_2022_2025/oracle_labels/analysis_report.md`.
+
+---
+
+## 2026-06-23 — Oracle regime label dataset MVP
+
+**What:** added the first offline oracle-label dataset builder for completed
+archive performance matrices.
+
+**Why now:** both regime matrices finished, and the clean archive-only matrix is
+the source of truth for training labels. The next step was to convert monthly
+strategy returns into `best_strategy` labels and attach detector-safe OHLCV
+features.
+
+**Expected gain:** future offline Regime Discovery, online Detector, and Router
+work can consume a single reproducible CSV instead of recomputing oracle labels
+by hand.
+
+**Result:** added `backtester oracle-regime-labels`, generated
+`results/regime_matrix_archive_sol_2022_2025/oracle_labels/oracle_labels.csv`,
+and wrote the feature/label contract into `docs/regime_detection.md`.
+
+**Acceptance:** output has 48 monthly rows and 34 columns; summary shows all six
+archived strategies are selected at least once and zero losing oracle buckets.
+Focused pytest and ruff checks pass.
+
+**Links:** `src/backtester/regime_labels.py`,
+`results/regime_matrix_archive_sol_2022_2025/oracle_labels/`.
+
+---
+
+## 2026-06-22 — NR4 VWAP robust archived for regime matrix
+
+**What:** archived the NR4 VWAP robust candidate after the owner-run
+execution-only Optuna completed.
+
+**Why now:** the regime matrix should use frozen archived strategy columns
+instead of mixing archived candidates with an active `--strategy` input.
+
+**Expected gain:** the next archive-only matrix can be used as the cleaner
+source of truth for regime discovery and labeler work.
+
+**Result:** added
+`strategies/archive/crypt_ensemble_h1_discovery_nr4_vwap_robust.json` and
+`docs/archive/candidates/nr4_vwap_robust/` with execution params, provenance,
+mandate snapshot, and monthly diagnostics from the 2022-2024 Optuna best-run.
+
+**Acceptance:** archive JSON and docs are present; JSON files parse; the next
+owner action is the archive-only matrix command in `IN_PROGRESS.md`.
+
+**Links:** `results/optuna_nr4_vwap_robust_big_2022_2025/20260622_153157/`.
+
+---
+
+## 2026-06-22 — Regime matrix progress control
+
+**What:** added explicit progress control for
+`backtester archived-performance-matrix`.
+
+**Why now:** after archive replay fixes, the owner restarted the matrix and saw
+no progress bar for several minutes because strategy-level progress had been
+disabled inside matrix runs.
+
+**Expected gain:** long `crypt_ensemble` matrix runs again show bar-level
+progress, while operators can still opt out with `--no-strategy-progress`.
+
+**Result:** added `--strategy-progress/--no-strategy-progress`, defaulting to
+enabled, and print `Matrix strategy starting: ...` before each strategy.
+
+**Acceptance:** command help shows the new flag; regime matrix tests pass; ruff
+is clean.
+
+**Links:** `src/backtester/__main__.py`.
+
+---
+
+## 2026-06-22 — Regime matrix archive replay fixes
+
+**What:** fixed archived strategy replay behavior for the performance matrix.
+
+**Why now:** the owner started the first matrix run and saw stale execution
+params (`rrr=1.25`, `ttl=36`) plus nested progress bars from archived
+`crypt_ensemble` configs.
+
+**Expected gain:** matrix rows now reflect frozen archive execution params, and
+interrupted matrix runs retain completed strategy outputs.
+
+**Result:** synchronized old NR7/VWAP archive strategy JSONs with their
+`execution_params.json`, disabled strategy-level progress inside matrix runs,
+and made the matrix command write partial CSVs after each completed strategy.
+
+**Acceptance:** archive JSONs parse and load to the expected execution params;
+regime matrix tests pass; ruff is clean.
+
+**Links:** `strategies/archive/`,
+`src/backtester/__main__.py`.
+
+---
+
+## 2026-06-22 — Archived strategy performance matrix MVP
+
+**What:** added the first archived/active strategy performance matrix builder.
+
+**Why now:** the owner asked whether the regime matrix from
+`docs/regime_detection.md` was real and then approved building it. The archive
+now has enough research seeds to start infrastructure, even if it is not enough
+for trustworthy regime labels yet.
+
+**Expected gain:** future regime discovery can consume comparable
+bucket-by-strategy behavior instead of hand-reading individual backtest
+summaries.
+
+**Result:** added `backtester archived-performance-matrix`, a spec under
+`docs/regime_performance_matrix.md`, matrix CSV exports, and focused tests.
+
+**Acceptance:** command help is covered; bucket aggregation/manifest/pivot tests
+cover the matrix core. Owner-run command is documented in README.
+
+**Links:** `docs/regime_performance_matrix.md`,
+`src/backtester/regime_matrix.py`, `README.md`.
+
+---
+
+## 2026-06-22 — Archived WR45 Optuna research seeds
+
+**What:** archived `smac_003335_double_bottom_body_to_range` and
+`island_2023_021396_engulfing_bb_trend` after owner-run big Optuna completed.
+
+**Why now:** the owner asked to move both tuned strategies into the archive and
+freeze the execution parameters from each `best_trial.json`.
+
+**Expected gain:** future regime discovery and detector training can use these
+profitable but mandate-discarded signal families as labeled research evidence.
+
+**Result:** added strategy JSON copies under `strategies/archive/` and archive
+notes under `docs/archive/candidates/`, including execution params,
+provenance, mandate snapshots, and monthly return CSVs.
+
+**Acceptance:** both archive entries point to the local Optuna/best-run
+artifacts and explicitly state `archive_reason=research_seed` with
+`mandate_verdict=discard`.
+
+**Links:** `docs/archive/candidates/smac_003335_double_bottom_body_to_range/`,
+`docs/archive/candidates/island_2023_021396_engulfing_bb_trend/`.
+
+---
+
 ## 2026-06-19 — Stage 1 WR gate made threshold-only
 
 **What:** removed the hidden `tp_first > sl_first` requirement from the Stage 1

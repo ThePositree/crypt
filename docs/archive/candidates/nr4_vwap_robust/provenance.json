@@ -1,0 +1,12 @@
+{
+  "candidate_id": "nr4_vwap_robust",
+  "archived_at": "2026-06-22",
+  "archive_reason": "research_seed",
+  "strategy_path": "strategies/archive/crypt_ensemble_h1_discovery_nr4_vwap_robust.json",
+  "active_source_strategy": "strategies/backtester/crypt_ensemble_h1_discovery_nr4_vwap_robust.json",
+  "discovery_artifact": "20260608_193549/best_candidates/robust_min_window_win_rate_50/rank_007_strategy.json",
+  "optuna_artifact": "results/optuna_nr4_vwap_robust_big_2022_2025/20260622_153157/",
+  "best_run_artifact": "results/optuna_nr4_vwap_robust_big_2022_2025/20260622_153157/best_run/",
+  "best_trial_artifact": "results/optuna_nr4_vwap_robust_big_2022_2025/20260622_153157/best_trial.json",
+  "git_commit": "1f927d4fcf1d6d2341811e297d59b5d2a0b03d8a"
+}

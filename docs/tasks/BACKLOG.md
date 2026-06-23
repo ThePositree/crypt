@@ -14,32 +14,6 @@ when finished.
 > **+15%/month** on **$10k** SOL **2025** continuous backtest after fees;
 > max **10% intra-month DD**; auto-trading only after **promote** verdict.
 
-## P1 — Build archived-strategy performance matrix for regime discovery
-
-**What:** create a reproducible pipeline that takes archived and active
-strategy JSONs, runs or reads their backtest artifacts, and exports a
-time-indexed strategy performance matrix for regime research.
-
-**Why now:** owner direction on 2026-06-19 changed the archive role: while new
-features are being built, searches should keep finding strategies that are at
-least somewhat useful, even if they do not pass the full mandate. Those
-strategies become the evidence base for future regime discovery and detector
-training.
-
-**Expected gain:** turn the archive from a shelf of near-misses into a dataset
-showing which strategy families work in which market conditions.
-
-**Acceptance:** a spec or implementation exports `time x strategy_metrics`
-with return, drawdown, trade count, win rate, profit factor, exposure,
-long/short split, exit distribution, strategy family id, config path, execution
-params, and source artifact path. At least two archived candidates can be
-included without manual CSV editing.
-
-**Links:** `docs/regime_detection.md`, ADR-0041,
-`docs/backtester/candidate_archive.md`, `docs/archive/candidates/README.md`.
-
----
-
 ## P1 — Implement offline Regime Discovery and Regime Labeler MVP
 
 **What:** build the first offline regime-discovery workflow over the archived

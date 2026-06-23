@@ -16,9 +16,11 @@ if _SRC_ROOT_STR in sys.path:
 sys.path.insert(0, _SRC_ROOT_STR)
 
 import click  # noqa: E402
+import pandas as pd  # noqa: E402
 
 from backtester.cli_runner import (  # noqa: E402
     OptimizerSearchArgs,
+    StrategyConfig,
     build_backtest_args,
     build_cli_data_loader,
     build_strategy_instance,
@@ -43,6 +45,25 @@ from backtester.fixed_candidate_report import (  # noqa: E402
     run_execution_grid_comparison,
     run_fixed_candidate_comparison,
     run_signal_quality_diagnostics,
+)
+from backtester.regime_labels import (  # noqa: E402
+    build_oracle_label_dataset,
+    build_rolling_label_dataset,
+    write_oracle_label_outputs,
+    write_rolling_label_outputs,
+)
+from backtester.regime_matrix import (  # noqa: E402
+    MatrixStrategy,
+    aggregate_strategy_buckets,
+    build_strategy_manifest,
+    strategy_id_from_path,
+    write_matrix_outputs,
+    write_strategy_trades,
+)
+from backtester.regime_router import (  # noqa: E402
+    RouterConfig,
+    evaluate_rolling_router_baselines,
+    write_rolling_router_report,
 )
 from backtester.strategy_discovery import (  # noqa: E402
     DiscoveryConfig,
@@ -443,6 +464,513 @@ def run(
         create_dashboard=create_dashboard,
         logger=logger,
     )
+
+
+@cli.command("archived-performance-matrix")
+@click.option(
+    "--data-source",
+    type=click.Choice(["csv", "parquet", "crypt-parquet"], case_sensitive=False),
+    default="crypt-parquet",
+    help="Data source: csv, parquet, or crypt-parquet.",
+)
+@click.option("--csv", default=None, help="Path to OHLCV CSV file.")
+@click.option("--parquet", default=None, help="Path to OHLCV Parquet file.")
+@click.option("--data-dir", default=None, help="Project data directory.")
+@click.option(
+    "--primary-timeframe",
+    type=click.Choice(["1h", "4h", "1d"], case_sensitive=False),
+    default="1h",
+    help="Primary execution timeframe for crypt-parquet data.",
+)
+@click.option("--from", "from_date", default=None, help="Inclusive start UTC.")
+@click.option("--to", "to_date", default=None, help="Inclusive end UTC.")
+@click.option("--symbol", default="SYMBOL/USDT", help="Trading pair name.")
+@click.option(
+    "--strategy",
+    "strategy_paths",
+    multiple=True,
+    help="Strategy JSON to include. Repeatable.",
+)
+@click.option(
+    "--include-archive/--no-include-archive",
+    default=True,
+    show_default=True,
+    help="Include every JSON under strategies/archive/.",
+)
+@click.option(
+    "--archive-dir",
+    default="strategies/archive",
+    show_default=True,
+    help="Archive strategy directory used by --include-archive.",
+)
+@click.option(
+    "--bucket",
+    type=click.Choice(["day", "week", "month"], case_sensitive=False),
+    default="month",
+    show_default=True,
+    help="Matrix bucket size.",
+)
+@click.option(
+    "--strategy-progress/--no-strategy-progress",
+    default=True,
+    show_default=True,
+    help="Allow strategy-level progress bars when supported by the strategy config.",
+)
+@click.option("--output", default=None, help="Output directory.")
+@click.option("--capital", type=float, default=10000.0, show_default=True)
+@click.option("--maker-fee", type=float, default=0.0002, show_default=True)
+@click.option("--taker-fee", type=float, default=0.0005, show_default=True)
+@click.option("--max-allowed-leverage", type=float, default=25.0, show_default=True)
+@click.option("--max-allowed-margin", type=float, default=1.0, show_default=True)
+@click.option("--ts-col", type=str, default="timestamp", help="Timestamp column name.")
+def archived_performance_matrix(
+    data_source: str,
+    csv: str | None,
+    parquet: str | None,
+    data_dir: str | None,
+    primary_timeframe: str,
+    from_date: str | None,
+    to_date: str | None,
+    symbol: str,
+    strategy_paths: tuple[str, ...],
+    include_archive: bool,
+    archive_dir: str,
+    bucket: str,
+    strategy_progress: bool,
+    output: str | None,
+    capital: float,
+    maker_fee: float,
+    taker_fee: float,
+    max_allowed_leverage: float,
+    max_allowed_margin: float,
+    ts_col: str,
+) -> None:
+    """Build a time x strategy performance matrix for regime research."""
+
+    paths = _collect_matrix_strategy_paths(strategy_paths, include_archive, Path(archive_dir))
+    if not paths:
+        raise click.ClickException("No strategy JSONs selected")
+
+    try:
+        loader = build_cli_data_loader(
+            data_source,
+            csv_path=csv,
+            parquet_path=parquet,
+            data_dir=data_dir,
+            symbol=symbol,
+            primary_timeframe=primary_timeframe,
+            start=from_date,
+            end=to_date,
+            ts_col=ts_col,
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    data = load_ohlcv_via_loader(loader, logger=logger)
+    if data is None:
+        raise click.ClickException("Failed to load OHLCV data")
+
+    if output is None:
+        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        output = f"results/regime_matrix_{symbol.lower().replace('-', '_')}_{bucket}_{ts}"
+    output_path = Path(output)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    matrix_strategies: list[MatrixStrategy] = []
+    bucket_frames: list[pd.DataFrame] = []
+    for strategy_path in paths:
+        cfg = load_strategy_config(str(strategy_path), logger)
+        if cfg is None:
+            raise click.ClickException(f"Invalid strategy config: {strategy_path}")
+        cfg = _matrix_config_with_progress(cfg, enabled=strategy_progress)
+        strategy_instance = build_strategy_instance(cfg.name, cfg.params, logger=logger)
+        if strategy_instance is None:
+            raise click.ClickException(f"Could not build strategy: {strategy_path}")
+        args = build_backtest_args(
+            cfg,
+            capital=capital,
+            risk_percent=1.0,
+            rrr=2.0,
+            trail_activation_rrr=0.0,
+            trail_distance_atr=0.0,
+            maker_fee=maker_fee,
+            taker_fee=taker_fee,
+            ttl=0,
+            max_positions=0,
+            max_allowed_leverage=max_allowed_leverage,
+            max_allowed_margin=max_allowed_margin,
+            risk_base_period="monthly",
+            max_daily_profit=None,
+            max_daily_loss=None,
+            trading_begin=None,
+            trading_end=None,
+            exit_geometry="sl_rrr",
+            tp_move_pct=None,
+            structural_sl_mode="cap",
+            min_tp_move_pct=0.004,
+        )
+        strategy_id = _unique_strategy_id(strategy_id_from_path(strategy_path), matrix_strategies)
+        matrix_strategies.append(
+            MatrixStrategy(
+                strategy_id=strategy_id,
+                strategy_path=strategy_path,
+                config=cfg,
+                args=args,
+            )
+        )
+        click.echo(f"Matrix strategy starting: {strategy_id} path={strategy_path}")
+        results = run_backtest(df=data, strategy=strategy_instance, args=args)
+        trades = results.trades if results.trades is not None else pd.DataFrame()
+        write_strategy_trades(output=output_path, strategy_id=strategy_id, trades=trades)
+        bucket_frames.append(
+            aggregate_strategy_buckets(
+                trades,
+                strategy_id=strategy_id,
+                strategy_path=strategy_path,
+                bucket=bucket,
+                start=from_date,
+                end=to_date,
+            )
+        )
+        partial_manifest = build_strategy_manifest(matrix_strategies)
+        partial_metrics = pd.concat(bucket_frames, ignore_index=True)
+        write_matrix_outputs(
+            output=output_path,
+            manifest=partial_manifest,
+            bucket_metrics=partial_metrics,
+        )
+        click.echo(f"Matrix strategy done: {strategy_id} trades={len(trades)}")
+
+    manifest = build_strategy_manifest(matrix_strategies)
+    bucket_metrics = (
+        pd.concat(bucket_frames, ignore_index=True) if bucket_frames else pd.DataFrame()
+    )
+    write_matrix_outputs(output=output_path, manifest=manifest, bucket_metrics=bucket_metrics)
+    click.echo(f"Matrix saved to: {output_path}")
+
+
+def _collect_matrix_strategy_paths(
+    explicit_paths: tuple[str, ...], include_archive: bool, archive_dir: Path
+) -> list[Path]:
+    paths: list[Path] = []
+    if include_archive and archive_dir.exists():
+        paths.extend(sorted(archive_dir.glob("*.json")))
+    paths.extend(Path(path) for path in explicit_paths)
+
+    unique: list[Path] = []
+    seen: set[Path] = set()
+    for path in paths:
+        resolved = path.expanduser()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        unique.append(resolved)
+    return unique
+
+
+def _matrix_config_with_progress(cfg: StrategyConfig, *, enabled: bool) -> StrategyConfig:
+    if "progress" not in cfg.params:
+        return cfg
+    params = dict(cfg.params)
+    params["progress"] = enabled
+    return StrategyConfig(
+        name=cfg.name,
+        version=cfg.version,
+        params=params,
+        backtest_args=cfg.backtest_args,
+    )
+
+
+def _unique_strategy_id(base: str, existing: list[MatrixStrategy]) -> str:
+    used = {item.strategy_id for item in existing}
+    if base not in used:
+        return base
+    idx = 2
+    while f"{base}_{idx}" in used:
+        idx += 1
+    return f"{base}_{idx}"
+
+
+@cli.command("oracle-regime-labels")
+@click.option(
+    "--matrix-dir",
+    required=True,
+    type=click.Path(path_type=Path),
+    help="Directory produced by archived-performance-matrix.",
+)
+@click.option(
+    "--data-source",
+    type=click.Choice(["csv", "parquet", "crypt-parquet"], case_sensitive=False),
+    default="crypt-parquet",
+    help="Data source: csv, parquet, or crypt-parquet.",
+)
+@click.option("--csv", default=None, help="Path to OHLCV CSV file.")
+@click.option("--parquet", default=None, help="Path to OHLCV Parquet file.")
+@click.option("--data-dir", default=None, help="Project data directory.")
+@click.option(
+    "--primary-timeframe",
+    type=click.Choice(["1h", "4h", "1d"], case_sensitive=False),
+    default="1h",
+    help="Primary timeframe for crypt-parquet data.",
+)
+@click.option("--symbol", default="SOL-USDT-SWAP", help="Trading pair name.")
+@click.option("--from", "from_date", default=None, help="Inclusive start UTC.")
+@click.option("--to", "to_date", default=None, help="Inclusive end UTC.")
+@click.option(
+    "--bucket",
+    type=click.Choice(["day", "week", "month"], case_sensitive=False),
+    default="month",
+    help="Bucket size used by the matrix.",
+)
+@click.option(
+    "--output",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output directory. Defaults to <matrix-dir>/oracle_labels.",
+)
+@click.option("--ts-col", type=str, default="timestamp", help="CSV/parquet timestamp column.")
+def oracle_regime_labels(
+    matrix_dir: Path,
+    data_source: str,
+    csv: str | None,
+    parquet: str | None,
+    data_dir: str | None,
+    primary_timeframe: str,
+    symbol: str,
+    from_date: str | None,
+    to_date: str | None,
+    bucket: str,
+    output: Path | None,
+    ts_col: str,
+) -> None:
+    """Build an offline oracle label dataset from a regime matrix."""
+
+    return_path = matrix_dir / "matrix_return_pct.csv"
+    if not return_path.exists():
+        raise click.ClickException(f"Missing matrix return file: {return_path}")
+
+    try:
+        loader = build_cli_data_loader(
+            data_source,
+            csv_path=csv,
+            parquet_path=parquet,
+            data_dir=data_dir,
+            symbol=symbol,
+            primary_timeframe=primary_timeframe,
+            start=from_date,
+            end=to_date,
+            ts_col=ts_col,
+        )
+    except ValueError as e:
+        raise click.ClickException(str(e)) from e
+
+    data = load_ohlcv_via_loader(loader, logger=logger)
+    if data is None:
+        raise click.ClickException("Could not load OHLCV data")
+    ohlcv = data.primary if isinstance(data, StrategyData) else data
+
+    return_matrix = pd.read_csv(return_path)
+    dataset = build_oracle_label_dataset(
+        return_matrix=return_matrix,
+        ohlcv=ohlcv,
+        bucket=bucket,
+    )
+    output_path = output if output is not None else matrix_dir / "oracle_labels"
+    write_oracle_label_outputs(output=output_path, dataset=dataset)
+    click.echo(f"Oracle labels saved to: {output_path}")
+
+
+@cli.command("rolling-regime-labels")
+@click.option(
+    "--matrix-dir",
+    required=True,
+    type=click.Path(path_type=Path),
+    help="Directory produced by archived-performance-matrix with strategy_trades/.",
+)
+@click.option(
+    "--data-source",
+    type=click.Choice(["csv", "parquet", "crypt-parquet"], case_sensitive=False),
+    default="crypt-parquet",
+    help="Data source: csv, parquet, or crypt-parquet.",
+)
+@click.option("--csv", default=None, help="Path to OHLCV CSV file.")
+@click.option("--parquet", default=None, help="Path to OHLCV Parquet file.")
+@click.option("--data-dir", default=None, help="Project data directory.")
+@click.option(
+    "--primary-timeframe",
+    type=click.Choice(["1h", "4h", "1d"], case_sensitive=False),
+    default="1h",
+    help="Primary timeframe for crypt-parquet data.",
+)
+@click.option("--symbol", default="SOL-USDT-SWAP", help="Trading pair name.")
+@click.option("--from", "from_date", default=None, help="Inclusive feature start UTC.")
+@click.option("--to", "to_date", default=None, help="Inclusive feature end UTC.")
+@click.option(
+    "--step",
+    type=click.Choice(["day", "hour"], case_sensitive=False),
+    default="day",
+    show_default=True,
+    help="Feature row cadence.",
+)
+@click.option(
+    "--horizon-days",
+    type=int,
+    default=30,
+    show_default=True,
+    help="Forward label horizon in calendar days.",
+)
+@click.option(
+    "--min-history-days",
+    type=int,
+    default=90,
+    show_default=True,
+    help="Minimum prior OHLCV history required before emitting a row.",
+)
+@click.option(
+    "--output",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output directory. Defaults to <matrix-dir>/rolling_labels_<step>_<horizon>d.",
+)
+@click.option("--ts-col", type=str, default="timestamp", help="CSV/parquet timestamp column.")
+def rolling_regime_labels(
+    matrix_dir: Path,
+    data_source: str,
+    csv: str | None,
+    parquet: str | None,
+    data_dir: str | None,
+    primary_timeframe: str,
+    symbol: str,
+    from_date: str | None,
+    to_date: str | None,
+    step: str,
+    horizon_days: int,
+    min_history_days: int,
+    output: Path | None,
+    ts_col: str,
+) -> None:
+    """Build rolling forward labels from matrix strategy trade exports."""
+
+    trades_dir = matrix_dir / "strategy_trades"
+    if not trades_dir.exists():
+        raise click.ClickException(f"Missing strategy trade directory: {trades_dir}")
+
+    try:
+        loader = build_cli_data_loader(
+            data_source,
+            csv_path=csv,
+            parquet_path=parquet,
+            data_dir=data_dir,
+            symbol=symbol,
+            primary_timeframe=primary_timeframe,
+            start=from_date,
+            end=to_date,
+            ts_col=ts_col,
+        )
+    except ValueError as e:
+        raise click.ClickException(str(e)) from e
+
+    data = load_ohlcv_via_loader(loader, logger=logger)
+    if data is None:
+        raise click.ClickException("Could not load OHLCV data")
+    ohlcv = data.primary if isinstance(data, StrategyData) else data
+
+    dataset = build_rolling_label_dataset(
+        trades_dir=trades_dir,
+        ohlcv=ohlcv,
+        step=step,
+        horizon_days=horizon_days,
+        min_history_days=min_history_days,
+        start=from_date,
+        end=to_date,
+    )
+    output_path = output or matrix_dir / f"rolling_labels_{step}_{horizon_days}d"
+    write_rolling_label_outputs(
+        output=output_path,
+        dataset=dataset,
+        step=step,
+        horizon_days=horizon_days,
+    )
+    click.echo(f"Rolling labels saved to: {output_path}")
+
+
+@cli.command("rolling-router-baseline")
+@click.option(
+    "--labels",
+    "labels_path",
+    required=True,
+    type=click.Path(exists=True, path_type=Path),
+    help="Path to rolling_labels.csv.",
+)
+@click.option(
+    "--validation-start",
+    default="2024-01-01",
+    show_default=True,
+    help="First as-of timestamp to score.",
+)
+@click.option(
+    "--min-available-strategies",
+    type=int,
+    default=3,
+    show_default=True,
+    help="Minimum strategies that must cover the label window.",
+)
+@click.option(
+    "--lookback-days",
+    type=int,
+    default=365,
+    show_default=True,
+    help="Prior completed-label history used by rolling routers.",
+)
+@click.option(
+    "--knn-k",
+    type=int,
+    default=7,
+    show_default=True,
+    help="Neighbors for the feature KNN diagnostic router.",
+)
+@click.option(
+    "--non-overlap-days",
+    type=int,
+    default=30,
+    show_default=True,
+    help="Spacing for portfolio-style non-overlap scoring.",
+)
+@click.option(
+    "--output",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output directory. Defaults to <labels-dir>/router_baseline.",
+)
+def rolling_router_baseline(
+    labels_path: Path,
+    validation_start: str,
+    min_available_strategies: int,
+    lookback_days: int,
+    knn_k: int,
+    non_overlap_days: int,
+    output: Path | None,
+) -> None:
+    """Evaluate simple live-safe routers over rolling regime labels."""
+
+    labels = pd.read_csv(labels_path)
+    config = RouterConfig(
+        validation_start=validation_start,
+        min_available_strategies=min_available_strategies,
+        lookback_days=lookback_days,
+        knn_k=knn_k,
+        non_overlap_days=non_overlap_days,
+    )
+    dense, summary, non_overlap = evaluate_rolling_router_baselines(labels, config=config)
+    output_path = output or labels_path.parent / "router_baseline"
+    write_rolling_router_report(
+        output=output_path,
+        dense=dense,
+        summary=summary,
+        non_overlap=non_overlap,
+        config=config,
+    )
+    click.echo(f"Rolling router baseline saved to: {output_path}")
 
 
 @cli.command()

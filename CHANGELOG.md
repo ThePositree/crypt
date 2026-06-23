@@ -6,6 +6,209 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-23 — Archive matrix parameter guard
+
+- Verified that archive matrix runs resolve strategy execution params from
+  `strategies/archive/*.json` `backtest_args`.
+- Added regression coverage for `backtest_args` precedence over legacy DSS flat
+  params and for all current archived strategy effective matrix args.
+- Validation: focused regime matrix/label/router tests passed; ruff clean on
+  touched files.
+- Files touched: `tests/backtester/test_regime_matrix.py`, `docs/`,
+  `CHANGELOG.md`.
+
+---
+
+## 2026-06-23 — Rolling router baseline evaluator
+
+- Added `backtester rolling-router-baseline` and
+  `src/backtester/regime_router.py` for live-safe router scoring over rolling
+  label CSVs.
+- Router training now uses only completed prior label windows
+  (`label_end <= asof`) and reports dense forward-label scores plus non-overlap
+  portfolio-style scores.
+- Fixed strategy-return column detection so `return_dispersion_pct` is not
+  treated as a pseudo-strategy.
+- Evaluated the partial exact-artifact rolling labels and documented why a
+  full six-strategy raw-trade matrix rerun is the next label-grade step.
+- Validation: focused regime router/label tests passed; ruff clean on touched
+  files.
+- Files touched: `src/backtester/`, `tests/backtester/`, `docs/`, `README.md`,
+  `CHANGELOG.md`.
+
+---
+
+## 2026-06-23 — Partial rolling labels from exact trade artifacts
+
+- Added optional rolling-label coverage masking via `strategy_coverage.csv` so
+  partial trade datasets do not treat missing strategy years as 0% return.
+- Assembled
+  `results/regime_matrix_archive_partial_existing_trades_2022_2025/` from
+  existing exact-parameter raw trade artifacts and generated daily 30-day
+  rolling labels.
+- Result: 1341 rows; 977 rows have 4 available strategies, 335 rows have 3,
+  and 29 boundary rows have 1.
+- Validation: focused regime label/matrix tests passed; ruff clean on touched
+  files.
+- Files touched: `src/backtester/regime_labels.py`,
+  `tests/backtester/test_regime_labels.py`, `docs/`, `CHANGELOG.md`.
+
+---
+
+## 2026-06-23 — Rolling regime label infrastructure
+
+- `backtester archived-performance-matrix` now exports raw per-strategy trades
+  under `strategy_trades/<strategy_id>.csv`.
+- Added `backtester rolling-regime-labels` to build daily/hourly forward labels
+  from raw trade exports with detector-safe OHLCV features at `T`.
+- Documented the Plan B rerun commands and rolling label trade-inclusion rule.
+- Validation: focused regime label/matrix tests passed; ruff clean on touched
+  files.
+- Files touched: `src/backtester/`, `tests/backtester/`, `docs/`, `README.md`,
+  `CHANGELOG.md`.
+
+---
+
+## 2026-06-23 — Monthly router baseline
+
+- Evaluated first monthly portfolio routers over the archive-only oracle label
+  dataset.
+- Found `rolling_top2_mean_60_40` is the current simple benchmark to beat:
+  +66.51% over 2024-2025 with -12.58% max drawdown.
+- The OHLCV feature-KNN top-2 router reduced drawdown to -6.00% but returned
+  only +42.09% and switched too often.
+- Added `docs/regime_router_baseline.md` and updated next work to a
+  risk-gated rolling top-2 router.
+- Files touched: `docs/regime_router_baseline.md`, `docs/regime_detection.md`,
+  `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
+## 2026-06-23 — Rolling label Plan B recorded
+
+- Recorded that the current active path remains the monthly oracle-label
+  dataset, while denser daily/hourly rolling labels are Plan B.
+- Added the raw per-strategy trade export requirement for future
+  `archived-performance-matrix` runs.
+- Added a backlog item for `strategy_trades/<strategy_id>.csv` exports and
+  rolling 7d/30d/90d label generation.
+- Files touched: `docs/regime_label_analysis.md`,
+  `docs/regime_performance_matrix.md`, `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
+## 2026-06-23 — Regime label analysis
+
+- Analyzed the archive-only monthly oracle labels for feature separation,
+  unstable low-margin labels, and walk-forward exact-strategy baselines.
+- Found that exact single-strategy classification is not reliable yet: the best
+  model ties rolling majority on 2024-2025 walk-forward exact accuracy.
+- Added `docs/regime_label_analysis.md` and recorded the next step as a
+  confidence-gated top-2 portfolio router, not a hard classifier.
+- Files touched: `docs/regime_label_analysis.md`, `docs/regime_detection.md`,
+  `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
+## 2026-06-23 — Oracle regime labels MVP
+
+- Added `backtester oracle-regime-labels` to convert a completed archived
+  performance matrix into monthly `best_strategy` oracle labels.
+- Added detector-safe OHLCV features computed strictly before each bucket start.
+- Generated the first label artifact under
+  `results/regime_matrix_archive_sol_2022_2025/oracle_labels/`.
+- Documented the command in README and the label contract in
+  `docs/regime_detection.md`.
+- Validation: focused regime label/matrix tests passed; ruff clean on touched
+  files.
+- Files touched: `src/backtester/`, `tests/backtester/`, `docs/`,
+  `README.md`, `CHANGELOG.md`.
+
+---
+
+## 2026-06-22 — NR4 VWAP robust archived
+
+- Archived NR4 VWAP robust as `nr4_vwap_robust` after the owner-run
+  execution-only Optuna completed.
+- Frozen best trial 412 execution params:
+  `tp_move_pct=0.026`, `rrr=1.75`, `ttl=52`, `risk_percent=0.5`,
+  `trail_activation_rrr=1.75`, `trail_distance_atr=0.25`.
+- Updated the archive index and regime matrix notes so the next matrix can be
+  archive-only instead of archive+active.
+- Files touched: `strategies/archive/`, `docs/archive/candidates/`,
+  `docs/regime_performance_matrix.md`, `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
+## 2026-06-22 — NR4 archive-before-final-matrix plan
+
+- Documented that label-grade regime matrices should use archived strategy
+  columns only; active `--strategy` inputs are exploratory until archived.
+- Added the NR4 big Optuna → archive → second matrix sequence to
+  `docs/tasks/IN_PROGRESS.md`.
+- Clarified in the regime detection docs that archive provenance is required
+  before using strategy columns for label training or router evaluation.
+- Files touched: `docs/regime_detection.md`,
+  `docs/regime_performance_matrix.md`, `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
+## 2026-06-22 — Regime matrix progress control
+
+- Added `--strategy-progress/--no-strategy-progress` to
+  `backtester archived-performance-matrix`.
+- Matrix runs now announce each strategy before starting it and keep
+  strategy-level progress bars enabled by default when supported.
+- Validation: regime matrix tests passed; ruff clean on touched CLI/test files.
+- Files touched: `src/backtester/__main__.py`, `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
+## 2026-06-22 — Regime matrix archive replay fixes
+
+- Fixed stale execution params in archived NR7 and VWAP strategy JSONs so they
+  match their archived `execution_params.json` files.
+- Matrix runs now force strategy-level `progress=false` to avoid nested
+  strategy progress bars.
+- `backtester archived-performance-matrix` now rewrites partial matrix outputs
+  after each completed strategy, so an interrupted run preserves completed
+  rows.
+- Validation: regime matrix tests passed; ruff clean on touched matrix files.
+- Files touched: `src/backtester/__main__.py`, `strategies/archive/`,
+  `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
+## 2026-06-22 — Archived strategy performance matrix MVP
+
+- Added `docs/regime_performance_matrix.md` as the contract for the first
+  `time x strategy metrics` artifact used by regime discovery.
+- Added `backtester archived-performance-matrix` to run archived and selected
+  active strategies on one shared window and export bucket-level matrix CSVs.
+- Added matrix aggregation utilities and tests for manifest, bucket metrics,
+  pivots, and CLI help.
+- Documented the owner-run SOL 2022-2025 archive+active matrix command in
+  README.
+- Files touched: `src/backtester/`, `tests/backtester/`, `docs/`,
+  `README.md`, `CHANGELOG.md`.
+
+---
+
+## 2026-06-22 — Archived WR45 Optuna research seeds
+
+- Archived `smac_003335_double_bottom_body_to_range` and
+  `island_2023_021396_engulfing_bb_trend` as `research_seed` DSS candidates.
+- Frozen each strategy under `strategies/archive/` with best Optuna execution
+  parameters from the owner's completed runs.
+- Added archive README, execution params, provenance, mandate snapshot, and
+  monthly return CSVs for both candidates.
+- Both entries explicitly keep `mandate_verdict=discard`; the archive value is
+  regime/detector evidence, not production promotion.
+- Files touched: `docs/archive/candidates/`, `strategies/archive/`,
+  `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
 ## 2026-06-19 — Stage 1 WR gate uses only configured threshold
 
 - Removed the hidden `tp_first > sl_first` requirement from DSS Stage 1

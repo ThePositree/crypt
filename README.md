@@ -42,12 +42,11 @@ archiving useful strategy families, then infer market regimes from the archived
 strategy performance matrix and train an online detector/router
 (`docs/regime_detection.md`, ADR-0041).
 
-**Active candidate:** NR4 breakout + VWAP band + avoid-doji
-(`crypt_ensemble_h1_discovery_nr4_vwap_robust.json`). Best discovery→execution
-result: **+164.75%** capped sum on SOL 2025, **8/12** months ≥15%, **2** DD
-breaches (Feb, Mar); formal **discard** — see
-`docs/candidates/nr4_vwap_robust.md`. NR7 and VWAP reclaim archived under
-`docs/archive/candidates/`.
+Current archived regime seeds include NR4 VWAP robust, NR7 BB squeeze, VWAP
+reclaim, MACD squeeze, double-bottom body-to-range, and engulfing BB trend.
+NR4 is now archived under `docs/archive/candidates/nr4_vwap_robust/` after a
+2022-2024 execution-only Optuna best-run; it remains a `discard`/research seed,
+not a production candidate.
 
 See `docs/tasks/ROADMAP.md` for milestones.
 
@@ -377,6 +376,89 @@ exports and are only produced when `--specialist-windows` is set. Leave
 `--specialist-windows` empty for the fast all-window early-reject path.
 Exported full-mode `candidates/*.json` files are replayable via
 `compare-fixed` and `walk-forward`.
+
+Regime research starts by building a comparable matrix from archived
+strategies. The command below runs every `strategies/archive/*.json` strategy
+on the same SOL window and writes bucket-level CSVs plus raw per-strategy
+trades:
+
+```bash
+MPLCONFIGDIR=/tmp/matplotlib \
+UV_CACHE_DIR=/tmp/uv-cache \
+uv run backtester archived-performance-matrix \
+    --data-source crypt-parquet \
+    --data-dir data \
+    --primary-timeframe 1h \
+    --symbol SOL-USDT-SWAP \
+    --from 2022-01-01 \
+    --to 2025-12-31 \
+    --bucket month \
+    --include-archive \
+    --output results/regime_matrix_archive_sol_2022_2025
+```
+
+Outputs are `strategy_manifest.csv`, `bucket_metrics.csv`,
+`matrix_return_pct.csv`, `matrix_trade_count.csv`, `summary.md`, and
+`strategy_trades/<strategy_id>.csv`.
+
+The first offline oracle-label dataset is built from the archive-only matrix
+and detector-safe OHLCV features:
+
+```bash
+MPLCONFIGDIR=/tmp/matplotlib \
+UV_CACHE_DIR=/tmp/uv-cache \
+uv run backtester oracle-regime-labels \
+    --matrix-dir results/regime_matrix_archive_sol_2022_2025 \
+    --data-source crypt-parquet \
+    --data-dir data \
+    --primary-timeframe 1h \
+    --symbol SOL-USDT-SWAP \
+    --from 2021-12-18 \
+    --to 2025-12-31 \
+    --bucket month \
+    --output results/regime_matrix_archive_sol_2022_2025/oracle_labels
+```
+
+Outputs are `oracle_labels.csv` and `summary.md`. Labels select the best
+archived strategy per bucket; OHLCV features are computed strictly before the
+bucket start.
+
+For denser detector training, generate rolling daily labels from raw trades:
+
+```bash
+MPLCONFIGDIR=/tmp/matplotlib \
+UV_CACHE_DIR=/tmp/uv-cache \
+uv run backtester rolling-regime-labels \
+    --matrix-dir results/regime_matrix_archive_sol_2022_2025 \
+    --data-source crypt-parquet \
+    --data-dir data \
+    --primary-timeframe 1h \
+    --symbol SOL-USDT-SWAP \
+    --from 2022-01-01 \
+    --to 2025-12-31 \
+    --step day \
+    --horizon-days 30 \
+    --min-history-days 90 \
+    --output results/regime_matrix_archive_sol_2022_2025/rolling_labels_day_30d
+```
+
+Rolling labels use features available before each `T` and select the best
+archived strategy over the future window `[T, T + horizon)`.
+
+Evaluate simple live-safe routers over those rolling labels:
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache \
+uv run backtester rolling-router-baseline \
+    --labels results/regime_matrix_archive_sol_2022_2025/rolling_labels_day_30d/rolling_labels.csv \
+    --validation-start 2024-01-01 \
+    --min-available-strategies 3 \
+    --lookback-days 365 \
+    --output results/regime_matrix_archive_sol_2022_2025/rolling_labels_day_30d/router_baseline
+```
+
+The router baseline is an offline diagnostic. It uses only completed prior
+label windows (`label_end <= asof`) when selecting weights.
 
 `railway.toml` currently starts the `island_qd` search worker, not the live
 alerting process. Revert its `deploy.startCommand` before using the Railway

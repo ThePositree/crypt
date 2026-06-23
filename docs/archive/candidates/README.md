@@ -10,9 +10,9 @@ full production mandate.
 
 | candidate_id | Archived | Reason | Best evidence | Superseded by |
 | ------------ | -------- | ------ | ------------- | ------------- |
+| [nr4_vwap_robust](nr4_vwap_robust/) | 2026-06-22 | research_seed | +148.71% (SOL 2022-2024 Optuna best-run, discard) | — |
+| [island_2023_021396_engulfing_bb_trend](island_2023_021396_engulfing_bb_trend/) | 2026-06-22 | research_seed | +375.80% (SOL 2022-2024 Optuna best-run, discard) | — |
+| [smac_003335_double_bottom_body_to_range](smac_003335_double_bottom_body_to_range/) | 2026-06-22 | research_seed | +258.21% (SOL 2022-2024 Optuna best-run, discard) | — |
 | [dssv2_013321_macd_squeeze_recent](dssv2_013321_macd_squeeze_recent/) | 2026-06-18 | near_miss | +161.09% (SOL 2023 mandate_score Optuna) | — |
 | [nr7_bb_squeeze_h4](nr7_bb_squeeze_h4/) | 2026-06-09 | superseded | +58.82% (tp_pct Optuna) | NR4 vwap band |
 | [vwap_reclaim_robust](vwap_reclaim_robust/) | 2026-06-09 | superseded | +50.26% (tp_pct Optuna) | NR4 vwap band |
-
-**Active candidate:** `strategies/backtester/crypt_ensemble_h1_discovery_nr4_vwap_robust.json`
-— see `docs/tasks/IN_PROGRESS.md`.

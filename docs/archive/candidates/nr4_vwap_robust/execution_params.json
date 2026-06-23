@@ -1,0 +1,13 @@
+{
+  "exit_geometry": "tp_pct",
+  "structural_sl_mode": "cap",
+  "risk_base_period": "monthly",
+  "tp_move_pct": 0.026,
+  "rrr": 1.75,
+  "ttl": 52,
+  "risk_percent": 0.5,
+  "trail_activation_rrr": 1.75,
+  "trail_distance_atr": 0.25,
+  "optuna_trial": 412,
+  "optuna_objective_mandate_score": -18526.95
+}

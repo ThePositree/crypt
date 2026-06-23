@@ -1,0 +1,15 @@
+{
+  "exit_geometry": "sl_rrr",
+  "max_positions": 0,
+  "optuna_objective_mandate_score": -17607.34,
+  "optuna_total_return_pct": 258.21,
+  "optuna_trial": 431,
+  "position_ttl_bars": 116,
+  "risk_base_period": "monthly",
+  "risk_percent": 0.75,
+  "rrr": 1.5,
+  "structural_sl_mode": "cap",
+  "trail_activation_rrr": 1.5,
+  "trail_distance_atr": 0.25,
+  "ttl": 116
+}

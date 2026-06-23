@@ -8,7 +8,7 @@
     "max_sl_distance_atr": 8.0,
     "allow_atr_sl_fallback": true,
     "optimized_windows": true,
-    "progress": true,
+    "progress": false,
     "timeframes": {
       "context": ["1d"],
       "setup": ["4h"],
@@ -22,10 +22,13 @@
     "max_bb_width_pct": 0.04
   },
   "backtest_args": {
-    "ttl": 36,
-    "rrr": 1.25,
-    "risk_percent": 1.0,
-    "risk_base_period": "monthly"
+    "exit_geometry": "tp_pct",
+    "risk_base_period": "monthly",
+    "structural_sl_mode": "ignore",
+    "tp_move_pct": 0.014,
+    "ttl": 24,
+    "rrr": 2.25,
+    "risk_percent": 2.0
   },
   "discovery_source": {
     "candidate_id": "h1_nr7_breakout__bb_squeeze__h4_context_aligned",
