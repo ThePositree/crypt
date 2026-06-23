@@ -4,6 +4,33 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-23 — Full rolling labels and router baseline evaluated
+
+**What:** consumed the completed archive-only matrix with raw trades, built
+daily 30-day rolling labels, and evaluated live-safe router baselines.
+
+**Why now:** the partial existing-trades artifact had mixed coverage and could
+not support label-grade router conclusions.
+
+**Expected gain:** establish the first clean six-strategy rolling-label
+benchmark for regime routing.
+
+**Result:** `results/regime_matrix_archive_sol_2022_2025_trades/` contains six
+raw strategy trade files, 1341 daily rolling labels all with six available
+strategies, and router baseline artifacts. Oracle non-overlap return is
++1812.32%, while the default simple routers are far lower. A sensitivity pass
+found `feature_knn_top2_60_40` with `lookback=180d`, `k=3` can reach +142.75%
+on one start offset, but offset robustness favors `rolling_top2_mean_60_40`
+median behavior.
+
+**Acceptance:** docs updated with full results and next work moved to robust
+router utility scoring.
+
+**Links:** `docs/regime_rolling_router_baseline.md`,
+`results/regime_matrix_archive_sol_2022_2025_trades/rolling_labels_day_30d/`.
+
+---
+
 ## 2026-06-23 — Archive matrix params regression-checked
 
 **What:** verified that the full archive matrix command resolves execution

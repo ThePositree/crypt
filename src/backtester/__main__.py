@@ -20,7 +20,6 @@ import pandas as pd  # noqa: E402
 
 from backtester.cli_runner import (  # noqa: E402
     OptimizerSearchArgs,
-    StrategyConfig,
     build_backtest_args,
     build_cli_data_loader,
     build_strategy_instance,
@@ -53,12 +52,8 @@ from backtester.regime_labels import (  # noqa: E402
     write_rolling_label_outputs,
 )
 from backtester.regime_matrix import (  # noqa: E402
-    MatrixStrategy,
-    aggregate_strategy_buckets,
-    build_strategy_manifest,
-    strategy_id_from_path,
-    write_matrix_outputs,
-    write_strategy_trades,
+    MatrixBacktestCliParams,
+    run_archived_performance_matrix,
 )
 from backtester.regime_router import (  # noqa: E402
     RouterConfig,
@@ -516,6 +511,13 @@ def run(
     show_default=True,
     help="Allow strategy-level progress bars when supported by the strategy config.",
 )
+@click.option(
+    "--jobs",
+    type=click.IntRange(min=1),
+    default=1,
+    show_default=True,
+    help="Parallel matrix strategy workers.",
+)
 @click.option("--output", default=None, help="Output directory.")
 @click.option("--capital", type=float, default=10000.0, show_default=True)
 @click.option("--maker-fee", type=float, default=0.0002, show_default=True)
@@ -537,6 +539,7 @@ def archived_performance_matrix(
     archive_dir: str,
     bucket: str,
     strategy_progress: bool,
+    jobs: int,
     output: str | None,
     capital: float,
     maker_fee: float,
@@ -574,78 +577,35 @@ def archived_performance_matrix(
         ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         output = f"results/regime_matrix_{symbol.lower().replace('-', '_')}_{bucket}_{ts}"
     output_path = Path(output)
-    output_path.mkdir(parents=True, exist_ok=True)
 
-    matrix_strategies: list[MatrixStrategy] = []
-    bucket_frames: list[pd.DataFrame] = []
-    for strategy_path in paths:
-        cfg = load_strategy_config(str(strategy_path), logger)
-        if cfg is None:
-            raise click.ClickException(f"Invalid strategy config: {strategy_path}")
-        cfg = _matrix_config_with_progress(cfg, enabled=strategy_progress)
-        strategy_instance = build_strategy_instance(cfg.name, cfg.params, logger=logger)
-        if strategy_instance is None:
-            raise click.ClickException(f"Could not build strategy: {strategy_path}")
-        args = build_backtest_args(
-            cfg,
-            capital=capital,
-            risk_percent=1.0,
-            rrr=2.0,
-            trail_activation_rrr=0.0,
-            trail_distance_atr=0.0,
-            maker_fee=maker_fee,
-            taker_fee=taker_fee,
-            ttl=0,
-            max_positions=0,
-            max_allowed_leverage=max_allowed_leverage,
-            max_allowed_margin=max_allowed_margin,
-            risk_base_period="monthly",
-            max_daily_profit=None,
-            max_daily_loss=None,
-            trading_begin=None,
-            trading_end=None,
-            exit_geometry="sl_rrr",
-            tp_move_pct=None,
-            structural_sl_mode="cap",
-            min_tp_move_pct=0.004,
-        )
-        strategy_id = _unique_strategy_id(strategy_id_from_path(strategy_path), matrix_strategies)
-        matrix_strategies.append(
-            MatrixStrategy(
-                strategy_id=strategy_id,
-                strategy_path=strategy_path,
-                config=cfg,
-                args=args,
-            )
-        )
-        click.echo(f"Matrix strategy starting: {strategy_id} path={strategy_path}")
-        results = run_backtest(df=data, strategy=strategy_instance, args=args)
-        trades = results.trades if results.trades is not None else pd.DataFrame()
-        write_strategy_trades(output=output_path, strategy_id=strategy_id, trades=trades)
-        bucket_frames.append(
-            aggregate_strategy_buckets(
-                trades,
-                strategy_id=strategy_id,
-                strategy_path=strategy_path,
-                bucket=bucket,
-                start=from_date,
-                end=to_date,
-            )
-        )
-        partial_manifest = build_strategy_manifest(matrix_strategies)
-        partial_metrics = pd.concat(bucket_frames, ignore_index=True)
-        write_matrix_outputs(
+    try:
+        run_archived_performance_matrix(
+            paths=paths,
+            data=data,
             output=output_path,
-            manifest=partial_manifest,
-            bucket_metrics=partial_metrics,
+            bucket=bucket,
+            from_date=from_date,
+            to_date=to_date,
+            jobs=jobs,
+            cli_params=MatrixBacktestCliParams(
+                capital=capital,
+                maker_fee=maker_fee,
+                taker_fee=taker_fee,
+                max_allowed_leverage=max_allowed_leverage,
+                max_allowed_margin=max_allowed_margin,
+            ),
+            strategy_progress=strategy_progress,
+            logger=logger,
+            on_strategy_start=lambda strategy_id, strategy_path: click.echo(
+                f"Matrix strategy starting: {strategy_id} path={strategy_path}"
+            ),
+            on_strategy_done=lambda strategy_id, trade_count: click.echo(
+                f"Matrix strategy done: {strategy_id} trades={trade_count}"
+            ),
         )
-        click.echo(f"Matrix strategy done: {strategy_id} trades={len(trades)}")
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
 
-    manifest = build_strategy_manifest(matrix_strategies)
-    bucket_metrics = (
-        pd.concat(bucket_frames, ignore_index=True) if bucket_frames else pd.DataFrame()
-    )
-    write_matrix_outputs(output=output_path, manifest=manifest, bucket_metrics=bucket_metrics)
     click.echo(f"Matrix saved to: {output_path}")
 
 
@@ -666,29 +626,6 @@ def _collect_matrix_strategy_paths(
         seen.add(resolved)
         unique.append(resolved)
     return unique
-
-
-def _matrix_config_with_progress(cfg: StrategyConfig, *, enabled: bool) -> StrategyConfig:
-    if "progress" not in cfg.params:
-        return cfg
-    params = dict(cfg.params)
-    params["progress"] = enabled
-    return StrategyConfig(
-        name=cfg.name,
-        version=cfg.version,
-        params=params,
-        backtest_args=cfg.backtest_args,
-    )
-
-
-def _unique_strategy_id(base: str, existing: list[MatrixStrategy]) -> str:
-    used = {item.strategy_id for item in existing}
-    if base not in used:
-        return base
-    idx = 2
-    while f"{base}_{idx}" in used:
-        idx += 1
-    return f"{base}_{idx}"
 
 
 @cli.command("oracle-regime-labels")
@@ -1365,9 +1302,7 @@ def compare_fixed(
             "from calendar-month PnL on that run."
         )
     else:
-        logger.info(
-            "Isolated-window mode (diagnostic): each window resets capital and positions."
-        )
+        logger.info("Isolated-window mode (diagnostic): each window resets capital and positions.")
     summary = run_fixed_candidate_comparison(
         windows=window_specs,
         cfg=cfg,
@@ -1682,7 +1617,9 @@ def signal_quality(
 @click.option("--risk-percent-low", type=float, default=None, help="Risk percent search low.")
 @click.option("--risk-percent-high", type=float, default=None, help="Risk percent search high.")
 @click.option("--risk-percent-step", type=float, default=0.25, help="Risk percent search step.")
-@click.option("--risk-percent", type=float, default=1.5, help="Fixed risk percent (when not searching).")
+@click.option(
+    "--risk-percent", type=float, default=1.5, help="Fixed risk percent (when not searching)."
+)
 @click.option("--ttl", type=int, default=36, help="Fixed TTL in bars (when not searching).")
 @click.option(
     "--exit-geometry",
@@ -1776,10 +1713,14 @@ def walk_forward(
         return
     log_strategy_info(cfg, logger)
 
-    if exit_geometry.lower() == "tp_pct" and tp_move_pct is None and (
-        tp_move_pct_low is None or tp_move_pct_high is None
+    if (
+        exit_geometry.lower() == "tp_pct"
+        and tp_move_pct is None
+        and (tp_move_pct_low is None or tp_move_pct_high is None)
     ):
-        logger.error("❌ --tp-move-pct or --tp-move-pct-low/--tp-move-pct-high required for tp_pct mode")
+        logger.error(
+            "❌ --tp-move-pct or --tp-move-pct-low/--tp-move-pct-high required for tp_pct mode"
+        )
         return
 
     # Generate window list first so we can report count before loading data.

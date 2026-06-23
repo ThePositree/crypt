@@ -1,76 +1,40 @@
 # In progress
 
-## Full rolling labels — owner action (2026-06-23)
+## Rolling router utility scoring — next implementation (2026-06-23)
 
-**What:** run a fresh full archive-only matrix with raw per-strategy trades,
-then rebuild daily 30-day rolling labels and router baselines.
+**What:** extend the rolling router evaluator beyond one fixed non-overlap
+start offset. Score routers by offset robustness, drawdown, negative periods,
+and switching cost.
 
-**Why now:** the partial exact-artifact labels validated the pipeline but have
-mixed strategy coverage. NR4/island/smac cover 2022-2024, NR7/VWAP cover 2025,
-and only DSS MACD covers 2022-2025. Router conclusions from that dataset are
-not label-grade.
+**Why now:** the full archive matrix and rolling labels are now complete:
+`results/regime_matrix_archive_sol_2022_2025_trades/rolling_labels_day_30d/`.
+Oracle non-overlap return is +1812%, but simple live-safe routers capture only
++50% to +143% depending on configuration. The best single-start KNN result
+(`lookback=180d`, `k=3`) is not offset-stable.
 
-**Expected gain:** produce the first clean six-strategy rolling-label dataset
-where every strategy is evaluated over the same 2022-2025 SOL window.
+**Expected gain:** choose router settings by robust utility instead of a lucky
+non-overlap start date, and establish a proper benchmark before training a
+detector.
 
-**Acceptance:** `results/regime_matrix_archive_sol_2022_2025_trades/` contains
-six `strategy_trades/*.csv`; its rolling labels have six available strategies
-for normal rows; `rolling-router-baseline` writes dense and non-overlap scores.
+**Acceptance:** `rolling-router-baseline` or a sibling command exports
+`router_offset_sensitivity.csv`, a utility-ranked summary, and a report that
+penalizes max DD, negative periods, switches, and weak offset median. The report
+must compare at least `rolling_top2_mean_60_40`, `rolling_best_mean`,
+`feature_knn_top2_60_40`, and `equal_weight_available`.
 
-**Evidence from partial run:**
+**Current evidence:**
 
-- Partial report: `docs/regime_rolling_router_baseline.md`.
-- Overall partial non-overlap best practical router:
-  `equal_weight_available`, +145.84%, -8.35% DD over 24 non-overlap periods.
-- 2024-only favored `feature_knn_top2_60_40`; 2025-only favored simpler
-  allocation. This split is probably a coverage artifact.
-
-**Command 1 — full archive-only matrix with raw trades:**
-```bash
-MPLCONFIGDIR=/tmp/matplotlib \
-UV_CACHE_DIR=/tmp/uv-cache \
-uv run backtester archived-performance-matrix \
-    --data-source crypt-parquet \
-    --data-dir data \
-    --primary-timeframe 1h \
-    --symbol SOL-USDT-SWAP \
-    --from 2022-01-01 \
-    --to 2025-12-31 \
-    --bucket month \
-    --include-archive \
-    --output results/regime_matrix_archive_sol_2022_2025_trades
-```
-
-**Command 2 — build rolling labels after command 1 finishes:**
-```bash
-MPLCONFIGDIR=/tmp/matplotlib \
-UV_CACHE_DIR=/tmp/uv-cache \
-uv run backtester rolling-regime-labels \
-    --matrix-dir results/regime_matrix_archive_sol_2022_2025_trades \
-    --data-source crypt-parquet \
-    --data-dir data \
-    --primary-timeframe 1h \
-    --symbol SOL-USDT-SWAP \
-    --from 2022-01-01 \
-    --to 2025-12-31 \
-    --step day \
-    --horizon-days 30 \
-    --min-history-days 90 \
-    --output results/regime_matrix_archive_sol_2022_2025_trades/rolling_labels_day_30d
-```
-
-**Command 3 — score live-safe router baselines:**
-```bash
-UV_CACHE_DIR=/tmp/uv-cache \
-uv run backtester rolling-router-baseline \
-    --labels results/regime_matrix_archive_sol_2022_2025_trades/rolling_labels_day_30d/rolling_labels.csv \
-    --validation-start 2024-01-01 \
-    --min-available-strategies 6 \
-    --lookback-days 365 \
-    --knn-k 7 \
-    --non-overlap-days 30 \
-    --output results/regime_matrix_archive_sol_2022_2025_trades/rolling_labels_day_30d/router_baseline_min6
-```
+- Full rolling report: `docs/regime_rolling_router_baseline.md`.
+- If moving to another PC, restore the gitignored local artifacts from
+  `regime_router_results_handoff_20260623.tar.gz` at the repository root:
+  `tar -xzf regime_router_results_handoff_20260623.tar.gz`.
+- Baseline artifact:
+  `results/regime_matrix_archive_sol_2022_2025_trades/rolling_labels_day_30d/router_baseline_min6/`.
+- Sensitivity artifact:
+  `results/regime_matrix_archive_sol_2022_2025_trades/rolling_labels_day_30d/router_baseline_min6_lb180_k3/`.
+- Across 30 start offsets, `rolling_top2_mean_60_40` median return is +84.11%
+  with median DD -8.32%; `feature_knn_top2_60_40` median return is +74.42%
+  despite a best single-start return of +142.75%.
 
 **Links:** `docs/regime_detection.md`,
 `docs/regime_label_analysis.md`,

@@ -31,6 +31,11 @@ portfolio router work.
 
 All strategies in one matrix run must use the same data source and date range.
 
+Use `--jobs N` to run independent strategy backtests in parallel. Default is
+`--jobs 1` (serial). Parallel workers each receive a copy of the shared OHLCV
+dataframe, so large windows and high `N` can increase RAM use. Completed
+strategy outputs are still checkpointed after each worker finishes.
+
 ## Archive Contract
 
 A matrix used for regime discovery, retrospective labeling, detector training,

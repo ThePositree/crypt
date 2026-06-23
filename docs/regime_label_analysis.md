@@ -160,8 +160,12 @@ cover 2022-2024, NR7/VWAP cover 2025, and only the DSS MACD strategy covers
 2022-2025. Router training should filter low-availability rows, especially
 `available_strategy_count == 1` around the 2024/2025 boundary.
 
-The partial rolling router baseline is documented in
-`docs/regime_rolling_router_baseline.md`. It confirms that the rolling-label
-pipeline is usable, but the mixed coverage makes router conclusions unreliable.
-The next label-grade step is a fresh full archive-only matrix with
-`strategy_trades/` from current code.
+The full rolling router baseline is documented in
+`docs/regime_rolling_router_baseline.md`. The full matrix artifact supersedes
+the earlier partial artifact:
+`results/regime_matrix_archive_sol_2022_2025_trades/rolling_labels_day_30d/`.
+
+Every rolling-label row now has all six archived strategies available. Oracle
+non-overlap return over 2024-2025 is +1812.32%, but simple live-safe routers
+capture far less. The next step is utility-scored and offset-robust router
+evaluation before building a trainable detector.

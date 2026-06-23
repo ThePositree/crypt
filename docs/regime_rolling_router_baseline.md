@@ -1,35 +1,24 @@
 # Rolling regime router baseline
 
-Status: **partial artifact analysis**.
+Status: **full archive matrix analysis**.
 
 Source labels:
-`results/regime_matrix_archive_partial_existing_trades_2022_2025/rolling_labels_day_30d/rolling_labels.csv`
+`results/regime_matrix_archive_sol_2022_2025_trades/rolling_labels_day_30d/rolling_labels.csv`
 
 Router artifact:
-`results/regime_matrix_archive_partial_existing_trades_2022_2025/rolling_labels_day_30d/router_baseline_min3/`
+`results/regime_matrix_archive_sol_2022_2025_trades/rolling_labels_day_30d/router_baseline_min6/`
 
 ## Dataset
 
-The labels were assembled from existing exact-parameter raw trade artifacts.
-They are useful for testing the Plan B pipeline, but they are not a complete
-six-strategy matrix:
-
-| Coverage | Strategies |
-| --- | --- |
-| 2022-2024 | NR4 VWAP, DSS MACD, island engulfing, smac double-bottom |
-| 2025 | DSS MACD, NR7 BB squeeze, VWAP reclaim |
-| 2022-2025 | DSS MACD only |
-
-The label builder uses `strategy_coverage.csv`, so a strategy is excluded when
-its source artifact does not fully cover `[T, T + horizon)`.
+The labels come from a fresh archive-only matrix over SOL 2022-2025 with raw
+`strategy_trades/` for all six archived strategies.
 
 Rows:
 
 - 1341 daily rows total.
-- 977 rows with 4 available strategies.
-- 335 rows with 3 available strategies.
-- 29 rows with 1 available strategy around the 2024/2025 boundary; these are
-  excluded from router scoring with `--min-available-strategies 3`.
+- every row has all 6 strategies available.
+- horizon: 30 calendar days.
+- validation starts at 2024-01-01.
 
 ## Validation Contract
 
@@ -41,64 +30,96 @@ Routers are live-safe:
 - non-overlap scores sample every 30 days before compounding, so overlapping
   future windows are not double-counted.
 
-## Overall Partial Result
+## Full Matrix Result
 
 Artifact:
-`results/regime_matrix_archive_partial_existing_trades_2022_2025/rolling_labels_day_30d/router_baseline_min3/`
+`results/regime_matrix_archive_sol_2022_2025_trades/rolling_labels_day_30d/router_baseline_min6/`
 
-Dense rows, 2024-2025, `available_strategy_count >= 3`:
+Dense rows, 2024-2025, `available_strategy_count == 6`:
 
 | Router | Avg 30d forward | Worst 30d | Negative rows | Avg regret |
 | --- | ---: | ---: | ---: | ---: |
-| `oracle` | +11.78% | -6.18% | 8 | 0.00% |
-| `equal_weight_available` | +3.89% | -8.35% | 145 | 7.88% |
-| `feature_knn_top2_60_40` | +3.49% | -14.98% | 171 | 8.29% |
-| `rolling_top2_mean_60_40` | +3.40% | -14.98% | 179 | 8.38% |
-| `rolling_best_mean` | +3.21% | -25.35% | 255 | 8.57% |
+| `oracle` | +13.85% | -0.39% | 2 | 0.00% |
+| `rolling_best_mean` | +2.83% | -25.35% | 244 | 11.01% |
+| `rolling_top2_mean_60_40` | +2.81% | -14.57% | 202 | 11.04% |
+| `feature_knn_top2_60_40` | +2.14% | -23.99% | 237 | 11.70% |
+| `equal_weight_available` | +1.75% | -11.06% | 208 | 12.10% |
 
 Non-overlap 30-day score, 24 periods:
 
 | Router | Return | Max DD | Negative periods |
 | --- | ---: | ---: | ---: |
-| `oracle` | +1128.30% | -6.18% | 2 |
-| `equal_weight_available` | +145.84% | -8.35% | 6 |
-| `feature_knn_top2_60_40` | +131.65% | -12.85% | 6 |
-| `rolling_best_mean` | +116.83% | -25.35% | 8 |
-| `rolling_top2_mean_60_40` | +109.79% | -14.57% | 7 |
+| `oracle` | +1812.32% | 0.00% | 0 |
+| `rolling_top2_mean_60_40` | +92.91% | -14.57% | 7 |
+| `rolling_best_mean` | +91.62% | -25.35% | 6 |
+| `feature_knn_top2_60_40` | +85.19% | -14.18% | 9 |
+| `equal_weight_available` | +49.95% | -18.99% | 8 |
 
-## Coverage Split
+## Parameter Sensitivity
 
-The overall score hides a coverage issue.
+The default router baseline used `lookback=365d` and `knn_k=7`. A small
+sensitivity pass over lookback and KNN neighbors found a better single-start
+KNN configuration:
 
-2024-only, 4 available strategies:
+Artifact:
+`results/regime_matrix_archive_sol_2022_2025_trades/rolling_labels_day_30d/router_baseline_min6_lb180_k3/`
 
-| Router | Non-overlap return | Max DD |
-| --- | ---: | ---: |
-| `oracle` | +167.20% | -0.38% |
-| `feature_knn_top2_60_40` | +60.60% | -4.49% |
-| `equal_weight_available` | +32.96% | -4.91% |
-| `rolling_top2_mean_60_40` | +28.72% | -14.57% |
+| Router | Non-overlap return | Max DD | Negative periods |
+| --- | ---: | ---: | ---: |
+| `oracle` | +1812.32% | 0.00% | 0 |
+| `feature_knn_top2_60_40` | +142.75% | -6.84% | 8 |
+| `rolling_best_mean` | +118.76% | -8.50% | 7 |
+| `rolling_top2_mean_60_40` | +86.78% | -5.62% | 11 |
+| `equal_weight_available` | +49.95% | -18.99% | 8 |
 
-2025-only, 3 available strategies:
+However this KNN result is not stable enough to treat as solved. Across all 30
+possible non-overlap start offsets, the same `lookback=180d, k=3` configuration
+has this range:
 
-| Router | Non-overlap return | Max DD |
-| --- | ---: | ---: |
-| `oracle` | +359.69% | -6.18% |
-| `rolling_best_mean` | +88.58% | -8.21% |
-| `equal_weight_available` | +84.91% | -8.35% |
-| `rolling_top2_mean_60_40` | +62.98% | -7.93% |
-| `feature_knn_top2_60_40` | +44.24% | -11.12% |
+| Router | Min return | Median return | Max return | Worst DD | Median DD |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `oracle` | +1433.29% | +1921.78% | +2265.14% | -0.39% | 0.00% |
+| `rolling_top2_mean_60_40` | +29.84% | +84.11% | +101.95% | -12.26% | -8.32% |
+| `rolling_best_mean` | +37.20% | +83.26% | +149.84% | -27.72% | -12.40% |
+| `feature_knn_top2_60_40` | +20.98% | +74.42% | +183.51% | -26.66% | -12.22% |
+| `equal_weight_available` | +43.58% | +46.72% | +49.95% | -19.43% | -17.24% |
+
+## Feature Separation
+
+Single OHLCV features weakly separate the best strategy labels. Top eta-squared
+values:
+
+| Feature | Eta squared |
+| --- | ---: |
+| `realized_vol_90d_pct` | 0.0687 |
+| `volume_percentile_90d` | 0.0619 |
+| `ret_90d_pct` | 0.0550 |
+| `realized_vol_30d_pct` | 0.0505 |
+| `choppiness_30d` | 0.0408 |
+
+This is enough to justify feature-aware routing experiments, but not enough to
+trust the current KNN router as production logic.
 
 ## Decision
 
-The rolling-label pipeline is worth continuing, but the partial dataset is not
-enough to choose a production router:
+The full rolling-label pipeline is now label-grade. The router is not solved:
 
-- the 2024 subset suggests OHLCV KNN has some signal;
-- the 2025 subset prefers much simpler allocation;
-- the strategy universe changes between the two periods, so a router can learn
-  coverage artifacts instead of market regimes.
+- oracle performance shows large theoretical value in regime routing;
+- simple rolling mean routers capture only a small part of that value;
+- KNN can beat the rolling router on one start offset, but is unstable across
+  offsets;
+- the next useful work is a utility-scored router with risk gates and offset
+  robustness, not a heavier detector yet.
 
-Next step: run a full archive-only matrix with raw `strategy_trades/` on the
-current code, then rebuild rolling labels and rerun `rolling-router-baseline`.
-Only after that should we tune risk gates or train a detector.
+Next step: implement a router evaluation loop that optimizes for median
+non-overlap return, max drawdown, negative periods, switching cost, and offset
+robustness. Only after a robust router beats `rolling_top2_mean_60_40` should
+the project move to a trainable online detector.
+
+## Appendix: Partial Artifact
+
+The earlier partial artifact remains useful only as a pipeline smoke test:
+`results/regime_matrix_archive_partial_existing_trades_2022_2025/`.
+
+It mixed 2022-2024 and 2025 strategy coverage and is superseded by the full
+matrix artifact above.

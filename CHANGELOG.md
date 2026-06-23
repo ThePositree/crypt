@@ -6,6 +6,33 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-23 — Archived matrix parallel jobs
+
+- Added `--jobs N` to `backtester archived-performance-matrix` for
+  process-level strategy parallelism (default serial).
+- Matrix orchestration moved into `run_archived_performance_matrix`; partial
+  checkpoint writes still happen after each completed strategy.
+- Validation: focused regime matrix tests passed; ruff clean on touched files.
+- Files touched: `src/backtester/regime_matrix.py`, `src/backtester/__main__.py`,
+  `tests/backtester/test_regime_matrix.py`, `docs/regime_performance_matrix.md`,
+  `README.md`, `docs/tasks/IN_PROGRESS.md`, `CHANGELOG.md`.
+
+---
+
+## 2026-06-23 — Full rolling router benchmark
+
+- Consumed the completed
+  `results/regime_matrix_archive_sol_2022_2025_trades/` archive matrix with six
+  raw `strategy_trades/*.csv` files.
+- Generated full daily 30-day rolling labels where every row has all six
+  archived strategies available.
+- Evaluated router baselines and KNN/lookback sensitivity; documented that
+  oracle is very strong but current simple routers are not robust enough.
+- Updated next work to utility-scored, offset-robust router evaluation.
+- Files touched: `docs/`, `CHANGELOG.md`.
+
+---
+
 ## 2026-06-23 — Archive matrix parameter guard
 
 - Verified that archive matrix runs resolve strategy execution params from

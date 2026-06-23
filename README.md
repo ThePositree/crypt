@@ -394,6 +394,7 @@ uv run backtester archived-performance-matrix \
     --to 2025-12-31 \
     --bucket month \
     --include-archive \
+    --jobs 3 \
     --output results/regime_matrix_archive_sol_2022_2025
 ```
 
