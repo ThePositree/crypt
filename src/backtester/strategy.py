@@ -63,6 +63,14 @@ class BaseStrategy(ABC):
                 Risk per trade in percent units (e.g. ``1.0`` means 1%).
             - ``rrr`` : float, optional
                 Reward/Risk ratio used to compute take-profit from SL distance.
+            - ``position_ttl_bars`` : int, optional
+                Maximum holding period for positions opened by this signal.
+            - ``trail_activation_rrr`` / ``trail_distance_atr`` : float, optional
+                Per-signal trailing-stop settings.
+            - ``exit_geometry`` / ``tp_move_pct`` / ``structural_sl_mode`` :
+                optional per-signal exit-placement settings.
+            - ``position_group`` / ``drain_on_group_change`` : optional
+                Group-aware handoff controls for composite strategies.
 
             The returned frame must have the same index and number of rows as
             the input ``df``.

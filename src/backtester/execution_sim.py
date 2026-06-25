@@ -24,6 +24,15 @@ class _EntryContextDict(TypedDict, total=True):
     risk_percent: float
     rrr: float
     entry_price: float | None
+    position_ttl_bars: int
+    trail_activation_rrr: float
+    trail_distance_atr: float
+    exit_geometry: str
+    tp_move_pct: float | None
+    structural_sl_mode: str
+    min_tp_move_pct: float
+    position_group: str
+    drain_on_group_change: bool
     metadata: dict[str, Any]
 
 
@@ -38,6 +47,15 @@ _TRADE_METADATA_EXCLUDED_COLUMNS = frozenset(
         "sl_price",
         "risk_percent",
         "rrr",
+        "position_ttl_bars",
+        "trail_activation_rrr",
+        "trail_distance_atr",
+        "exit_geometry",
+        "tp_move_pct",
+        "structural_sl_mode",
+        "min_tp_move_pct",
+        "position_group",
+        "drain_on_group_change",
         "trail_atr",
         "entry_price",
         "index",
@@ -78,6 +96,8 @@ class Position:
     total_locked_margin_after_entry: float
     is_long: bool
     metadata: dict[str, Any]
+    position_ttl_bars: int = 0
+    position_group: str = ""
     trail_activation_rrr: float = 0.0
     trail_distance_atr: float = 0.0
     trail_active: bool = False
@@ -543,7 +563,8 @@ class ExecutionSim:
 
             # TTL
             if not exit_reason and (
-                self.position_ttl_bars > 0 and (i + 1) - pos.bar_opened >= self.position_ttl_bars
+                pos.position_ttl_bars > 0
+                and (i + 1) - pos.bar_opened >= pos.position_ttl_bars
             ):
                 exit_price = next_open
                 exit_reason = ExitReason.TTL_EXPIRED
@@ -597,6 +618,8 @@ class ExecutionSim:
                         "capital_before": pos.capital_before,
                         "capital_after": new_capital,
                         "holding_bars": (i + 1) - pos.bar_opened,
+                        "position_ttl_bars": pos.position_ttl_bars,
+                        "position_group": pos.position_group,
                         "leverage": pos.leverage,
                         "locked_margin": pos.locked_margin,
                         "available_balance_before": pos.available_balance_before,
@@ -849,6 +872,53 @@ class ExecutionSim:
             "risk_percent": risk_percent,
             "rrr": rrr,
             "entry_price": entry_price,
+            "position_ttl_bars": int(
+                row["position_ttl_bars"]
+                if "position_ttl_bars" in row.dtype.names
+                else self.position_ttl_bars
+            ),
+            "trail_activation_rrr": float(
+                row["trail_activation_rrr"]
+                if "trail_activation_rrr" in row.dtype.names
+                else self.trail_activation_rrr
+            ),
+            "trail_distance_atr": float(
+                row["trail_distance_atr"]
+                if "trail_distance_atr" in row.dtype.names
+                else self.trail_distance_atr
+            ),
+            "exit_geometry": str(
+                row["exit_geometry"]
+                if "exit_geometry" in row.dtype.names
+                else self._exit_geometry_config.mode
+            ),
+            "tp_move_pct": (
+                self._exit_geometry_config.tp_move_pct
+                if "tp_move_pct" not in row.dtype.names
+                else (
+                    None
+                    if pd.isna(row["tp_move_pct"])
+                    else float(row["tp_move_pct"])
+                )
+            ),
+            "structural_sl_mode": str(
+                row["structural_sl_mode"]
+                if "structural_sl_mode" in row.dtype.names
+                else self._exit_geometry_config.structural_sl_mode
+            ),
+            "min_tp_move_pct": float(
+                row["min_tp_move_pct"]
+                if "min_tp_move_pct" in row.dtype.names
+                else self._exit_geometry_config.min_tp_move_pct
+            ),
+            "position_group": str(
+                row["position_group"] if "position_group" in row.dtype.names else ""
+            ),
+            "drain_on_group_change": bool(
+                row["drain_on_group_change"]
+                if "drain_on_group_change" in row.dtype.names
+                else False
+            ),
             "metadata": _trade_metadata_from_row(row),
         }
 
@@ -876,11 +946,16 @@ class ExecutionSim:
         risk_percent = entry_ctx["risk_percent"]
         rrr = entry_ctx["rrr"]
         ctx_entry_price = entry_ctx.get("entry_price")
+        position_group = entry_ctx["position_group"]
 
         if (signal != 1 and signal != -1) or (
             len(active_positions) >= self.max_positions and self.max_positions > 0
         ):
             return active_positions
+        if entry_ctx["drain_on_group_change"] and active_positions:
+            active_groups = {position.position_group for position in active_positions}
+            if position_group not in active_groups:
+                return active_positions
 
         if ctx_entry_price is not None:
             entry_price = ctx_entry_price
@@ -912,7 +987,26 @@ class ExecutionSim:
             rrr=rrr,
         )
 
-        risk_result = self._risk_model.calculate_position(entry_context)
+        risk_model = self._risk_model
+        if (
+            entry_ctx["exit_geometry"] != self._exit_geometry_config.mode
+            or entry_ctx["tp_move_pct"] != self._exit_geometry_config.tp_move_pct
+            or entry_ctx["structural_sl_mode"]
+            != self._exit_geometry_config.structural_sl_mode
+            or entry_ctx["min_tp_move_pct"] != self._exit_geometry_config.min_tp_move_pct
+        ):
+            risk_model = BasicRiskModel(
+                max_allowed_margin=self.max_allowed_margin,
+                max_positions=self.max_positions,
+                max_allowed_leverage=self.max_allowed_leverage,
+                exit_geometry_config=exit_geometry_config_from_args(
+                    exit_geometry=entry_ctx["exit_geometry"],
+                    tp_move_pct=entry_ctx["tp_move_pct"],
+                    structural_sl_mode=entry_ctx["structural_sl_mode"],
+                    min_tp_move_pct=entry_ctx["min_tp_move_pct"],
+                ),
+            )
+        risk_result = risk_model.calculate_position(entry_context)
         if risk_result is None:
             return active_positions
 
@@ -966,8 +1060,10 @@ class ExecutionSim:
             total_locked_margin_before=total_locked_margin,
             total_locked_margin_after_entry=total_locked_margin_after_entry,
             metadata=entry_ctx["metadata"],
-            trail_activation_rrr=self.trail_activation_rrr,
-            trail_distance_atr=self.trail_distance_atr,
+            position_ttl_bars=entry_ctx["position_ttl_bars"],
+            position_group=position_group,
+            trail_activation_rrr=entry_ctx["trail_activation_rrr"],
+            trail_distance_atr=entry_ctx["trail_distance_atr"],
         )
         active_positions.append(new_position)
 
@@ -1048,7 +1144,11 @@ class ExecutionSim:
             - any strategy metadata columns from the signal row, for example
               confidence, score, regime, rationale, and per-engine strengths
         """
-        if self.trail_activation_rrr > 0 and "trail_atr" not in df.columns:
+        trailing_requested = self.trail_activation_rrr > 0 or (
+            "trail_activation_rrr" in df.columns
+            and pd.to_numeric(df["trail_activation_rrr"], errors="coerce").fillna(0).gt(0).any()
+        )
+        if trailing_requested and "trail_atr" not in df.columns:
             df = _with_closed_atr14(df)
 
         try:

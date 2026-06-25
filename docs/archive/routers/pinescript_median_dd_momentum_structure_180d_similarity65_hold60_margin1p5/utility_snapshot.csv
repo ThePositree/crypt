@@ -1,0 +1,2 @@
+router_id,search_row,utility_score,median_total_return_pct,min_total_return_pct,max_total_return_pct,return_iqr_pct,worst_max_drawdown_pct,median_max_drawdown_pct,median_negative_periods,median_switches,offsets,periods_median
+pinescript_median_dd_momentum_structure_180d_similarity65_hold60_margin1p5,router_v2_3216811,292.8729503508139,310.5615053701904,281.2572336711437,369.96921598633713,31.359216336292263,-3.799375467651722,-0.98090625789089,1.0,5.0,30,23.0

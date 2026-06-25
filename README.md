@@ -444,7 +444,11 @@ uv run backtester rolling-regime-labels \
 ```
 
 Rolling labels use features available before each `T` and select the best
-archived strategy over the future window `[T, T + horizon)`.
+archived strategy over the future window `[T, T + horizon)`. New rolling-label
+artifacts also include `router_ps_*` market-state features derived from the
+local PineScript idea set through native Python implementations: Supertrend,
+ADX/DI, squeeze momentum, WaveTrend, MACD, Vix Fix, trendlines, killzones, and
+SMC state.
 
 Evaluate simple live-safe routers over those rolling labels:
 
@@ -460,6 +464,80 @@ uv run backtester rolling-router-baseline \
 
 The router baseline is an offline diagnostic. It uses only completed prior
 label windows (`label_end <= asof`) when selecting weights.
+
+Search single-strategy routers with a larger catalog:
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache \
+uv run backtester router-search \
+    --labels results/regime_matrix_archive_sol_2022_2025/rolling_labels_day_30d/rolling_labels.csv \
+    --validation-start 2024-01-01 \
+    --min-available-strategies 6 \
+    --max-configs 2000 \
+    --output results/regime_matrix_archive_sol_2022_2025/rolling_labels_day_30d/router_search
+```
+
+`router-search` never splits capital between strategies and never chooses
+`cash`. Each candidate selects exactly one archived strategy, then scores offset
+robustness, drawdown, negative periods, and switching cost. See
+`docs/regime_router_search.md`.
+
+For large Router Catalog v2 runs, use `--catalog-version v2 --summary-only`.
+The v2 catalog contains more than 4.6 million deterministic combinations;
+summary-only mode retains full predictions and offset detail only for the top
+shortlist.
+
+V2 also supports `grid`, `random`, `island_qd`, `hyperband_qd`, and `smac_qd`
+search backends. Launch the four stochastic backends together with:
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache \
+uv run backtester router-search-matrix \
+    --labels results/regime_matrix_archive_sol_2022_2025_trades/rolling_labels_day_30d_router_ps/rolling_labels.csv \
+    --max-configs 25000 \
+    --output-root results/router_search_matrix_v2_25k
+```
+
+Replay an archived router through one shared-capital portfolio:
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache \
+uv run backtester router-validate \
+    --predictions results/router_search_matrix_v2_25k/random_seed1101/router_search_predictions.csv \
+    --router router_v2_3216811 \
+    --matrix-dir results/regime_matrix_archive_sol_2022_2025_trades \
+    --from 2025-01-01 \
+    --to 2026-01-01 \
+    --capital 10000 \
+    --max-allowed-margin 1.0 \
+    --output results/router_validation_v2_3216811_2025
+```
+
+The validator uses one active strategy, no cash state, shared capital/margin,
+and drain-before-switch execution. See `docs/routed_execution_validation.md`.
+
+Promoted routers are implemented as normal strategies. `router_v2_2687609`
+uses all six archived strategies internally and runs through the standard
+backtester:
+
+```bash
+MPLCONFIGDIR=/tmp/matplotlib \
+UV_CACHE_DIR=/tmp/uv-cache \
+uv run backtester run \
+    --data-source crypt-parquet \
+    --data-dir data \
+    --primary-timeframe 1h \
+    --symbol SOL-USDT-SWAP \
+    --from 2022-12-18 \
+    --to 2026-06-10 \
+    --strategy strategies/archive/router_v2_2687609.json \
+    --capital 10000 \
+    --output results/router_v2_2687609_full
+```
+
+The strategy reconstructs completed donor labels inside `generate()`, selects
+one nested strategy, and emits its signals through the normal `ExecutionSim`.
+See `docs/strategies/promoted_router.md`.
 
 `railway.toml` currently starts the `island_qd` search worker, not the live
 alerting process. Revert its `deploy.startCommand` before using the Railway

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -31,6 +32,105 @@ def build_donor_discovery_features(
     features["h4_context"] = _aligned_context_direction(h4, validated.index)
     features["d1_context"] = _aligned_context_direction(d1, validated.index)
     return features
+
+
+def build_regime_router_pinescript_features(ohlcv: pd.DataFrame) -> pd.DataFrame:
+    """Build numeric PineScript-derived market-state features for routers.
+
+    The output is indexed by candle timestamp. A router label at ``asof`` should
+    use only rows with timestamp strictly before ``asof``.
+    """
+
+    primary = _validate_primary(ohlcv).copy()
+    features = _build_primary_features(primary)
+    output = pd.DataFrame(index=features.index)
+
+    output["router_ps_supertrend_dir"] = _to_numeric(features["ps_supertrend_dir"])
+    supertrend_flip = features["ps_supertrend_dir"] != features["ps_supertrend_dir"].shift(1)
+    output["router_ps_supertrend_flip_age"] = _bars_since(supertrend_flip)
+
+    output["router_ps_adx"] = _to_numeric(features["ps_adx"])
+    output["router_ps_di_spread"] = _to_numeric(features["ps_di_plus"] - features["ps_di_minus"])
+    output["router_ps_di_side"] = _signed(output["router_ps_di_spread"])
+    output["router_ps_adx_strong"] = _bool_as_float(features["ps_adx"] >= 20.0)
+
+    output["router_ps_squeeze_on"] = _bool_as_float(features["ps_squeeze_on"])
+    output["router_ps_squeeze_release"] = _bool_as_float(features["ps_squeeze_release"])
+    output["router_ps_squeeze_release_age"] = _bars_since(features["ps_squeeze_release"])
+    output["router_ps_squeeze_momentum"] = _to_numeric(features["ps_squeeze_momentum"])
+    output["router_ps_squeeze_momentum_slope"] = _to_numeric(
+        features["ps_squeeze_momentum_slope"]
+    )
+
+    wt_spread = features["ps_wt1"] - features["ps_wt2"]
+    output["router_ps_wavetrend_spread"] = _to_numeric(wt_spread)
+    output["router_ps_wavetrend_zone"] = _zone_code(features["ps_wt1"], low=-60.0, high=60.0)
+    wavetrend_cross = _crossed_zero(wt_spread)
+    output["router_ps_wavetrend_cross_age"] = _bars_since(wavetrend_cross)
+
+    output["router_ps_macd_hist"] = _to_numeric(features["ps_macd_hist"])
+    output["router_ps_macd_hist_slope"] = _to_numeric(features["ps_macd_hist_slope"])
+    output["router_ps_macd_phase"] = _signed(features["ps_macd_hist"])
+
+    output["router_ps_vixfix"] = _to_numeric(features["ps_vixfix"])
+    output["router_ps_vixfix_spike"] = _bool_as_float(features["ps_vixfix_spike"])
+    output["router_ps_vixfix_spike_age"] = _bars_since(features["ps_vixfix_spike"])
+
+    output["router_ps_volume_osc"] = _to_numeric(features["ps_volume_osc"])
+    trendline_break_side = pd.Series(0.0, index=features.index)
+    trendline_break_side.loc[primary["close"] > features["ps_trendline_upper"]] = 1.0
+    trendline_break_side.loc[primary["close"] < features["ps_trendline_lower"]] = -1.0
+    output["router_ps_trendline_break_side"] = trendline_break_side
+    output["router_ps_trendline_break_age"] = _bars_since(trendline_break_side != 0.0)
+    output["router_ps_trendline_upper_slope"] = _to_numeric(
+        features["ps_trendline_upper_slope"]
+    )
+    output["router_ps_trendline_lower_slope"] = _to_numeric(
+        features["ps_trendline_lower_slope"]
+    )
+
+    output["router_ps_killzone_code"] = features["ps_killzone"].map(
+        {"other": 0.0, "asia": 1.0, "london": 2.0, "nyam": 3.0, "nypm": 4.0}
+    )
+
+    output["router_ps_smc_internal_bias"] = _to_numeric(features["ps_smc_internal_bias"])
+    output["router_ps_smc_swing_bias"] = _to_numeric(features["ps_smc_swing_bias"])
+    output["router_ps_smc_structure_event_side"] = _event_side(
+        bullish=features["ps_smc_internal_bullish_bos"]
+        | features["ps_smc_internal_bullish_choch"]
+        | features["ps_smc_swing_bullish_bos"]
+        | features["ps_smc_swing_bullish_choch"],
+        bearish=features["ps_smc_internal_bearish_bos"]
+        | features["ps_smc_internal_bearish_choch"]
+        | features["ps_smc_swing_bearish_bos"]
+        | features["ps_smc_swing_bearish_choch"],
+    )
+    output["router_ps_smc_structure_event_age"] = _bars_since(
+        output["router_ps_smc_structure_event_side"] != 0.0
+    )
+    output["router_ps_smc_fvg_side"] = _event_side(
+        bullish=features["ps_smc_bullish_fvg"],
+        bearish=features["ps_smc_bearish_fvg"],
+    )
+    output["router_ps_smc_fvg_age"] = _bars_since(output["router_ps_smc_fvg_side"] != 0.0)
+    output["router_ps_smc_equal_level_side"] = _event_side(
+        bullish=features["ps_smc_equal_low"],
+        bearish=features["ps_smc_equal_high"],
+    )
+    output["router_ps_smc_range_position"] = _to_numeric(features["ps_smc_range_position"])
+    output["router_ps_smc_zone_code"] = features["ps_smc_zone"].map(
+        {"unknown": 0.0, "discount": 1.0, "equilibrium": 2.0, "premium": 3.0}
+    )
+    output["router_ps_smc_ob_active_side"] = _event_side(
+        bullish=features["ps_smc_bullish_ob_active"],
+        bearish=features["ps_smc_bearish_ob_active"],
+    )
+    output["router_ps_smc_ob_retest_side"] = _event_side(
+        bullish=features["ps_smc_bullish_ob_retest"],
+        bearish=features["ps_smc_bearish_ob_retest"],
+    )
+
+    return output.apply(pd.to_numeric, errors="coerce")
 
 
 def build_discovery_dataset(
@@ -572,3 +672,49 @@ def _available_after_close_index(index: pd.DatetimeIndex) -> pd.DatetimeIndex:
     if deltas.empty:
         return index
     return index + deltas.median()
+
+
+def _to_numeric(series: pd.Series) -> pd.Series:
+    return pd.to_numeric(series, errors="coerce")
+
+
+def _bool_as_float(series: pd.Series) -> pd.Series:
+    return series.fillna(False).astype("bool").astype("float64")
+
+
+def _signed(series: pd.Series) -> pd.Series:
+    values = _to_numeric(series)
+    return pd.Series(np.sign(values), index=series.index, dtype="float64")
+
+
+def _zone_code(series: pd.Series, *, low: float, high: float) -> pd.Series:
+    values = _to_numeric(series)
+    output = pd.Series(0.0, index=series.index)
+    output.loc[values <= low] = -1.0
+    output.loc[values >= high] = 1.0
+    return output
+
+
+def _crossed_zero(series: pd.Series) -> pd.Series:
+    values = _to_numeric(series)
+    return ((values > 0) & (values.shift(1) <= 0)) | ((values < 0) & (values.shift(1) >= 0))
+
+
+def _event_side(*, bullish: pd.Series, bearish: pd.Series) -> pd.Series:
+    output = pd.Series(0.0, index=bullish.index)
+    output.loc[bullish.fillna(False).astype("bool")] = 1.0
+    output.loc[bearish.fillna(False).astype("bool")] = -1.0
+    return output
+
+
+def _bars_since(mask: pd.Series) -> pd.Series:
+    event = mask.fillna(False).astype("bool")
+    ages: list[float] = []
+    current = math.nan
+    for value in event:
+        if bool(value):
+            current = 0.0
+        elif not math.isnan(current):
+            current += 1.0
+        ages.append(current)
+    return pd.Series(ages, index=mask.index, dtype="float64")

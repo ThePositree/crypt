@@ -1,6 +1,6 @@
 # ADR-0041: Regime discovery from archived strategy behavior
 
-- **Status**: accepted
+- **Status**: accepted; router allocation shape superseded by ADR-0042
 - **Date**: 2026-06-19
 - **Owner**: owner direction in chat, agent documented
 - **Related**: ADR-0025, ADR-0036, ADR-0040
@@ -44,9 +44,10 @@ The project will separate three components:
 3. **Regime Detector**: online/backtest-time detector that may use only past
    and current data.
 
-The final Portfolio Router uses detector probabilities to allocate capital
-between regime-specific strategy portfolios, or to reduce exposure when the
-regime is `unknown`.
+The original Portfolio Router allocation shape is superseded by ADR-0042. The
+router now selects exactly one archived strategy, never splits capital, and
+never selects cash. The discovery, labeler, and detector separation in this
+ADR remains accepted.
 
 ## Consequences
 
@@ -82,4 +83,3 @@ family, high signal quality, or useful failure mode.
 - `docs/regime_detection.md`
 - `docs/backtester/candidate_archive.md`
 - `docs/archive/candidates/README.md`
-

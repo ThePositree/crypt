@@ -111,10 +111,16 @@ The full rolling-label pipeline is now label-grade. The router is not solved:
 - the next useful work is a utility-scored router with risk gates and offset
   robustness, not a heavier detector yet.
 
-Next step: implement a router evaluation loop that optimizes for median
-non-overlap return, max drawdown, negative periods, switching cost, and offset
-robustness. Only after a robust router beats `rolling_top2_mean_60_40` should
-the project move to a trainable online detector.
+Implemented next step: `backtester router-search` now evaluates single-strategy
+router candidates by median non-overlap return, max drawdown, negative periods,
+switching cost, and offset robustness. Routers always select exactly one
+archived strategy; no capital split and no cash state are allowed.
+
+The first full PineScript-aware 2000-config run is documented in
+`docs/regime_router_search.md`. Its best router is a `rolling_median` 120-day
+selector with a 3-point switch margin: median offset return +258.13%, minimum
+offset return +186.37%, worst max drawdown -17.34%. This is a strong research
+shortlist but not production-ready because DD remains above the mandate limit.
 
 ## Appendix: Partial Artifact
 

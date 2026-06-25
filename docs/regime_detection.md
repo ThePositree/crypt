@@ -1,17 +1,17 @@
-# Regime detection and portfolio routing
+# Regime detection and single-strategy routing
 
 Status: **planned**.
 
 This document is the contract for the future market-regime layer. The goal is
 not to predict price directly. The goal is to detect which market regime is
-active and route capital to the strategy portfolio that historically works in
-that regime.
+active and select the archived strategy that historically works in that
+regime.
 
 ## 1. Goal
 
 The system should answer two questions:
 
-1. Which strategy or strategy portfolio should be active now?
+1. Which single archived strategy should be active now?
 2. How do we know that the market has changed?
 
 Core principle:
@@ -221,9 +221,9 @@ MVP should start rule-based. ML models can be introduced after the labeling and
 portfolio-utility loop is measurable.
 
 The first walk-forward detector baseline over monthly labels did not beat a
-rolling-majority baseline on exact strategy accuracy. Until more evidence is
-available, the detector should output probabilities/weights and may return
-`unknown` instead of forcing a strategy choice.
+rolling-majority baseline on exact strategy accuracy. A detector may still
+report low confidence or `unknown` as a diagnostic, but ADR-0042 requires the
+router to choose one strategy anyway.
 
 The first monthly router baseline is documented in
 `docs/regime_router_baseline.md`. The current benchmark to beat is a live-safe
@@ -236,6 +236,11 @@ router-evaluation pipeline, but it should not be used for final detector
 training because the available strategy universe changes between 2022-2024 and
 2025. The next label-grade artifact must come from a fresh full archive-only
 matrix with raw `strategy_trades/` for all archived strategies.
+
+The first router constructor is documented in `docs/regime_router_search.md`.
+It searches single-strategy selectors over all archived strategies. Candidate
+routers always select one strategy and never allocate capital to multiple
+strategy portfolios.
 
 Allowed detector families:
 
@@ -324,7 +329,8 @@ Detector output should include probabilities:
 }
 ```
 
-When confidence is low or probabilities are too flat, the regime is `unknown`.
+When confidence is low or probabilities are too flat, the detector may report
+the diagnostic regime `unknown`.
 
 Example:
 
@@ -336,34 +342,27 @@ Example:
 }
 ```
 
-`unknown` actions:
-
-- reduce risk;
-- reduce exposure;
-- use a defensive portfolio;
-- or temporarily disable entries.
+`unknown` does not create a cash state. The router still selects the
+highest-utility archived strategy under its fallback rule.
 
 ## 9. Portfolio Router
 
-The Portfolio Router maps regime probabilities to strategy allocations.
+The Portfolio Router maps regime probabilities and current market state to one
+selected strategy. It always scores the full archived strategy set and returns
+exactly one strategy.
 
 Example:
 
 | Regime | Action |
 | ------ | ------ |
-| Bull | Bull portfolio |
-| Bear | Bear portfolio |
-| Range | Range portfolio |
-| Unknown | Reduced exposure or no trade |
+| Bull | Best bull-regime strategy |
+| Bear | Best bear-regime strategy |
+| Range | Best range-regime strategy |
+| Unknown | Best fallback strategy |
 
-The router may use probability-weighted allocation:
-
-```text
-Bull 70%, Range 20%, Bear 10%
-```
-
-The router must export the chosen regime, probabilities, active strategies,
-capital weights, and any reduced-risk reason.
+The router must export the chosen regime, probabilities, selected strategy,
+score margin, switch decision, and handoff state. It never exports capital
+weights because capital is not split.
 
 ## 10. Detector Search
 

@@ -1,0 +1,27 @@
+{
+  "feature_set": "pinescript",
+  "knn_k": 0,
+  "lookback_days": 120,
+  "min_available_strategies": 6,
+  "min_hold_days": 30,
+  "router_id": "pinescript_same_state_mean_dd_120d_hold30_margin1",
+  "scoring_method": "same_state_mean_minus_dd",
+  "selection": "single_best",
+  "state_columns": [
+    "router_ps_supertrend_dir",
+    "router_ps_di_side",
+    "router_ps_adx_strong",
+    "router_ps_squeeze_on",
+    "router_ps_wavetrend_zone",
+    "router_ps_macd_phase",
+    "router_ps_trendline_break_side",
+    "router_ps_killzone_code",
+    "router_ps_smc_internal_bias",
+    "router_ps_smc_swing_bias",
+    "router_ps_smc_zone_code",
+    "router_ps_smc_ob_active_side"
+  ],
+  "strategy_universe": "all_archived",
+  "switch_margin_threshold": 1.0,
+  "uses_cash": false
+}

@@ -6,6 +6,73 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-24 — Router search algorithm matrix
+
+- Added Router Catalog v2 backends: uniform `random`, balanced `island_qd`,
+  successive-filtering `hyperband_qd`, and random-forest-surrogate `smac_qd`.
+- Added deterministic `--seed` and `--proposal-multiplier` controls.
+- Added `backtester router-search-matrix` to launch the four stochastic
+  searches concurrently with isolated outputs and logs.
+- Validation: 14 focused router/label tests passed, ruff clean, and all four
+  algorithms completed a real-label matrix smoke.
+- Consumed the owner-run 100k matrix and archived two distinct frontier
+  routers: `router_v2_4252951` (+425.17% median, -6.11% worst offset DD) and
+  `router_v2_3216811` (+310.56% median, +281.26% minimum, -3.80% worst DD).
+- Added `backtester router-validate` for continuous shared-capital replay of
+  archived trades with margin gates and drain-before-switch handoffs.
+- Added ADR-0042: routers select exactly one strategy and never select cash or
+  split capital.
+- Added `promoted_router` and promoted `router_v2_2687609` as a normal strategy
+  containing all six archived strategies.
+- Extended the generic signal contract with per-signal TTL, trailing, exit
+  geometry, and position-group drain controls so nested strategies retain
+  their own execution settings under the standard `ExecutionSim`.
+- Files touched: `src/backtester/`, `tests/backtester/`, `docs/`, `README.md`,
+  `strategies/backtester/`, `routers/archive/`, `CHANGELOG.md`.
+
+---
+
+## 2026-06-23 — Single-strategy router search MVP
+
+- Added PineScript-derived `router_ps_*` market-state features to rolling
+  regime labels, reusing native Python feature implementations from the local
+  PineScript catalog.
+- Added `backtester router-search` for single-strategy router candidates with
+  offset-robust utility scoring; routers always choose one strategy and never
+  split capital across strategies.
+- Restored the regime router handoff artifact and rebuilt fresh
+  PineScript-aware rolling labels under
+  `results/regime_matrix_archive_sol_2022_2025_trades/rolling_labels_day_30d_router_ps/`.
+- Optimized router search with NumPy return/feature matrices and vectorized
+  non-overlap offset selection; a 20-config PineScript-aware smoke dropped from
+  roughly 50 seconds to roughly 11 seconds.
+- Completed the full 2000-config router search. Best selector:
+  `router_001190` (`rolling_median`, 120d lookback, 3-point switch margin),
+  median offset return +258.13%, minimum offset return +186.37%, worst DD
+  -17.34%.
+- Archived that selector as
+  `rolling_median_120d_switch_margin_3` under `docs/archive/routers/` and
+  `routers/archive/`; added `--config-offset` for owner-run continuation of the
+  remaining 5040 catalog configs in bounded chunks.
+- Consumed all remaining chunks and completed the 7040-config v1 catalog.
+  Archived the best distinct risk-qualified family as
+  `pinescript_same_state_mean_dd_120d_hold30_margin1` (+192.80% median offset
+  return, -6.52% worst DD).
+- Added Router Catalog v2 with 4,640,400 deterministic combinations covering
+  expanded score families, PineScript state subsets, exact/similarity matching,
+  weighted state profiles, EWM recency, sample gates, holds, and switch
+  margins.
+- Added memory-safe `--summary-only`, `--catalog-version`, `--top-predictions`,
+  and `--count-only`; benchmarked 500 v2 configs at about 92 seconds / 303 MB.
+- Validation: focused regime router/label tests passed; ruff clean on touched
+  files.
+- Files touched: `src/backtester/regime_router.py`,
+  `src/backtester/regime_labels.py`,
+  `src/backtester/strategy_discovery/features.py`, `src/backtester/__main__.py`,
+  `tests/backtester/`, `docs/`, `README.md`, `CHANGELOG.md`.
+
+---
+
 ## 2026-06-23 — Archived matrix parallel jobs
 
 - Added `--jobs N` to `backtester archived-performance-matrix` for

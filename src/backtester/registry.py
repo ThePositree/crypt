@@ -17,6 +17,7 @@ from backtester.strategies.fvg_imbalance import FVGImbalanceStrategy
 from backtester.strategies.liquidity_hunter import LiquidityHunter
 from backtester.strategies.meta import MetaStrategy
 from backtester.strategies.phase_routed import PhaseRoutedStrategy
+from backtester.strategies.promoted_router import PromotedRouterStrategy
 from backtester.strategies.rejection import RejectionStrategy
 from backtester.strategies.som import SOMStrategy
 from backtester.strategy import BaseStrategy
@@ -32,6 +33,7 @@ STRATEGIES: Final[dict[str, type[BaseStrategy]]] = {
     "rejection": RejectionStrategy,
     "fractal_rb": FractalRbStrategy,
     "phase_routed": PhaseRoutedStrategy,
+    "promoted_router": PromotedRouterStrategy,
     "crypt_ensemble": CryptEnsembleStrategy,
     "dss_strategy": DSSStrategy,
 }

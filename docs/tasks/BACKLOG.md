@@ -58,29 +58,6 @@ no future data is used and smoothing/hysteresis prevents rapid flipping.
 
 ---
 
-## P1 — Build Portfolio Router utility scoring
-
-**What:** add a backtest-time router that maps detector probabilities to
-strategy weights and scores the routed portfolio by utility, not just detector
-classification accuracy.
-
-**Why now:** a detector is only useful if it improves trading results. High F1
-against an offline labeler is secondary to return, drawdown, switching cost,
-uncertainty, and detection-delay behavior.
-
-**Expected gain:** establish the real selection metric for regime detectors and
-avoid promoting detectors that classify well but hurt portfolio returns.
-
-**Acceptance:** a router report includes portfolio return, drawdown, number of
-regime switches, average regime duration, unknown exposure, active strategies,
-capital weights, and utility score:
-`portfolio_return - drawdown_penalty - switching_penalty -
-uncertainty_penalty - detection_delay_penalty`.
-
-**Links:** `docs/regime_detection.md` §9-10, ADR-0041.
-
----
-
 ## P2 — Extend detector feature catalog beyond OHLCV
 
 **What:** after the OHLCV-only regime MVP works, add optional derivatives and

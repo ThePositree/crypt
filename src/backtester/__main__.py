@@ -57,8 +57,18 @@ from backtester.regime_matrix import (  # noqa: E402
 )
 from backtester.regime_router import (  # noqa: E402
     RouterConfig,
+    RouterSearchConfig,
+    count_router_candidates,
     evaluate_rolling_router_baselines,
+    evaluate_single_strategy_router_search,
     write_rolling_router_report,
+    write_single_strategy_router_search_report,
+)
+from backtester.routed_execution import (  # noqa: E402
+    RoutedExecutionConfig,
+    evaluate_routed_execution,
+    load_matrix_strategy_trades,
+    write_routed_execution_report,
 )
 from backtester.strategy_discovery import (  # noqa: E402
     DiscoveryConfig,
@@ -112,6 +122,12 @@ _DSS_MATRIX_DEFAULT_SEEDS = {
     "island_qd": 2026,
     "hyperband_qd": 4242,
     "smac_qd": 5151,
+}
+_ROUTER_MATRIX_DEFAULT_SEEDS = {
+    "random": 1101,
+    "island_qd": 2202,
+    "hyperband_qd": 3303,
+    "smac_qd": 4404,
 }
 
 
@@ -908,6 +924,325 @@ def rolling_router_baseline(
         config=config,
     )
     click.echo(f"Rolling router baseline saved to: {output_path}")
+
+
+@cli.command("router-search-matrix")
+@click.option(
+    "--labels",
+    "labels_path",
+    required=True,
+    type=click.Path(exists=True, path_type=Path),
+    help="Path to rolling_labels.csv.",
+)
+@click.option("--validation-start", default="2024-01-01", show_default=True)
+@click.option("--min-available-strategies", type=int, default=6, show_default=True)
+@click.option(
+    "--algorithms",
+    default="random,island_qd,hyperband_qd,smac_qd",
+    show_default=True,
+    help="Comma-separated router search backends.",
+)
+@click.option("--max-configs", type=int, default=25_000, show_default=True)
+@click.option("--proposal-multiplier", type=int, default=8, show_default=True)
+@click.option("--top-predictions", type=int, default=30, show_default=True)
+@click.option(
+    "--output-root",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Root output directory.",
+)
+def router_search_matrix(
+    labels_path: Path,
+    validation_start: str,
+    min_available_strategies: int,
+    algorithms: str,
+    max_configs: int,
+    proposal_multiplier: int,
+    top_predictions: int,
+    output_root: Path | None,
+) -> None:
+    """Launch several Router Catalog v2 algorithms concurrently."""
+
+    parsed = [value.strip().lower() for value in algorithms.split(",") if value.strip()]
+    unknown = sorted(set(parsed) - set(_ROUTER_MATRIX_DEFAULT_SEEDS))
+    if unknown:
+        raise click.ClickException("Unknown router algorithms: " + ", ".join(unknown))
+    if not parsed:
+        raise click.ClickException("No router algorithms selected")
+    if output_root is None:
+        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        output_root = Path(f"results/router_matrix_v2_{ts}")
+    output_root.mkdir(parents=True, exist_ok=True)
+
+    processes: list[tuple[str, Path, subprocess.Popen[bytes], IO[bytes]]] = []
+    try:
+        for algorithm in parsed:
+            seed = _ROUTER_MATRIX_DEFAULT_SEEDS[algorithm]
+            output = output_root / f"{algorithm}_seed{seed}"
+            output.mkdir(parents=True, exist_ok=True)
+            log_path = output / "run.log"
+            command = [
+                sys.executable,
+                "-m",
+                "backtester",
+                "router-search",
+                "--labels",
+                str(labels_path),
+                "--validation-start",
+                validation_start,
+                "--min-available-strategies",
+                str(min_available_strategies),
+                "--catalog-version",
+                "v2",
+                "--algorithm",
+                algorithm,
+                "--seed",
+                str(seed),
+                "--proposal-multiplier",
+                str(proposal_multiplier),
+                "--summary-only",
+                "--top-predictions",
+                str(top_predictions),
+                "--max-configs",
+                str(max_configs),
+                "--output",
+                str(output),
+            ]
+            log_file = log_path.open("wb")
+            process = subprocess.Popen(command, stdout=log_file, stderr=subprocess.STDOUT)
+            processes.append((algorithm, log_path, process, log_file))
+            click.echo(f"Started {algorithm} pid={process.pid} output={output}")
+
+        failures = []
+        for algorithm, log_path, process, log_file in processes:
+            code = process.wait()
+            log_file.close()
+            click.echo(f"Finished {algorithm}: exit={code} log={log_path}")
+            if code != 0:
+                failures.append(f"{algorithm} exit={code} log={log_path}")
+        if failures:
+            raise click.ClickException("Router matrix failures: " + "; ".join(failures))
+    except KeyboardInterrupt:
+        for _algorithm, _log_path, process, log_file in processes:
+            if process.poll() is None:
+                process.terminate()
+            if not log_file.closed:
+                log_file.close()
+        raise
+    finally:
+        for _algorithm, _log_path, process, log_file in processes:
+            if process.poll() is not None and not log_file.closed:
+                log_file.close()
+
+
+@cli.command("router-search")
+@click.option(
+    "--labels",
+    "labels_path",
+    required=True,
+    type=click.Path(exists=True, path_type=Path),
+    help="Path to rolling_labels.csv.",
+)
+@click.option(
+    "--validation-start",
+    default="2024-01-01",
+    show_default=True,
+    help="First as-of timestamp to score.",
+)
+@click.option(
+    "--min-available-strategies",
+    type=int,
+    default=3,
+    show_default=True,
+    help="Minimum strategies that must cover the label window.",
+)
+@click.option(
+    "--non-overlap-days",
+    type=int,
+    default=30,
+    show_default=True,
+    help="Spacing for portfolio-style non-overlap scoring.",
+)
+@click.option(
+    "--catalog-version",
+    type=click.Choice(["v1", "v2"], case_sensitive=False),
+    default="v1",
+    show_default=True,
+    help="Router constructor catalog version.",
+)
+@click.option(
+    "--algorithm",
+    type=click.Choice(
+        ["grid", "random", "island_qd", "hyperband_qd", "smac_qd"],
+        case_sensitive=False,
+    ),
+    default="grid",
+    show_default=True,
+    help="Router candidate-selection backend.",
+)
+@click.option(
+    "--seed",
+    type=int,
+    default=2026,
+    show_default=True,
+    help="Deterministic search seed.",
+)
+@click.option(
+    "--proposal-multiplier",
+    type=int,
+    default=8,
+    show_default=True,
+    help="Proposal-pool multiplier for Hyperband-QD and SMAC-QD.",
+)
+@click.option(
+    "--config-offset",
+    type=int,
+    default=0,
+    show_default=True,
+    help="Skip this many deterministic router catalog candidates.",
+)
+@click.option(
+    "--max-configs",
+    type=int,
+    default=2_000,
+    show_default=True,
+    help="Maximum router catalog candidates to evaluate.",
+)
+@click.option(
+    "--summary-only/--full-predictions",
+    default=False,
+    show_default=True,
+    help="Keep full predictions only for the top shortlist.",
+)
+@click.option(
+    "--top-predictions",
+    type=int,
+    default=20,
+    show_default=True,
+    help="Top routers whose daily predictions are retained in summary-only mode.",
+)
+@click.option(
+    "--count-only",
+    is_flag=True,
+    help="Print the deterministic catalog size and exit.",
+)
+@click.option(
+    "--output",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output directory. Defaults to <labels-dir>/router_search.",
+)
+def router_search(
+    labels_path: Path,
+    validation_start: str,
+    min_available_strategies: int,
+    non_overlap_days: int,
+    catalog_version: str,
+    algorithm: str,
+    seed: int,
+    proposal_multiplier: int,
+    config_offset: int,
+    max_configs: int,
+    summary_only: bool,
+    top_predictions: int,
+    count_only: bool,
+    output: Path | None,
+) -> None:
+    """Search single-strategy routers over rolling regime labels."""
+
+    labels = pd.read_csv(labels_path)
+    config = RouterSearchConfig(
+        validation_start=validation_start,
+        min_available_strategies=min_available_strategies,
+        non_overlap_days=non_overlap_days,
+        catalog_version=catalog_version.lower(),
+        algorithm=algorithm.lower(),
+        seed=seed,
+        proposal_multiplier=proposal_multiplier,
+        config_offset=config_offset,
+        max_configs=max_configs,
+        summary_only=summary_only,
+        top_predictions=top_predictions,
+    )
+    if count_only:
+        count = count_router_candidates(labels, config=config)
+        click.echo(f"Router catalog {config.catalog_version}: {count} configs")
+        return
+    predictions, dense_summary, offset_sensitivity, utility = (
+        evaluate_single_strategy_router_search(labels, config=config)
+    )
+    output_path = output or labels_path.parent / "router_search"
+    write_single_strategy_router_search_report(
+        output=output_path,
+        predictions=predictions,
+        dense_summary=dense_summary,
+        offset_sensitivity=offset_sensitivity,
+        utility=utility,
+        config=config,
+    )
+    click.echo(f"Router search saved to: {output_path}")
+
+
+@cli.command("router-validate")
+@click.option(
+    "--predictions",
+    "predictions_path",
+    required=True,
+    type=click.Path(exists=True, path_type=Path),
+    help="Path to router_search_predictions.csv.",
+)
+@click.option("--router", required=True, help="Router search-row id to validate.")
+@click.option(
+    "--matrix-dir",
+    required=True,
+    type=click.Path(exists=True, path_type=Path),
+    help="Archived performance matrix containing strategy_trades/.",
+)
+@click.option("--from", "from_date", default="2025-01-01", show_default=True)
+@click.option("--to", "to_date", default="2026-01-01", show_default=True)
+@click.option("--capital", type=float, default=10_000.0, show_default=True)
+@click.option(
+    "--max-allowed-margin",
+    type=click.FloatRange(min=0.0, max=1.0, min_open=True),
+    default=1.0,
+    show_default=True,
+)
+@click.option(
+    "--output",
+    required=True,
+    type=click.Path(path_type=Path),
+    help="Output directory for routed execution artifacts.",
+)
+def router_validate(
+    predictions_path: Path,
+    router: str,
+    matrix_dir: Path,
+    from_date: str,
+    to_date: str,
+    capital: float,
+    max_allowed_margin: float,
+    output: Path,
+) -> None:
+    """Replay one router through a continuous shared-capital portfolio."""
+
+    predictions = pd.read_csv(predictions_path)
+    trades_by_strategy = load_matrix_strategy_trades(matrix_dir)
+    try:
+        result = evaluate_routed_execution(
+            predictions=predictions,
+            router=router,
+            trades_by_strategy=trades_by_strategy,
+            config=RoutedExecutionConfig(
+                start=from_date,
+                end=to_date,
+                initial_capital=capital,
+                max_allowed_margin=max_allowed_margin,
+            ),
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    write_routed_execution_report(output=output, result=result)
+    click.echo(f"Routed execution validation saved to: {output}")
 
 
 @cli.command()

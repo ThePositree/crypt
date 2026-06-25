@@ -8,6 +8,8 @@ from typing import Any
 
 import pandas as pd
 
+from backtester.strategy_discovery.features import build_regime_router_pinescript_features
+
 
 def build_oracle_label_dataset(
     *,
@@ -33,6 +35,7 @@ def build_oracle_label_dataset(
         raise ValueError("return_matrix must contain at least one strategy column")
 
     candles = _standardize_ohlcv(ohlcv)
+    router_ps_features = _router_pinescript_features(candles)
     rows: list[dict[str, Any]] = []
     for _, row in matrix.iterrows():
         bucket_id = str(row["bucket"])
@@ -60,6 +63,7 @@ def build_oracle_label_dataset(
         }
         output.update({f"return_{col}": float(returns[col]) for col in strategy_cols})
         output.update(_ohlcv_features_asof(candles, bucket_start))
+        output.update(_feature_frame_asof(router_ps_features, bucket_start))
         rows.append(output)
 
     return pd.DataFrame(rows)
@@ -94,13 +98,51 @@ def build_rolling_label_dataset(
     if min_history_days < 0:
         raise ValueError("min_history_days must be >= 0")
 
-    candles = _standardize_ohlcv(ohlcv)
-    if candles.empty:
-        return pd.DataFrame()
     trades_by_strategy = _load_strategy_trades(trades_dir)
     if not trades_by_strategy:
         raise ValueError(f"No strategy trade CSVs found in {trades_dir}")
     coverage_by_strategy = _load_strategy_coverage(trades_dir)
+    return build_rolling_label_dataset_from_trades(
+        trades_by_strategy=trades_by_strategy,
+        ohlcv=ohlcv,
+        step=step,
+        horizon_days=horizon_days,
+        min_history_days=min_history_days,
+        start=start,
+        end=end,
+        coverage_by_strategy=coverage_by_strategy,
+    )
+
+
+def build_rolling_label_dataset_from_trades(
+    *,
+    trades_by_strategy: dict[str, pd.DataFrame],
+    ohlcv: pd.DataFrame,
+    step: str,
+    horizon_days: int,
+    min_history_days: int,
+    start: str | None = None,
+    end: str | None = None,
+    coverage_by_strategy: dict[str, tuple[pd.Timestamp, pd.Timestamp]] | None = None,
+) -> pd.DataFrame:
+    """Build rolling labels directly from in-memory donor trade frames."""
+
+    if horizon_days <= 0:
+        raise ValueError("horizon_days must be positive")
+    if min_history_days < 0:
+        raise ValueError("min_history_days must be >= 0")
+    if not trades_by_strategy:
+        raise ValueError("trades_by_strategy must not be empty")
+
+    candles = _standardize_ohlcv(ohlcv)
+    if candles.empty:
+        return pd.DataFrame()
+    router_ps_features = _router_pinescript_features(candles)
+    prepared_trades = {
+        strategy_id: _prepare_strategy_trades(trades)
+        for strategy_id, trades in trades_by_strategy.items()
+    }
+    coverage = coverage_by_strategy or {}
 
     timestamps = _rolling_timestamps(
         candles,
@@ -118,11 +160,11 @@ def build_rolling_label_dataset(
             strategy_id: (
                 _forward_trade_return_pct(trades, start=asof, end=label_end)
                 if _strategy_covers_window(
-                    coverage_by_strategy.get(strategy_id), start=asof, end=label_end
+                    coverage.get(strategy_id), start=asof, end=label_end
                 )
                 else math.nan
             )
-            for strategy_id, trades in trades_by_strategy.items()
+            for strategy_id, trades in prepared_trades.items()
         }
         return_series = pd.Series(returns, dtype=float).dropna()
         if return_series.empty:
@@ -152,6 +194,7 @@ def build_rolling_label_dataset(
         }
         row.update({f"return_{key}": float(value) for key, value in returns.items()})
         row.update(_ohlcv_features_asof(candles, asof))
+        row.update(_feature_frame_asof(router_ps_features, asof))
         rows.append(row)
 
     return pd.DataFrame(rows)
@@ -201,27 +244,52 @@ def _standardize_ohlcv(ohlcv: pd.DataFrame) -> pd.DataFrame:
     return df.dropna(subset=["open", "high", "low", "close"])
 
 
+def _router_pinescript_features(candles: pd.DataFrame) -> pd.DataFrame:
+    if candles.empty:
+        return pd.DataFrame()
+    frame = candles.set_index("timestamp")[["open", "high", "low", "close", "volume"]]
+    return build_regime_router_pinescript_features(frame)
+
+
+def _feature_frame_asof(features: pd.DataFrame, asof: pd.Timestamp) -> dict[str, float]:
+    if features.empty:
+        return {}
+    hist = features[features.index < asof]
+    if hist.empty:
+        return dict.fromkeys(features.columns, math.nan)
+    latest = hist.iloc[-1]
+    return {column: float(latest[column]) for column in features.columns}
+
+
 def _load_strategy_trades(trades_dir: Path) -> dict[str, pd.DataFrame]:
     trades_by_strategy: dict[str, pd.DataFrame] = {}
     for path in sorted(trades_dir.glob("*.csv")):
         strategy_id = path.stem
-        trades = pd.read_csv(path)
-        if "exit_time" in trades.columns:
-            trades["exit_time"] = pd.to_datetime(trades["exit_time"], utc=True, errors="coerce")
-        else:
-            trades["exit_time"] = pd.NaT
-        if "pnl_abs" in trades.columns:
-            trades["pnl_abs"] = pd.to_numeric(trades["pnl_abs"], errors="coerce").fillna(0.0)
-        else:
-            trades["pnl_abs"] = 0.0
-        if "capital_before" in trades.columns:
-            trades["capital_before"] = pd.to_numeric(
-                trades["capital_before"], errors="coerce"
-            )
-        else:
-            trades["capital_before"] = pd.NA
-        trades_by_strategy[strategy_id] = trades
+        trades_by_strategy[strategy_id] = _prepare_strategy_trades(pd.read_csv(path))
     return trades_by_strategy
+
+
+def _prepare_strategy_trades(trades: pd.DataFrame) -> pd.DataFrame:
+    prepared = trades.copy()
+    if "exit_time" in prepared.columns:
+        prepared["exit_time"] = pd.to_datetime(
+            prepared["exit_time"], utc=True, errors="coerce"
+        )
+    else:
+        prepared["exit_time"] = pd.NaT
+    if "pnl_abs" in prepared.columns:
+        prepared["pnl_abs"] = pd.to_numeric(
+            prepared["pnl_abs"], errors="coerce"
+        ).fillna(0.0)
+    else:
+        prepared["pnl_abs"] = 0.0
+    if "capital_before" in prepared.columns:
+        prepared["capital_before"] = pd.to_numeric(
+            prepared["capital_before"], errors="coerce"
+        )
+    else:
+        prepared["capital_before"] = pd.NA
+    return prepared
 
 
 def _load_strategy_coverage(

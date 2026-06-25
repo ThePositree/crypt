@@ -1,0 +1,24 @@
+{
+  "feature_set": "pinescript",
+  "knn_k": 0,
+  "lookback_days": 180,
+  "min_available_strategies": 6,
+  "min_hold_days": 60,
+  "min_samples": 10,
+  "router_id": "pinescript_median_dd_momentum_structure_180d_similarity65_hold60_margin1p5",
+  "scoring_method": "same_state_median_minus_dd",
+  "selection": "single_best",
+  "state_columns": [
+    "router_ps_wavetrend_zone",
+    "router_ps_macd_phase",
+    "router_ps_smc_internal_bias",
+    "router_ps_smc_swing_bias",
+    "router_ps_smc_zone_code"
+  ],
+  "state_match_mode": "similarity",
+  "state_similarity_threshold": 0.65,
+  "state_weight_profile": "structure_heavy",
+  "strategy_universe": "all_archived",
+  "switch_margin_threshold": 1.5,
+  "uses_cash": false
+}

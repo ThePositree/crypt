@@ -4,6 +4,172 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-24 — Router 2687609 promoted into normal strategy contract
+
+**What:** implemented `router_v2_2687609` as registry strategy
+`promoted_router`, containing all six archived strategies and the frozen router
+configuration.
+
+**Result:** the strategy reconstructs completed donor labels internally and
+emits only the selected nested strategy's signals. Generic per-signal TTL,
+trailing, exit geometry, and position-group drain support were added to the
+standard `ExecutionSim`; no special final router backtester was introduced.
+
+**Acceptance:** registry/config loading succeeds; 55 focused composition,
+execution, router, and label tests pass. Full-period validation is owner-run.
+
+**Links:** `docs/strategies/promoted_router.md`,
+`strategies/archive/router_v2_2687609.json`.
+
+---
+
+## 2026-06-24 — Router v2 matrix consumed and execution validator built
+
+**What:** consumed the completed four-algorithm matrix, merged 100,000
+evaluations, archived the high-return and robustness frontier routers, and
+implemented continuous shared-capital trade replay.
+
+**Result:** `router_v2_4252951` reached +425.17% median offset return with
+-6.11% worst DD. `router_v2_3216811` reached +310.56% median, +281.26% minimum,
+and -3.80% worst DD. The new `router-validate` command enforces one strategy,
+no cash, shared margin, and drain-before-switch semantics.
+
+**Acceptance:** archive snapshots are complete; routed execution synthetic
+tests and CLI help pass. Real 2025 replay remains owner-run.
+
+**Links:** `docs/regime_router_search.md`,
+`docs/routed_execution_validation.md`, ADR-0042.
+
+---
+
+## 2026-06-24 — Router search algorithm matrix implemented
+
+**What:** added `random`, `island_qd`, `hyperband_qd`, and `smac_qd` candidate
+selection backends for Router Catalog v2 plus `router-search-matrix` for
+concurrent owner runs.
+
+**Result:** every backend uses the same full offset-robust final evaluator while
+exploring the 4.64M catalog through a different proposal policy. Seeds and
+proposal-pool size are explicit and reproducible.
+
+**Acceptance:** 14 focused tests pass, ruff is clean, and a four-process smoke
+run completed successfully on real rolling labels.
+
+---
+
+## 2026-06-23 — Router Catalog v2 constructor implemented
+
+**What:** expanded the router constructor to a 4,640,400-config deterministic
+catalog with new scoring, state-subset, similarity, recency, hold, sample, and
+switch dimensions.
+
+**Result:** added memory-safe `--summary-only`, `--catalog-version v2`,
+`--top-predictions`, and `--count-only`. A 500-config benchmark took about 92
+seconds with roughly 303 MB peak RSS, supporting a 100k approximately five-hour
+owner run.
+
+**Acceptance:** focused router tests pass; ruff is clean; exact owner command is
+documented in `docs/regime_router_search.md`.
+
+---
+
+## 2026-06-23 — Complete v1 router catalog evaluated
+
+**What:** consumed owner-run router-search chunks at offsets 2000, 4000, and
+6000, completing all 7040 deterministic v1 configs.
+
+**Result:** no later chunk beat the archived rolling-median router on raw
+utility. The best distinct risk-qualified family was `router_005807`:
+PineScript same-state mean-minus-DD, 120d lookback, 30d hold, switch margin 1,
+median offset return +192.80%, minimum +141.63%, worst DD -6.52%.
+
+**Decision:** archived it as
+`pinescript_same_state_mean_dd_120d_hold30_margin1`; moved active work to
+Router Catalog v2 rather than tuning either v1 seed.
+
+**Links:** `docs/archive/routers/`,
+`docs/regime_router_search.md`.
+
+---
+
+## 2026-06-23 — First router research seed archived
+
+**What:** archived search row `router_001190` under the descriptive id
+`rolling_median_120d_switch_margin_3`.
+
+**Why now:** the owner rejected further local optimization of this candidate
+and directed the project to preserve it as a benchmark while continuing the
+broader router search.
+
+**Result:** frozen config is under `routers/archive/`; verdict, utility,
+offset snapshot, and provenance are under `docs/archive/routers/`.
+
+**Links:** `docs/archive/routers/rolling_median_120d_switch_margin_3/`,
+`routers/archive/rolling_median_120d_switch_margin_3.json`.
+
+---
+
+## 2026-06-23 — Full PineScript-aware router search completed
+
+**What:** optimized `router-search` enough to run the full 2000-config
+PineScript-aware single-strategy router catalog.
+
+**Why now:** the first constructor MVP was correct but too slow for the full
+catalog. The owner wanted the session used to push through to a real result,
+not stop at implementation.
+
+**Expected gain:** get the first utility-ranked router shortlist over all
+archived strategies and PineScript-derived market-state features.
+
+**Result:** full run completed at
+`results/regime_matrix_archive_sol_2022_2025_trades/rolling_labels_day_30d_router_ps/router_search/`.
+Best router is `router_001190`: rolling median score, 120d lookback, no feature
+set, 3-point switch margin, median offset return +258.13%, minimum offset return
++186.37%, worst DD -17.34%, median switches 2. PineScript same-state routers
+reached the top-20 but did not beat the rolling selector.
+
+**Acceptance:** full artifacts exist (`router_utility_scores.csv`,
+`router_search_report.md`, predictions, dense scores, offset sensitivity);
+focused tests pass and ruff is clean. Follow-up DD attribution moved to
+`IN_PROGRESS.md`.
+
+**Links:** `docs/regime_router_search.md`,
+`src/backtester/regime_router.py`.
+
+---
+
+## 2026-06-23 — Single-strategy router constructor MVP
+
+**What:** implemented `backtester router-search`, a router constructor that
+scores single-strategy selectors over rolling labels. It never splits capital
+across multiple active strategies and never chooses `cash`.
+
+**Why now:** the owner clarified that routing should search combinations the
+same way DSS searches strategies, but the active universe must remain the full
+archive and the output must be exactly one strategy.
+
+**Expected gain:** move regime routing from a few hand-written baselines to a
+searchable catalog with offset-robust utility scoring.
+
+**Result:** rolling labels now export `router_ps_*` PineScript-derived market
+features; `router-search` exports predictions, dense diagnostics, offset
+sensitivity, utility scores, and a markdown report. A rolling-only smoke run
+completed at
+`results/regime_matrix_archive_sol_2022_2025_trades/rolling_labels_day_30d/router_search_smoke_fixed/`.
+Fresh PineScript-aware labels were built at
+`results/regime_matrix_archive_sol_2022_2025_trades/rolling_labels_day_30d_router_ps/`.
+
+**Acceptance:** focused router/label tests pass and ruff is clean. Full
+PineScript-KNN catalog execution remains in `IN_PROGRESS.md` because the
+current KNN path is too slow for a large run.
+
+**Links:** `docs/regime_router_search.md`,
+`src/backtester/regime_router.py`,
+`src/backtester/regime_labels.py`,
+`src/backtester/strategy_discovery/features.py`.
+
+---
+
 ## 2026-06-23 — Full rolling labels and router baseline evaluated
 
 **What:** consumed the completed archive-only matrix with raw trades, built

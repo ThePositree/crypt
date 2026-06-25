@@ -67,6 +67,73 @@ def test_run_returns_empty_on_not_enough_bars():
     assert trades.empty
 
 
+def test_per_signal_ttl_overrides_simulator_default() -> None:
+    df = _base_df(
+        opens=[100.0, 100.0, 100.0, 100.0],
+        highs=[100.5, 100.5, 100.5, 100.5],
+        lows=[99.5, 99.5, 99.5, 99.5],
+        closes=[100.0, 100.0, 100.0, 100.0],
+        signals=[1, 0, 0, 0],
+        sl_prices=[99.0, 99.0, 99.0, 99.0],
+    )
+    df["position_ttl_bars"] = 1
+
+    trades = ExecutionSim(
+        initial_capital=10_000.0,
+        position_ttl_bars=10,
+    ).run(df)
+
+    assert len(trades) == 1
+    assert trades.iloc[0]["exit_reason"] == "ttl_expired"
+    assert trades.iloc[0]["position_ttl_bars"] == 1
+
+
+def test_position_group_drains_before_new_group_entry() -> None:
+    df = _base_df(
+        opens=[100.0, 100.0, 100.0, 100.0],
+        highs=[100.5, 100.5, 102.5, 102.5],
+        lows=[99.5, 99.5, 99.5, 99.5],
+        closes=[100.0, 100.0, 102.0, 102.0],
+        signals=[1, 1, 0, 0],
+        sl_prices=[99.0, 99.0, 99.0, 99.0],
+    )
+    df["position_group"] = ["a", "b", "b", "b"]
+    df["drain_on_group_change"] = True
+
+    trades = ExecutionSim(
+        initial_capital=10_000.0,
+        rrr=2.0,
+        max_positions=0,
+    ).run(df)
+
+    assert len(trades) == 1
+    assert trades.iloc[0]["position_group"] == "a"
+
+
+def test_per_signal_tp_pct_geometry_overrides_default() -> None:
+    df = _base_df(
+        opens=[100.0, 100.0, 100.0],
+        highs=[100.5, 102.5, 102.5],
+        lows=[99.5, 99.5, 99.5],
+        closes=[100.0, 102.0, 102.0],
+        signals=[1, 0, 0],
+        sl_prices=[90.0, 90.0, 90.0],
+    )
+    df["exit_geometry"] = "tp_pct"
+    df["tp_move_pct"] = 0.02
+    df["structural_sl_mode"] = "ignore"
+    df["min_tp_move_pct"] = 0.004
+
+    trades = ExecutionSim(
+        initial_capital=10_000.0,
+        rrr=2.0,
+        max_allowed_leverage=100.0,
+    ).run(df)
+
+    assert len(trades) == 1
+    assert trades.iloc[0]["tp_price"] == pytest.approx(102.0)
+
+
 @pytest.mark.parametrize("missing", ["open", "high", "low", "close", "signal", "sl_price"])
 def test_run_raises_on_missing_required_columns(missing: str):
     idx = pd.date_range("2026-01-01", periods=2, freq="D")
@@ -736,10 +803,12 @@ def test_trades_dataframe_columns_and_types():
         "trail_stop_price",
         "trail_active",
         "exit_reason",
-        "capital_before",
-        "capital_after",
-        "holding_bars",
-        "leverage",
+            "capital_before",
+            "capital_after",
+            "holding_bars",
+            "position_ttl_bars",
+            "position_group",
+            "leverage",
         "locked_margin",
         "available_balance_before",
         "open_positions_before",

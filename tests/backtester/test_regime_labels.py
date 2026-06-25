@@ -126,6 +126,8 @@ def test_build_rolling_label_dataset_uses_future_exit_window(tmp_path: Path) -> 
     assert row["best_strategy"] == "a"
     assert row["return_a"] == 1.0
     assert row["return_b"] == 0.5
+    assert "router_ps_supertrend_dir" in labels.columns
+    assert "router_ps_adx" in labels.columns
 
 
 def test_build_rolling_label_dataset_respects_partial_strategy_coverage(tmp_path: Path) -> None:

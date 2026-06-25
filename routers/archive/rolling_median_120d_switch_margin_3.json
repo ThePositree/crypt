@@ -1,0 +1,13 @@
+{
+  "feature_set": "none",
+  "knn_k": 0,
+  "lookback_days": 120,
+  "min_available_strategies": 6,
+  "min_hold_days": 0,
+  "router_id": "rolling_median_120d_switch_margin_3",
+  "scoring_method": "rolling_median",
+  "selection": "single_best",
+  "strategy_universe": "all_archived",
+  "switch_margin_threshold": 3.0,
+  "uses_cash": false
+}
