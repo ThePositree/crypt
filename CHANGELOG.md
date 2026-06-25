@@ -6,6 +6,70 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-25 — Promoted router external-backtester boundary fix
+
+- Removed all nested backtests from `promoted_router`; the external backtester
+  now remains the only portfolio simulator.
+- Promoted routers privately consume persisted rolling-label/model state,
+  build a causal selection timeline, prepare nested signal streams through a
+  strategy-class registry, and return one composite strategy frame. The
+  external backtester remains unaware of router files and internals.
+- Missing persisted router state now fails immediately instead of triggering
+  hours of hidden donor reconstruction.
+- Restored the six archived strategy trade exports from the repository-root
+  handoff and rebuilt the required PineScript-aware rolling-label state:
+  1,341 rows, 37 router features, six strategies.
+- Restored the selected `crypt_ensemble` candle progress display for
+  interactive composite runs without reintroducing nested backtests.
+- Added ADR-0044 and the shared incremental-router runtime contract.
+- Replaced portfolio-member branching with a strategy-class adapter registry;
+  one parameterized contract suite automatically covers every config in
+  `strategy_paths`.
+- Added generic shadow portfolios and parity tests against the unchanged
+  external `ExecutionSim`; removed accidental shadow execution from the final
+  selected-signal multiplex pass.
+- Fixed promoted-router reproducibility: `validation_start=2024-01-01` is now
+  frozen in the router config. Starting the hold/switch state machine at the
+  first label row had changed the 2025 timeline from the archived
+  +125.04%/359-trade replay to +103.18%/361 trades.
+- Added one parameterized adapter-to-canonical parity test over every
+  `strategy_paths` member; no portfolio strategy ids are hard-coded.
+- Replaced mass router ranking with robust oracle-regret scoring and added
+  oracle gap, capture ratio, hit-rate, p90, and worst-regret diagnostics.
+- Added `router_shortlist.csv` and `router-validate-shortlist` for staged
+  continuous shared-capital screening before exact composite OHLCV backtests.
+- Added mandatory router-search progress bars with candidate counts, elapsed
+  time, rate, and ETA; documented project-wide long-run progress requirements
+  and owner-run PID invisibility across agent sandbox namespaces in `AGENTS.md`.
+- Fixed `router-search-matrix` progress visibility: child stderr is inherited
+  by the owner terminal and each algorithm receives a dedicated tqdm position;
+  normal child output remains in `run.log`.
+- Consumed the completed four-algorithm oracle-regret matrix: 4,000 shortlist
+  rows collapsed to 813 unique train selection timelines, then frozen
+  2024-2025 predictions were generated for routed holdout validation.
+- Consumed routed 2025 validation for all 813 timelines: every candidate was
+  `discard`; 69 respected the 10% monthly drawdown ceiling, and the existing
+  `router_v2_2687609` still had the most +15% floor months among them (4/12).
+- Froze five new risk/return-front router configs under
+  `strategies/router_shortlist/` for final exact OHLCV composite verification,
+  with `router_v2_2687609` retained as the control.
+- Consumed exact OHLCV runs for all six finalists on 2025 and 2022-2026. The
+  best 2025 candidate, `router_v2_3997501`, returned +157.93% with -6.22%
+  mandate DD but passed only 4/12 monthly floors; every finalist is `discard`.
+- Verified full-run/standalone parity: five routers have identical 2025 trade
+  sequences, while `router_v2_3213199` has two additional first-day trades
+  only when pre-2025 warm-up candles are available.
+- Added ADR-0045.
+- Corrected the promoted-router spec, archive notes, README, and active task.
+- Validation: 37 focused promoted-router/router/execution tests passed and
+  ruff clean. Targeted mypy is clean for the promoted runtime; the older
+  router/CLI modules retain pre-existing strict typing findings.
+- ADRs touched: ADR-0043, ADR-0044, ADR-0045.
+- Files touched: `src/backtester/`, `tests/backtester/`, `strategies/archive/`,
+  `docs/`, `README.md`, `CHANGELOG.md`.
+
+---
+
 ## 2026-06-24 — Router search algorithm matrix
 
 - Added Router Catalog v2 backends: uniform `random`, balanced `island_qd`,

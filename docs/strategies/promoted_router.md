@@ -1,5 +1,7 @@
 # Promoted router strategy
 
+Architecture: ADR-0043 and ADR-0044.
+
 ## Purpose
 
 Represent an accepted router as a normal backtester strategy. The strategy
@@ -13,28 +15,42 @@ No router-specific backtest command or execution simulator is allowed.
 The strategy receives normal `StrategyInput` OHLCV data and JSON parameters:
 
 - router scoring and state-matching parameters;
-- rolling-label horizon and minimum history;
+- the frozen router `validation_start`;
+- a persisted rolling-label/model-state artifact owned by the router;
 - fallback strategy;
 - nested strategy JSON paths.
 
 Each nested strategy JSON is loaded through the normal strategy registry and
 its normal backtest arguments.
 
+The composite strategy exposes `progress`, enabled by default. For selected
+`crypt_ensemble` signal generators it overrides the archived standalone
+`progress: false` setting so interactive full-period runs show candle progress.
+This affects display only; it does not launch a nested execution simulation.
+
+The external backtester is an immutable boundary. It receives one ordinary
+strategy object and knows nothing about `labels_path`, nested strategies, or
+router state. `promoted_router` may load its own state exactly as an ML model
+loads weights, but it must not instantiate `Backtester`, call `run_backtest`,
+or reconstruct the real portfolio. It is one composite signal generator from
+the backtester's point of view.
+
 ## Internal pipeline
 
-1. Generate each nested strategy's signal frame.
-2. Run an isolated donor backtest for each nested strategy over the supplied
-   history.
-3. Build daily 30-day strategy-performance labels from donor closed trades.
-4. For each decision timestamp, score only labels where
-   `label_end <= decision_timestamp`.
-5. Apply the frozen router configuration.
-6. Select exactly one nested strategy.
-7. Emit only that strategy's signal and execution parameters.
+The final runtime contract is specified in
+`docs/strategies/incremental_router_runtime.md`: one chronological
+`on_closed_bar` state machine shared by historical replay and live execution.
 
-Donor backtests are research state used to reconstruct historical router
-decisions. They do not modify the outer portfolio. The outer standard
-`ExecutionSim` is the only owner of real backtest capital and margin.
+The rolling-label artifact is versioned router state, analogous to model
+weights rather than market input required by the backtester. The evaluator
+must retain the `label_end <= decision_timestamp` gate. In production this
+state is updated by the paper/shadow-performance pipeline and persisted
+between process restarts. Missing state is a router initialization error; the
+strategy must never silently launch historical backtests to rebuild it.
+
+`validation_start` is part of the frozen model state, not a reporting option.
+It defines when the stateful hold/switch machine starts. Before that timestamp
+historical replay uses the configured fallback strategy.
 
 ## Signal payload
 
@@ -67,9 +83,9 @@ the previous group closes naturally.
 Before enough completed labels exist, the configured fallback strategy is
 selected. There is no cash state.
 
-If a nested strategy fails to generate signals or donor trades, it remains in
-the universe with zero forward return where coverage exists. A malformed
-nested config is a hard error.
+After the final label timestamp, the last causal selection is carried forward
+and its staleness must be visible in diagnostics. A malformed nested config,
+missing label artifact, or unknown selected strategy is a hard error.
 
 ## Outputs
 
@@ -85,6 +101,7 @@ Trade metadata includes `router_id` and `selected_strategy`.
 
 `router_v2_2687609`:
 
+- validation start: 2024-01-01;
 - score: same-state median return minus drawdown;
 - lookback: 180 days;
 - state subset: trend + structure;

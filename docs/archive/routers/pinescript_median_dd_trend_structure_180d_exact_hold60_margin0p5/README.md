@@ -12,6 +12,7 @@ The router compares all six archived strategies using completed prior rolling
 labels:
 
 - 180-day lookback;
+- validation/state-machine start: 2024-01-01;
 - exact PineScript trend + SMC structure state;
 - median return minus drawdown score;
 - at least 10 matching samples;
@@ -45,8 +46,8 @@ for full-period validation.
 
 ## Implementation
 
-`promoted_router` generates all six nested strategy signal streams, reconstructs
-completed rolling labels, selects one nested strategy, and emits its signal
-through the standard `ExecutionSim`.
+`promoted_router` consumes persisted completed rolling labels, selects one
+nested strategy causally, and emits its signal through the standard external
+backtester execution path.
 
-No special router backtest command is used.
+It never runs nested backtests. No special router backtest command is used.

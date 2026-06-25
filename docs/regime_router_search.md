@@ -10,7 +10,7 @@ all archived strategies
   -> score every available strategy from completed prior labels
   -> select exactly one strategy
   -> apply switching policy
-  -> score by offset-robust utility
+  -> score by offset-robust regret to the single-strategy oracle
 ```
 
 ## Contract
@@ -66,6 +66,7 @@ not optimize the universe.
 uv run backtester router-search \
   --labels results/regime_matrix_archive_sol_2022_2025_trades/rolling_labels_day_30d_router_ps/rolling_labels.csv \
   --validation-start 2024-01-01 \
+  --validation-end 2025-01-01 \
   --min-available-strategies 6 \
   --max-configs 2000 \
   --output results/regime_matrix_archive_sol_2022_2025_trades/rolling_labels_day_30d_router_ps/router_search
@@ -77,17 +78,50 @@ Artifacts:
 - `router_search_dense_scores.csv`;
 - `router_offset_sensitivity.csv`;
 - `router_utility_scores.csv`;
+- `router_shortlist.csv`;
 - `router_search_report.md`.
 
 Utility score:
 
 ```text
-median offset return
-- 2 * abs(worst max drawdown)
-- median negative periods
-- 0.25 * median switches
-- 0.25 * offset return IQR
+- median(offset mean regret)
+- p90(offset mean regret)
+- 0.25 * median(offset worst regret)
+- 0.10 * abs(worst offset drawdown)
+- 0.10 * median(offset switches)
 ```
+
+The oracle selects exactly one strategy per forward window using future
+strategy returns. `regret = best_return_pct - selected_return_pct`. Strategy-id
+hit rate and compounded oracle capture ratio are diagnostics; regret is the
+ranking target.
+
+`--validation-end` is exclusive. Use it to keep 2025 outside candidate search;
+2025 oracle values may evaluate the frozen shortlist but may not rank or tune
+it.
+
+The search also writes `router_shortlist.csv`, merging the highest-ranked
+utility rows with their complete frozen router parameters.
+
+## Staged validation
+
+Mass oracle-regret search is only stage 1. Validate every retained candidate
+through the archived continuous shared-capital replay:
+
+```bash
+uv run backtester router-validate-shortlist \
+  --predictions <search-output>/router_search_predictions.csv \
+  --shortlist <search-output>/router_shortlist.csv \
+  --matrix-dir results/regime_matrix_archive_sol_2022_2025_trades \
+  --from 2025-01-01 \
+  --to 2026-01-01 \
+  --capital 10000 \
+  --output <search-output>/routed_shortlist
+```
+
+This writes one routed report per router plus
+`shortlist_execution_summary.csv`. The final stage is exact composite OHLCV
+backtesting of the highest-ranked routed candidates.
 
 ## Complete v1 catalog result
 
@@ -286,6 +320,15 @@ processes run concurrently, so elapsed time depends on available CPU and may be
 longer than the sequential 100k benchmark on a constrained machine. Each
 algorithm writes its own report, CSV artifacts, and `run.log` below the output
 root.
+
+Long-running search phases display evaluated/total candidates, elapsed time,
+processing rate, and ETA. `router-search-matrix` keeps each child's progress
+bar on a dedicated terminal row while redirecting normal output to that
+algorithm's `run.log`. Logs can also be monitored with:
+
+```bash
+tail -f results/router_search_oracle_regret_v3_25k/*/run.log
+```
 
 ## V2 algorithm matrix result
 

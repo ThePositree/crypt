@@ -14,6 +14,56 @@ when finished.
 > **+15%/month** on **$10k** SOL **2025** continuous backtest after fees;
 > max **10% intra-month DD**; auto-trading only after **promote** verdict.
 
+## P1 — Build an execution-grade router oracle and feasibility report
+
+**What:** replace the overlapping rolling-label oracle as the final router
+target with an explicitly non-causal upper-bound portfolio that selects exactly
+one donor for each decision interval and executes through the same composite
+signal, drain, margin, and `ExecutionSim` contracts as a real router.
+
+**Why now:** the 100k oracle-regret search produced no mandate-qualified router.
+Its current oracle is the best strategy in overlapping forward 30-day label
+windows, not one executable continuous portfolio. Closeness to that proxy is
+therefore only weakly related to exact 2025 mandate performance.
+
+**Expected gain:** establish whether the current six-strategy universe can
+theoretically pass the mandate at all. If the execution-grade oracle fails,
+expand or replace donor strategies before running another router search. If it
+passes, report the exact strategy choices and use them as a defensible
+imitation target.
+
+**Acceptance:** one 2025 report contains oracle trades, selection timeline,
+monthly mandate rows, exact composite metrics, and regret for every tested
+router against that executable oracle. The report clearly answers whether
+9/12 floor months with no DD breach are attainable.
+
+**Links:** ADR-0042, ADR-0045, `docs/regime_router_search.md`,
+`results/router_exact_shortlist_2025/`.
+
+---
+
+## P1 — Exact composite validation for router shortlists
+
+**What:** add a batch owner-run command that converts routed-shortlist rows
+into frozen promoted-router configs, shares prepared strategy signal frames,
+and runs the unchanged external `ExecutionSim` for every shortlisted router.
+
+**Why now:** oracle-regret search and archived-trade replay are screening
+stages. Promotion requires exact OHLCV execution without manually creating and
+running hundreds of router JSON files.
+
+**Expected gain:** make exact composite validation practical for hundreds or
+thousands of candidates while preparing shared features/signals only once.
+
+**Acceptance:** one command consumes `router_shortlist.csv` plus labels and
+strategy paths, writes one exact metrics row per router, and matches a normal
+single-router `backtester run` on regression fixtures.
+
+**Links:** ADR-0045, `docs/regime_router_search.md`,
+`docs/strategies/promoted_router.md`.
+
+---
+
 ## P1 — Implement offline Regime Discovery and Regime Labeler MVP
 
 **What:** build the first offline regime-discovery workflow over the archived

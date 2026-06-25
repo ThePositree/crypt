@@ -1,8 +1,8 @@
 {
   "name": "promoted_router",
-  "version": "router-v2-2687609-promoted-2026-06-24",
+  "version": "router-v2-2687604-exact-shortlist-2026-06-25",
   "params": {
-    "router_id": "router_v2_2687609",
+    "router_id": "router_v2_2687604",
     "progress": true,
     "labels_path": "results/regime_matrix_archive_sol_2022_2025_trades/rolling_labels_day_30d_router_ps/rolling_labels.csv",
     "fallback_strategy": "crypt_ensemble_h1_discovery_nr4_vwap_robust",
@@ -19,8 +19,8 @@
       "state_weight_profile": "equal",
       "ewm_halflife_days": 0,
       "min_samples": 10,
-      "min_hold_days": 60,
-      "switch_margin_threshold": 0.5
+      "min_hold_days": 45,
+      "switch_margin_threshold": 3.0
     },
     "strategy_paths": {
       "crypt_ensemble_h1_discovery_nr4_vwap_robust": "strategies/archive/crypt_ensemble_h1_discovery_nr4_vwap_robust.json",

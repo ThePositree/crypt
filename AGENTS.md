@@ -54,6 +54,41 @@ backtests, `compare-fixed`, `compare-grid`, `signal-quality`, or optimizer
 commands yourself unless the owner explicitly asks you to run that specific
 command in chat.
 
+### Progress is mandatory for long-running commands
+
+Any CLI operation expected to take more than roughly one minute or process a
+known collection must expose visible progress by default:
+
+- completed / total work units;
+- elapsed time;
+- processing rate;
+- ETA when the total is known;
+- a meaningful unit and phase description.
+
+Use a progress bar such as `tqdm` for iterative work. Multi-process launchers
+must expose progress for each child through logs or a parent summary; a silent
+`Started pid=...` followed by hours without status is not acceptable.
+
+Tests may disable progress explicitly. Non-interactive redirected output must
+still receive periodic progress lines or flushed bar updates.
+
+### Owner-run process visibility from agent sandboxes
+
+Do not assume an agent can inspect an owner-started PID. Owner commands may run
+outside the agent sandbox or PID namespace even when both use the same
+workspace. A missing PID in agent-side `ps`/`pgrep` does not prove the owner
+process stopped.
+
+For owner runs, determine status from:
+
+1. output pasted by the owner;
+2. completion/failure lines in run logs;
+3. expected artifacts and their modification times;
+4. owner-side status commands provided in chat.
+
+State this limitation explicitly instead of reporting an owner run as failed
+solely because its PID is invisible inside the sandbox.
+
 ### Document task intent, not only task mechanics
 
 Task files must explain the work broadly enough that the next agent can

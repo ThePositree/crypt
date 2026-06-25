@@ -17,6 +17,7 @@ sys.path.insert(0, _SRC_ROOT_STR)
 
 import click  # noqa: E402
 import pandas as pd  # noqa: E402
+from tqdm.auto import tqdm  # noqa: E402
 
 from backtester.cli_runner import (  # noqa: E402
     OptimizerSearchArgs,
@@ -935,6 +936,11 @@ def rolling_router_baseline(
     help="Path to rolling_labels.csv.",
 )
 @click.option("--validation-start", default="2024-01-01", show_default=True)
+@click.option(
+    "--validation-end",
+    default=None,
+    help="Exclusive final as-of timestamp; use to preserve a holdout period.",
+)
 @click.option("--min-available-strategies", type=int, default=6, show_default=True)
 @click.option(
     "--algorithms",
@@ -954,6 +960,7 @@ def rolling_router_baseline(
 def router_search_matrix(
     labels_path: Path,
     validation_start: str,
+    validation_end: str | None,
     min_available_strategies: int,
     algorithms: str,
     max_configs: int,
@@ -976,7 +983,7 @@ def router_search_matrix(
 
     processes: list[tuple[str, Path, subprocess.Popen[bytes], IO[bytes]]] = []
     try:
-        for algorithm in parsed:
+        for progress_position, algorithm in enumerate(parsed):
             seed = _ROUTER_MATRIX_DEFAULT_SEEDS[algorithm]
             output = output_root / f"{algorithm}_seed{seed}"
             output.mkdir(parents=True, exist_ok=True)
@@ -1003,13 +1010,17 @@ def router_search_matrix(
                 "--summary-only",
                 "--top-predictions",
                 str(top_predictions),
+                "--progress-position",
+                str(progress_position),
                 "--max-configs",
                 str(max_configs),
                 "--output",
                 str(output),
             ]
+            if validation_end is not None:
+                command.extend(["--validation-end", validation_end])
             log_file = log_path.open("wb")
-            process = subprocess.Popen(command, stdout=log_file, stderr=subprocess.STDOUT)
+            process = subprocess.Popen(command, stdout=log_file)
             processes.append((algorithm, log_path, process, log_file))
             click.echo(f"Started {algorithm} pid={process.pid} output={output}")
 
@@ -1048,6 +1059,11 @@ def router_search_matrix(
     default="2024-01-01",
     show_default=True,
     help="First as-of timestamp to score.",
+)
+@click.option(
+    "--validation-end",
+    default=None,
+    help="Exclusive final as-of timestamp; use to preserve a holdout period.",
 )
 @click.option(
     "--min-available-strategies",
@@ -1122,6 +1138,18 @@ def router_search_matrix(
     help="Top routers whose daily predictions are retained in summary-only mode.",
 )
 @click.option(
+    "--progress/--no-progress",
+    default=True,
+    show_default=True,
+    help="Show evaluated/total, rate, elapsed time, and ETA.",
+)
+@click.option(
+    "--progress-position",
+    type=int,
+    default=0,
+    hidden=True,
+)
+@click.option(
     "--count-only",
     is_flag=True,
     help="Print the deterministic catalog size and exit.",
@@ -1135,6 +1163,7 @@ def router_search_matrix(
 def router_search(
     labels_path: Path,
     validation_start: str,
+    validation_end: str | None,
     min_available_strategies: int,
     non_overlap_days: int,
     catalog_version: str,
@@ -1145,6 +1174,8 @@ def router_search(
     max_configs: int,
     summary_only: bool,
     top_predictions: int,
+    progress: bool,
+    progress_position: int,
     count_only: bool,
     output: Path | None,
 ) -> None:
@@ -1153,6 +1184,7 @@ def router_search(
     labels = pd.read_csv(labels_path)
     config = RouterSearchConfig(
         validation_start=validation_start,
+        validation_end=validation_end,
         min_available_strategies=min_available_strategies,
         non_overlap_days=non_overlap_days,
         catalog_version=catalog_version.lower(),
@@ -1163,6 +1195,8 @@ def router_search(
         max_configs=max_configs,
         summary_only=summary_only,
         top_predictions=top_predictions,
+        progress=progress,
+        progress_position=progress_position,
     )
     if count_only:
         count = count_router_candidates(labels, config=config)
@@ -1243,6 +1277,113 @@ def router_validate(
         raise click.ClickException(str(exc)) from exc
     write_routed_execution_report(output=output, result=result)
     click.echo(f"Routed execution validation saved to: {output}")
+
+
+@cli.command("router-validate-shortlist")
+@click.option(
+    "--predictions",
+    "predictions_path",
+    required=True,
+    type=click.Path(exists=True, path_type=Path),
+    help="Path to router_search_predictions.csv.",
+)
+@click.option(
+    "--shortlist",
+    "shortlist_path",
+    required=True,
+    type=click.Path(exists=True, path_type=Path),
+    help="Path to router_shortlist.csv.",
+)
+@click.option(
+    "--matrix-dir",
+    required=True,
+    type=click.Path(exists=True, path_type=Path),
+    help="Archived performance matrix containing strategy_trades/.",
+)
+@click.option("--from", "from_date", default="2025-01-01", show_default=True)
+@click.option("--to", "to_date", default="2026-01-01", show_default=True)
+@click.option("--capital", type=float, default=10_000.0, show_default=True)
+@click.option(
+    "--max-allowed-margin",
+    type=click.FloatRange(min=0.0, max=1.0, min_open=True),
+    default=1.0,
+    show_default=True,
+)
+@click.option(
+    "--output",
+    required=True,
+    type=click.Path(path_type=Path),
+    help="Output directory for all routed shortlist reports.",
+)
+def router_validate_shortlist(
+    predictions_path: Path,
+    shortlist_path: Path,
+    matrix_dir: Path,
+    from_date: str,
+    to_date: str,
+    capital: float,
+    max_allowed_margin: float,
+    output: Path,
+) -> None:
+    """Replay every shortlisted router through continuous shared capital."""
+
+    predictions = pd.read_csv(predictions_path)
+    shortlist = pd.read_csv(shortlist_path)
+    if "router" not in shortlist.columns:
+        raise click.ClickException("Shortlist must contain a router column")
+    router_ids = shortlist["router"].dropna().astype(str).drop_duplicates().tolist()
+    if not router_ids:
+        raise click.ClickException("Shortlist contains no routers")
+    available = set(predictions.get("router", pd.Series(dtype=str)).astype(str))
+    missing = [router_id for router_id in router_ids if router_id not in available]
+    if missing:
+        raise click.ClickException(
+            "Predictions are missing shortlisted routers: " + ", ".join(missing)
+        )
+
+    trades_by_strategy = load_matrix_strategy_trades(matrix_dir)
+    output.mkdir(parents=True, exist_ok=True)
+    summary_rows: list[dict[str, object]] = []
+    router_items = tqdm(
+        router_ids,
+        total=len(router_ids),
+        desc="router routed-validation",
+        unit="router",
+        mininterval=1.0,
+        dynamic_ncols=True,
+    )
+    for router_id in router_items:
+        router_items.set_postfix(router=router_id, refresh=False)
+        try:
+            result = evaluate_routed_execution(
+                predictions=predictions,
+                router=router_id,
+                trades_by_strategy=trades_by_strategy,
+                config=RoutedExecutionConfig(
+                    start=from_date,
+                    end=to_date,
+                    initial_capital=capital,
+                    max_allowed_margin=max_allowed_margin,
+                ),
+            )
+        except ValueError as exc:
+            raise click.ClickException(f"{router_id}: {exc}") from exc
+        write_routed_execution_report(output=output / router_id, result=result)
+        execution = result.execution_summary.iloc[0].to_dict()
+        mandate = result.mandate.summary.iloc[0].to_dict()
+        summary_rows.append(
+            {
+                **execution,
+                **{f"mandate_{key}": value for key, value in mandate.items()},
+            }
+        )
+
+    summary = pd.DataFrame(summary_rows).sort_values(
+        ["total_return_pct", "mandate_worst_monthly_drawdown_pct"],
+        ascending=[False, False],
+    )
+    summary.to_csv(output / "shortlist_execution_summary.csv", index=False)
+    click.echo(f"Routed shortlist validation saved to: {output}")
 
 
 @cli.command()

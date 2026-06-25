@@ -12,9 +12,48 @@ diagnostics only and may not be the final validation surface.
 **Expected gain:** obtain a canonical `trades.csv`, equity report, and standard
 backtester metrics for the router across 2022-12-18 through 2026-06-09.
 
-**Status:** implementation complete; waiting for owner run.
+**Status:** composite-strategy boundary fixed on 2026-06-25. The previous
+implementation was invalid because it launched six nested backtests from
+inside `generate()`. Nested backtests are now forbidden; the external
+backtester owns the only portfolio simulation.
+
+**Incremental runtime correction (2026-06-25):** nested strategies now share
+one feature dataset and are loaded through a strategy-class adapter registry;
+router code and tests do not enumerate strategy ids. The router then
+multiplexes one selected signal stream chronologically. Persisted rolling
+labels are private router/model state supplied through `labels_path`; the
+external backtester neither knows about nor loads that file. Generic shadow
+portfolio execution exists with parity tests, but wiring live per-bar state
+updates and persistence remains production work, not a prerequisite for the
+owner-run historical validation.
+
+**Router state restored (2026-06-25):** the repository-root handoff archive
+contained all six exact `strategy_trades/*.csv` files. The current code rebuilt
+the required PineScript-aware state without running any strategies:
+
+```text
+results/regime_matrix_archive_sol_2022_2025_trades/
+  rolling_labels_day_30d_router_ps/rolling_labels.csv
+```
+
+The artifact contains 1,341 daily rows through label end 2025-12-31, 37
+`router_ps_*` features, and six strategy return columns. The frozen router
+selects four strategies over the requested full-period timeline with 14
+switches. Only NR4 is a selected `crypt_ensemble`; the other selected
+strategies use the faster DSS signal path.
+
+**Reproducibility incident fixed (2026-06-25):** the first full owner run used
+the first label timestamp as the router state-machine start. The search that
+produced `router_v2_2687609` used `validation_start=2024-01-01`; omitting this
+stateful parameter changed the 2025 routed replay from the archived
+`+125.04% / 359 trades` to `+103.18% / 361 trades`. The frozen strategy config
+now stores the exact validation start. Before 2024-01-01 the composite uses
+the configured fallback strategy.
 
 **Owner command:**
+
+Delete or ignore the invalid `20260625_122051` result and rerun the corrected
+composite strategy:
 
 ```bash
 MPLCONFIGDIR=/tmp/matplotlib \
@@ -37,7 +76,7 @@ open trades have different position groups; standard metrics cover the full
 available history.
 
 **Links:** `docs/strategies/promoted_router.md`,
-`strategies/archive/router_v2_2687609.json`, ADR-0042.
+`strategies/archive/router_v2_2687609.json`, ADR-0042, ADR-0043.
 
 ---
 

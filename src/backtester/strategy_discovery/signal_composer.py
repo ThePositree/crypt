@@ -79,42 +79,7 @@ class SignalComposer:
         ValueError
             If trigger_name or any filter_name is unknown.
         """
-        trigger_name = config.trigger_name
-        if trigger_name not in self._trigger_catalog:
-            available = sorted(self._trigger_catalog)
-            raise ValueError(
-                f"Unknown trigger_name {trigger_name!r}. Available: {available}"
-            )
-        for fn in config.filter_names:
-            if fn not in self._filter_catalog:
-                available = sorted(self._filter_catalog)
-                raise ValueError(
-                    f"Unknown filter_name {fn!r}. Available: {available}"
-                )
-
-        trigger_factory = self._trigger_catalog[trigger_name]
-        trigger_fn = trigger_factory(config.trigger_params)
-
-        filter_fns = [
-            self._filter_catalog[fn](
-                config.filter_params.get(fn, {})
-            )
-            for fn in config.filter_names
-        ]
-
-        rrr = config.rrr
-        atr_sl_mult = config.atr_sl_mult
-        filter_names_str = "+".join(config.filter_names) if config.filter_names else "no_filter"
-        rationale_base = f"{trigger_name} | {filter_names_str}"
-
-        confidence_bonus = min(
-            sum(
-                _CONTEXT_CONFIDENCE_BONUS.get(fn, 0.0)
-                for fn in config.filter_names
-            ),
-            _MAX_CONFIDENCE - _BASE_CONFIDENCE,
-        )
-        confidence = min(_BASE_CONFIDENCE + confidence_bonus, _MAX_CONFIDENCE)
+        self.validate_or_raise(config)
 
         def generate(data: StrategyInput) -> pd.DataFrame:
             from backtester.data_contracts import StrategyData
@@ -127,52 +92,92 @@ class SignalComposer:
                 window_label="dss",
                 symbol=symbol,
             )
-
-            try:
-                raw_events = trigger_fn(dataset)
-            except Exception:
-                logger.warning(
-                    "Trigger %s raised during generate; returning empty DataFrame",
-                    trigger_name,
-                    exc_info=True,
-                )
-                return _empty_signal_df()
-
-            surviving: list[SignalRow] = []
-            for event in raw_events:
-                if not _apply_filters(event, dataset, filter_fns):
-                    continue
-                atr = _atr_at(dataset.primary, event.event_time)
-                if atr is None or atr <= 0:
-                    continue
-                entry = event.entry_reference_price
-                if event.side == "long":
-                    stop = entry - atr * atr_sl_mult
-                    tp = entry + (entry - stop) * rrr
-                else:
-                    stop = entry + atr * atr_sl_mult
-                    tp = entry - (stop - entry) * rrr
-                surviving.append(
-                    {
-                        "bar_time": event.event_time,
-                        "symbol": event.symbol,
-                        "side": event.side,
-                        "confidence": confidence,
-                        "rationale": rationale_base,
-                        "entry_price": entry,
-                        "stop_price": stop,
-                        "tp_price": tp,
-                    }
-                )
-
-            if not surviving:
-                return _empty_signal_df()
-
-            df = pd.DataFrame(surviving, columns=_SIGNAL_ROW_COLUMNS)
-            df["bar_time"] = pd.to_datetime(df["bar_time"], utc=True)
-            return df.sort_values("bar_time").reset_index(drop=True)
+            return self.generate_from_dataset(config, dataset)
 
         return generate
+
+    def validate_or_raise(self, config: TrialConfig) -> None:
+        """Raise when a DSS config references an unknown trigger or filter."""
+
+        trigger_name = config.trigger_name
+        if trigger_name not in self._trigger_catalog:
+            available = sorted(self._trigger_catalog)
+            raise ValueError(f"Unknown trigger_name {trigger_name!r}. Available: {available}")
+        for fn in config.filter_names:
+            if fn not in self._filter_catalog:
+                available = sorted(self._filter_catalog)
+                raise ValueError(f"Unknown filter_name {fn!r}. Available: {available}")
+
+    def generate_from_dataset(
+        self,
+        config: TrialConfig,
+        dataset: DiscoveryDataset,
+    ) -> pd.DataFrame:
+        """Generate one DSS signal frame from an already-built shared dataset."""
+
+        self.validate_or_raise(config)
+        trigger_name = config.trigger_name
+        trigger_factory = self._trigger_catalog[trigger_name]
+        trigger_fn = trigger_factory(config.trigger_params)
+
+        filter_fns = [
+            self._filter_catalog[fn](config.filter_params.get(fn, {})) for fn in config.filter_names
+        ]
+
+        rrr = config.rrr
+        atr_sl_mult = config.atr_sl_mult
+        filter_names_str = "+".join(config.filter_names) if config.filter_names else "no_filter"
+        rationale_base = f"{trigger_name} | {filter_names_str}"
+
+        confidence_bonus = min(
+            sum(_CONTEXT_CONFIDENCE_BONUS.get(fn, 0.0) for fn in config.filter_names),
+            _MAX_CONFIDENCE - _BASE_CONFIDENCE,
+        )
+        confidence = min(_BASE_CONFIDENCE + confidence_bonus, _MAX_CONFIDENCE)
+
+        try:
+            raw_events = trigger_fn(dataset)
+        except Exception:
+            logger.warning(
+                "Trigger %s raised during generate; returning empty DataFrame",
+                trigger_name,
+                exc_info=True,
+            )
+            return _empty_signal_df()
+
+        surviving: list[SignalRow] = []
+        for event in raw_events:
+            if not _apply_filters(event, dataset, filter_fns):
+                continue
+            atr = _atr_at(dataset.primary, event.event_time)
+            if atr is None or atr <= 0:
+                continue
+            entry = event.entry_reference_price
+            if event.side == "long":
+                stop = entry - atr * atr_sl_mult
+                tp = entry + (entry - stop) * rrr
+            else:
+                stop = entry + atr * atr_sl_mult
+                tp = entry - (stop - entry) * rrr
+            surviving.append(
+                {
+                    "bar_time": event.event_time,
+                    "symbol": event.symbol,
+                    "side": event.side,
+                    "confidence": confidence,
+                    "rationale": rationale_base,
+                    "entry_price": entry,
+                    "stop_price": stop,
+                    "tp_price": tp,
+                }
+            )
+
+        if not surviving:
+            return _empty_signal_df()
+
+        df = pd.DataFrame(surviving, columns=_SIGNAL_ROW_COLUMNS)
+        df["bar_time"] = pd.to_datetime(df["bar_time"], utc=True)
+        return df.sort_values("bar_time").reset_index(drop=True)
 
     def validate_config(self, config: TrialConfig) -> list[str]:
         """Return a list of validation errors (empty = valid)."""
@@ -197,7 +202,9 @@ def _apply_filters(
         try:
             result = filt(event, dataset)
         except Exception:
-            logger.debug("Filter raised for event %s; skipping event", event.event_id, exc_info=True)
+            logger.debug(
+                "Filter raised for event %s; skipping event", event.event_id, exc_info=True
+            )
             return False
         if not result.passed:
             return False

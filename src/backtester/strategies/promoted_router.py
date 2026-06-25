@@ -10,11 +10,15 @@ import optuna
 import pandas as pd
 
 from backtester.data_contracts import StrategyData, StrategyInput
-from backtester.regime_labels import build_rolling_label_dataset_from_trades
 from backtester.regime_router import (
     RouterCandidate,
     RouterSearchConfig,
     evaluate_frozen_router_candidate,
+)
+from backtester.router_runtime import (
+    ArchivedStrategySpec,
+    build_archived_signal_frames,
+    replay_selected_signals,
 )
 from backtester.strategy import BaseStrategy
 
@@ -28,16 +32,23 @@ class PromotedRouterStrategy(BaseStrategy):
         super().__init__(params)
         self._router_id = str(params["router_id"])
         self._fallback_strategy = str(params["fallback_strategy"])
+        raw_labels_path = params.get("labels_path")
+        if not raw_labels_path:
+            raise ValueError("labels_path is required")
+        self._labels_path = Path(str(raw_labels_path))
         raw_paths = params.get("strategy_paths", {})
         if not isinstance(raw_paths, dict) or not raw_paths:
             raise ValueError("strategy_paths must be a non-empty mapping")
         self._strategy_paths = {
-            str(strategy_id): Path(str(path))
-            for strategy_id, path in raw_paths.items()
+            str(strategy_id): Path(str(path)) for strategy_id, path in raw_paths.items()
         }
         if self._fallback_strategy not in self._strategy_paths:
             raise ValueError("fallback_strategy must exist in strategy_paths")
         router = params.get("router", {})
+        raw_validation_start = router.get("validation_start")
+        if not raw_validation_start:
+            raise ValueError("router.validation_start is required")
+        self._validation_start = pd.Timestamp(str(raw_validation_start), tz="UTC")
         self._candidate = RouterCandidate(
             router_id=self._router_id,
             scoring_method=str(router["scoring_method"]),
@@ -46,46 +57,41 @@ class PromotedRouterStrategy(BaseStrategy):
             knn_k=int(router.get("knn_k", 0)),
             state_subset=str(router.get("state_subset", "none")),
             state_match_mode=str(router.get("state_match_mode", "none")),
-            state_similarity_threshold=float(
-                router.get("state_similarity_threshold", 1.0)
-            ),
+            state_similarity_threshold=float(router.get("state_similarity_threshold", 1.0)),
             state_weight_profile=str(router.get("state_weight_profile", "equal")),
             ewm_halflife_days=int(router.get("ewm_halflife_days", 0)),
             min_samples=int(router.get("min_samples", 10)),
             min_hold_days=int(router.get("min_hold_days", 0)),
-            switch_margin_threshold=float(
-                router.get("switch_margin_threshold", 0.0)
-            ),
+            switch_margin_threshold=float(router.get("switch_margin_threshold", 0.0)),
         )
-        self._horizon_days = int(params.get("horizon_days", 30))
-        self._min_history_days = int(params.get("min_history_days", 90))
         self._min_available_strategies = int(
             params.get("min_available_strategies", len(self._strategy_paths))
         )
+        self._progress = bool(params.get("progress", True))
 
     def generate(self, data: StrategyInput) -> pd.DataFrame:
         """Generate signals from the currently selected nested strategy."""
 
         from backtester.cli_runner import (
             build_backtest_args,
-            build_strategy_instance,
             load_strategy_config,
-            run_backtest,
         )
 
         primary = data.primary if isinstance(data, StrategyData) else data
-        donor_trades: dict[str, pd.DataFrame] = {}
-        signal_frames: dict[str, pd.DataFrame] = {}
-        execution: dict[str, Any] = {}
+        labels = self._load_labels()
+        selected = self._selection_series(labels, primary.index)
+        selected_ids = set(selected.astype(str))
+        unknown = selected_ids - self._strategy_paths.keys()
+        if unknown:
+            names = ", ".join(sorted(unknown))
+            raise ValueError(f"Router selected unknown nested strategies: {names}")
 
-        for strategy_id, path in self._strategy_paths.items():
-            logger.info("Promoted router donor starting: %s", strategy_id)
+        specs: list[ArchivedStrategySpec] = []
+        for strategy_id in sorted(self._strategy_paths):
+            path = self._strategy_paths[strategy_id]
             cfg = load_strategy_config(str(path), logger)
             if cfg is None:
                 raise ValueError(f"Invalid nested strategy config: {path}")
-            strategy = build_strategy_instance(cfg.name, cfg.params, logger=logger)
-            if strategy is None:
-                raise ValueError(f"Could not build nested strategy: {path}")
             args = build_backtest_args(
                 cfg,
                 capital=10_000.0,
@@ -109,61 +115,38 @@ class PromotedRouterStrategy(BaseStrategy):
                 structural_sl_mode="cap",
                 min_tp_move_pct=0.004,
             )
-            donor = run_backtest(df=data, strategy=strategy, args=args)
-            donor_trades[strategy_id] = donor.trades
-            signal_frames[strategy_id] = donor.signals.reindex(primary.index)
-            execution[strategy_id] = args
-            logger.info(
-                "Promoted router donor complete: %s trades=%d",
-                strategy_id,
-                len(donor.trades),
+            specs.append(
+                ArchivedStrategySpec(
+                    strategy_id=strategy_id,
+                    name=cfg.name,
+                    params=dict(cfg.params),
+                    execution=args,
+                )
             )
 
-        labels = build_rolling_label_dataset_from_trades(
-            trades_by_strategy=donor_trades,
-            ohlcv=primary,
-            step="day",
-            horizon_days=self._horizon_days,
-            min_history_days=self._min_history_days,
+        logger.info("Promoted router shared feature/signal preparation starting")
+        signal_frames = build_archived_signal_frames(data=data, specs=specs)
+        logger.info("Promoted router chronological replay starting")
+        return replay_selected_signals(
+            primary=primary,
+            selected=selected,
+            frames=signal_frames,
+            specs={spec.strategy_id: spec for spec in specs},
+            router_id=self._router_id,
+            progress=self._progress,
         )
-        selected = self._selection_series(labels, primary.index)
-        output = primary.copy()
-        output["signal"] = 0
-        output["sl_price"] = 0.0
-        output["risk_percent"] = 1.0
-        output["rrr"] = 2.0
-        output["position_ttl_bars"] = 0
-        output["trail_activation_rrr"] = 0.0
-        output["trail_distance_atr"] = 0.0
-        output["exit_geometry"] = "sl_rrr"
-        output["tp_move_pct"] = float("nan")
-        output["structural_sl_mode"] = "cap"
-        output["min_tp_move_pct"] = 0.004
-        output["position_group"] = selected
-        output["drain_on_group_change"] = True
-        output["router_id"] = self._router_id
-        output["selected_strategy"] = selected
 
-        for strategy_id, frame in signal_frames.items():
-            mask = selected == strategy_id
-            if not mask.any():
-                continue
-            args = execution[strategy_id]
-            for column in ("signal", "sl_price", "entry_price"):
-                if column in frame.columns:
-                    output.loc[mask, column] = frame.loc[mask, column]
-            output.loc[mask, "risk_percent"] = args.risk_percent
-            output.loc[mask, "rrr"] = args.rrr
-            output.loc[mask, "position_ttl_bars"] = args.ttl
-            output.loc[mask, "trail_activation_rrr"] = args.trail_activation_rrr
-            output.loc[mask, "trail_distance_atr"] = args.trail_distance_atr
-            output.loc[mask, "exit_geometry"] = args.exit_geometry
-            output.loc[mask, "tp_move_pct"] = (
-                args.tp_move_pct if args.tp_move_pct is not None else float("nan")
+    def _load_labels(self) -> pd.DataFrame:
+        if not self._labels_path.is_file():
+            raise FileNotFoundError(
+                "Promoted router rolling-label state is missing: "
+                f"{self._labels_path}. Restore the persisted artifact; nested "
+                "backtests are forbidden inside the strategy."
             )
-            output.loc[mask, "structural_sl_mode"] = args.structural_sl_mode
-            output.loc[mask, "min_tp_move_pct"] = args.min_tp_move_pct
-        return output
+        labels = pd.read_csv(self._labels_path)
+        if labels.empty:
+            raise ValueError(f"Promoted router rolling-label state is empty: {self._labels_path}")
+        return labels
 
     def _selection_series(
         self,
@@ -172,12 +155,11 @@ class PromotedRouterStrategy(BaseStrategy):
     ) -> pd.Series:
         if labels.empty:
             return pd.Series(self._fallback_strategy, index=index, dtype="object")
-        first_asof = pd.to_datetime(labels["asof"], utc=True).min()
         predictions = evaluate_frozen_router_candidate(
             labels,
             candidate=self._candidate,
             config=RouterSearchConfig(
-                validation_start=first_asof.isoformat(),
+                validation_start=self._validation_start.isoformat(),
                 min_available_strategies=self._min_available_strategies,
                 catalog_version="v2",
                 max_configs=1,

@@ -4,16 +4,61 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-25 — Oracle-regret router search and exact shortlist completed
+
+**What:** searched 100,000 Router Catalog v2 proposals across four algorithms,
+deduplicated them by train selection timeline, validated every unique timeline
+through archived continuous execution, and exact-backtested the risk/return
+front through the normal composite OHLCV strategy contract.
+
+**Result:** 4,000 retained configurations collapsed to 813 unique timelines.
+All 813 routed candidates received `discard`; only 69 respected the 10%
+monthly drawdown ceiling. Exact 2025 results for the six finalists were:
+
+| Router | Return | Floor months | Worst mandate DD | Verdict |
+| --- | ---: | ---: | ---: | --- |
+| `router_v2_3997501` | +157.93% | 4/12 | -6.22% | discard |
+| `router_v2_2687609` | +123.64% | 4/12 | -9.76% | discard |
+| `router_v2_4332664` | +118.01% | 3/12 | -9.74% | discard |
+| `router_v2_4329131` | +115.86% | 3/12 | -4.80% | discard |
+| `router_v2_2687604` | +101.88% | 2/12 | -1.97% | discard |
+| `router_v2_3213199` | +97.54% | 3/12 | -6.70% | discard |
+
+The full-history 2022-2026 diagnostics produced +425.78% to +664.60%, but do
+not change the 2025 decision. After normalizing full-run 2025 PnL to capital
+at 2025-01-01, results match the standalone runs. Five candidates had identical
+2025 trade sequences; `router_v2_3213199` gained two boundary-hour trades only
+when prior candles were present.
+
+**Decision:** the oracle-regret proxy is adequate as a cheap screening tool
+but does not produce a mandate-qualified router over the current six-strategy
+universe. Do not promote or tune these router configurations further.
+
+**Acceptance:** exact artifacts exist under
+`results/router_exact_shortlist_2025/` and
+`results/router_exact_shortlist_2022_2026/`.
+
+**Links:** ADR-0045, `docs/regime_router_search.md`.
+
+---
+
 ## 2026-06-24 — Router 2687609 promoted into normal strategy contract
+
+**Correction (2026-06-25):** this completion claim was invalid. The first
+implementation launched nested backtests inside the strategy and violated the
+owner-required external-backtester boundary. The item is active again in
+`IN_PROGRESS.md`; the corrected strategy consumes persisted causal router
+state and never reconstructs it through nested backtests.
 
 **What:** implemented `router_v2_2687609` as registry strategy
 `promoted_router`, containing all six archived strategies and the frozen router
 configuration.
 
-**Result:** the strategy reconstructs completed donor labels internally and
-emits only the selected nested strategy's signals. Generic per-signal TTL,
-trailing, exit geometry, and position-group drain support were added to the
-standard `ExecutionSim`; no special final router backtester was introduced.
+**Original result (superseded):** the strategy reconstructed completed donor
+labels internally and emitted only the selected nested strategy's signals.
+That reconstruction violated the external-backtester boundary. Generic
+per-signal TTL, trailing, exit geometry, and position-group drain support
+remain valid.
 
 **Acceptance:** registry/config loading succeeds; 55 focused composition,
 execution, router, and label tests pass. Full-period validation is owner-run.

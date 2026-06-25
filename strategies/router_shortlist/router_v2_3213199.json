@@ -1,26 +1,26 @@
 {
   "name": "promoted_router",
-  "version": "router-v2-2687609-promoted-2026-06-24",
+  "version": "router-v2-3213199-exact-shortlist-2026-06-25",
   "params": {
-    "router_id": "router_v2_2687609",
+    "router_id": "router_v2_3213199",
     "progress": true,
     "labels_path": "results/regime_matrix_archive_sol_2022_2025_trades/rolling_labels_day_30d_router_ps/rolling_labels.csv",
     "fallback_strategy": "crypt_ensemble_h1_discovery_nr4_vwap_robust",
     "min_available_strategies": 6,
     "router": {
       "validation_start": "2024-01-01",
-      "scoring_method": "same_state_median_minus_dd",
+      "scoring_method": "same_state_mean_minus_dd",
       "lookback_days": 180,
       "feature_set": "pinescript",
       "knn_k": 0,
-      "state_subset": "trend_structure",
-      "state_match_mode": "exact",
-      "state_similarity_threshold": 1.0,
-      "state_weight_profile": "equal",
+      "state_subset": "momentum_structure",
+      "state_match_mode": "similarity",
+      "state_similarity_threshold": 0.65,
+      "state_weight_profile": "structure_heavy",
       "ewm_halflife_days": 0,
       "min_samples": 10,
-      "min_hold_days": 60,
-      "switch_margin_threshold": 0.5
+      "min_hold_days": 45,
+      "switch_margin_threshold": 0.0
     },
     "strategy_paths": {
       "crypt_ensemble_h1_discovery_nr4_vwap_robust": "strategies/archive/crypt_ensemble_h1_discovery_nr4_vwap_robust.json",

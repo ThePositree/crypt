@@ -494,6 +494,8 @@ search backends. Launch the four stochastic backends together with:
 UV_CACHE_DIR=/tmp/uv-cache \
 uv run backtester router-search-matrix \
     --labels results/regime_matrix_archive_sol_2022_2025_trades/rolling_labels_day_30d_router_ps/rolling_labels.csv \
+    --validation-start 2024-01-01 \
+    --validation-end 2025-01-01 \
     --max-configs 25000 \
     --output-root results/router_search_matrix_v2_25k
 ```
@@ -516,6 +518,20 @@ uv run backtester router-validate \
 The validator uses one active strategy, no cash state, shared capital/margin,
 and drain-before-switch execution. See `docs/routed_execution_validation.md`.
 
+Mass router search now ranks candidates by robust regret to the
+single-strategy oracle and writes `router_shortlist.csv`. Replay the complete
+shortlist before exact composite validation with:
+
+```bash
+uv run backtester router-validate-shortlist \
+    --predictions <search-output>/router_search_predictions.csv \
+    --shortlist <search-output>/router_shortlist.csv \
+    --matrix-dir results/regime_matrix_archive_sol_2022_2025_trades \
+    --from 2025-01-01 \
+    --to 2026-01-01 \
+    --output <search-output>/routed_shortlist
+```
+
 Promoted routers are implemented as normal strategies. `router_v2_2687609`
 uses all six archived strategies internally and runs through the standard
 backtester:
@@ -535,8 +551,10 @@ uv run backtester run \
     --output results/router_v2_2687609_full
 ```
 
-The strategy reconstructs completed donor labels inside `generate()`, selects
-one nested strategy, and emits its signals through the normal `ExecutionSim`.
+The strategy consumes persisted completed rolling labels, selects one nested
+strategy causally, and emits its signals through the normal external
+backtester. It never launches nested backtests. The labels artifact referenced
+by the strategy config must exist locally before this command is run.
 See `docs/strategies/promoted_router.md`.
 
 `railway.toml` currently starts the `island_qd` search worker, not the live

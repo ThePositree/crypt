@@ -13,6 +13,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
+from tqdm.auto import tqdm
 
 FEATURE_COLUMNS = [
     "ret_30d_pct",
@@ -42,9 +43,7 @@ STATE_SUBSETS: dict[str, tuple[str, ...]] = {
         "router_ps_wavetrend_zone",
         "router_ps_macd_phase",
     ),
-    "volatility": (
-        "router_ps_squeeze_on",
-    ),
+    "volatility": ("router_ps_squeeze_on",),
     "structure": (
         "router_ps_smc_internal_bias",
         "router_ps_smc_swing_bias",
@@ -128,6 +127,7 @@ class RouterSearchConfig:
     """Settings for single-strategy router catalog search."""
 
     validation_start: str
+    validation_end: str | None = None
     min_available_strategies: int = 3
     non_overlap_days: int = 30
     catalog_version: str = "v1"
@@ -155,6 +155,8 @@ class RouterSearchConfig:
     max_configs: int = 2_000
     summary_only: bool = False
     top_predictions: int = 20
+    progress: bool = False
+    progress_position: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,10 +215,10 @@ def evaluate_rolling_router_baselines(
         raise ValueError("rolling labels must contain return_<strategy_id> columns")
 
     validation_start = pd.Timestamp(config.validation_start, tz="UTC")
-    eligible = prepared[
-        (prepared["asof"] >= validation_start)
-        & (prepared["available_strategy_count"] >= config.min_available_strategies)
-    ].copy()
+    eligible_mask = (prepared["asof"] >= validation_start) & (
+        prepared["available_strategy_count"] >= config.min_available_strategies
+    )
+    eligible = prepared[eligible_mask].copy()
     if eligible.empty:
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
@@ -295,10 +297,12 @@ def evaluate_single_strategy_router_search(
         raise ValueError("rolling labels must contain return_<strategy_id> columns")
 
     validation_start = pd.Timestamp(config.validation_start, tz="UTC")
-    eligible = prepared[
-        (prepared["asof"] >= validation_start)
-        & (prepared["available_strategy_count"] >= config.min_available_strategies)
-    ].copy()
+    eligible_mask = (prepared["asof"] >= validation_start) & (
+        prepared["available_strategy_count"] >= config.min_available_strategies
+    )
+    if config.validation_end is not None:
+        eligible_mask &= prepared["asof"] < pd.Timestamp(config.validation_end, tz="UTC")
+    eligible = prepared[eligible_mask].copy()
     if eligible.empty:
         empty = pd.DataFrame()
         return empty, empty, empty, empty
@@ -321,7 +325,17 @@ def evaluate_single_strategy_router_search(
         utility_records: list[dict[str, Any]] = []
         candidate_by_id = {candidate.router_id: candidate for candidate in candidates}
         last_signature: tuple[Any, ...] | None = None
-        for candidate in candidates:
+        candidate_items = tqdm(
+            candidates,
+            total=len(candidates),
+            desc=f"router-search {config.algorithm}",
+            unit="router",
+            mininterval=1.0,
+            dynamic_ncols=True,
+            position=config.progress_position,
+            disable=not config.progress,
+        )
+        for candidate in candidate_items:
             signature = _candidate_score_signature(candidate)
             if signature != last_signature:
                 score_cache.clear()
@@ -343,14 +357,22 @@ def evaluate_single_strategy_router_search(
             utility_records.append(utility.iloc[0].to_dict())
 
         dense_summary = pd.DataFrame(dense_records)
-        utility = pd.DataFrame(utility_records).sort_values(
-            "utility_score", ascending=False
-        )
+        utility = pd.DataFrame(utility_records).sort_values("utility_score", ascending=False)
         top_ids = utility.head(config.top_predictions)["router"].tolist()
         score_cache.clear()
         top_frames = []
         top_offsets = []
-        for router_id in top_ids:
+        top_items = tqdm(
+            top_ids,
+            total=len(top_ids),
+            desc="router-search shortlist",
+            unit="router",
+            mininterval=1.0,
+            dynamic_ncols=True,
+            position=config.progress_position,
+            disable=not config.progress,
+        )
+        for router_id in top_items:
             frame = _evaluate_router_candidate(
                 prepared=prepared,
                 eligible=eligible,
@@ -362,19 +384,23 @@ def evaluate_single_strategy_router_search(
                 search_data=search_data,
             )
             top_frames.append(frame)
-            top_offsets.append(
-                _offset_sensitivity(frame, every_days=config.non_overlap_days)
-            )
-        predictions = (
-            pd.concat(top_frames, ignore_index=True) if top_frames else pd.DataFrame()
-        )
+            top_offsets.append(_offset_sensitivity(frame, every_days=config.non_overlap_days))
+        predictions = pd.concat(top_frames, ignore_index=True) if top_frames else pd.DataFrame()
         offset_sensitivity = (
-            pd.concat(top_offsets, ignore_index=True)
-            if top_offsets
-            else pd.DataFrame()
+            pd.concat(top_offsets, ignore_index=True) if top_offsets else pd.DataFrame()
         )
         return predictions, dense_summary, offset_sensitivity, utility
 
+    candidate_items = tqdm(
+        candidates,
+        total=len(candidates),
+        desc=f"router-search {config.algorithm}",
+        unit="router",
+        mininterval=1.0,
+        dynamic_ncols=True,
+        position=config.progress_position,
+        disable=not config.progress,
+    )
     frames = [
         _evaluate_router_candidate(
             prepared=prepared,
@@ -386,7 +412,7 @@ def evaluate_single_strategy_router_search(
             feature_cache=feature_cache,
             search_data=search_data,
         )
-        for candidate in candidates
+        for candidate in candidate_items
     ]
     predictions = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
     if predictions.empty:
@@ -419,10 +445,12 @@ def evaluate_frozen_router_candidate(
     if not strategy_cols:
         raise ValueError("rolling labels must contain return_<strategy_id> columns")
     validation_start = pd.Timestamp(config.validation_start, tz="UTC")
-    eligible = prepared[
-        (prepared["asof"] >= validation_start)
-        & (prepared["available_strategy_count"] >= config.min_available_strategies)
-    ].copy()
+    eligible_mask = (prepared["asof"] >= validation_start) & (
+        prepared["available_strategy_count"] >= config.min_available_strategies
+    )
+    if config.validation_end is not None:
+        eligible_mask &= prepared["asof"] < pd.Timestamp(config.validation_end, tz="UTC")
+    eligible = prepared[eligible_mask].copy()
     if eligible.empty:
         return pd.DataFrame()
     return _evaluate_router_candidate(
@@ -490,7 +518,16 @@ def _reservoir_candidates(
 ) -> list[RouterCandidate]:
     rng = random.Random(config.seed)
     reservoir: list[RouterCandidate] = []
-    for index, candidate in enumerate(_router_candidates(config, prepared)):
+    candidate_items = tqdm(
+        _router_candidates(config, prepared),
+        desc=f"router-search {config.algorithm} catalog",
+        unit="config",
+        mininterval=1.0,
+        dynamic_ncols=True,
+        position=config.progress_position,
+        disable=not config.progress,
+    )
+    for index, candidate in enumerate(candidate_items):
         if index < config.config_offset:
             continue
         seen = index - config.config_offset
@@ -503,15 +540,22 @@ def _reservoir_candidates(
     return reservoir
 
 
-def _island_candidates(
-    config: RouterSearchConfig, prepared: pd.DataFrame
-) -> list[RouterCandidate]:
+def _island_candidates(config: RouterSearchConfig, prepared: pd.DataFrame) -> list[RouterCandidate]:
     candidates = _router_candidates(config, prepared)
     islands: dict[str, list[RouterCandidate]] = {}
     seen_by_island: dict[str, int] = {}
     rng_by_island: dict[str, random.Random] = {}
     target_per_island = max(1, math.ceil(config.max_configs / 32))
-    for index, candidate in enumerate(candidates):
+    candidate_items = tqdm(
+        candidates,
+        desc="router-search island_qd catalog",
+        unit="config",
+        mininterval=1.0,
+        dynamic_ncols=True,
+        position=config.progress_position,
+        disable=not config.progress,
+    )
+    for index, candidate in enumerate(candidate_items):
         if index < config.config_offset:
             continue
         island = _router_island(candidate)
@@ -547,9 +591,7 @@ def _island_candidates(
 
 def _router_island(candidate: RouterCandidate) -> str:
     family = (
-        candidate.state_subset
-        if candidate.state_subset != "none"
-        else candidate.scoring_method
+        candidate.state_subset if candidate.state_subset != "none" else candidate.scoring_method
     )
     return f"{family}|{candidate.lookback_days}|{candidate.state_match_mode}"
 
@@ -570,8 +612,8 @@ def _hyperband_candidates(
 ) -> list[RouterCandidate]:
     survivors = pool
     for stride, keep_fraction in ((14, 0.25), (7, 0.5), (3, 1.0)):
-        target = budget if keep_fraction == 1.0 else max(
-            budget, int(len(survivors) * keep_fraction)
+        target = (
+            budget if keep_fraction == 1.0 else max(budget, int(len(survivors) * keep_fraction))
         )
         scored = _proxy_score_candidates(
             candidates=survivors,
@@ -580,10 +622,10 @@ def _hyperband_candidates(
             strategy_cols=strategy_cols,
             config=config,
             search_data=search_data,
+            progress=config.progress,
+            phase=f"router-search hyperband stride={stride}",
         )
-        survivors = [
-            candidate for candidate, _score in scored[:target]
-        ]
+        survivors = [candidate for candidate, _score in scored[:target]]
         if len(survivors) <= budget:
             break
     return survivors[:budget]
@@ -611,6 +653,8 @@ def _smac_candidates(
         strategy_cols=strategy_cols,
         config=config,
         search_data=search_data,
+        progress=config.progress,
+        phase="router-search smac bootstrap",
     )
     observed_ids = {candidate.router_id for candidate, _score in observations}
     remaining = [candidate for candidate in pool if candidate.router_id not in observed_ids]
@@ -651,13 +695,13 @@ def _smac_candidates(
             strategy_cols=strategy_cols,
             config=config,
             search_data=search_data,
+            progress=config.progress,
+            phase=f"router-search smac selected={len(selected)}/{budget}",
         )
         observations.extend(new_observations)
         selected.extend(chosen)
         chosen_ids = {candidate.router_id for candidate in chosen}
-        remaining = [
-            candidate for candidate in remaining if candidate.router_id not in chosen_ids
-        ]
+        remaining = [candidate for candidate in remaining if candidate.router_id not in chosen_ids]
     return selected[:budget]
 
 
@@ -669,11 +713,24 @@ def _proxy_score_candidates(
     strategy_cols: list[str],
     config: RouterSearchConfig,
     search_data: RouterSearchData,
+    progress: bool,
+    phase: str,
 ) -> list[tuple[RouterCandidate, float]]:
     score_cache: dict[tuple[Any, ...], tuple[dict[str, float], dict[str, int]]] = {}
     feature_cache: dict[str, FeatureMatrix] = {}
     scored = []
-    for candidate in candidates:
+    candidate_items = tqdm(
+        candidates,
+        total=len(candidates),
+        desc=phase,
+        unit="router",
+        mininterval=1.0,
+        dynamic_ncols=True,
+        position=config.progress_position,
+        disable=not progress,
+        leave=False,
+    )
+    for candidate in candidate_items:
         frame = _evaluate_router_candidate(
             prepared=prepared,
             eligible=eligible,
@@ -764,6 +821,11 @@ def write_single_strategy_router_search_report(
     dense_summary.to_csv(output / "router_search_dense_scores.csv", index=False)
     offset_sensitivity.to_csv(output / "router_offset_sensitivity.csv", index=False)
     utility.to_csv(output / "router_utility_scores.csv", index=False)
+    _router_shortlist(
+        dense_summary=dense_summary,
+        utility=utility,
+        limit=config.top_predictions,
+    ).to_csv(output / "router_shortlist.csv", index=False)
     _write_router_search_report(
         output / "router_search_report.md",
         dense_summary=dense_summary,
@@ -793,7 +855,9 @@ def _router_candidates_v1(
     counter = 0
     for lookback in config.lookback_days:
         for method in config.scoring_methods:
-            feature_sets = config.feature_sets if method in feature_methods | state_methods else ("none",)
+            feature_sets = (
+                config.feature_sets if method in feature_methods | state_methods else ("none",)
+            )
             k_values = config.knn_k if method in feature_methods else (0,)
             for feature_set in feature_sets:
                 if method in feature_methods and not _feature_columns(labels, feature_set):
@@ -1205,15 +1269,9 @@ def _state_columns(df: pd.DataFrame, feature_set: str) -> list[str]:
     return [column for column in candidates if column in df.columns]
 
 
-def _candidate_state_columns(
-    df: pd.DataFrame, candidate: RouterCandidate
-) -> list[str]:
+def _candidate_state_columns(df: pd.DataFrame, candidate: RouterCandidate) -> list[str]:
     if candidate.state_subset in STATE_SUBSETS:
-        return [
-            column
-            for column in STATE_SUBSETS[candidate.state_subset]
-            if column in df.columns
-        ]
+        return [column for column in STATE_SUBSETS[candidate.state_subset] if column in df.columns]
     return _state_columns(df, candidate.feature_set)
 
 
@@ -1361,9 +1419,7 @@ def _state_column_weight(column: str, profile: str) -> float:
         token in column for token in ("supertrend", "di_side", "adx")
     ):
         return 3.0
-    if profile == "momentum_heavy" and any(
-        token in column for token in ("wavetrend", "macd")
-    ):
+    if profile == "momentum_heavy" and any(token in column for token in ("wavetrend", "macd")):
         return 3.0
     if profile == "structure_heavy" and "smc_" in column:
         return 3.0
@@ -1415,6 +1471,13 @@ def _offset_sensitivity(predictions: pd.DataFrame, *, every_days: int) -> pd.Dat
                         "offset_days": offset,
                         "periods": 0,
                         "total_return_pct": 0.0,
+                        "oracle_total_return_pct": 0.0,
+                        "oracle_gap_pct": 0.0,
+                        "oracle_capture_ratio": 1.0,
+                        "mean_regret_pct": 0.0,
+                        "p90_regret_pct": 0.0,
+                        "worst_regret_pct": 0.0,
+                        "oracle_hit_rate": 0.0,
                         "max_drawdown_pct": 0.0,
                         "negative_periods": 0,
                         "switches": 0,
@@ -1422,22 +1485,45 @@ def _offset_sensitivity(predictions: pd.DataFrame, *, every_days: int) -> pd.Dat
                 )
                 continue
             returns = pd.to_numeric(selected["selected_return_pct"], errors="coerce")
+            oracle_returns = pd.to_numeric(selected["best_return_pct"], errors="coerce")
+            regret = pd.to_numeric(selected["regret_pct"], errors="coerce")
             equity = _compound_returns(returns)
+            oracle_equity = _compound_returns(oracle_returns)
+            router_total_return = (
+                (float(equity.iloc[-1]) / 10_000.0 - 1.0) * 100.0 if len(equity) else 0.0
+            )
+            oracle_total_return = (
+                (float(oracle_equity.iloc[-1]) / 10_000.0 - 1.0) * 100.0
+                if len(oracle_equity)
+                else 0.0
+            )
+            oracle_growth = 1.0 + oracle_total_return / 100.0
+            router_growth = 1.0 + router_total_return / 100.0
             rows.append(
                 {
                     "router": router,
                     "offset_days": offset,
                     "periods": len(selected),
-                    "total_return_pct": (
-                        (float(equity.iloc[-1]) / 10_000.0 - 1.0) * 100.0
-                        if len(equity)
-                        else 0.0
+                    "total_return_pct": router_total_return,
+                    "oracle_total_return_pct": oracle_total_return,
+                    "oracle_gap_pct": oracle_total_return - router_total_return,
+                    "oracle_capture_ratio": (
+                        router_growth / oracle_growth if oracle_growth > 0 else math.nan
+                    ),
+                    "mean_regret_pct": float(regret.mean()),
+                    "p90_regret_pct": float(regret.quantile(0.90)),
+                    "worst_regret_pct": float(regret.max()),
+                    "oracle_hit_rate": float(
+                        selected["selected_strategy"].eq(selected["best_strategy"]).mean()
                     ),
                     "max_drawdown_pct": _max_drawdown_pct(equity),
                     "negative_periods": int((returns < 0).sum()),
-                    "switches": int(selected["selected_strategy"].ne(
-                        selected["selected_strategy"].shift()
-                    ).sum() - 1)
+                    "switches": int(
+                        selected["selected_strategy"]
+                        .ne(selected["selected_strategy"].shift())
+                        .sum()
+                        - 1
+                    )
                     if len(selected)
                     else 0,
                 }
@@ -1452,20 +1538,36 @@ def _router_utility_summary(offset_sensitivity: pd.DataFrame) -> pd.DataFrame:
         drawdowns = pd.to_numeric(group["max_drawdown_pct"], errors="coerce")
         negative = pd.to_numeric(group["negative_periods"], errors="coerce")
         switches = pd.to_numeric(group["switches"], errors="coerce")
+        oracle_returns = pd.to_numeric(group["oracle_total_return_pct"], errors="coerce")
+        oracle_gaps = pd.to_numeric(group["oracle_gap_pct"], errors="coerce")
+        capture = pd.to_numeric(group["oracle_capture_ratio"], errors="coerce")
+        mean_regret = pd.to_numeric(group["mean_regret_pct"], errors="coerce")
+        p90_regret = pd.to_numeric(group["p90_regret_pct"], errors="coerce")
+        worst_regret = pd.to_numeric(group["worst_regret_pct"], errors="coerce")
+        hit_rate = pd.to_numeric(group["oracle_hit_rate"], errors="coerce")
         return_iqr = float(returns.quantile(0.75) - returns.quantile(0.25))
         worst_dd = float(drawdowns.min())
         utility = (
-            float(returns.median())
-            - abs(worst_dd) * 2.0
-            - float(negative.median()) * 1.0
-            - float(switches.median()) * 0.25
-            - return_iqr * 0.25
+            -float(mean_regret.median())
+            - float(mean_regret.quantile(0.90))
+            - float(worst_regret.median()) * 0.25
+            - abs(worst_dd) * 0.10
+            - float(switches.median()) * 0.10
         )
         first = group.iloc[0]
         rows.append(
             {
                 "router": router,
                 "utility_score": utility,
+                "scoring_objective": "oracle_regret_v1",
+                "median_mean_regret_pct": float(mean_regret.median()),
+                "p90_mean_regret_pct": float(mean_regret.quantile(0.90)),
+                "median_p90_regret_pct": float(p90_regret.median()),
+                "median_worst_regret_pct": float(worst_regret.median()),
+                "median_oracle_hit_rate": float(hit_rate.median()),
+                "median_oracle_capture_ratio": float(capture.median()),
+                "median_oracle_total_return_pct": float(oracle_returns.median()),
+                "median_oracle_gap_pct": float(oracle_gaps.median()),
                 "median_total_return_pct": float(returns.median()),
                 "min_total_return_pct": float(returns.min()),
                 "max_total_return_pct": float(returns.max()),
@@ -1480,6 +1582,21 @@ def _router_utility_summary(offset_sensitivity: pd.DataFrame) -> pd.DataFrame:
             }
         )
     return pd.DataFrame(rows).sort_values("utility_score", ascending=False)
+
+
+def _router_shortlist(
+    *,
+    dense_summary: pd.DataFrame,
+    utility: pd.DataFrame,
+    limit: int,
+) -> pd.DataFrame:
+    """Merge top oracle-regret scores with complete frozen router parameters."""
+
+    if limit <= 0 or utility.empty or dense_summary.empty:
+        return pd.DataFrame()
+    top = utility.head(limit).copy()
+    params = dense_summary.drop_duplicates("router", keep="first")
+    return top.merge(params, on="router", how="left", suffixes=("", "_dense"))
 
 
 def _returns_max_drawdown_pct(returns: pd.Series) -> float:
@@ -1649,7 +1766,9 @@ def _score_weights(name: str, row: pd.Series, weights: dict[str, float]) -> dict
         "best_return_pct": best_return,
         "selected_return_pct": selected_return,
         "regret_pct": best_return - selected_return,
-        "hit_best": bool(normalized and max(normalized, key=normalized.get) == row["best_strategy"]),
+        "hit_best": bool(
+            normalized and max(normalized, key=normalized.get) == row["best_strategy"]
+        ),
         "negative_selected": selected_return < 0,
         "weights": ";".join(selected),
     }
@@ -1820,6 +1939,7 @@ def _write_router_search_report(
         "between strategies and never choose cash.",
         "",
         f"Validation start: **{config.validation_start}**",
+        f"Validation end: **{config.validation_end or 'open'}**",
         f"Minimum available strategies: **{config.min_available_strategies}**",
         f"Catalog version: **{config.catalog_version}**",
         f"Search algorithm: **{config.algorithm}**",
@@ -1829,8 +1949,8 @@ def _write_router_search_report(
         f"Max configs evaluated: **{config.max_configs}**",
         f"Summary-only mode: **{config.summary_only}**",
         "",
-        "Utility score = median offset return - 2x worst drawdown - negative",
-        "period penalty - switch penalty - offset instability penalty.",
+        "Utility primarily minimizes robust regret to the single-strategy",
+        "oracle. Drawdown and switch count are secondary penalties.",
         "",
         "## Top Utility Routers",
         "",
@@ -1839,12 +1959,15 @@ def _write_router_search_report(
             [
                 "router",
                 "utility_score",
+                "median_mean_regret_pct",
+                "p90_mean_regret_pct",
+                "median_worst_regret_pct",
+                "median_oracle_hit_rate",
+                "median_oracle_capture_ratio",
+                "median_oracle_gap_pct",
                 "median_total_return_pct",
-                "min_total_return_pct",
                 "worst_max_drawdown_pct",
-                "median_negative_periods",
                 "median_switches",
-                "return_iqr_pct",
             ],
         ),
         "",
@@ -1878,9 +2001,12 @@ def _write_router_search_report(
             _router_utility_summary(offset_top),
             [
                 "router",
+                "median_mean_regret_pct",
+                "p90_mean_regret_pct",
+                "median_oracle_hit_rate",
+                "median_oracle_capture_ratio",
                 "median_total_return_pct",
                 "min_total_return_pct",
-                "max_total_return_pct",
                 "worst_max_drawdown_pct",
                 "median_switches",
             ],
