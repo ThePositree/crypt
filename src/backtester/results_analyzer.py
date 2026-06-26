@@ -235,7 +235,9 @@ class ResultsAnalyzer:
 
     @staticmethod
     def _compute_monthly_returns_pct(
-        equity_curve: pd.Series, initial_capital: float
+        equity_curve: pd.Series,
+        initial_capital: float,
+        trades_df: pd.DataFrame | None = None,
     ) -> dict[str, dict[str, float]]:
         """Compute monthly returns dict in the current output format."""
         monthly_capital = equity_curve.resample("ME").last()
@@ -245,11 +247,29 @@ class ResultsAnalyzer:
                 (monthly_capital.iloc[0] - initial_capital) / initial_capital * 100
             )
         monthly_returns_abs = (monthly_capital - initial_capital) / initial_capital * 100
+        monthly_withdrawals: dict[str, float] = {}
+        if trades_df is not None and "capital_sweep_amount" in trades_df.columns:
+            sweep = pd.to_numeric(trades_df["capital_sweep_amount"], errors="coerce").fillna(0.0)
+            sweep_df = trades_df.loc[sweep.gt(0), ["exit_time"]].copy()
+            if not sweep_df.empty:
+                sweep_df["withdrawn"] = sweep.loc[sweep.gt(0)].values
+                if "capital_sweep_month" in trades_df.columns:
+                    sweep_month = trades_df.loc[sweep.gt(0), "capital_sweep_month"]
+                    sweep_df["month"] = sweep_month.where(
+                        sweep_month.notna(),
+                        pd.to_datetime(sweep_df["exit_time"]).dt.strftime("%Y-%m"),
+                    )
+                else:
+                    sweep_df["month"] = pd.to_datetime(sweep_df["exit_time"]).dt.strftime("%Y-%m")
+                monthly_withdrawals = (
+                    sweep_df.groupby("month")["withdrawn"].sum().round(2).to_dict()
+                )
 
-        return {
+        rows = {
             str(period): {
                 "ret": round(float(ret), 2),
                 "ret_abs": round(float(ret_abs), 2),
+                "withdrawn": round(float(monthly_withdrawals.get(str(period), 0.0)), 2),
             }
             for period, ret, ret_abs in zip(
                 monthly_returns.index.strftime("%Y-%m"),
@@ -258,6 +278,16 @@ class ResultsAnalyzer:
                 strict=False,
             )
         }
+        for period, withdrawn in monthly_withdrawals.items():
+            rows.setdefault(
+                str(period),
+                {
+                    "ret": 0.0,
+                    "ret_abs": 0.0,
+                    "withdrawn": round(float(withdrawn), 2),
+                },
+            )
+        return dict(sorted(rows.items()))
 
     @classmethod
     def _basic_metrics_for_subset(cls, sub_df: pd.DataFrame) -> dict[str, Any]:
@@ -370,7 +400,24 @@ class ResultsAnalyzer:
             sharpe_ratio = self._compute_sharpe_ratio(
                 equity_curve, initial_capital, risk_free_rate_annual
             )
-            monthly_returns_pct = self._compute_monthly_returns_pct(equity_curve, initial_capital)
+            monthly_returns_pct = self._compute_monthly_returns_pct(
+                equity_curve,
+                initial_capital,
+                closed_df,
+            )
+        banked_profit = 0.0
+        capital_sweep_total = 0.0
+        if "banked_profit_after" in df.columns:
+            banked_values = pd.to_numeric(df["banked_profit_after"], errors="coerce").dropna()
+            if len(banked_values):
+                banked_profit = float(banked_values.iloc[-1])
+        if "capital_sweep_amount" in df.columns:
+            capital_sweep_total = float(
+                pd.to_numeric(df["capital_sweep_amount"], errors="coerce").fillna(0.0).sum()
+            )
+        total_account_value = final_capital + banked_profit
+        if banked_profit:
+            total_return_pct = ((total_account_value - initial_capital) / initial_capital) * 100
         avg_holding_bars = float(closed_df["holding_bars"].mean()) if not closed_df.empty else 0.0
         long_metrics, short_metrics = self._compute_side_metrics(closed_df)
 
@@ -397,6 +444,9 @@ class ResultsAnalyzer:
             "exit_distribution": exit_counts,
             "initial_capital": initial_capital,
             "final_capital": round(final_capital, 2),
+            "banked_profit": round(banked_profit, 2),
+            "capital_sweep_total": round(capital_sweep_total, 2),
+            "total_account_value": round(total_account_value, 2),
             "monthly_returns_pct": monthly_returns_pct,
             "long_metrics": long_metrics,
             "short_metrics": short_metrics,
@@ -432,6 +482,9 @@ class ResultsAnalyzer:
         sys.stdout.write("=" * 50 + "\n")
         sys.stdout.write(f"Initial Capital:    ${m['initial_capital']}\n")
         sys.stdout.write(f"Final Capital:      ${m['final_capital']}\n")
+        if m.get("banked_profit", 0):
+            sys.stdout.write(f"Banked Profit:      ${m['banked_profit']}\n")
+            sys.stdout.write(f"Total Account:      ${m['total_account_value']}\n")
         sys.stdout.write(f"Total Return:       {m['total_return_pct']}%\n")
         sys.stdout.write(f"Total PnL:          ${m['total_pnl_abs']}\n")
         sys.stdout.write(f"Win Rate:           {m['win_rate']}%\n")
@@ -477,13 +530,18 @@ class ResultsAnalyzer:
         sys.stdout.write("📅 Monthly Returns (%)\n")
         sys.stdout.write("-" * 40 + "\n")
         if m["monthly_returns_pct"]:
-            sys.stdout.write(f"{'Month':<10} {'Return (%)':<15} {'Return ABS (%)':<10}\n")
-            sys.stdout.write("-" * 40 + "\n")
+            sys.stdout.write(
+                f"{'Month':<10} {'Return (%)':<15} {'Return ABS (%)':<15} {'Withdrawn ($)':<15}\n"
+            )
+            sys.stdout.write("-" * 60 + "\n")
             for month, rets in m["monthly_returns_pct"].items():
                 ret, ret_abs = rets["ret"], rets["ret_abs"]
+                withdrawn = rets.get("withdrawn", 0.0)
                 sign = "+" if ret >= 0 else ""
                 sign_abs = "+" if ret_abs >= 0 else ""
-                sys.stdout.write(f"{month:<10} {sign}{ret:<14} {sign_abs}{ret_abs:<9}\n")
+                sys.stdout.write(
+                    f"{month:<10} {sign}{ret:<14} {sign_abs}{ret_abs:<14} ${withdrawn:<14}\n"
+                )
         else:
             sys.stdout.write("  No data\n")
 

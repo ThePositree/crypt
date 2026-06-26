@@ -98,6 +98,9 @@ class BacktestArgs:
         Optional start hour (0-23) for trading window; entries only when hour >= this.
     trading_end:
         Optional end hour (0-24) for trading window; entries only when hour < this.
+    capital_sweep:
+        Capital withdrawal mode. ``monthly_profit`` withdraws realized capital
+        above the initial capital at month boundaries.
     """
 
     capital: float
@@ -116,6 +119,7 @@ class BacktestArgs:
     max_daily_loss: float | None = None
     trading_begin: int | None = None
     trading_end: int | None = None
+    capital_sweep: str = "none"
     exit_geometry: str = "sl_rrr"
     tp_move_pct: float | None = None
     structural_sl_mode: str = "cap"
@@ -225,6 +229,7 @@ _BACKTEST_ARG_KEYS = frozenset(
         "max_daily_loss",
         "trading_begin",
         "trading_end",
+        "capital_sweep",
         "exit_geometry",
         "tp_move_pct",
         "structural_sl_mode",
@@ -509,6 +514,7 @@ def backtest_run_kwargs(args: BacktestArgs) -> dict[str, Any]:
         "max_daily_loss": args.max_daily_loss,
         "trading_begin": args.trading_begin,
         "trading_end": args.trading_end,
+        "capital_sweep": args.capital_sweep,
         "exit_geometry": args.exit_geometry,
         "tp_move_pct": args.tp_move_pct,
         "structural_sl_mode": args.structural_sl_mode,

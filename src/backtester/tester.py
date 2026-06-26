@@ -129,6 +129,7 @@ class Backtester:
         max_daily_loss: float | None = None,
         trading_begin: int | None = None,
         trading_end: int | None = None,
+        capital_sweep: str = "none",
         exit_geometry: str = "sl_rrr",
         tp_move_pct: float | None = None,
         structural_sl_mode: str = "cap",
@@ -230,6 +231,7 @@ class Backtester:
             ("Max Allowed Leverage", max_allowed_leverage),
             ("Max Allowed Margin", max_allowed_margin),
             ("Risk Base Period", risk_base_period),
+            ("Capital Sweep", capital_sweep),
         ]:
             self._logger.info("  %s: %s", param, value)
         if max_daily_profit is not None:
@@ -259,6 +261,7 @@ class Backtester:
             max_daily_loss=max_daily_loss,
             trading_begin=trading_begin,
             trading_end=trading_end,
+            capital_sweep=capital_sweep,
             exit_geometry=exit_geometry,
             tp_move_pct=tp_move_pct,
             structural_sl_mode=structural_sl_mode,
@@ -280,10 +283,11 @@ class Backtester:
                 strategy_input = attach_execution_context(self.df.copy(), execution_context)
             signaled_df = self.strategy(strategy_input)
 
-            if "signal" not in signaled_df.columns:
+            has_signal_events = "signal_events" in signaled_df.columns
+            if "signal" not in signaled_df.columns and not has_signal_events:
                 self._logger.error("🚨 Strategy did not generate 'signal' column.")
                 trades_df = pd.DataFrame()
-            elif "sl_price" not in signaled_df.columns:
+            elif "sl_price" not in signaled_df.columns and not has_signal_events:
                 self._logger.error("🚨 Strategy did not generate 'sl_price' column.")
                 trades_df = pd.DataFrame()
             else:

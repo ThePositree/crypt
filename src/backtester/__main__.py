@@ -46,6 +46,10 @@ from backtester.fixed_candidate_report import (  # noqa: E402
     run_fixed_candidate_comparison,
     run_signal_quality_diagnostics,
 )
+from backtester.negative_oracle_research import (  # noqa: E402
+    NegativeOracleConfig,
+    run_negative_oracle_research,
+)
 from backtester.regime_labels import (  # noqa: E402
     build_oracle_label_dataset,
     build_rolling_label_dataset,
@@ -104,6 +108,11 @@ from backtester.strategy_discovery.triggers import trigger_catalog  # noqa: E402
 from backtester.trade_chart_report import (  # noqa: E402
     TradeChartReportConfig,
     build_trade_chart_report,
+)
+from backtester.trade_filter_research import (  # noqa: E402
+    FilterSearchConfig,
+    SplitConfig,
+    run_trade_filter_research,
 )
 from backtester.walk_forward import (  # noqa: E402
     generate_windows,
@@ -225,6 +234,15 @@ def cli() -> None:
     type=click.Choice(["trade", "weekly", "monthly", "backtest"], case_sensitive=False),
     default="trade",
     help="Capital window used for risk sizing.",
+)
+@click.option(
+    "--capital-sweep",
+    type=click.Choice(["none", "monthly_profit"], case_sensitive=False),
+    default="none",
+    help=(
+        "Capital withdrawal mode. monthly_profit banks realized profit "
+        "above initial capital at month boundaries."
+    ),
 )
 @click.option(
     "--max-daily-profit",
@@ -360,6 +378,7 @@ def run(
     create_dashboard: bool,
     max_allowed_margin: float,
     risk_base_period: str,
+    capital_sweep: str,
     max_daily_profit: float | None,
     max_daily_loss: float | None,
     trading_begin: int | None,
@@ -451,6 +470,7 @@ def run(
         max_allowed_leverage=max_allowed_leverage,
         max_allowed_margin=max_allowed_margin,
         risk_base_period=risk_base_period,
+        capital_sweep=capital_sweep,
         max_daily_profit=max_daily_profit,
         max_daily_loss=max_daily_loss,
         trading_begin=trading_begin,
@@ -2570,6 +2590,207 @@ def trade_chart(
         logger.error("❌ %s", e)
         return
     logger.info("Trade chart report saved to: %s", output_path)
+
+
+@cli.command("trade-filter-research")
+@click.option(
+    "--trades",
+    "trades_paths",
+    multiple=True,
+    required=True,
+    help="Path to trades.csv or a completed run directory containing trades.csv. Repeatable.",
+)
+@click.option("--output", required=True, help="Output directory for the research report.")
+@click.option(
+    "--ohlcv",
+    "ohlcv_path",
+    default=None,
+    help=(
+        "Optional OHLCV CSV/parquet path used with --include-catalog-features. "
+        "A completed run directory usually contains ohlcv.csv."
+    ),
+)
+@click.option(
+    "--group-by",
+    default=None,
+    help=(
+        "Optional trade column for separate filter searches, for example "
+        "selected_strategy."
+    ),
+)
+@click.option("--capital", type=float, default=10_000.0, show_default=True)
+@click.option("--train-start", default="2022-01-01", show_default=True)
+@click.option("--validation-start", default="2024-01-01", show_default=True)
+@click.option("--stress-start", default="2025-01-01", show_default=True)
+@click.option(
+    "--stress-end",
+    default=None,
+    help="Exclusive stress end date. Defaults to one day after the latest supplied trade.",
+)
+@click.option("--min-train-trades", type=int, default=30, show_default=True)
+@click.option("--max-categories", type=int, default=20, show_default=True)
+@click.option("--top-n", type=int, default=50, show_default=True)
+@click.option(
+    "--max-pair-components",
+    type=int,
+    default=30,
+    show_default=True,
+    help="How many best single rules to combine into pair rules.",
+)
+@click.option(
+    "--max-pair-rules",
+    type=int,
+    default=500,
+    show_default=True,
+    help="Maximum number of two-rule combinations to evaluate.",
+)
+@click.option(
+    "--include-catalog-features",
+    is_flag=True,
+    help=(
+        "Attach closed-candle discovery/catalog features at entry time and test them "
+        "as take/skip filters."
+    ),
+)
+@click.option(
+    "--include-portfolio-state-features",
+    is_flag=True,
+    help=(
+        "Include size/capital/margin/open-position fields. Off by default because "
+        "they can proxy time and equity-curve state."
+    ),
+)
+@click.option("--no-progress", is_flag=True, help="Disable progress bar output.")
+def trade_filter_research(
+    trades_paths: tuple[str, ...],
+    output: str,
+    ohlcv_path: str | None,
+    group_by: str | None,
+    capital: float,
+    train_start: str,
+    validation_start: str,
+    stress_start: str,
+    stress_end: str | None,
+    min_train_trades: int,
+    max_categories: int,
+    top_n: int,
+    max_pair_components: int,
+    max_pair_rules: int,
+    include_catalog_features: bool,
+    include_portfolio_state_features: bool,
+    no_progress: bool,
+) -> None:
+    """Search entry-known take/skip filters over existing trade artifacts."""
+    resolved_trades = tuple(_resolve_trades_path(Path(path)) for path in trades_paths)
+    try:
+        result = run_trade_filter_research(
+            FilterSearchConfig(
+                trades_paths=resolved_trades,
+                output_dir=Path(output),
+                ohlcv_path=Path(ohlcv_path) if ohlcv_path is not None else None,
+                group_by=group_by,
+                initial_capital=capital,
+                splits=SplitConfig(
+                    train_start=train_start,
+                    validation_start=validation_start,
+                    stress_start=stress_start,
+                    stress_end=stress_end,
+                ),
+                min_train_trades=min_train_trades,
+                max_categories=max_categories,
+                top_n=top_n,
+                max_pair_components=max_pair_components,
+                max_pair_rules=max_pair_rules,
+                include_catalog_features=include_catalog_features,
+                include_portfolio_state_features=include_portfolio_state_features,
+                progress=not no_progress,
+            )
+        )
+    except (FileNotFoundError, ValueError) as e:
+        raise click.ClickException(str(e)) from e
+
+    click.echo(f"Trade filter research saved to: {result.output_dir}")
+    click.echo(f"Rules tested: {len(result.filter_candidates)}")
+    if not result.top_filters.empty:
+        best = result.top_filters.iloc[0]
+        click.echo(
+            "Best robust-forward rule: "
+            f"{best['expression']} | "
+            f"pass={best['robust_forward_pass']} "
+            f"train={best['train_return_pct']}% "
+            f"validation={best['validation_return_pct']}% "
+            f"stress={best['stress_return_pct']}%"
+        )
+
+
+@cli.command("negative-oracle-research")
+@click.option(
+    "--trades",
+    "trades_path",
+    required=True,
+    help="Path to trades.csv or a completed run directory containing trades.csv.",
+)
+@click.option("--output", required=True, help="Output directory for the research report.")
+@click.option("--train-start", default="2022-01-01", show_default=True)
+@click.option("--validation-start", default="2024-01-01", show_default=True)
+@click.option("--stress-start", default="2025-01-01", show_default=True)
+@click.option("--min-train-trades", type=int, default=30, show_default=True)
+@click.option("--max-categories", type=int, default=30, show_default=True)
+@click.option("--max-pair-components", type=int, default=40, show_default=True)
+@click.option("--max-pair-rules", type=int, default=800, show_default=True)
+@click.option("--top-n", type=int, default=100, show_default=True)
+@click.option("--no-progress", is_flag=True, help="Disable progress bar output.")
+def negative_oracle_research(
+    trades_path: str,
+    output: str,
+    train_start: str,
+    validation_start: str,
+    stress_start: str,
+    min_train_trades: int,
+    max_categories: int,
+    max_pair_components: int,
+    max_pair_rules: int,
+    top_n: int,
+    no_progress: bool,
+) -> None:
+    """Find entry-known skip rules that remove repeatable losing trades."""
+    resolved_trades = _resolve_trades_path(Path(trades_path))
+    try:
+        result = run_negative_oracle_research(
+            NegativeOracleConfig(
+                trades_path=resolved_trades,
+                output_dir=Path(output),
+                train_start=train_start,
+                validation_start=validation_start,
+                stress_start=stress_start,
+                min_train_trades=min_train_trades,
+                max_categories=max_categories,
+                max_pair_components=max_pair_components,
+                max_pair_rules=max_pair_rules,
+                top_n=top_n,
+                progress=not no_progress,
+            )
+        )
+    except (FileNotFoundError, ValueError) as e:
+        raise click.ClickException(str(e)) from e
+
+    click.echo(f"Negative oracle research saved to: {result.output_dir}")
+    click.echo(f"Rules tested: {len(result.rules)}")
+    if not result.rules.empty:
+        best = result.rules.iloc[0]
+        click.echo(
+            "Best skip rule: "
+            f"{best['expression']} | "
+            f"validation=${best['validation_delta_abs']:.2f} "
+            f"stress=${best['stress_delta_abs']:.2f} "
+            f"pass={best['robust_negative_pass']}"
+        )
+
+
+def _resolve_trades_path(path: Path) -> Path:
+    if path.is_dir():
+        return path / "trades.csv"
+    return path
 
 
 def _parse_dss_matrix_algorithms(raw: str) -> list[str]:

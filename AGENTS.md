@@ -54,6 +54,32 @@ backtests, `compare-fixed`, `compare-grid`, `signal-quality`, or optimizer
 commands yourself unless the owner explicitly asks you to run that specific
 command in chat.
 
+When giving owner-run commands for independent jobs, default to parallel
+execution. Assume the owner has enough CPU/RAM unless they say otherwise.
+Create output/log directories before shell redirection, and avoid commands
+whose logs fail if a parent directory is missing. Provide a sequential variant
+only when the owner asks for it or when parallelism would corrupt shared
+artifacts.
+
+### Agent autonomy and short self-runs
+
+Agents continue working autonomously until one of these happens:
+
+- the next step requires an owner-run command under the backtest/optimizer
+  policy above;
+- the owner interrupts or changes direction in chat;
+- the agent cannot determine the next useful step after inspecting the local
+  evidence;
+- there is a real owner choice where different reasonable paths would lead to
+  materially different work.
+
+Short local diagnostics are allowed when they are not owner-scale backtests or
+optimizers. If a command has visible progress/ETA and the ETA is under roughly
+two minutes, the agent may run it, wait for completion, inspect the artifacts,
+and continue. If the ETA is over roughly two minutes, or there is no visible
+progress/ETA for a potentially long operation, stop and hand the exact command
+to the owner.
+
 ### Progress is mandatory for long-running commands
 
 Any CLI operation expected to take more than roughly one minute or process a
@@ -256,3 +282,8 @@ under `docs/` except `ROADMAP.md`.
 - **No look-ahead bias.** Indicators are always computed on **closed**
   candles. Backtest and live pipelines must share the same code path.
 - **English in code & docs. Russian only in chat replies to the owner.**
+- **Owner chat uses the language of money.** In owner-facing chat, avoid
+  unnecessary English terms and research jargon. Explain results as an
+  investor would read them: dollars, percentages, month counts, drawdown, and
+  what happens to a `$10,000` account. If a technical term is unavoidable,
+  translate it immediately into its money impact.

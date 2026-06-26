@@ -44,6 +44,7 @@ _TRADE_METADATA_EXCLUDED_COLUMNS = frozenset(
         "close",
         "volume",
         "signal",
+        "signal_events",
         "sl_price",
         "risk_percent",
         "rrr",
@@ -63,6 +64,25 @@ _TRADE_METADATA_EXCLUDED_COLUMNS = frozenset(
         "tick_time",
     }
 )
+
+
+def _signal_events_request_trailing(df: pd.DataFrame) -> bool:
+    if "signal_events" not in df.columns:
+        return False
+    for raw_events in df["signal_events"]:
+        if raw_events is None:
+            continue
+        if not isinstance(raw_events, list):
+            continue
+        for event in raw_events:
+            if not isinstance(event, dict):
+                continue
+            try:
+                if float(event.get("trail_activation_rrr", 0.0)) > 0:
+                    return True
+            except (TypeError, ValueError):
+                continue
+    return False
 
 
 @dataclass
@@ -211,6 +231,7 @@ class ExecutionSim:
         max_daily_loss: float | None = None,
         trading_begin: int | None = None,
         trading_end: int | None = None,
+        capital_sweep: str = "none",
         exit_geometry: str = "sl_rrr",
         tp_move_pct: float | None = None,
         structural_sl_mode: str = "cap",
@@ -301,7 +322,8 @@ class ExecutionSim:
 
         Notes:
         ----------
-        - Position size = risk_value / (entry_price - sl_price) [long] or (sl_price - entry_price) [short]
+        - Position size = risk_value / (entry_price - sl_price) [long] or
+          (sl_price - entry_price) [short]
         - TP price = entry_price ± (entry_price - sl_price) * rrr
         - All exit prices (TP, SL, TTL) are checked on next bar after signal.
         - Entry happens at next bar's open.
@@ -317,6 +339,7 @@ class ExecutionSim:
         """
         allowed_policies = {"best_case", "worst_case"}
         allowed_risk_base_periods = {"trade", "weekly", "monthly", "backtest"}
+        allowed_capital_sweeps = {"none", "monthly_profit"}
 
         bar_exit_policy_normalized = bar_exit_policy.strip().lower()
         if bar_exit_policy_normalized not in allowed_policies:
@@ -332,6 +355,14 @@ class ExecutionSim:
                 "Unsupported risk_base_period "
                 f"{risk_base_period!r}. Expected one of "
                 f"{sorted(allowed_risk_base_periods)!r}."
+            )
+            raise ValueError(msg)
+        capital_sweep_normalized = capital_sweep.strip().lower()
+        if capital_sweep_normalized not in allowed_capital_sweeps:
+            msg = (
+                "Unsupported capital_sweep "
+                f"{capital_sweep!r}. Expected one of "
+                f"{sorted(allowed_capital_sweeps)!r}."
             )
             raise ValueError(msg)
         if trail_activation_rrr < 0:
@@ -360,6 +391,7 @@ class ExecutionSim:
         self.max_daily_loss = max_daily_loss
         self.trading_begin = trading_begin
         self.trading_end = trading_end
+        self.capital_sweep = capital_sweep_normalized
         self._exit_geometry_config = exit_geometry_config_from_args(
             exit_geometry=exit_geometry,
             tp_move_pct=tp_move_pct,
@@ -474,9 +506,14 @@ class ExecutionSim:
             self._logger.warning("Not enough bars to run simulation")
             raise _NotEnoughBarsError
 
-        required_columns = ["open", "high", "low", "close", "signal", "sl_price"]
-        if not all(col in df.columns for col in required_columns):
-            missing = [col for col in required_columns if col not in df.columns]
+        required_columns = ["open", "high", "low", "close"]
+        missing = [col for col in required_columns if col not in df.columns]
+        has_signal_events = "signal_events" in df.columns
+        if not has_signal_events:
+            for col in ("signal", "sl_price"):
+                if col not in df.columns:
+                    missing.append(col)
+        if missing:
             raise ValueError(f"Missing required columns: {', '.join(missing)}")
 
         has_risk_percent_col = "risk_percent" in df.columns
@@ -811,6 +848,7 @@ class ExecutionSim:
         i: int,
         row,
         columns_meta: _InputColumnsMeta,
+        event: dict[str, Any] | None = None,
     ) -> _EntryContextDict:
         """
         Prepare and validate per-bar context required for potential entry.
@@ -821,11 +859,13 @@ class ExecutionSim:
             Dictionary with keys: ``signal``, ``sl_price``, ``risk_percent``,
             ``rrr``, ``entry_price``.
         """
-        signal = row["signal"]
-        sl_price = row["sl_price"]
+        signal = self._event_or_row_value(row, event, "signal", default=0)
+        sl_price = self._event_or_row_value(row, event, "sl_price", default=float("nan"))
 
         risk_percent = self.risk_percent
-        if columns_meta.has_risk_percent_col:
+        if event is not None and "risk_percent" in event:
+            risk_percent = event["risk_percent"]
+        elif columns_meta.has_risk_percent_col:
             risk_percent = row["risk_percent"]
             if columns_meta.nan_count_risk_percent > 0 and pd.isna(risk_percent):
                 index_value = df.index[i]
@@ -837,7 +877,9 @@ class ExecutionSim:
                 raise ValueError(msg)
 
         rrr = self.rrr
-        if columns_meta.has_rrr_col:
+        if event is not None and "rrr" in event:
+            rrr = event["rrr"]
+        elif columns_meta.has_rrr_col:
             rrr = row["rrr"]
             if columns_meta.nan_count_rrr > 0 and pd.isna(rrr):
                 index_value = df.index[i]
@@ -849,78 +891,164 @@ class ExecutionSim:
                 raise ValueError(msg)
 
         entry_price: float | None = None
-        if columns_meta.has_entry_price_col:
+        if event is not None and "entry_price" in event:
+            raw_entry_price = event["entry_price"]
+        elif columns_meta.has_entry_price_col:
             raw_entry_price = row["entry_price"]
-            if not pd.isna(raw_entry_price):
-                current_low = row["low"]
-                current_high = row["high"]
-                if signal in (1, -1) and not (current_low <= raw_entry_price <= current_high):
-                    index_value = df.index[i]
-                    msg = (
-                        "Invalid entry_price: value must lie within current bar "
-                        f"range [low, high]. Got entry_price={raw_entry_price!r}, "
-                        f"low={current_low!r}, high={current_high!r} at index "
-                        f"{index_value!r}."
-                    )
-                    self._logger.error(msg)
-                    raise ValueError(msg)
-                entry_price = float(raw_entry_price)
+        else:
+            raw_entry_price = None
+        if raw_entry_price is not None and not pd.isna(raw_entry_price):
+            current_low = row["low"]
+            current_high = row["high"]
+            if signal in (1, -1) and not (current_low <= raw_entry_price <= current_high):
+                index_value = df.index[i]
+                msg = (
+                    "Invalid entry_price: value must lie within current bar "
+                    f"range [low, high]. Got entry_price={raw_entry_price!r}, "
+                    f"low={current_low!r}, high={current_high!r} at index "
+                    f"{index_value!r}."
+                )
+                self._logger.error(msg)
+                raise ValueError(msg)
+            entry_price = float(raw_entry_price)
 
         return {
-            "signal": signal,
-            "sl_price": sl_price,
+            "signal": int(signal),
+            "sl_price": float(sl_price),
             "risk_percent": risk_percent,
             "rrr": rrr,
             "entry_price": entry_price,
             "position_ttl_bars": int(
-                row["position_ttl_bars"]
-                if "position_ttl_bars" in row.dtype.names
-                else self.position_ttl_bars
+                self._event_or_row_value(
+                    row,
+                    event,
+                    "position_ttl_bars",
+                    default=self.position_ttl_bars,
+                )
             ),
             "trail_activation_rrr": float(
-                row["trail_activation_rrr"]
-                if "trail_activation_rrr" in row.dtype.names
-                else self.trail_activation_rrr
+                self._event_or_row_value(
+                    row,
+                    event,
+                    "trail_activation_rrr",
+                    default=self.trail_activation_rrr,
+                )
             ),
             "trail_distance_atr": float(
-                row["trail_distance_atr"]
-                if "trail_distance_atr" in row.dtype.names
-                else self.trail_distance_atr
+                self._event_or_row_value(
+                    row,
+                    event,
+                    "trail_distance_atr",
+                    default=self.trail_distance_atr,
+                )
             ),
             "exit_geometry": str(
-                row["exit_geometry"]
-                if "exit_geometry" in row.dtype.names
-                else self._exit_geometry_config.mode
+                self._event_or_row_value(
+                    row,
+                    event,
+                    "exit_geometry",
+                    default=self._exit_geometry_config.mode,
+                )
             ),
             "tp_move_pct": (
-                self._exit_geometry_config.tp_move_pct
-                if "tp_move_pct" not in row.dtype.names
-                else (
-                    None
-                    if pd.isna(row["tp_move_pct"])
-                    else float(row["tp_move_pct"])
+                None
+                if pd.isna(
+                    self._event_or_row_value(
+                        row,
+                        event,
+                        "tp_move_pct",
+                        default=self._exit_geometry_config.tp_move_pct,
+                    )
+                )
+                else float(
+                    self._event_or_row_value(
+                        row,
+                        event,
+                        "tp_move_pct",
+                        default=self._exit_geometry_config.tp_move_pct,
+                    )
                 )
             ),
             "structural_sl_mode": str(
-                row["structural_sl_mode"]
-                if "structural_sl_mode" in row.dtype.names
-                else self._exit_geometry_config.structural_sl_mode
+                self._event_or_row_value(
+                    row,
+                    event,
+                    "structural_sl_mode",
+                    default=self._exit_geometry_config.structural_sl_mode,
+                )
             ),
             "min_tp_move_pct": float(
-                row["min_tp_move_pct"]
-                if "min_tp_move_pct" in row.dtype.names
-                else self._exit_geometry_config.min_tp_move_pct
+                self._event_or_row_value(
+                    row,
+                    event,
+                    "min_tp_move_pct",
+                    default=self._exit_geometry_config.min_tp_move_pct,
+                )
             ),
             "position_group": str(
-                row["position_group"] if "position_group" in row.dtype.names else ""
+                self._event_or_row_value(row, event, "position_group", default="")
             ),
             "drain_on_group_change": bool(
-                row["drain_on_group_change"]
-                if "drain_on_group_change" in row.dtype.names
-                else False
+                self._event_or_row_value(
+                    row,
+                    event,
+                    "drain_on_group_change",
+                    default=False,
+                )
             ),
-            "metadata": _trade_metadata_from_row(row),
+            "metadata": _trade_metadata_from_row(row) | _trade_metadata_from_event(event),
         }
+
+    def _entry_contexts_for_bar(
+        self,
+        *,
+        df: pd.DataFrame,
+        i: int,
+        row,
+        columns_meta: _InputColumnsMeta,
+    ) -> list[_EntryContextDict]:
+        if "signal_events" not in row.dtype.names:
+            has_signal_events = False
+        else:
+            raw_events = row["signal_events"]
+            has_signal_events = raw_events is not None and not (
+                isinstance(raw_events, float) and pd.isna(raw_events)
+            )
+        if not has_signal_events:
+            return [
+                self._prepare_entry_context(
+                    df=df,
+                    i=i,
+                    row=row,
+                    columns_meta=columns_meta,
+                )
+            ]
+
+        if not isinstance(raw_events, (list, tuple)):
+            raise ValueError("signal_events must be a list/tuple of event dictionaries")
+
+        contexts: list[_EntryContextDict] = []
+        for event in raw_events:
+            if not isinstance(event, dict):
+                raise ValueError("signal_events entries must be dictionaries")
+            contexts.append(
+                self._prepare_entry_context(
+                    df=df,
+                    i=i,
+                    row=row,
+                    columns_meta=columns_meta,
+                    event=event,
+                )
+            )
+        return contexts
+
+    @staticmethod
+    def _event_or_row_value(row, event: dict[str, Any] | None, key: str, *, default: Any) -> Any:
+        if event is not None and key in event:
+            return event[key]
+        if key in row.dtype.names:
+            return row[key]
+        return default
 
     def _try_open_position(
         self,
@@ -1147,6 +1275,8 @@ class ExecutionSim:
         trailing_requested = self.trail_activation_rrr > 0 or (
             "trail_activation_rrr" in df.columns
             and pd.to_numeric(df["trail_activation_rrr"], errors="coerce").fillna(0).gt(0).any()
+        ) or (
+            _signal_events_request_trailing(df)
         )
         if trailing_requested and "trail_atr" not in df.columns:
             df = _with_closed_atr14(df)
@@ -1165,6 +1295,10 @@ class ExecutionSim:
         profit_num = 0
         loss_num = 0
         daily_trading_blocked = False
+        current_sweep_month: tuple[int, int] | None = None
+        banked_profit = 0.0
+        pending_capital_sweep_amount = 0.0
+        pending_capital_sweep_month: str | None = None
 
         for i, row, next_open, current_high, current_low, trail_atr, next_time in self._iter_bars(
             df
@@ -1181,13 +1315,6 @@ class ExecutionSim:
                 loss_num = 0
                 daily_trading_blocked = False
 
-            entry_ctx = self._prepare_entry_context(
-                df=df,
-                i=i,
-                row=row,
-                columns_meta=columns_meta,
-            )
-
             # === 1. Check exit conditions (TP/SL/TTL) for all active positions ===
             prev_trades_len = len(trade_history)
             capital, active_positions = self._update_active_positions(
@@ -1201,10 +1328,37 @@ class ExecutionSim:
                 next_time=next_time,
                 trade_history=trade_history,
             )
+            newly_closed_trades = trade_history[prev_trades_len:]
+
+            bar_month = (next_time.year, next_time.month)
+            capital_sweep_amount = 0.0
+            capital_sweep_month: str | None = None
+            if current_sweep_month is None:
+                current_sweep_month = bar_month
+            elif bar_month != current_sweep_month:
+                capital_sweep_month = f"{current_sweep_month[0]:04d}-{current_sweep_month[1]:02d}"
+                current_sweep_month = bar_month
+                if self.capital_sweep == "monthly_profit" and capital > self.initial_capital:
+                    capital_sweep_amount = capital - self.initial_capital
+                    banked_profit += capital_sweep_amount
+                    capital = self.initial_capital
+                    pending_capital_sweep_amount += capital_sweep_amount
+                    pending_capital_sweep_month = capital_sweep_month
+
+            for trade in newly_closed_trades:
+                trade["capital_sweep_amount"] = 0.0
+                trade["capital_sweep_month"] = pd.NA
+                trade["banked_profit_after"] = banked_profit
+                trade["trading_capital_after_sweep"] = capital
+            if newly_closed_trades and pending_capital_sweep_amount:
+                newly_closed_trades[-1]["capital_sweep_amount"] = pending_capital_sweep_amount
+                newly_closed_trades[-1]["capital_sweep_month"] = pending_capital_sweep_month
+                pending_capital_sweep_amount = 0.0
+                pending_capital_sweep_month = None
 
             # === 1a. Update daily RRR counters based on newly closed trades ===
             if self.max_daily_profit or self.max_daily_loss:
-                for trade in trade_history[prev_trades_len:]:
+                for trade in newly_closed_trades:
                     exit_time = trade["exit_time"]
                     trade_day = exit_time.normalize()
                     # If a trade closed for a different day (shouldn't normally happen),
@@ -1245,22 +1399,52 @@ class ExecutionSim:
 
             if not daily_trading_blocked and can_open_in_session:
                 current_time = df.index[i]
-                active_positions = self._try_open_position(
+                entry_contexts = self._entry_contexts_for_bar(
+                    df=df,
                     i=i,
-                    current_time=current_time,
-                    next_time=next_time,
-                    next_open=next_open,
-                    capital=capital,
-                    active_positions=active_positions,
-                    entry_ctx=entry_ctx,
+                    row=row,
+                    columns_meta=columns_meta,
                 )
+                for entry_ctx in entry_contexts:
+                    active_positions = self._try_open_position(
+                        i=i,
+                        current_time=current_time,
+                        next_time=next_time,
+                        next_open=next_open,
+                        capital=capital,
+                        active_positions=active_positions,
+                        entry_ctx=entry_ctx,
+                    )
 
         if active_positions:
             last_bar_index = len(df) - 1
-            trade_history.extend(
-                self._open_position_snapshot(pos=pos, last_bar_index=last_bar_index)
-                for pos in active_positions
+            for pos in active_positions:
+                snapshot = self._open_position_snapshot(pos=pos, last_bar_index=last_bar_index)
+                snapshot["capital_sweep_amount"] = pending_capital_sweep_amount
+                snapshot["capital_sweep_month"] = pending_capital_sweep_month
+                snapshot["banked_profit_after"] = banked_profit
+                snapshot["trading_capital_after_sweep"] = capital
+                trade_history.append(snapshot)
+                pending_capital_sweep_amount = 0.0
+                pending_capital_sweep_month = None
+
+        if trade_history and pending_capital_sweep_amount:
+            last_trade = trade_history[-1]
+            last_trade["capital_sweep_amount"] = (
+                float(last_trade.get("capital_sweep_amount", 0.0))
+                + pending_capital_sweep_amount
             )
+            last_trade["capital_sweep_month"] = pending_capital_sweep_month
+            last_trade["banked_profit_after"] = banked_profit
+            last_trade["trading_capital_after_sweep"] = capital
+            pending_capital_sweep_amount = 0.0
+            pending_capital_sweep_month = None
+
+        for trade in trade_history:
+            trade.setdefault("capital_sweep_amount", 0.0)
+            trade.setdefault("capital_sweep_month", pd.NA)
+            trade.setdefault("banked_profit_after", banked_profit)
+            trade.setdefault("trading_capital_after_sweep", capital)
 
         return pd.DataFrame(trade_history) if trade_history else pd.DataFrame()
 
@@ -1328,6 +1512,20 @@ def _trade_metadata_from_row(row) -> dict[str, Any]:
         if column in _TRADE_METADATA_EXCLUDED_COLUMNS:
             continue
         value = row[column]
+        if pd.isna(value):
+            continue
+        metadata[column] = value.item() if hasattr(value, "item") else value
+    return metadata
+
+
+def _trade_metadata_from_event(event: dict[str, Any] | None) -> dict[str, Any]:
+    """Copy non-execution event fields into trade output."""
+    if event is None:
+        return {}
+    metadata: dict[str, Any] = {}
+    for column, value in event.items():
+        if column in _TRADE_METADATA_EXCLUDED_COLUMNS:
+            continue
         if pd.isna(value):
             continue
         metadata[column] = value.item() if hasattr(value, "item") else value

@@ -1,82 +1,200 @@
 # In progress
 
-## Promoted router strategy — full-period owner run (2026-06-24)
+## Core4 v4 drawdown reduction / validation (2026-06-26)
 
-**What:** run owner-promoted `router_v2_2687609` as a normal composite strategy
-over the full locally available SOL 1h history.
+**What:** continue from
+`strategies/archive/filtered_donor_portfolio_causal_v4_core4_no_island_long_riskx0p85.json`,
+the current best post-fix core4 balance.
 
-**Why now:** the owner requires promoted routers to use the same strategy and
-backtester contracts as every other candidate. Special replay commands are
-diagnostics only and may not be the final validation surface.
+**Why now:** after fixing multi-signal trailing parity, core4 became the
+strongest money source. Raw v3 made +$656,185 on $10k but had -22.42%
+recalculated drawdown. The selected v4 removes Island longs and scales nested
+risk to 85%, making +$206,978 on $10k with -14.91% drawdown and 12.69
+trades/week.
 
-**Expected gain:** obtain a canonical `trades.csv`, equity report, and standard
-backtester metrics for the router across 2022-12-18 through 2026-06-09.
+**Expected gain:** push drawdown toward 10-12% while preserving a materially
+larger money result than standalone Island/SMAC.
 
-**Status:** composite-strategy boundary fixed on 2026-06-25. The previous
-implementation was invalid because it launched six nested backtests from
-inside `generate()`. Nested backtests are now forbidden; the external
-backtester owns the only portfolio simulation.
+**Acceptance:** exact `backtester run` artifact with recalculated drawdown from
+`equity_curve.csv`, not the console DD line; report final dollars, trades/week,
+worst month, negative month count, and per-strategy PnL.
 
-**Incremental runtime correction (2026-06-25):** nested strategies now share
-one feature dataset and are loaded through a strategy-class adapter registry;
-router code and tests do not enumerate strategy ids. The router then
-multiplexes one selected signal stream chronologically. Persisted rolling
-labels are private router/model state supplied through `labels_path`; the
-external backtester neither knows about nor loads that file. Generic shadow
-portfolio execution exists with parity tests, but wiring live per-bar state
-updates and persistence remains production work, not a prerequisite for the
-owner-run historical validation.
+**Next steps:**
 
-**Router state restored (2026-06-25):** the repository-root handoff archive
-contained all six exact `strategy_trades/*.csv` files. The current code rebuilt
-the required PineScript-aware state without running any strategies:
+1. Re-run the selected v4 with `--capital-sweep monthly_profit` to measure
+   banked dollars, remaining trading capital, and total account value without
+   assuming all profits stay reinvested.
+2. Stress v4 by fixed windows: 2024-2025 validation and 2025-latest stress,
+   then inspect whether the -14.91% drawdown is concentrated in one period.
+3. Try smaller targeted reductions only on the drawdown-causing components
+   instead of globally reducing risk again.
+4. Do not use pre-2026-06-26 multi-signal artifacts for conclusions; rerun
+   them after the trailing parity fix.
 
-```text
-results/regime_matrix_archive_sol_2022_2025_trades/
-  rolling_labels_day_30d_router_ps/rolling_labels.csv
-```
+**Links:** `results/filtered_donor_portfolio_causal_v4_core4_no_island_long_riskx0p85_full/20260626_182156/`,
+`results/core4_fine_frontier_after_fix/`,
+`results/core4_combo_variants_after_fix/`,
+`results/core4_risk_scale_after_fix/`.
 
-The artifact contains 1,341 daily rows through label end 2025-12-31, 37
-`router_ps_*` features, and six strategy return columns. The frozen router
-selects four strategies over the requested full-period timeline with 14
-switches. Only NR4 is a selected `crypt_ensemble`; the other selected
-strategies use the faster DSS signal path.
+---
 
-**Reproducibility incident fixed (2026-06-25):** the first full owner run used
-the first label timestamp as the router state-machine start. The search that
-produced `router_v2_2687609` used `validation_start=2024-01-01`; omitting this
-stateful parameter changed the 2025 routed replay from the archived
-`+125.04% / 359 trades` to `+103.18% / 361 trades`. The frozen strategy config
-now stores the exact validation start. Before 2024-01-01 the composite uses
-the configured fallback strategy.
+## Island short-only branch: next risk reduction pass (2026-06-26)
 
-**Owner command:**
+**What:** continue improving the Island short-only branch after the first exact
+weekend wide-stop filter. Current best money variant:
+`strategies/archive/island_short_r1p42_rrr0p75_ttl32_weekend_stop_filter_v1.json`.
 
-Delete or ignore the invalid `20260625_122051` result and rerun the corrected
-composite strategy:
+**Why now:** the six-donor portfolio failed, while Island has a real standalone
+short-side edge. The filtered Island branch improved $10k → $82,602
+(+$72,602), kept 3.40 trades/week, and beat the original Island's +$50,599
+with lower recalculated drawdown (-16.35% vs -23.91%). It still does not meet
+the strict mandate because drawdown remains above 10% and 2025 monthly floor
+coverage is weak.
+
+**Expected gain:** reduce drawdown without dropping below the owner's frequency
+floor of 2-3 trades/week. The immediate target is a variant that stays near
+or above +$1,500/month average while moving drawdown below ~15%; the harder
+mandate target remains below 10%.
+
+**Acceptance:** exact backtester artifacts for the chosen variant, a comparison
+against the current baseline in dollars, trades/week, negative months, worst
+month, and recalculated equity drawdown.
+
+**Next steps:**
+
+1. Search only entry-known Island filters, not CSV deletion: weekend filter
+   threshold sweep, session/hour filters, stop-distance bands, volatility bands,
+   and short-only crisis/off-switch candidates.
+2. Recalculate drawdown from `equity_curve.csv`; do not trust the printed
+   `Max Drawdown` line alone because recent runs showed a misleading -1.6%
+   print while equity-curve drawdown was -16.35%.
+3. If no single rule gets drawdown under ~15% while preserving at least
+   2-3 trades/week, test symbol portability before investing more effort in
+   Island-only polishing.
+
+**Links:** `results/island_short_weekend_stop_filter_v1_full/20260626_172556/`,
+`results/island_short_weekend_stop_filter_risk_grid/`,
+`docs/archive/candidates/island_2023_021396_engulfing_bb_trend/README.md`.
+
+---
+
+## Per-strategy donor filter research needs owner-run donor backtests (2026-06-26)
+
+**What:** run full-period exact backtests for each donor strategy in the
+router/composite portfolio, then search entry-known `take`/`skip` filters
+per donor strategy using `backtester trade-filter-research`.
+
+**Why now:** grouped filtering on a routed artifact is not enough. In
+`router_v2_3997501`, the 2022-2024 train split had 718 trades for
+`crypt_ensemble_h1_discovery_nr4_vwap_robust` but zero train trades for three
+other selected strategies. A routed output only shows what the old router chose;
+it cannot train personal filters for strategies the router did not use in the
+train window.
+
+**Expected gain:** find strategy-specific bad-trade filters before changing the
+router. If a donor's own 2024 validation and 2025+ stress both improve, the
+filter can later be embedded into that strategy and the combined portfolio can
+be exact-tested through the normal backtester.
+
+**Acceptance:** each donor has a full-period exact `trades.csv`, then a
+filter-research report with train 2022-2024, validation 2024-2025, and stress
+2025-latest. Any candidate must improve validation and stress returns, not
+worsen stress floor-month count, and not worsen stress monthly drawdown before
+it is considered for exact implementation.
+
+**Status (2026-06-26):** the code supports single rules, two-rule conjunctions,
+`--group-by selected_strategy`, and optional closed-candle catalog features via
+`--include-catalog-features --ohlcv <path>`. Smoke tests on
+`router_v2_3997501` produced zero robust passes; this is expected because the
+routed artifact lacks train data for most donors.
+
+**Update (2026-06-26):** owner completed parallel full-period donor backtests
+under `results/donor_exact_2022_2026/`. Causal donor-level filter research was
+run under `results/trade_filter_research_donors_2022_2026_causal/` after fixing
+catalog feature joins to use strictly previous candles on exact `open_time`.
+All six donors have at least one robust-forward CSV filter:
+
+- `crypt_ensemble_h1_discovery_nr4_vwap_robust`: +$60 validation, +$3,722
+  stress on $10k.
+- `crypt_ensemble_h1_discovery_nr7_bb_squeeze_h4`: +$1,473 validation, +$3,936
+  stress on $10k.
+- `crypt_ensemble_h1_discovery_vwap_reclaim_robust`: +$9,378 validation,
+  +$1,470 stress on $10k.
+- `dssv2_013321_ps_macd_squeeze_recent`: +$4,463 validation, +$17,298 stress
+  on $10k.
+- `island_2023_021396_engulfing_bb_trend`: +$282 validation, +$5,508 stress on
+  $10k.
+- `smac_003335_double_bottom_body_to_range`: +$2,174 validation, +$2,832 stress
+  on $10k.
+
+These are CSV-deletion research numbers, not final portfolio results.
+Standalone donor trades overlap materially: 1,320 of 6,210 trades occur on
+timestamps where 2-3 strategies want to enter. The current strategy/backtester
+contract has one signal row per bar, so exact "release all passing strategies"
+requires a multi-signal execution path instead of selecting one row or
+duplicating OHLCV bars.
+
+**Status (multi-signal implementation):** `ExecutionSim` now accepts optional
+`signal_events` lists per OHLCV bar. The old scalar `signal` / `sl_price`
+contract remains valid. `Backtester` passes `signal_events` strategies through
+without requiring scalar signal columns. The new
+`filtered_donor_portfolio_causal_v1` strategy builds all six donor signal
+streams, applies the causal donor filters, and emits every accepted signal into
+one shared-capital execution path.
+
+**Correction (2026-06-26):** owner exact-tested `causal_v1` and got +$9,377 on
+$10k (+93.78%) with -7.57% drawdown, but that run is invalid as a portfolio
+verdict. The fast portfolio path did not expose `confidence` and
+`strength_smc_structure`, so two donor filters silently rejected all NR4 and
+NR7 events. The code now fails early when a filter references unavailable
+features. A new `filtered_donor_portfolio_causal_v2_deployable` config uses
+only fast-path deployable fields known at entry time: `entry_hour`,
+`entry_dayofweek`, and previous-closed-candle `catalog_*` features. A diagnostic
+signal-only pass produced 3,787 events across all six donors:
+
+- NR4 VWAP: 828 events.
+- NR7 BB squeeze: 669 events.
+- VWAP reclaim: 305 events.
+- DSS MACD squeeze: 384 events.
+- Island engulfing: 1,060 events.
+- SMAC double bottom: 541 events.
+
+**Exact result (2026-06-26):** owner exact-tested
+`filtered_donor_portfolio_causal_v2_deployable` under
+`results/filtered_donor_portfolio_causal_v2_deployable_full/20260626_163108`.
+The result is not investable: $10,000 became $6,557 (-$3,442 / -34.43%) with a
+-76.05% maximum drawdown. Longs lost -$8,288 while shorts made +$4,846. By
+strategy, VWAP reclaim lost -$5,913 and NR7 lost -$5,714; DSS made +$5,237 and
+NR4 made +$3,008.
+
+**Negative-oracle update (2026-06-26):** `backtester negative-oracle-research`
+was added and run on the bad v2 artifact:
+`results/negative_oracle_filtered_donor_portfolio_causal_v2/`. It tested 1,066
+entry-known skip rules. The best robust simple/pair rule saved only +$315 in
+validation and +$1,487 in stress, so there is no obvious simple "mine" rule
+that rescues this portfolio.
+
+**Next decision:** stop trying to rescue the six-donor SOL-only portfolio with
+simple filters. The next useful branch is either symbol expansion or a
+portfolio-level crisis/off-switch research pass.
+
+**Filter command template after donor backtests exist:**
 
 ```bash
 MPLCONFIGDIR=/tmp/matplotlib \
 UV_CACHE_DIR=/tmp/uv-cache \
-uv run backtester run \
-  --data-source crypt-parquet \
-  --data-dir data \
-  --primary-timeframe 1h \
-  --symbol SOL-USDT-SWAP \
-  --from 2022-12-18 \
-  --to 2026-06-10 \
-  --strategy strategies/archive/router_v2_2687609.json \
+uv run backtester trade-filter-research \
+  --trades results/donor_exact_2022_2026/<strategy_id>/<timestamp> \
+  --ohlcv results/donor_exact_2022_2026/<strategy_id>/<timestamp>/ohlcv.csv \
+  --include-catalog-features \
+  --output results/trade_filter_research_donors_2022_2026/<strategy_id> \
   --capital 10000 \
-  --output results/router_v2_2687609_full
+  --min-train-trades 20 \
+  --top-n 50
 ```
 
-**Acceptance:** `results/router_v2_2687609_full/trades.csv` exists; every trade
-contains `router_id`, `selected_strategy`, and `position_group`; no overlapping
-open trades have different position groups; standard metrics cover the full
-available history.
-
-**Links:** `docs/strategies/promoted_router.md`,
-`strategies/archive/router_v2_2687609.json`, ADR-0042, ADR-0043.
+**Links:** `docs/trade_filter_research.md`, ADR-0046,
+`results/router_exact_shortlist_2022_2026/`.
 
 ---
 

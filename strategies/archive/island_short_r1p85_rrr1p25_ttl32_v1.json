@@ -1,0 +1,63 @@
+{
+  "archive": {
+    "archived_at": "2026-06-22",
+    "docs": "docs/archive/candidates/island_2023_021396_engulfing_bb_trend/",
+    "reason": "research_seed",
+    "status": "archived"
+  },
+  "backtest_args": {
+    "exit_geometry": "sl_rrr",
+    "max_positions": 0,
+    "position_ttl_bars": 32,
+    "risk_base_period": "monthly",
+    "risk_percent": 1.85,
+    "rrr": 1.25,
+    "structural_sl_mode": "cap",
+    "trail_activation_rrr": 1.25,
+    "trail_distance_atr": 0.25,
+    "ttl": 32
+  },
+  "candidate_id": "island_2023_021396",
+  "name": "dss_strategy",
+  "notes": {
+    "source": "results/dss_stage1_matrix_all_2022_2025_smc_wr45_threshold_only/island_qd_seed2026",
+    "stage1": {
+      "barrier_win_rate_2022": 0.45517241379310347,
+      "barrier_win_rate_2023": 0.40119760479041916,
+      "rejection_reason": "weak_barrier_win_rate:2023",
+      "signals_2022": 290,
+      "signals_2023": 335
+    }
+  },
+  "params": {
+    "atr_sl_mult": 2.25,
+    "filter_names": [
+      "pf_bb_width",
+      "pf_trend_ema_stack"
+    ],
+    "filter_params": {
+      "pf_bb_width": {
+        "max_width_pct": 0.0625
+      },
+      "pf_trend_ema_stack": {
+        "fast": 16,
+        "mid": 50,
+        "slow": 50
+      }
+    },
+    "position_ttl_bars": 32,
+    "risk_percent": 1.85,
+    "rrr": 1.25,
+    "trail_distance_atr": 0.25,
+    "trigger_name": "pt_engulfing",
+    "trigger_params": {
+      "body_ratio": 0.7
+    },
+    "allowed_signal": -1
+  },
+  "version": "island_short_r1p85_rrr1p25_ttl32_v1-2026-06-26",
+  "research_notes": {
+    "purpose": "Island short-only RRR/TTL grid at risk 1.85",
+    "source_strategy": "strategies/archive/island_2023_021396_engulfing_bb_trend.json"
+  }
+}

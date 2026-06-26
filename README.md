@@ -157,6 +157,21 @@ SOL smoke backtests are currently slow because each bar replays the whole
 ensemble; H1 MTF runs are especially expensive until the donor route gets a
 range limiter or parity-safe cache.
 
+`backtester run` supports an optional monthly profit sweep mode for
+withdrawal-style diagnostics:
+
+```bash
+uv run backtester run ... --capital 10000 --capital-sweep monthly_profit
+```
+
+At each month boundary, realized trading capital above the initial capital is
+removed from the trading account and counted as banked profit. If the trading
+account is below the initial capital, nothing is added and the reduced account
+continues into the next month. Reports keep `Final Capital` as the remaining
+trading account and add `Banked Profit` plus `Total Account` when money was
+swept. The monthly console table also includes `Withdrawn ($)`, the amount
+withdrawn for that specific month; months without a withdrawal show `0`.
+
 ```bash
 uv run backtester run \
     --data-source crypt-parquet \
@@ -272,6 +287,12 @@ DSS strategy JSON replay treats flat `params` execution fields
 (`rrr`, `risk_percent`, `trail_distance_atr`, `position_ttl_bars`) as
 backtest defaults when `backtest_args` is absent, so manual `backtester run`
 matches the execution settings printed for optimizer/manual candidates.
+Archived DSS configs may also use two entry-only replay controls:
+`allowed_signal=-1` or `1` keeps only shorts or longs, and
+`entry_skip_rules` can skip signals using features known at the next-bar entry,
+currently `entry_dayofweek` and `stop_distance_pct`. These controls are
+intended for exact replay of validated trade-filter research, not for deleting
+trades from CSV after the fact.
 
 ```bash
 uv run backtester search-signals \
@@ -556,6 +577,69 @@ strategy causally, and emits its signals through the normal external
 backtester. It never launches nested backtests. The labels artifact referenced
 by the strategy config must exist locally before this command is run.
 See `docs/strategies/promoted_router.md`.
+
+Trade-filter research inspects existing `trades.csv` artifacts and searches
+entry-known `take`/`skip` rules under the default anti-overfit split:
+train `2022-01-01` → `2024-01-01`, validation `2024-01-01` → `2025-01-01`,
+stress `2025-01-01` → latest available trade.
+
+```bash
+MPLCONFIGDIR=/tmp/matplotlib \
+UV_CACHE_DIR=/tmp/uv-cache \
+uv run backtester trade-filter-research \
+    --trades results/router_exact_shortlist_2022_2026/router_v2_3997501/20260625_162258 \
+    --output results/trade_filter_research/router_v2_3997501 \
+    --capital 10000
+```
+
+The command writes `baseline_by_split.csv`, `filter_candidates.csv`,
+`top_filters.csv`, and `report.md`. It is a research screen only: promising
+filters must still be implemented inside the strategy/router and re-run
+through the normal backtester. Portfolio-state fields such as `size`,
+capital, margin, and open-position counts are excluded by default; pass
+`--include-portfolio-state-features` only for separate risk-allocator research.
+
+To search separate filters per strategy inside a router or composite artifact:
+
+```bash
+uv run backtester trade-filter-research \
+    --trades results/router_exact_shortlist_2022_2026/router_v2_3997501/20260625_162258 \
+    --group-by selected_strategy \
+    --output results/trade_filter_research_by_strategy/router_v2_3997501 \
+    --capital 10000
+```
+
+To add discovery/catalog-style closed-candle features at entry time, also pass
+the completed run OHLCV file:
+
+```bash
+uv run backtester trade-filter-research \
+    --trades results/router_exact_shortlist_2022_2026/router_v2_3997501/20260625_162258 \
+    --ohlcv results/router_exact_shortlist_2022_2026/router_v2_3997501/20260625_162258/ohlcv.csv \
+    --include-catalog-features \
+    --group-by selected_strategy \
+    --output results/trade_filter_research_by_strategy_catalog/router_v2_3997501 \
+    --capital 10000
+```
+
+Exact-test the filtered donor portfolio with shared capital and multi-signal
+same-candle entries:
+
+```bash
+uv run backtester run \
+    --data-source crypt-parquet \
+    --data-dir data \
+    --primary-timeframe 1h \
+    --symbol SOL-USDT-SWAP \
+    --from 2022-12-18 \
+    --to 2026-06-10 \
+    --strategy strategies/archive/filtered_donor_portfolio_causal_v1.json \
+    --capital 10000 \
+    --output results/filtered_donor_portfolio_causal_v1_full
+```
+
+This strategy uses `signal_events` so several filtered donor signals can be
+processed on the same OHLCV bar through the same shared capital/margin engine.
 
 `railway.toml` currently starts the `island_qd` search worker, not the live
 alerting process. Revert its `deploy.startCommand` before using the Railway

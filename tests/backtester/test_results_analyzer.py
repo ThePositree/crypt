@@ -382,3 +382,54 @@ def test_generate_monthly_returns_pct_keys_and_first_point_logic():
     assert set(mr.keys()) == {"2026-01", "2026-02"}
     assert mr["2026-01"]["ret"] == 10.0
     assert mr["2026-01"]["ret_abs"] == 10.0
+
+
+def test_generate_counts_banked_profit_in_total_account_value():
+    df = _trades_df(
+        [
+            {
+                "entry_time": "2026-01-31 00:00:00",
+                "exit_time": "2026-02-01 00:00:00",
+                "entry_price": 100.0,
+                "exit_price": 101.0,
+                "pnl_abs": 100.0,
+                "pnl_rel": 0.1,
+                "exit_reason": "take_profit",
+                "capital_before": 1000.0,
+                "capital_after": 1100.0,
+                "capital_sweep_amount": 100.0,
+                "capital_sweep_month": "2026-01",
+                "banked_profit_after": 100.0,
+                "trading_capital_after_sweep": 1000.0,
+                "holding_bars": 1,
+                "is_long": True,
+            },
+            {
+                "entry_time": "2026-02-02 00:00:00",
+                "exit_time": "2026-02-03 00:00:00",
+                "entry_price": 100.0,
+                "exit_price": 101.0,
+                "pnl_abs": 100.0,
+                "pnl_rel": 0.1,
+                "exit_reason": "take_profit",
+                "capital_before": 1000.0,
+                "capital_after": 1100.0,
+                "capital_sweep_amount": 0.0,
+                "capital_sweep_month": pd.NA,
+                "banked_profit_after": 100.0,
+                "trading_capital_after_sweep": 1100.0,
+                "holding_bars": 1,
+                "is_long": True,
+            },
+        ]
+    )
+
+    metrics = ResultsAnalyzer(df).generate()
+
+    assert metrics["final_capital"] == 1100.0
+    assert metrics["banked_profit"] == 100.0
+    assert metrics["total_account_value"] == 1200.0
+    assert metrics["total_pnl_abs"] == 200.0
+    assert metrics["total_return_pct"] == 20.0
+    assert metrics["monthly_returns_pct"]["2026-01"]["withdrawn"] == 100.0
+    assert metrics["monthly_returns_pct"]["2026-02"]["withdrawn"] == 0.0

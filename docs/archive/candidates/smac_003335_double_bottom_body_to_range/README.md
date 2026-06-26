@@ -43,6 +43,30 @@ months breach the drawdown gate. It is kept as a `research_seed` because it is
 a high-trade-count double-bottom family with useful 2022 positive behavior and
 clear 2023 degradation for future regime/detector work.
 
+## 2026-06-26 follow-up: long-only SMAC branch
+
+The full-period donor archive showed that SMAC has the best long-side component
+among the archived donor strategies, but it is much weaker than the Island
+short branch:
+
+| Variant | Result on $10k | Trades/week | Recalculated DD | Notes |
+| ------- | -------------- | ----------- | --------------- | ----- |
+| Original long+short SMAC | $24,133 (+$14,133) | 5.56 | -17.70% | Longs +$9,910, shorts +$4,223. |
+| `smac_long_r0p75_rrr1p5_ttl116_v1` | $19,106 (+$9,106) | 2.61 | -14.31% | Long-only baseline. |
+| `smac_long_r0p95_rrr1p25_ttl64_v1` | $20,377 (+$10,377) | 2.61 | -14.59% | Current selected long-only branch. |
+
+The selected branch is not a standalone production candidate. It is kept as a
+possible long-side complement to the selected Island short-only branch. A
+negative-oracle check found wide-stop skip rules, but exact replay cut
+frequency to 1.1-1.4 trades/week, below the owner's minimum, so no additional
+SMAC long filter is selected.
+
+After fixing multi-signal trailing parity, the combined
+`island_short_smac_long_portfolio_v1` run turned $10,000 into $168,657
+(+$158,657), with 1,087 trades, about 6.00 trades/week, and -16.98%
+recalculated drawdown. This makes SMAC long useful as an add-on to Island
+short, not as a standalone center of gravity.
+
 ## Local artifacts
 
 - Discovery: `results/dss_stage1_matrix_all_2022_2025_smc_wr45_threshold_only/smac_qd_seed5151/`
@@ -50,3 +74,9 @@ clear 2023 degradation for future regime/detector work.
 - Optuna: `results/optuna_smac_003335_double_bottom_body_to_range_big/20260622_094809/`
 - Best run: `results/optuna_smac_003335_double_bottom_body_to_range_big/20260622_094809/best_run/`
 - Best trial: `results/optuna_smac_003335_double_bottom_body_to_range_big/20260622_094809/best_trial.json`
+- Direction split: `results/smac_direction_split/`
+- Long-only grid: `results/smac_long_grid/`, `results/smac_long_fine/`
+- Selected long-only run: `results/smac_long_selected_full/20260626_174726/`
+- Rejected wide-stop filters: `results/smac_long_stop_filter/`
+- Island short + SMAC long portfolio:
+  `results/island_short_smac_long_portfolio_v1_trailing_fixed_full/20260626_180002/`

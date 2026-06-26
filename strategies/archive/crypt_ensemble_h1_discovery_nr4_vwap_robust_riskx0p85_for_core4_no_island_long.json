@@ -1,0 +1,62 @@
+{
+  "name": "crypt_ensemble",
+  "version": "discovery-h1-nr4-breakout-avoid-doji-vwap-dist-band-optuna-2022-2024",
+  "params": {
+    "setup_source": "h1_raw",
+    "sl_atr_mult": 2.0,
+    "sl_atr_buffer_mult": 0.1,
+    "max_sl_distance_atr": 8.0,
+    "allow_atr_sl_fallback": true,
+    "optimized_windows": true,
+    "progress": true,
+    "timeframes": {
+      "context": [
+        "1d"
+      ],
+      "setup": [
+        "4h"
+      ],
+      "trigger": "1h",
+      "execution": "1h"
+    },
+    "trigger_rules": [
+      "h1_nr4_breakout"
+    ],
+    "min_body_to_range": 0.15,
+    "max_session_vwap_dist_pct": 0.01,
+    "min_session_vwap_dist_pct": 0.002
+  },
+  "backtest_args": {
+    "exit_geometry": "tp_pct",
+    "risk_base_period": "monthly",
+    "structural_sl_mode": "cap",
+    "tp_move_pct": 0.026,
+    "ttl": 52,
+    "rrr": 1.75,
+    "risk_percent": 0.425,
+    "trail_activation_rrr": 1.75,
+    "trail_distance_atr": 0.25
+  },
+  "discovery_source": {
+    "candidate_id": "h1_nr4_breakout__avoid_doji__vwap_dist_max_1pct__vwap_dist_min_0_2pct",
+    "trigger": "h1_nr4_breakout",
+    "filters": [
+      "avoid_doji",
+      "vwap_dist_max_1pct",
+      "vwap_dist_min_0_2pct"
+    ],
+    "discovery_schema_version": 1,
+    "artifact": "20260608_193549/best_candidates/robust_min_window_win_rate_50/rank_007_strategy.json",
+    "metrics": {
+      "win_rate": 0.571788,
+      "passed_events": 404,
+      "score": 3.135357
+    }
+  },
+  "archive": {
+    "status": "archived",
+    "archived_at": "2026-06-22",
+    "reason": "research_seed",
+    "docs": "docs/archive/candidates/nr4_vwap_robust/"
+  }
+}

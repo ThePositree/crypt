@@ -14,7 +14,87 @@ when finished.
 > **+15%/month** on **$10k** SOL **2025** continuous backtest after fees;
 > max **10% intra-month DD**; auto-trading only after **promote** verdict.
 
-## P1 — Build an execution-grade router oracle and feasibility report
+## P1 — Reduce Island short-only drawdown without killing trade frequency
+
+**What:** continue exact entry-known filtering for the Island short-only branch:
+session/hour filters, stop-distance bands, previous-closed-candle volatility
+bands, and simple crisis/off-switch rules. Do not use CSV deletion as final
+evidence; every promising rule must run through normal `backtester run`.
+
+**Why now:** Island is one of the few current SOL families with clear positive
+money. The best current filtered short-only branch made +$72,602 on $10k with
+3.40 trades/week, but recalculated drawdown remains -16.35%, above the strict
+10% mandate.
+
+**Expected gain:** find out whether Island can become a lower-risk archived
+candidate without dropping below 2-3 trades/week. A useful near-term gain is
+drawdown below ~15% while keeping roughly +$1,500/month average; a production
+candidate would need the stricter 10% mandate.
+
+**Acceptance:** an exact backtest report comparing current baseline vs new
+variant in dollars, trades/week, recalculated drawdown, negative months, worst
+month, and 2025-only money.
+
+**Links:** `strategies/archive/island_short_r1p42_rrr0p75_ttl32_weekend_stop_filter_v1.json`,
+`results/island_short_weekend_stop_filter_v1_full/20260626_172556/`,
+`docs/archive/candidates/island_2023_021396_engulfing_bb_trend/README.md`.
+
+---
+
+## P1 — Implement exact trade filters inside strategy/router candidates
+
+**What:** after `trade-filter-research` identifies validation-robust
+entry-known filters, implement the best filters inside the relevant
+strategy/router config path and validate them through the unchanged external
+backtester.
+
+**Why now:** CSV-level trade deletion is only a research screen. Skipping a
+trade changes capital, overlap, margin, and subsequent position eligibility,
+so promising filters must be replayed as real strategy logic before any
+mandate decision.
+
+**Expected gain:** convert filter hypotheses into exact OHLCV backtests that
+can be compared to the owner mandate without relying on approximate trade
+deletion.
+
+**Acceptance:** at least one filter selected from validation metrics is
+implemented without using post-entry leakage fields; the owner-run exact
+backtest exports normal `trades.csv`, mandate rows, and a promote/archive/
+discard verdict.
+
+**Links:** ADR-0046, `docs/trade_filter_research.md`,
+`results/trade_filter_research_2022_2026/`.
+
+---
+
+## P1 — Extend trade-filter research to meta-labeling if grouped donor filters pass
+
+**What:** if grouped donor-level filters produce validation/stress passes,
+add a heavier train/validation-selected meta-labeling stage over entry-known
+market features.
+
+**Why now:** two-rule conjunctions and catalog-style candle features are now
+implemented. The next escalation should only happen if donor-level research
+shows enough money to justify a more complex filter.
+
+**Expected gain:** capture non-linear bad-trade patterns that simple rules miss
+without searching new donor strategies.
+
+**Acceptance:** the model is trained only on 2022-2024, selected on 2024-2025,
+stress-tested on 2025-latest, emits a plain take/skip explanation, and is exact
+validated through the normal backtester before any promotion decision.
+
+**Links:** ADR-0046, `docs/trade_filter_research.md`,
+`results/trade_filter_research_2022_2026/`.
+
+---
+
+## P2 — Build an execution-grade router oracle and feasibility report
+
+**Status:** deferred by owner direction on 2026-06-26. The owner judged that a
+composite oracle would be diagnostic but would not change the practical next
+step. Current active work is anti-overfit trade filtering over existing exact
+artifacts.
 
 **What:** replace the overlapping rolling-label oracle as the final router
 target with an explicitly non-causal upper-bound portfolio that selects exactly

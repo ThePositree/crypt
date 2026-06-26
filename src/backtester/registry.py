@@ -10,6 +10,7 @@ from typing import Final
 from backtester.strategies.crypt_ensemble import CryptEnsembleStrategy
 from backtester.strategies.dss_strategy import DSSStrategy
 from backtester.strategies.dual_ma import DualMAStrategy
+from backtester.strategies.filtered_donor_portfolio import FilteredDonorPortfolioStrategy
 from backtester.strategies.forest import ForestStrategy
 from backtester.strategies.fractal_rb import FractalRbStrategy
 from backtester.strategies.fractal_rejection import FractalRejectionStrategy
@@ -34,6 +35,7 @@ STRATEGIES: Final[dict[str, type[BaseStrategy]]] = {
     "fractal_rb": FractalRbStrategy,
     "phase_routed": PhaseRoutedStrategy,
     "promoted_router": PromotedRouterStrategy,
+    "filtered_donor_portfolio": FilteredDonorPortfolioStrategy,
     "crypt_ensemble": CryptEnsembleStrategy,
     "dss_strategy": DSSStrategy,
 }

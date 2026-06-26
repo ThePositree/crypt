@@ -6,6 +6,203 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-26 — Monthly profit sweep backtest mode
+
+- Added `--capital-sweep monthly_profit` to `backtester run`. At each month
+  boundary, realized trading capital above the configured initial capital is
+  moved into banked profit; losing months are not topped up.
+- Added sweep audit columns to `trades.csv`: `capital_sweep_amount`,
+  `banked_profit_after`, and `trading_capital_after_sweep`.
+- Updated result metrics and console output to report `Banked Profit` and
+  `Total Account` when sweep mode withdraws money.
+- Added `Withdrawn ($)` to the monthly console table so each month shows the
+  dollars withdrawn that month, not the cumulative bank.
+- Added regression tests for monthly sweep execution and banked-profit result
+  accounting.
+- Validation: targeted pytest passed; targeted ruff `F,I` passed.
+- ADRs touched: none.
+- Files touched: `src/backtester/`, `tests/backtester/`, `README.md`,
+  `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
+## 2026-06-26 — Island short-only exact filter branch
+
+- Added DSS replay controls: `allowed_signal` for long-only/short-only exact
+  replay and `entry_skip_rules` for entry-known next-bar filters
+  (`entry_dayofweek`, `stop_distance_pct`).
+- Added tests for DSS side filtering and entry skip rules; targeted pytest,
+  ruff, and mypy passed.
+- Exact-tested Island short-only variants on SOL 2022-12-18 → 2026-06-10.
+  The original Island run made +$50,599 on $10k with 7.32 trades/week and
+  -23.91% recalculated equity drawdown.
+- Best current money branch
+  `island_short_r1p42_rrr0p75_ttl32_weekend_stop_filter_v1` made +$72,602 on
+  $10k, kept 3.40 trades/week, and recalculated drawdown was -16.35%.
+- Lower-risk checked branch
+  `island_short_r1p35_rrr0p75_ttl32_weekend_stop_filter_v1` made +$65,227 on
+  $10k, kept 3.40 trades/week, and recalculated drawdown was -15.62%.
+- Marked
+  `island_short_r1p42_rrr0p75_ttl32_weekend_stop_filter_v1` as the selected
+  Island research branch in the archived candidate README.
+- Scanned 259 `results/**/trades.csv` artifacts for the opposite profile
+  (profitable longs, losing shorts). No strong full-period mirror of Island was
+  found; only two aggregated strategy groups matched the sign pattern, both
+  weak in dollars.
+- Recorded the Island follow-up in the archived candidate README and task
+  files. The branch remains research/archive, not promoted: drawdown is still
+  above the 10% mandate and 2025 monthly floor coverage is weak.
+- ADRs touched: none.
+- Files touched: `src/backtester/strategies/`, `tests/backtester/`,
+  `strategies/archive/`, `docs/archive/`, `docs/tasks/`, `README.md`,
+  `CHANGELOG.md`.
+
+---
+
+## 2026-06-26 — SMAC long-only branch and Island/SMAC portfolio check
+
+- Split archived SMAC into long-only and short-only exact DSS replays. Baseline
+  full-period SMAC made +$14,133 on $10k with 5.56 trades/week and -17.70%
+  recalculated drawdown; long-only made +$9,106 with 2.61 trades/week and
+  -14.31% drawdown; short-only made only +$2,609 with -27.33% drawdown.
+- Ran a SMAC long risk/RRR/TTL grid. Selected
+  `smac_long_r0p95_rrr1p25_ttl64_v1`: +$10,377 on $10k, 471 trades,
+  2.61 trades/week, and -14.59% recalculated drawdown.
+- Negative-oracle research found wide-stop skip rules for SMAC long, but exact
+  replay cut frequency to 1.1-1.4 trades/week, below the owner minimum, so no
+  extra SMAC filter was selected.
+- Fixed `filtered_donor_portfolio` to apply nested DSS `allowed_signal` and
+  `entry_skip_rules` before emitting multi-signal events.
+- Fixed multi-signal trailing parity: `ExecutionSim.run()` now detects
+  `trail_activation_rrr` inside `signal_events` and enriches the frame with
+  closed ATR just like scalar-signal runs.
+- Confirmed one-strategy portfolio parity for selected Island and selected
+  SMAC: trades, PnL, exits, and recalculated drawdown match standalone runs
+  exactly.
+- Exact-tested `island_short_smac_long_portfolio_v1` after the trailing fix:
+  $10k → $168,657 (+$158,657), 1,087 trades, about 6.00 trades/week, and
+  -16.98% recalculated drawdown.
+- Re-ran every archived `filtered_donor_portfolio` config after the
+  multi-signal trailing fix under `results/multisignal_rerun_after_trailing_fix/`.
+  All pre-fix multi-signal money results should be treated as invalid.
+  `causal_v1` now fails closed because it references unavailable fast-path
+  fields. `causal_v2_deployable` becomes +$138,222 but with -55.61% drawdown.
+  `causal_v3_core4` becomes +$656,185 with -22.42% drawdown. The selected
+  Island+SMAC branch remains +$158,657 with -16.98% drawdown.
+- Ran a core4 drawdown frontier. Selected
+  `filtered_donor_portfolio_causal_v4_core4_no_island_long_riskx0p85`: $10k
+  → $216,978 (+$206,978), 2,298 trades, 12.69 trades/week, and -14.91%
+  recalculated drawdown. It removes Island longs and scales nested risk to
+  85% of the v3 core4 configs.
+- Validation: targeted ruff, mypy, execution-sim tests, and DSS tests passed.
+- ADRs touched: none.
+- Files touched: `src/backtester/`, `tests/backtester/`,
+  `strategies/archive/`, `docs/archive/`, `CHANGELOG.md`.
+
+---
+
+## 2026-06-26 — Anti-overfit trade filter research
+
+- Added `backtester negative-oracle-research`: it searches entry-known skip
+  rules that identify repeatable losing trade clusters and reports how many
+  dollars each rule would save/cut in train, validation, and stress.
+- Ran negative-oracle research on
+  `results/filtered_donor_portfolio_causal_v2_deployable_full/20260626_163108`:
+  1,066 rules tested; best robust skip rule saved only +$315 validation and
+  +$1,487 stress, so the current donor portfolio has no strong obvious
+  entry-known "mine" filter.
+- Invalidated `filtered_donor_portfolio_causal_v1` exact results: the fast
+  portfolio signal path did not expose `confidence` or
+  `strength_smc_structure`, so NR4 and NR7 filters silently rejected all events.
+- Hardened `filtered_donor_portfolio` so unavailable filter features fail early
+  with a clear error instead of producing incomplete portfolio results.
+- Fixed portfolio `catalog_*` filters to use previous closed candles, matching
+  `trade-filter-research` and avoiding current-candle leakage.
+- Added deployable
+  `strategies/archive/filtered_donor_portfolio_causal_v2_deployable.json`,
+  replacing non-fast-path `confidence`/`strength_*` filters with entry-time and
+  previous-closed-candle catalog filters.
+- Signal-only diagnostics for v2 produced 3,787 pre-execution events across all
+  six donors; the next exact result must come from normal owner-run backtest.
+- Added ADR-0047 and `docs/multi_signal_execution.md`.
+- Added backward-compatible `signal_events` support to `ExecutionSim` and
+  `Backtester`: legacy scalar `signal` rows still work, while multi-signal rows
+  update exits once per OHLCV bar and then process all same-bar entry events
+  through shared capital/margin.
+- Added `filtered_donor_portfolio` strategy and archived
+  `strategies/archive/filtered_donor_portfolio_causal_v1.json`, using the
+  causal donor filters selected from
+  `results/trade_filter_research_donors_2022_2026_causal/`.
+- Materialized donor exact backtest and causal filter research artifacts under
+  `results/research_archive/` as physical copies, not hardlinks.
+- Fixed archived `crypt_ensemble` donor configs so long owner-run donor
+  backtests keep progress bars enabled; added a guard test that fails on
+  `strategies/archive/*.json` with `params.progress=false`.
+- Fixed catalog-feature trade filtering to use strictly previous OHLCV candles
+  on exact `open_time` joins, preventing current-candle leakage.
+- Ran causal donor-level filter research after owner completed parallel donor
+  backtests. All six donors produced at least one robust-forward CSV filter;
+  results are archived under
+  `results/trade_filter_research_donors_2022_2026_causal/`.
+- Measured donor entry overlap: 1,320 of 6,210 standalone donor trades share an
+  entry timestamp with another strategy, so exact "release all passing
+  strategies" needs multi-signal execution rather than the current one-row
+  strategy contract.
+- Added two-rule conjunctions, `--group-by`, `--include-catalog-features`, and
+  `--ohlcv` to `backtester trade-filter-research`.
+- Grouped filter searches now support per-strategy screens such as
+  `--group-by selected_strategy`; the grouping column is excluded from rule
+  features to avoid trivial constant rules.
+- Catalog-style candle features are computed from OHLCV and joined at
+  `entry_time` using backward-only alignment. Supported run `ohlcv.csv` files
+  with `open_time`.
+- Smoke-tested grouped filtering on `router_v2_3997501`: zero robust-forward
+  passes. The routed artifact had train trades only for one donor, so the next
+  valid research step is owner-run full-period donor backtests.
+- Smoke-tested catalog-feature loading on the same artifact with a capped rule
+  search: `catalog_bb_squeeze == 'False'` did not pass, but OHLCV feature
+  attachment and progress output worked.
+- Added the agent autonomy / short self-run policy to `AGENTS.md`: agents keep
+  working until owner-run scope, interruption, unknown next step, or a real
+  owner choice; short progress/ETA commands under roughly two minutes may be
+  run by agents.
+- Hardened `trade-filter-research`: portfolio-state fields are excluded by
+  default, optional through `--include-portfolio-state-features`, and every
+  candidate now reports validation/stress deltas versus baseline plus
+  `robust_forward_pass` and `robust_forward_score`.
+- Re-ranked `top_filters.csv` by robust forward score instead of raw validation
+  score.
+- Re-ran all six full-period router artifacts with default market-entry
+  features: no top-50 single-rule filter passed robust-forward guards.
+- Re-ran all six with portfolio-state features enabled as a risk-allocator
+  diagnostic: only `router_v2_3213199` had one weak formal pass,
+  `size >= 39.10903047699838`, improving validation return by +4.08pp and
+  stress return by +2.46pp while leaving stress floor-month count unchanged.
+- Added a backlog follow-up for compound filters / meta-labeling.
+- Added ADR-0046: all trainable research entities default to train
+  2022-2024, validation 2024-2025, stress 2025-latest.
+- Added `docs/trade_filter_research.md` for entry-known `take`/`skip` filter
+  research over existing `trades.csv` artifacts.
+- Added `backtester trade-filter-research`, which generates single-rule
+  numeric/categorical filters from train only, blocks outcome leakage fields,
+  ranks train-discovered rules by validation score, and reports stress metrics.
+- The command writes `baseline_by_split.csv`, `filter_candidates.csv`,
+  `top_filters.csv`, and `report.md`, with a visible progress bar for rule
+  evaluation.
+- Smoke-tested on `router_v2_3997501` full-period exact trades: 282 candidate
+  rules evaluated; best validation-ranked research rule was
+  `size <= 316.00902786872854` with train +26.74%, validation +121.16%, stress
+  +134.03% in CSV-deletion approximation.
+- Deferred the execution-grade router oracle to P2 and moved active work to
+  trade-filter research.
+- Validation: targeted trade-filter tests, execution multi-signal tests,
+  archive-progress tests, ruff, and mypy passed for the changed paths.
+- ADRs touched: ADR-0046, ADR-0047.
+- Files touched: `src/backtester/`, `tests/backtester/`, `docs/`, `README.md`,
+  `CHANGELOG.md`.
+
+---
+
 ## 2026-06-25 — Promoted router external-backtester boundary fix
 
 - Removed all nested backtests from `promoted_router`; the external backtester

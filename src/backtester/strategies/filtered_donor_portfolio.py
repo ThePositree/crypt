@@ -1,0 +1,347 @@
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import optuna
+import pandas as pd
+from tqdm.auto import tqdm
+
+from backtester.data_contracts import StrategyData, StrategyInput
+from backtester.router_runtime import ArchivedStrategySpec, build_archived_signal_frames
+from backtester.strategy import BaseStrategy
+from backtester.strategy_discovery.features import build_donor_discovery_features
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class PortfolioFilterRule:
+    feature: str
+    op: str
+    value: float | str | bool
+
+
+class FilteredDonorPortfolioStrategy(BaseStrategy):
+    """Release every donor signal that passes its entry-known filter."""
+
+    def __init__(self, params: dict[str, Any]) -> None:
+        super().__init__(params)
+        raw_paths = params.get("strategy_paths", {})
+        if not isinstance(raw_paths, dict) or not raw_paths:
+            raise ValueError("strategy_paths must be a non-empty mapping")
+        self._strategy_paths = {
+            str(strategy_id): Path(str(path)) for strategy_id, path in raw_paths.items()
+        }
+        raw_filters = params.get("filters", {})
+        if not isinstance(raw_filters, dict):
+            raise ValueError("filters must be a mapping")
+        self._filters = {
+            str(strategy_id): self._parse_rules(raw_rules)
+            for strategy_id, raw_rules in raw_filters.items()
+        }
+        unknown = set(self._filters) - set(self._strategy_paths)
+        if unknown:
+            raise ValueError(f"filters reference unknown strategies: {sorted(unknown)}")
+        self._progress = bool(params.get("progress", True))
+        self._portfolio_id = str(params.get("portfolio_id", "filtered_donor_portfolio"))
+
+    def generate(self, data: StrategyInput) -> pd.DataFrame:
+        from backtester.cli_runner import build_backtest_args, load_strategy_config
+
+        primary = data.primary if isinstance(data, StrategyData) else data
+        specs: list[ArchivedStrategySpec] = []
+        for strategy_id in sorted(self._strategy_paths):
+            cfg = load_strategy_config(str(self._strategy_paths[strategy_id]), logger)
+            if cfg is None:
+                path = self._strategy_paths[strategy_id]
+                raise ValueError(f"Invalid nested strategy config: {path}")
+            args = build_backtest_args(
+                cfg,
+                capital=10_000.0,
+                risk_percent=1.0,
+                rrr=2.0,
+                trail_activation_rrr=0.0,
+                trail_distance_atr=0.0,
+                maker_fee=0.0002,
+                taker_fee=0.0005,
+                ttl=0,
+                max_positions=0,
+                max_allowed_leverage=25.0,
+                max_allowed_margin=1.0,
+                risk_base_period="monthly",
+                max_daily_profit=None,
+                max_daily_loss=None,
+                trading_begin=None,
+                trading_end=None,
+                exit_geometry="sl_rrr",
+                tp_move_pct=None,
+                structural_sl_mode="cap",
+                min_tp_move_pct=0.004,
+            )
+            specs.append(
+                ArchivedStrategySpec(
+                    strategy_id=strategy_id,
+                    name=cfg.name,
+                    params=dict(cfg.params),
+                    execution=args,
+                )
+            )
+
+        logger.info("Filtered donor portfolio signal preparation starting")
+        frames = build_archived_signal_frames(data=data, specs=specs)
+        frames = {
+            spec.strategy_id: _apply_nested_replay_controls(
+                frame=frames[spec.strategy_id],
+                primary=primary,
+                params=spec.params,
+            )
+            for spec in specs
+        }
+        catalog_features = _catalog_features(primary)
+        frames = {
+            strategy_id: frame.join(catalog_features, how="left")
+            for strategy_id, frame in frames.items()
+        }
+        _validate_filter_features_available(frames, self._filters)
+
+        output = primary.copy()
+        output["signal"] = 0
+        output["sl_price"] = 0.0
+        output["signal_events"] = [[] for _ in range(len(output))]
+        output["portfolio_id"] = self._portfolio_id
+
+        iterator = tqdm(
+            output.index,
+            total=len(output),
+            desc="filtered_donor_portfolio events",
+            unit="bar",
+            disable=not self._progress,
+        )
+        for timestamp in iterator:
+            events: list[dict[str, Any]] = []
+            for spec in specs:
+                frame = frames[spec.strategy_id]
+                if timestamp not in frame.index:
+                    continue
+                row = frame.loc[timestamp]
+                signal = int(row.get("signal", 0))
+                if signal not in (1, -1):
+                    continue
+                if not self._passes_filters(row, self._filters.get(spec.strategy_id, [])):
+                    continue
+                events.append(_event_from_signal_row(row, spec))
+            output.at[timestamp, "signal_events"] = events
+        return output
+
+    @staticmethod
+    def _parse_rules(raw_rules: Any) -> list[PortfolioFilterRule]:
+        if raw_rules is None:
+            return []
+        if not isinstance(raw_rules, list):
+            raise ValueError("each filter entry must be a list of rules")
+        rules: list[PortfolioFilterRule] = []
+        for raw in raw_rules:
+            if not isinstance(raw, dict):
+                raise ValueError("filter rules must be dictionaries")
+            rules.append(
+                PortfolioFilterRule(
+                    feature=str(raw["feature"]),
+                    op=str(raw["op"]),
+                    value=raw["value"],
+                )
+            )
+        return rules
+
+    @staticmethod
+    def _passes_filters(row: pd.Series, rules: list[PortfolioFilterRule]) -> bool:
+        for rule in rules:
+            if rule.feature not in row.index:
+                return False
+            value = row[rule.feature]
+            if pd.isna(value):
+                return False
+            if not _compare_filter_value(value, rule.op, rule.value):
+                return False
+        return True
+
+    def suggest_params(self, trial: optuna.Trial) -> dict[str, Any]:  # noqa: ARG002
+        return {}
+
+
+def _catalog_features(primary: pd.DataFrame) -> pd.DataFrame:
+    features = build_donor_discovery_features(primary=primary, h4=None, d1=None)
+    closed_features = features.shift(1)
+    catalog = pd.DataFrame(index=features.index)
+    catalog["entry_hour"] = catalog.index.hour
+    catalog["entry_dayofweek"] = catalog.index.dayofweek
+    catalog["catalog_atr_pct"] = closed_features["atr_pct"]
+    catalog["catalog_volatility_rank"] = closed_features["volatility_rank"]
+    catalog["catalog_trend_strength_atr"] = closed_features["trend_strength_atr"]
+    catalog["catalog_rsi14"] = closed_features["rsi14"]
+    catalog["catalog_bb_width_pct"] = closed_features["bb_width_pct"]
+    catalog["catalog_body_to_range"] = closed_features["body_to_range"]
+    catalog["catalog_bar_range_atr"] = closed_features["bar_range_atr"]
+    catalog["catalog_roc10"] = closed_features["roc10"]
+    catalog["catalog_volume_ratio_20"] = closed_features["volume_ratio_20"]
+    catalog["catalog_ema_stack_long"] = closed_features["ema_stack_long"].astype("boolean")
+    catalog["catalog_ema_stack_short"] = closed_features["ema_stack_short"].astype("boolean")
+    catalog["catalog_bb_squeeze"] = (closed_features["bb_width_rank_20"] <= 0.25).astype(
+        "boolean"
+    )
+    catalog["catalog_bb_wide"] = (closed_features["bb_width_rank_20"] >= 0.75).astype(
+        "boolean"
+    )
+    catalog["catalog_volume_above_median"] = (
+        closed_features["volume_ratio_20"] >= 1.0
+    ).astype("boolean")
+    catalog["catalog_session_london"] = closed_features["hour_utc"].between(7, 16).astype(
+        "boolean"
+    )
+    catalog["catalog_session_ny"] = closed_features["hour_utc"].between(13, 21).astype(
+        "boolean"
+    )
+    return catalog
+
+
+def _apply_nested_replay_controls(
+    *,
+    frame: pd.DataFrame,
+    primary: pd.DataFrame,
+    params: dict[str, Any],
+) -> pd.DataFrame:
+    output = frame.copy()
+    allowed_signal = params.get("allowed_signal")
+    if allowed_signal is not None:
+        allowed = int(allowed_signal)
+        if allowed not in (-1, 1):
+            raise ValueError("allowed_signal must be -1, 1, or omitted")
+        rejected = output["signal"] != allowed
+        output.loc[rejected, "signal"] = 0
+        output.loc[rejected, "sl_price"] = 0.0
+
+    entry_skip_rules = params.get("entry_skip_rules") or []
+    if entry_skip_rules:
+        _apply_nested_entry_skip_rules(output=output, primary=primary, rules=entry_skip_rules)
+    return output
+
+
+def _apply_nested_entry_skip_rules(
+    *,
+    output: pd.DataFrame,
+    primary: pd.DataFrame,
+    rules: list[dict[str, Any]],
+) -> None:
+    entry_open = primary["open"].shift(-1)
+    entry_times = pd.Series(primary.index, index=primary.index).shift(-1)
+    feature_values = {
+        "entry_dayofweek": entry_times.dt.dayofweek.astype("float64"),
+        "stop_distance_pct": (entry_open - output["sl_price"]).abs() / entry_open,
+    }
+
+    skip_mask = pd.Series(False, index=output.index)
+    for rule in rules:
+        conditions = rule.get("conditions")
+        if not isinstance(conditions, list) or not conditions:
+            raise ValueError("entry_skip_rules items must contain a non-empty conditions list")
+        rule_mask = output["signal"] != 0
+        for condition in conditions:
+            feature = str(condition.get("feature"))
+            op = str(condition.get("op"))
+            if feature not in feature_values:
+                raise ValueError(f"unsupported entry skip feature: {feature}")
+            if "value" not in condition:
+                raise ValueError("entry skip condition must contain value")
+            rule_mask &= _compare_entry_skip_value(
+                feature_values[feature],
+                op,
+                float(condition["value"]),
+            )
+        skip_mask |= rule_mask.fillna(False)
+
+    output.loc[skip_mask, "signal"] = 0
+    output.loc[skip_mask, "sl_price"] = 0.0
+
+
+def _compare_entry_skip_value(values: pd.Series, op: str, threshold: float) -> pd.Series:
+    if op == "<":
+        return values < threshold
+    if op == "<=":
+        return values <= threshold
+    if op == ">":
+        return values > threshold
+    if op == ">=":
+        return values >= threshold
+    if op == "==":
+        return values == threshold
+    if op == "!=":
+        return values != threshold
+    raise ValueError(f"unsupported entry skip op: {op}")
+
+
+def _validate_filter_features_available(
+    frames: dict[str, pd.DataFrame],
+    filters: dict[str, list[PortfolioFilterRule]],
+) -> None:
+    missing: dict[str, list[str]] = {}
+    for strategy_id, rules in filters.items():
+        frame = frames.get(strategy_id)
+        if frame is None:
+            missing[strategy_id] = [rule.feature for rule in rules]
+            continue
+        absent = sorted({rule.feature for rule in rules if rule.feature not in frame.columns})
+        if absent:
+            missing[strategy_id] = absent
+    if missing:
+        details = "; ".join(
+            f"{strategy_id}: {', '.join(features)}"
+            for strategy_id, features in sorted(missing.items())
+        )
+        raise ValueError(
+            "Filtered donor portfolio config references unavailable filter features: "
+            f"{details}"
+        )
+
+
+def _event_from_signal_row(row: pd.Series, spec: ArchivedStrategySpec) -> dict[str, Any]:
+    event: dict[str, Any] = {
+        "signal": int(row["signal"]),
+        "sl_price": float(row["sl_price"]),
+        "selected_strategy": spec.strategy_id,
+        "position_group": spec.strategy_id,
+        "drain_on_group_change": False,
+        "risk_percent": float(getattr(spec.execution, "risk_percent", 1.0)),
+        "rrr": float(getattr(spec.execution, "rrr", 2.0)),
+        "position_ttl_bars": int(getattr(spec.execution, "ttl", 0)),
+        "trail_activation_rrr": float(getattr(spec.execution, "trail_activation_rrr", 0.0)),
+        "trail_distance_atr": float(getattr(spec.execution, "trail_distance_atr", 0.0)),
+        "exit_geometry": str(getattr(spec.execution, "exit_geometry", "sl_rrr")),
+        "tp_move_pct": getattr(spec.execution, "tp_move_pct", None),
+        "structural_sl_mode": str(getattr(spec.execution, "structural_sl_mode", "cap")),
+        "min_tp_move_pct": float(getattr(spec.execution, "min_tp_move_pct", 0.004)),
+    }
+    if "entry_price" in row.index and not pd.isna(row["entry_price"]):
+        event["entry_price"] = float(row["entry_price"])
+    for key, value in row.items():
+        if key in event or key in {"signal", "sl_price", "signal_events"}:
+            continue
+        if pd.isna(value):
+            continue
+        event[key] = value.item() if hasattr(value, "item") else value
+    return event
+
+
+def _compare_filter_value(value: Any, op: str, expected: float | str | bool) -> bool:
+    if op in {"<=", ">="}:
+        numeric = float(value)
+        threshold = float(expected)
+        return numeric <= threshold if op == "<=" else numeric >= threshold
+    left = str(value)
+    right = str(expected)
+    if op == "==":
+        return left == right
+    if op == "!=":
+        return left != right
+    raise ValueError(f"Unsupported filter op: {op}")

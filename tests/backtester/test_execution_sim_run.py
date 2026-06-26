@@ -88,6 +88,166 @@ def test_per_signal_ttl_overrides_simulator_default() -> None:
     assert trades.iloc[0]["position_ttl_bars"] == 1
 
 
+def test_signal_events_open_multiple_positions_on_one_bar() -> None:
+    idx = pd.date_range("2026-01-01", periods=3, freq="D")
+    df = pd.DataFrame(
+        {
+            "open": [100.0, 100.0, 100.0],
+            "high": [101.0, 101.0, 101.0],
+            "low": [99.0, 99.0, 99.0],
+            "close": [100.0, 100.0, 100.0],
+            "signal_events": [
+                [
+                    {
+                        "signal": 1,
+                        "sl_price": 99.0,
+                        "selected_strategy": "alpha",
+                    },
+                    {
+                        "signal": 1,
+                        "sl_price": 98.0,
+                        "selected_strategy": "beta",
+                    },
+                ],
+                [],
+                [],
+            ],
+        },
+        index=idx,
+    )
+
+    trades = ExecutionSim(
+        initial_capital=10_000.0,
+        max_positions=0,
+        rrr=2.0,
+    ).run(df)
+
+    assert len(trades) == 2
+    assert trades["selected_strategy"].tolist() == ["alpha", "beta"]
+    assert trades["open_positions_before"].tolist() == [0, 1]
+    assert trades["total_locked_margin_before"].iloc[1] > 0
+
+
+def test_signal_events_request_trailing_atr() -> None:
+    idx = pd.date_range("2026-01-01", periods=20, freq="D")
+    signal_events = [[] for _ in range(len(idx))]
+    signal_events[15] = [
+        {
+            "signal": 1,
+            "sl_price": 99.0,
+            "rrr": 2.0,
+            "trail_activation_rrr": 1.0,
+            "trail_distance_atr": 0.25,
+            "selected_strategy": "alpha",
+        }
+    ]
+    df = pd.DataFrame(
+        {
+            "open": [100.0] * len(idx),
+            "high": [100.5] * 17 + [103.0, 103.0, 103.0],
+            "low": [99.5] * 17 + [100.5, 100.5, 100.5],
+            "close": [100.0] * 17 + [102.0, 102.0, 102.0],
+            "signal_events": signal_events,
+        },
+        index=idx,
+    )
+
+    trades = ExecutionSim(
+        initial_capital=10_000.0,
+        trail_activation_rrr=0.0,
+        trail_distance_atr=0.0,
+        max_positions=0,
+    ).run(df)
+
+    assert len(trades) == 1
+    assert trades.iloc[0]["exit_reason"] == "trailing_stop"
+    assert trades.iloc[0]["trail_activation_rrr"] == 1.0
+
+
+def test_monthly_profit_capital_sweep_banks_profit_before_next_month_entries() -> None:
+    idx = pd.to_datetime(
+        [
+            "2026-01-30",
+            "2026-01-31",
+            "2026-02-01",
+            "2026-02-02",
+            "2026-02-03",
+        ]
+    )
+    df = pd.DataFrame(
+        {
+            "open": [100.0, 100.0, 100.0, 100.0, 100.0],
+            "high": [100.0, 101.0, 101.0, 101.0, 101.0],
+            "low": [99.5, 100.0, 100.0, 100.0, 100.0],
+            "close": [100.0, 100.5, 100.5, 100.5, 100.5],
+            "signal": [1, 0, 1, 0, 0],
+            "sl_price": [99.0, 99.0, 99.0, 99.0, 99.0],
+        },
+        index=idx,
+    )
+
+    trades = ExecutionSim(
+        initial_capital=1000.0,
+        risk_percent=10.0,
+        rrr=1.0,
+        taker_fee=0.0,
+        maker_fee=0.0,
+        max_allowed_margin=100.0,
+        max_allowed_leverage=100.0,
+        capital_sweep="monthly_profit",
+    ).run(df)
+
+    assert len(trades) == 2
+    assert trades["pnl_abs"].tolist() == [100.0, 100.0]
+    assert trades["capital_sweep_amount"].tolist() == [100.0, 0.0]
+    assert trades.iloc[0]["capital_sweep_month"] == "2026-01"
+    assert pd.isna(trades.iloc[1]["capital_sweep_month"])
+    assert trades["banked_profit_after"].tolist() == [100.0, 100.0]
+    assert trades["capital_before"].tolist() == [1000.0, 1000.0]
+    assert trades["risk_base_capital"].tolist() == [1000.0, 1000.0]
+
+
+def test_monthly_profit_capital_sweep_is_recorded_without_later_trades() -> None:
+    idx = pd.to_datetime(
+        [
+            "2026-01-10",
+            "2026-01-11",
+            "2026-01-12",
+            "2026-01-13",
+            "2026-02-01",
+        ]
+    )
+    df = pd.DataFrame(
+        {
+            "open": [100.0, 100.0, 100.0, 100.0, 100.0],
+            "high": [100.0, 101.0, 101.0, 101.0, 101.0],
+            "low": [99.5, 100.0, 100.0, 100.0, 100.0],
+            "close": [100.0, 100.5, 100.5, 100.5, 100.5],
+            "signal": [1, 0, 0, 0, 0],
+            "sl_price": [99.0, 99.0, 99.0, 99.0, 99.0],
+        },
+        index=idx,
+    )
+
+    trades = ExecutionSim(
+        initial_capital=1000.0,
+        risk_percent=10.0,
+        rrr=1.0,
+        taker_fee=0.0,
+        maker_fee=0.0,
+        max_allowed_margin=100.0,
+        max_allowed_leverage=100.0,
+        capital_sweep="monthly_profit",
+    ).run(df)
+
+    assert len(trades) == 1
+    assert trades.iloc[0]["pnl_abs"] == 100.0
+    assert trades.iloc[0]["capital_sweep_amount"] == 100.0
+    assert trades.iloc[0]["capital_sweep_month"] == "2026-01"
+    assert trades.iloc[0]["banked_profit_after"] == 100.0
+    assert trades.iloc[0]["trading_capital_after_sweep"] == 1000.0
+
+
 def test_position_group_drains_before_new_group_entry() -> None:
     df = _base_df(
         opens=[100.0, 100.0, 100.0, 100.0],

@@ -1075,6 +1075,98 @@ def test_stage4_exported_json_replays_through_dss_strategy(tmp_path: Path) -> No
     assert {"signal", "sl_price"}.issubset(generated.columns)
 
 
+def test_dss_strategy_allowed_signal_filters_direction() -> None:
+    index = pd.date_range("2026-01-01", periods=3, freq="h", tz="UTC")
+    primary = pd.DataFrame(
+        {
+            "open": [100.0, 101.0, 102.0],
+            "high": [101.0, 102.0, 103.0],
+            "low": [99.0, 100.0, 101.0],
+            "close": [100.5, 101.5, 102.5],
+            "volume": [1.0, 1.0, 1.0],
+        },
+        index=index,
+    )
+    strategy = DSSStrategy(
+        {
+            "trigger_name": "pt_engulfing",
+            "trigger_params": {"body_ratio": 0.7},
+            "filter_names": [],
+            "filter_params": {},
+            "rrr": 1.0,
+            "risk_percent": 1.0,
+            "position_ttl_bars": 16,
+            "allowed_signal": -1,
+        }
+    )
+    strategy._generate_fn = lambda data: pd.DataFrame(  # noqa: ARG005
+        {
+            "bar_time": [index[0], index[1]],
+            "symbol": ["SOL-USDT-SWAP", "SOL-USDT-SWAP"],
+            "side": ["long", "short"],
+            "confidence": [80.0, 80.0],
+            "rationale": ["long", "short"],
+            "entry_price": [100.5, 101.5],
+            "stop_price": [99.0, 103.0],
+            "tp_price": [102.0, 99.0],
+        }
+    )
+
+    signals = strategy.generate(primary)
+
+    assert signals["signal"].tolist() == [0, -1, 0]
+
+
+def test_dss_strategy_entry_skip_rules_filter_next_bar_entry_features() -> None:
+    index = pd.date_range("2026-01-02 23:00", periods=4, freq="h", tz="UTC")
+    primary = pd.DataFrame(
+        {
+            "open": [100.0, 100.0, 100.0, 100.0],
+            "high": [101.0, 101.0, 101.0, 101.0],
+            "low": [99.0, 99.0, 99.0, 99.0],
+            "close": [100.0, 100.0, 100.0, 100.0],
+            "volume": [1.0, 1.0, 1.0, 1.0],
+        },
+        index=index,
+    )
+    strategy = DSSStrategy(
+        {
+            "trigger_name": "pt_engulfing",
+            "trigger_params": {"body_ratio": 0.7},
+            "filter_names": [],
+            "filter_params": {},
+            "rrr": 1.0,
+            "risk_percent": 1.0,
+            "position_ttl_bars": 16,
+            "allowed_signal": -1,
+            "entry_skip_rules": [
+                {
+                    "conditions": [
+                        {"feature": "stop_distance_pct", "op": ">=", "value": 0.02},
+                        {"feature": "entry_dayofweek", "op": ">=", "value": 5.0},
+                    ]
+                }
+            ],
+        }
+    )
+    strategy._generate_fn = lambda data: pd.DataFrame(  # noqa: ARG005
+        {
+            "bar_time": [index[0], index[1]],
+            "symbol": ["SOL-USDT-SWAP", "SOL-USDT-SWAP"],
+            "side": ["short", "short"],
+            "confidence": [80.0, 80.0],
+            "rationale": ["wide weekend short", "normal short"],
+            "entry_price": [100.0, 100.0],
+            "stop_price": [103.0, 101.0],
+            "tp_price": [97.0, 99.0],
+        }
+    )
+
+    signals = strategy.generate(primary)
+
+    assert signals["signal"].tolist() == [0, -1, 0, 0]
+
+
 def test_dss_v1_output_dir_fails_resume(tmp_path: Path) -> None:
     (tmp_path / "study.journal").write_text("{}", encoding="utf-8")
     with pytest.raises(ValueError, match="DSS v1 artifacts"):
