@@ -14,6 +14,57 @@ when finished.
 > **+15%/month** on **$10k** SOL **2025** continuous backtest after fees;
 > max **10% intra-month DD**; auto-trading only after **promote** verdict.
 
+## P1 — Core4 portfolio-level regime/off-switch research
+
+**What:** research entry-known portfolio-level off-switches for the current
+Core4 branch without using `max_positions`: day-level loss pauses, session
+windows, volatility/trend regime gates, and per-strategy risk throttles.
+
+**Why now:** the 2026-06-27 monthly sweep search found no free improvement.
+Simple DSS caps and risk cuts reduce drawdown but also reduce total dollars;
+adding NR7 worsened drawdown. The remaining problem is concentrated regime
+damage in months like 2023-09, 2024-05, 2025-01, and 2026-04.
+
+**Expected gain:** preserve most of v4's $43k total account on $10k while
+reducing drawdown toward 10-12% and keeping monthly profit less dependent on
+a few months.
+
+**Acceptance:** exact backtester artifacts comparing baseline v4 against at
+least three non-`max_positions` controls in total dollars, drawdown, positive
+month count, worst month, median month, and top-3-month profit concentration.
+
+**Links:** `strategies/archive/filtered_donor_portfolio_causal_v4_core4_no_island_long_riskx0p85.json`,
+`results/core4_v5_distribution_tests/`.
+
+---
+
+## P1 — Rerun sparse high-WR donor discovery after Stage 1 gate fixes
+
+**What:** run a targeted sparse/specialist donor search after the 2026-06-19
+Stage 1 WR gate fix, then exact-test the best sparse donor basket as an
+addition to Core4 v4. Do not use `max_positions` as a control lever.
+
+**Why now:** older discovery artifacts show rare high-WR patterns, but they
+predate the Stage 1 gate fix. Local post-fix artifacts only contain 2023
+specialist traces with no balanced exports, which is enough to justify a
+purpose-built sparse donor search rather than reusing stale outputs.
+
+**Expected gain:** add independent low-frequency profit sources to v4 so
+profit is spread across more months without simply reducing risk and giving
+up dollars.
+
+**Acceptance:** a post-fix discovery artifact lists sparse candidates with
+event count, WR, per-window coverage, and specialist/balanced class; the best
+5-15 candidates are converted or implemented and exact-tested as
+`v4 + sparse basket` with monthly sweep. The report must compare total account,
+DD, positive/negative months, worst month, median month, and top-3 month
+profit concentration.
+
+**Links:** `results/dss_sol_v2_barrier_wr55_10pd_2023first_seed60619/`,
+`results/20260608_193549/`, `docs/discovery/direct_signal_search_v2.md`.
+
+---
+
 ## P1 — Reduce Island short-only drawdown without killing trade frequency
 
 **What:** continue exact entry-known filtering for the Island short-only branch:
@@ -317,24 +368,28 @@ only principled answer to the overfit question. Decision gate for further develo
 
 ---
 
-## P0 — Dry-run validation on real account (owner action)
+## P0 — Core4 live dry-run validation on real account (owner action)
 
 **What:** start the process with `EXECUTION_ENABLED=true EXECUTION_DRY_RUN=true` and
 observe 1–2 H1 ticks to confirm logs are correct before switching to live money.
 
-**Why now:** H1 scheduler and LiveExecutionManager are now wired and passing all tests.
-The only remaining step before live trading is owner verification of dry-run output.
+**Why now:** Core v4 live execution now uses the same registry strategy,
+multi-event signal path, next-open entry semantics, and full OKX sync gate as
+the backtester. The only remaining step before live trading is owner
+verification against the real account/API shape.
 
 **Expected gain:** confidence that signal/sizing/SL/TP are being computed correctly.
 
 **Acceptance:**
-1. Start with `EXECUTION_ENABLED=true EXECUTION_DRY_RUN=true OKX_API_KEY=… …`
-2. After `:02` UTC: logs show `"H1 tick at …"` and per-symbol signal output.
-3. `data/execution_state.json` created.
-4. Owner reviews signal, entry_price_estimate, sl_price, tp_price, contracts.
-5. If all looks correct: set `EXECUTION_DRY_RUN=false`.
+1. Start with `EXECUTION_ENABLED=true EXECUTION_DRY_RUN=true OKX_API_KEY=… …`.
+2. After `:02` UTC: logs show the H1 execution tick and full exchange sync.
+3. `data/live_positions.json` exists and contains `last_exchange_sync_ok=true`
+   or a clear blocking reason.
+4. Owner reviews donor id, next-open entry, SL, TP, contracts, and risk base
+   for any dry-run order.
+5. If all looks correct after 1-2 H1 ticks: consider `EXECUTION_DRY_RUN=false`.
 
-**Links:** `.env.example`, `docs/execution/live_execution.md`.
+**Links:** `.env.example`, `docs/execution/live_execution.md`, ADR-0048.
 
 ---
 

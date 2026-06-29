@@ -840,6 +840,38 @@ Short version:
 3. Attach a persistent volume at `/app/data`; set `LOG_DIR=data/logs`.
 4. Confirm build succeeds and Telegram alert arrives.
 
+## Core v4 Live Execution
+
+Live execution is off by default. Start with dry-run only:
+
+```bash
+PYTHONPATH=src \
+MPLCONFIGDIR=/tmp/matplotlib \
+EXECUTION_ENABLED=true \
+EXECUTION_DRY_RUN=true \
+EXECUTION_DRY_RUN_CAPITAL=10000 \
+EXECUTION_STRATEGY_CONFIG=strategies/archive/filtered_donor_portfolio_causal_v4_core4_no_island_long_riskx0p85.json \
+EXECUTION_SYMBOLS=SOL-USDT-SWAP \
+uv run python -m crypt --once --execution-only
+```
+
+The live runner loads the strategy through the same backtester registry as
+`backtester run`, processes Core v4 `signal_events` in order, and blocks new
+entries unless OKX balance/positions/orders are synced with
+`data/live_positions.json`. OKX must be in long/short position mode; net/one-way
+mode is blocked because Core v4 can hold independent long and short entries.
+Use `--execution-only` for trading dry-runs and trading service processes; it
+skips the legacy H4 alert monitor that prints `HOLD/conf/regime` verdicts and
+uses `EXECUTION_SYMBOLS` for startup health checks.
+When Telegram is configured, live execution sends one full sync report per UTC
+day plus one message for every recorded entry and exit. Keep
+`EXECUTION_MAX_POSITIONS=0` for Core v4. On startup, live execution refuses to
+run if the money-impacting `EXECUTION_*` defaults diverge from the strategy
+JSON `backtest_args`. `EXECUTION_DRY_RUN_CAPITAL` lets a dry-run size entries
+as if the account had `$10k` while still syncing the real OKX account; it is
+ignored for live money. Switch `EXECUTION_DRY_RUN=false` only after real H1
+dry-run logs show clean sync and sane SL/TP/size output.
+
 ## Running as a service (local VPS / Linux)
 
 The `deploy/crypt.service` systemd unit runs the process under your user account

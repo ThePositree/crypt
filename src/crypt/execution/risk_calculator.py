@@ -49,7 +49,8 @@ class LiveRiskCalculator:
         self._exit_geometry_config: ExitGeometryConfig = exit_geometry_config_from_args(
             exit_geometry=settings.exit_geometry,
             tp_move_pct=settings.tp_move_pct if settings.exit_geometry == "tp_pct" else None,
-            structural_sl_mode="cap",
+            structural_sl_mode=settings.structural_sl_mode,
+            min_tp_move_pct=settings.min_tp_move_pct,
         )
         self._risk_model = BasicRiskModel(
             max_allowed_margin=settings.max_allowed_margin,
@@ -116,6 +117,12 @@ class LiveRiskCalculator:
         capital: float,
         risk_base_capital: float,
         open_positions: list[LivePosition],
+        risk_percent: float | None = None,
+        rrr: float | None = None,
+        exit_geometry: str | None = None,
+        tp_move_pct: float | None = None,
+        structural_sl_mode: str | None = None,
+        min_tp_move_pct: float | None = None,
     ) -> LiveEntryDecision | None:
         """
         Compute entry parameters for a new position.
@@ -152,6 +159,34 @@ class LiveRiskCalculator:
 
         total_locked_margin = sum(p.locked_margin for p in open_positions if p.status == "open")
 
+        effective_risk_percent = (
+            self._settings.risk_percent if risk_percent is None else float(risk_percent)
+        )
+        effective_rrr = self._settings.rrr if rrr is None else float(rrr)
+        risk_model = self._risk_model
+        if (
+            exit_geometry is not None
+            or tp_move_pct is not None
+            or structural_sl_mode is not None
+            or min_tp_move_pct is not None
+        ):
+            risk_model = BasicRiskModel(
+                max_allowed_margin=self._settings.max_allowed_margin,
+                max_positions=self._settings.max_positions,
+                max_allowed_leverage=self._settings.max_leverage,
+                exit_geometry_config=exit_geometry_config_from_args(
+                    exit_geometry=exit_geometry or self._exit_geometry_config.mode,
+                    tp_move_pct=tp_move_pct
+                    if tp_move_pct is not None
+                    else self._exit_geometry_config.tp_move_pct,
+                    structural_sl_mode=structural_sl_mode
+                    or self._exit_geometry_config.structural_sl_mode,
+                    min_tp_move_pct=min_tp_move_pct
+                    if min_tp_move_pct is not None
+                    else self._exit_geometry_config.min_tp_move_pct,
+                ),
+            )
+
         entry_ctx = EntryContext(
             signal=signal,
             sl_price=sl_price,
@@ -160,11 +195,11 @@ class LiveRiskCalculator:
             risk_base_capital=risk_base_capital,
             total_locked_margin=total_locked_margin,
             open_positions=n_open,
-            risk_percent=self._settings.risk_percent,
-            rrr=self._settings.rrr,
+            risk_percent=effective_risk_percent,
+            rrr=effective_rrr,
         )
 
-        risk_result = self._risk_model.calculate_position(entry_ctx)
+        risk_result = risk_model.calculate_position(entry_ctx)
         if risk_result is None:
             logger.debug("BasicRiskModel rejected entry at price %s", entry_price)
             return None
@@ -206,8 +241,8 @@ class LiveRiskCalculator:
             risk_base_capital=risk_base_capital,
             total_locked_margin=total_locked_margin,
             open_positions=n_open,
-            risk_percent=self._settings.risk_percent,
-            rrr=self._settings.rrr,
+            risk_percent=effective_risk_percent,
+            rrr=effective_rrr,
         )
         fee_entry = self._fee_model.calculate_entry_fee(risk_result.position_value, fee_ctx)
         net_exposure = risk_result.position_value - fee_entry

@@ -1,0 +1,90 @@
+{
+  "name": "filtered_donor_portfolio",
+  "version": "filtered-donor-portfolio-causal-v5-core4-dss-vol-cap-2026-06-27",
+  "params": {
+    "portfolio_id": "filtered_donor_portfolio_causal_v5_core4_dss_vol_cap",
+    "progress": true,
+    "strategy_paths": {
+      "crypt_ensemble_h1_discovery_nr4_vwap_robust": "strategies/archive/crypt_ensemble_h1_discovery_nr4_vwap_robust_riskx0p85_for_core4_no_island_long.json",
+      "dssv2_013321_ps_macd_squeeze_recent": "strategies/archive/dssv2_013321_ps_macd_squeeze_recent_riskx0p85_for_core4_no_island_long.json",
+      "island_2023_021396_engulfing_bb_trend": "strategies/archive/island_2023_021396_engulfing_bb_trend_riskx0p85_for_core4_no_island_long.json",
+      "smac_003335_double_bottom_body_to_range": "strategies/archive/smac_003335_double_bottom_body_to_range_riskx0p85_for_core4_no_island_long.json"
+    },
+    "filters": {
+      "crypt_ensemble_h1_discovery_nr4_vwap_robust": [
+        {
+          "feature": "entry_hour",
+          "op": ">=",
+          "value": 6.0
+        },
+        {
+          "feature": "catalog_bb_width_pct",
+          "op": ">=",
+          "value": 0.018893983486194674
+        }
+      ],
+      "dssv2_013321_ps_macd_squeeze_recent": [
+        {
+          "feature": "catalog_bb_width_pct",
+          "op": ">=",
+          "value": 0.03593738872654686
+        },
+        {
+          "feature": "catalog_trend_strength_atr",
+          "op": "<=",
+          "value": 1.1986486257354083
+        },
+        {
+          "feature": "catalog_volatility_rank",
+          "op": "<=",
+          "value": 0.72
+        }
+      ],
+      "island_2023_021396_engulfing_bb_trend": [
+        {
+          "feature": "signal",
+          "op": "==",
+          "value": -1
+        },
+        {
+          "feature": "catalog_bb_width_pct",
+          "op": ">=",
+          "value": 0.01606112114003493
+        },
+        {
+          "feature": "catalog_volatility_rank",
+          "op": "<=",
+          "value": 0.8169999999999998
+        }
+      ],
+      "smac_003335_double_bottom_body_to_range": [
+        {
+          "feature": "catalog_bar_range_atr",
+          "op": ">=",
+          "value": 0.7807467866938832
+        },
+        {
+          "feature": "catalog_rsi14",
+          "op": "<=",
+          "value": 65.17392250598503
+        }
+      ]
+    }
+  },
+  "backtest_args": {
+    "exit_geometry": "sl_rrr",
+    "risk_base_period": "monthly",
+    "structural_sl_mode": "cap",
+    "ttl": 0,
+    "rrr": 2.0,
+    "risk_percent": 1.0,
+    "trail_activation_rrr": 0.0,
+    "trail_distance_atr": 0.0,
+    "max_positions": 0,
+    "max_allowed_margin": 1.0,
+    "max_allowed_leverage": 25.0
+  },
+  "research_notes": {
+    "purpose": "skip DSS entries in the highest recent volatility ranks"
+  }
+}

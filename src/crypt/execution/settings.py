@@ -17,6 +17,9 @@ class ExecutionSettings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        # Accept EXECUTION_SYMBOLS=SOL-USDT-SWAP,TON-USDT-SWAP instead of
+        # requiring a JSON array in shell/env files.
+        enable_decoding=False,
     )
 
     # ── master switches ────────────────────────────────────────────────────
@@ -31,22 +34,36 @@ class ExecutionSettings(BaseSettings):
             "Set EXECUTION_DRY_RUN=false for real money."
         ),
     )
+    dry_run_capital: float = Field(
+        default=0.0,
+        ge=0.0,
+        description=(
+            "Optional sizing capital used only when EXECUTION_DRY_RUN=true. "
+            "0 means use the real OKX balance."
+        ),
+    )
 
     # ── strategy ───────────────────────────────────────────────────────────
     strategy_config: Path = Field(
-        default=Path("strategies/backtester/crypt_ensemble_h1_discovery_nr4_vwap_robust.json"),
-        description="Path to the crypt_ensemble strategy JSON config.",
+        default=Path(
+            "strategies/archive/filtered_donor_portfolio_causal_v4_core4_no_island_long_riskx0p85.json"
+        ),
+        description="Path to the backtester strategy JSON config.",
     )
     data_dir: Path = Field(default=Path("data"))
     state_path: Path = Field(default=Path("data/live_positions.json"))
 
     # ── execution parameters (must match the mandate-validated backtest) ───
-    exit_geometry: str = Field(default="tp_pct")
+    exit_geometry: str = Field(default="sl_rrr")
     tp_move_pct: float = Field(default=0.016, gt=0.0)
-    rrr: float = Field(default=2.5, gt=0.0)
-    ttl_bars: int = Field(default=36, gt=0)
-    risk_percent: float = Field(default=1.5, gt=0.0)
-    max_positions: int = Field(default=1, ge=1)
+    structural_sl_mode: str = Field(default="cap")
+    min_tp_move_pct: float = Field(default=0.004, gt=0.0)
+    rrr: float = Field(default=2.0, gt=0.0)
+    ttl_bars: int = Field(default=0, ge=0)
+    risk_percent: float = Field(default=1.0, gt=0.0)
+    trail_activation_rrr: float = Field(default=0.0, ge=0.0)
+    trail_distance_atr: float = Field(default=0.0, ge=0.0)
+    max_positions: int = Field(default=0, ge=0)
     max_leverage: float = Field(default=25.0, gt=0.0)
     risk_base_period: str = Field(default="monthly")
 
@@ -64,6 +81,10 @@ class ExecutionSettings(BaseSettings):
     )
     min_net_exposure: float = Field(default=0.01)
     max_allowed_margin: float = Field(default=1.0)
+    require_exchange_sync: bool = Field(
+        default=True,
+        description="Block live entries when local state does not match OKX state.",
+    )
 
     # ── symbols ────────────────────────────────────────────────────────────
     symbols: list[str] = Field(
@@ -86,6 +107,14 @@ class ExecutionSettings(BaseSettings):
         allowed = {"sl_rrr", "tp_pct"}
         if v not in allowed:
             raise ValueError(f"exit_geometry must be one of {sorted(allowed)}")
+        return v
+
+    @field_validator("structural_sl_mode")
+    @classmethod
+    def _validate_structural_sl_mode(cls, v: str) -> str:
+        allowed = {"cap", "ignore", "reject"}
+        if v not in allowed:
+            raise ValueError(f"structural_sl_mode must be one of {sorted(allowed)}")
         return v
 
     @field_validator("risk_base_period")

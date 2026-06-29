@@ -17,9 +17,16 @@ from typing import Any
 
 import ccxt.async_support as ccxt
 
+from crypt.execution.exchange_sync import (
+    ExchangeBalance,
+    ExchangeOrder,
+    ExchangePosition,
+    ExchangeSnapshot,
+)
 from crypt.utils.retry import retry_with_backoff
 
 _logger = logging.getLogger(__name__)
+_OKX_PENDING_ALGO_ORD_TYPES = ("conditional", "oco", "trigger", "move_order_stop")
 
 
 def _okx_to_ccxt_symbol(okx_symbol: str) -> str:
@@ -93,6 +100,11 @@ class OKXTradingClient:
 
     async def get_usdt_balance(self) -> float:
         """Return available USDT balance (equity minus locked margin)."""
+        balance = await self.get_usdt_balance_snapshot()
+        return balance.total if balance.total > 0 else balance.free
+
+    async def get_usdt_balance_snapshot(self) -> ExchangeBalance:
+        """Return normalized USDT balance components."""
         await self._ensure_markets()
 
         async def _call() -> dict[str, Any]:
@@ -108,14 +120,13 @@ class OKXTradingClient:
             )
         except Exception as exc:
             _logger.warning("fetch_balance failed: %s", exc)
-            return 0.0
+            return ExchangeBalance(total=0.0, free=0.0, used=0.0)
 
         usdt = balance.get("USDT", {})
         free = float(usdt.get("free", 0.0) or 0.0)
         total = float(usdt.get("total", 0.0) or 0.0)
-        # Use total (equity) for risk sizing — mirrors how the backtester
-        # uses unrealized PnL in capital tracking.
-        return total if total > 0 else free
+        used = float(usdt.get("used", 0.0) or 0.0)
+        return ExchangeBalance(total=total if total > 0 else free + used, free=free, used=used)
 
     async def get_open_positions(self, okx_symbol: str) -> list[dict[str, Any]]:
         """Return all open positions for the given symbol."""
@@ -139,12 +150,167 @@ class OKXTradingClient:
 
         return [p for p in positions if float(p.get("contracts", 0) or 0) != 0]
 
+    async def get_exchange_snapshot(self, symbols: list[str]) -> ExchangeSnapshot:
+        """Fetch balance, positions, open orders, algo orders, and recent fills."""
+        from datetime import UTC, datetime
+
+        await self._ensure_markets()
+        balance = await self.get_usdt_balance_snapshot()
+        position_mode_hedged = await self.get_position_mode_hedged()
+        positions: list[ExchangePosition] = []
+        open_orders: list[ExchangeOrder] = []
+        algo_orders: list[ExchangeOrder] = []
+        recent_fills: list[dict[str, Any]] = []
+
+        for symbol in symbols:
+            raw_positions = await self.get_open_positions(symbol)
+            positions.extend(_normalize_position(symbol, item) for item in raw_positions)
+            open_orders.extend(await self.get_open_orders(symbol))
+            algo_orders.extend(await self.get_pending_algo_orders(symbol))
+            recent_fills.extend(await self.get_recent_fills(symbol))
+
+        return ExchangeSnapshot(
+            fetched_at=datetime.now(UTC),
+            balance=balance,
+            positions=positions,
+            open_orders=open_orders,
+            algo_orders=algo_orders,
+            recent_fills=recent_fills,
+            position_mode_hedged=position_mode_hedged,
+        )
+
+    async def get_position_mode_hedged(self) -> bool:
+        """Return True when OKX account is in long/short position mode."""
+        await self._ensure_markets()
+
+        async def _call() -> dict[str, Any]:
+            return await self._exchange.fetch_position_mode()  # type: ignore[no-any-return]
+
+        try:
+            response = await retry_with_backoff(
+                _call,
+                max_attempts=self._max_retries,
+                base_delay=self._retry_base_delay,
+                max_delay=self._retry_max_delay,
+                label="fetch_position_mode",
+            )
+        except Exception as exc:
+            _logger.warning("fetch_position_mode failed: %s", exc)
+            return False
+        return bool(response.get("hedged", False))
+
+    async def get_open_orders(self, okx_symbol: str) -> list[ExchangeOrder]:
+        """Return normalized regular open orders for a symbol."""
+        await self._ensure_markets()
+        ccxt_sym = self._ccxt_symbol(okx_symbol)
+
+        async def _call() -> list[Any]:
+            return await self._exchange.fetch_open_orders(ccxt_sym)  # type: ignore[no-any-return]
+
+        try:
+            orders = await retry_with_backoff(
+                _call,
+                max_attempts=self._max_retries,
+                base_delay=self._retry_base_delay,
+                max_delay=self._retry_max_delay,
+                label=f"fetch_open_orders {okx_symbol}",
+            )
+        except Exception as exc:
+            _logger.warning("fetch_open_orders %s failed: %s", okx_symbol, exc)
+            return []
+        return [_normalize_order(okx_symbol, order, kind="regular") for order in orders]
+
+    async def get_pending_algo_orders(self, okx_symbol: str) -> list[ExchangeOrder]:
+        """Return pending OKX algo orders when ccxt exposes the raw endpoint."""
+        await self._ensure_markets()
+        method = getattr(self._exchange, "privateGetTradeOrdersAlgoPending", None)
+        if method is None:
+            return []
+
+        orders: list[ExchangeOrder] = []
+        seen_order_ids: set[str] = set()
+        for ord_type in _OKX_PENDING_ALGO_ORD_TYPES:
+
+            async def _call(ord_type: str = ord_type) -> dict[str, Any]:
+                return await method(  # type: ignore[no-any-return]
+                    {"instId": okx_symbol, "ordType": ord_type}
+                )
+
+            try:
+                response = await retry_with_backoff(
+                    _call,
+                    max_attempts=self._max_retries,
+                    base_delay=self._retry_base_delay,
+                    max_delay=self._retry_max_delay,
+                    label=f"orders-algo-pending {okx_symbol} {ord_type}",
+                )
+            except Exception as exc:
+                _logger.warning(
+                    "orders-algo-pending %s ordType=%s failed: %s",
+                    okx_symbol,
+                    ord_type,
+                    exc,
+                )
+                continue
+
+            data = response.get("data", []) if isinstance(response, dict) else []
+            for raw_order in data:
+                order = _normalize_order(okx_symbol, raw_order, kind="algo")
+                dedupe_key = order.order_id or repr(raw_order)
+                if dedupe_key in seen_order_ids:
+                    continue
+                seen_order_ids.add(dedupe_key)
+                orders.append(order)
+        return orders
+
+    async def get_recent_fills(self, okx_symbol: str, limit: int = 100) -> list[dict[str, Any]]:
+        """Return recent fills for reconciliation and operator diagnostics."""
+        await self._ensure_markets()
+        ccxt_sym = self._ccxt_symbol(okx_symbol)
+
+        async def _call() -> list[Any]:
+            return await self._exchange.fetch_my_trades(ccxt_sym, limit=limit)  # type: ignore[no-any-return]
+
+        try:
+            fills = await retry_with_backoff(
+                _call,
+                max_attempts=self._max_retries,
+                base_delay=self._retry_base_delay,
+                max_delay=self._retry_max_delay,
+                label=f"fetch_my_trades {okx_symbol}",
+            )
+        except Exception as exc:
+            _logger.warning("fetch_my_trades %s failed: %s", okx_symbol, exc)
+            return []
+        return [dict(item) for item in fills]
+
     async def get_contract_size(self, okx_symbol: str) -> float:
         """Return the contract size for the symbol (e.g. 1.0 SOL per contract)."""
         await self._ensure_markets()
         ccxt_sym = self._ccxt_symbol(okx_symbol)
         market = self._exchange.market(ccxt_sym)
         return float(market.get("contractSize", 1.0) or 1.0)
+
+    async def size_asset_units_to_contracts(
+        self,
+        okx_symbol: str,
+        size_asset_units: float,
+    ) -> float:
+        """Convert base-asset position size to OKX contracts rounded down to lot size."""
+        await self._ensure_markets()
+        ccxt_sym = self._ccxt_symbol(okx_symbol)
+        market = self._exchange.market(ccxt_sym)
+        contract_size = float(market.get("contractSize", 1.0) or 1.0)
+        if contract_size <= 0:
+            return 0.0
+
+        raw_contracts = size_asset_units / contract_size
+        step = _market_amount_step(market)
+        contracts = math.floor((raw_contracts / step) + 1e-12) * step
+        min_amount = _market_min_amount(market, step)
+        if contracts + 1e-12 < min_amount:
+            return 0.0
+        return _trim_float(contracts)
 
     # ------------------------------------------------------------------
     # Write methods (no-ops in dry_run mode)
@@ -154,6 +320,8 @@ class OKXTradingClient:
         """Set isolated margin leverage for the symbol.
 
         Must be called before placing entry orders (OKX requirement).
+        In OKX long/short position mode isolated leverage is side-specific, so
+        live execution sets both sides before opening Core4 portfolio entries.
         """
         await self._ensure_markets()
         ccxt_sym = self._ccxt_symbol(okx_symbol)
@@ -164,19 +332,28 @@ class OKXTradingClient:
             )
             return
 
-        async def _call() -> None:
+        async def _call(pos_side: str) -> None:
             await self._exchange.set_leverage(
-                leverage, ccxt_sym, {"mgnMode": "isolated"}
+                leverage,
+                ccxt_sym,
+                {"marginMode": "isolated", "posSide": pos_side},
             )
 
+        async def _call_long() -> None:
+            await _call("long")
+
+        async def _call_short() -> None:
+            await _call("short")
+
         try:
-            await retry_with_backoff(
-                _call,
-                max_attempts=self._max_retries,
-                base_delay=self._retry_base_delay,
-                max_delay=self._retry_max_delay,
-                label=f"set_leverage {okx_symbol}",
-            )
+            for pos_side, call in (("long", _call_long), ("short", _call_short)):
+                await retry_with_backoff(
+                    call,
+                    max_attempts=self._max_retries,
+                    base_delay=self._retry_base_delay,
+                    max_delay=self._retry_max_delay,
+                    label=f"set_leverage {okx_symbol} {pos_side}",
+                )
             _logger.info("Leverage set to %dx (isolated) for %s", leverage, okx_symbol)
         except Exception as exc:
             _logger.error("set_leverage %s failed: %s", okx_symbol, exc)
@@ -217,10 +394,10 @@ class OKXTradingClient:
         ccxt_sym = self._ccxt_symbol(okx_symbol)
         contract_size = await self.get_contract_size(okx_symbol)
 
-        contracts = math.floor(size_asset_units / contract_size)
-        if contracts < 1:
+        contracts = await self.size_asset_units_to_contracts(okx_symbol, size_asset_units)
+        if contracts <= 0:
             _logger.warning(
-                "Position size %.4f %s is less than 1 contract (contract_size=%.4f) — skipping",
+                "Position size %.4f %s is below exchange min amount (contract_size=%.4f) — skipping",
                 size_asset_units,
                 okx_symbol,
                 contract_size,
@@ -228,20 +405,32 @@ class OKXTradingClient:
             return None
 
         side = "buy" if is_long else "sell"
+        position_side = "long" if is_long else "short"
 
         sl_precision = float(self._exchange.price_to_precision(ccxt_sym, sl_price))
         tp_precision = float(self._exchange.price_to_precision(ccxt_sym, tp_price))
 
         order_params: dict[str, Any] = {
-            "stopLoss": {"triggerPrice": sl_precision},
-            "takeProfit": {"triggerPrice": tp_precision},
+            "marginMode": "isolated",
+            "positionSide": position_side,
+            "stopLoss": {
+                "triggerPrice": sl_precision,
+                "type": "market",
+                "triggerPriceType": "last",
+            },
+            "takeProfit": {
+                "triggerPrice": tp_precision,
+                "price": tp_precision,
+                "type": "limit",
+                "triggerPriceType": "last",
+            },
         }
 
         _logger.info(
-            "%s Would open %s %d contracts of %s @ market | SL=%.4f TP=%.4f",
+            "%s Would open %s %s contracts of %s @ market | SL=%.4f TP=%.4f",
             "[DRY RUN]" if self._dry_run else "[LIVE]",
             "LONG" if is_long else "SHORT",
-            contracts,
+            _format_contracts(contracts),
             okx_symbol,
             sl_precision,
             tp_precision,
@@ -265,10 +454,10 @@ class OKXTradingClient:
             )
             order_id = str(order.get("id", ""))
             _logger.info(
-                "Entry order placed for %s: id=%s %d contracts %s SL=%.4f TP=%.4f",
+                "Entry order placed for %s: id=%s %s contracts %s SL=%.4f TP=%.4f",
                 okx_symbol,
                 order_id,
-                contracts,
+                _format_contracts(contracts),
                 "LONG" if is_long else "SHORT",
                 sl_precision,
                 tp_precision,
@@ -283,17 +472,18 @@ class OKXTradingClient:
         *,
         okx_symbol: str,
         is_long: bool,
-        contracts: int,
+        contracts: float,
     ) -> None:
         """Close a position at market price (TTL exit or manual close)."""
         await self._ensure_markets()
         ccxt_sym = self._ccxt_symbol(okx_symbol)
         close_side = "sell" if is_long else "buy"
+        position_side = "long" if is_long else "short"
 
         _logger.info(
-            "%s Would close %d contracts of %s at market (%s)",
+            "%s Would close %s contracts of %s at market (%s)",
             "[DRY RUN]" if self._dry_run else "[LIVE]",
-            contracts,
+            _format_contracts(contracts),
             okx_symbol,
             "sell" if is_long else "buy",
         )
@@ -307,7 +497,11 @@ class OKXTradingClient:
                 "market",
                 close_side,
                 contracts,
-                params={"reduceOnly": True},
+                params={
+                    "reduceOnly": True,
+                    "marginMode": "isolated",
+                    "positionSide": position_side,
+                },
             )
 
         try:
@@ -319,7 +513,7 @@ class OKXTradingClient:
                 label=f"close_position {okx_symbol}",
             )
             _logger.info(
-                "Closed %d contracts of %s at market", contracts, okx_symbol
+                "Closed %s contracts of %s", _format_contracts(contracts), okx_symbol
             )
         except Exception as exc:
             _logger.error("close_position %s failed: %s", okx_symbol, exc)
@@ -342,6 +536,8 @@ class OKXTradingClient:
 
         if self._dry_run:
             return
+
+        await self._cancel_pending_algo_orders(okx_symbol)
 
         async def _fetch() -> list[Any]:
             return await self._exchange.fetch_open_orders(ccxt_sym)  # type: ignore[no-any-return]
@@ -379,9 +575,105 @@ class OKXTradingClient:
             except Exception as exc:
                 _logger.warning("cancel_order %s failed: %s", oid, exc)
 
+    async def _cancel_pending_algo_orders(self, okx_symbol: str) -> None:
+        """Best-effort cancellation for OKX pending algo orders."""
+        method = getattr(self._exchange, "privatePostTradeCancelAlgos", None)
+        if method is None:
+            return
+
+        orders = await self.get_pending_algo_orders(okx_symbol)
+        for order in orders:
+            if not order.order_id:
+                continue
+
+            async def _cancel(algo_id: str = order.order_id) -> Any:
+                return await method([{"instId": okx_symbol, "algoId": algo_id}])
+
+            try:
+                await retry_with_backoff(
+                    _cancel,
+                    max_attempts=self._max_retries,
+                    base_delay=self._retry_base_delay,
+                    max_delay=self._retry_max_delay,
+                    label=f"cancel_algo_order {order.order_id}",
+                )
+                _logger.debug("Cancelled pending algo order %s for %s", order.order_id, okx_symbol)
+            except Exception as exc:
+                _logger.warning("cancel_algo_order %s failed: %s", order.order_id, exc)
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 
     async def close(self) -> None:
         await self._exchange.close()
+
+
+def _normalize_position(symbol: str, raw: dict[str, Any]) -> ExchangePosition:
+    side = raw.get("side")
+    contracts = float(raw.get("contracts", 0.0) or raw.get("contractSize", 0.0) or 0.0)
+    entry_price = raw.get("entryPrice") or raw.get("entry_price")
+    unrealized = raw.get("unrealizedPnl") or raw.get("unrealized_pnl")
+    return ExchangePosition(
+        symbol=symbol,
+        contracts=contracts,
+        side=str(side) if side is not None else None,
+        entry_price=_float_or_none(entry_price),
+        unrealized_pnl=_float_or_none(unrealized),
+        raw=dict(raw),
+    )
+
+
+def _normalize_order(symbol: str, raw: dict[str, Any], *, kind: str) -> ExchangeOrder:
+    order_id = raw.get("id") or raw.get("ordId") or raw.get("algoId") or ""
+    amount = raw.get("amount") or raw.get("sz")
+    price = raw.get("price") or raw.get("px") or raw.get("triggerPrice") or raw.get("slTriggerPx")
+    side = raw.get("side")
+    return ExchangeOrder(
+        symbol=symbol,
+        order_id=str(order_id),
+        kind=kind,
+        side=str(side) if side is not None else None,
+        amount=_float_or_none(amount),
+        price=_float_or_none(price),
+        raw=dict(raw),
+    )
+
+
+def _float_or_none(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    return float(value)
+
+
+def _market_amount_step(market: dict[str, Any]) -> float:
+    precision = market.get("precision") or {}
+    amount_precision = precision.get("amount")
+    if amount_precision:
+        return float(amount_precision)
+    info = market.get("info") or {}
+    lot_size = info.get("lotSz")
+    if lot_size:
+        return float(lot_size)
+    return 1.0
+
+
+def _market_min_amount(market: dict[str, Any], default: float) -> float:
+    limits = market.get("limits") or {}
+    amount_limits = limits.get("amount") or {}
+    min_amount = amount_limits.get("min")
+    if min_amount:
+        return float(min_amount)
+    info = market.get("info") or {}
+    min_size = info.get("minSz")
+    if min_size:
+        return float(min_size)
+    return default
+
+
+def _trim_float(value: float) -> float:
+    return float(f"{value:.12g}")
+
+
+def _format_contracts(value: float) -> str:
+    return f"{value:.12g}"

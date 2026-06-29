@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import logging
 import signal
 import sys
 from datetime import UTC, datetime
@@ -19,6 +20,17 @@ from crypt.runtime.scheduler import H1Scheduler, H4Scheduler
 
 _HEARTBEAT_INTERVAL_S = 30 * 60  # 30 minutes
 _OKX_HEALTH_INTERVAL_S = 6 * 60 * 60  # 6 hours
+
+
+class _InterceptStdlibLogging(logging.Handler):
+    """Forward standard-library logging records into loguru sinks."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            level: str | int = logger.level(record.levelname).name
+        except ValueError:
+            level = record.levelno
+        logger.opt(depth=6, exception=record.exc_info).log(level, record.getMessage())
 
 
 def _configure_logging(level: str, log_dir: Path) -> None:
@@ -45,6 +57,9 @@ def _configure_logging(level: str, log_dir: Path) -> None:
         serialize=True,
         enqueue=True,
     )
+    logging.basicConfig(handlers=[_InterceptStdlibLogging()], level=level, force=True)
+    logging.getLogger("apscheduler").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -67,6 +82,14 @@ def _parse_args() -> argparse.Namespace:
         "--no-bootstrap",
         action="store_true",
         help="Skip the initial history bootstrap (assume data is already present)",
+    )
+    parser.add_argument(
+        "--execution-only",
+        action="store_true",
+        help=(
+            "Run only the Core4 live execution path. This skips the legacy H4 "
+            "monitoring/alert pipeline and uses EXECUTION_SYMBOLS for health checks."
+        ),
     )
     return parser.parse_args()
 
@@ -136,12 +159,30 @@ async def _main() -> None:
         )
 
     _configure_logging(settings.log_level, settings.log_dir)
-    logger.info("Starting crypt — symbols: {}", settings.symbols)
-
-    orchestrator = Orchestrator(settings)
-    h4_scheduler = H4Scheduler(orchestrator.tick)
 
     exec_bundle = _maybe_build_execution_manager(settings)
+    execution_only = bool(args.execution_only)
+    if execution_only and exec_bundle is None:
+        logger.error("--execution-only requires EXECUTION_ENABLED=true")
+        return
+
+    health_settings = settings
+    if execution_only and exec_bundle is not None:
+        health_settings = settings.model_copy(update={"symbols": exec_bundle[1].symbols})
+
+    if execution_only and exec_bundle is not None:
+        logger.info("Starting crypt [execution-only] — symbols: {}", exec_bundle[1].symbols)
+    else:
+        logger.info("Starting crypt — symbols: {}", settings.symbols)
+
+    orchestrator: Orchestrator | None
+    h4_scheduler: H4Scheduler | None
+    if execution_only:
+        orchestrator = None
+        h4_scheduler = None
+    else:
+        orchestrator = Orchestrator(settings)
+        h4_scheduler = H4Scheduler(orchestrator.tick)
     h1_scheduler: H1Scheduler | None = None
 
     if exec_bundle is not None:
@@ -175,29 +216,32 @@ async def _main() -> None:
     heartbeat_task: asyncio.Task[None] | None = None
 
     try:
-        await run_health_check(settings)
+        await run_health_check(health_settings)
 
         # Reconcile live positions against OKX state on startup.
         if exec_bundle is not None:
             await exec_bundle[0].reconcile()
 
-        if not args.no_bootstrap:
+        if orchestrator is not None and not args.no_bootstrap:
             await orchestrator.bootstrap()
 
         if args.once:
-            await orchestrator.tick()
+            if orchestrator is not None:
+                await orchestrator.tick()
             if h1_scheduler is not None:
                 await h1_scheduler.run_now()
         else:
-            h4_scheduler.start()
+            if h4_scheduler is not None:
+                h4_scheduler.start()
             if h1_scheduler is not None:
                 h1_scheduler.start()
 
             heartbeat_task = asyncio.create_task(
-                _heartbeat_loop(settings, stop_event), name="heartbeat"
+                _heartbeat_loop(health_settings, stop_event), name="heartbeat"
             )
             # Run one tick immediately so we don't wait up to 4h / 1h on startup.
-            await orchestrator.tick()
+            if orchestrator is not None:
+                await orchestrator.tick()
             if h1_scheduler is not None:
                 await h1_scheduler.run_now()
 
@@ -209,12 +253,14 @@ async def _main() -> None:
             heartbeat_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await heartbeat_task
-        h4_scheduler.stop()
+        if h4_scheduler is not None:
+            h4_scheduler.stop()
         if h1_scheduler is not None:
             h1_scheduler.stop()
         if exec_bundle is not None:
             await exec_bundle[0].close()
-        await orchestrator.close()
+        if orchestrator is not None:
+            await orchestrator.close()
         logger.info("Shutdown complete")
 
 

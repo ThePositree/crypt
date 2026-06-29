@@ -4,6 +4,157 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-28 — Core4 execution-only dry-run cleanup
+
+**What:** separated Core4 live execution dry-runs from the legacy H4 alert
+monitor and fixed OKX pending algo-order sync.
+
+**Why now:** the first owner dry-run printed unrelated `HOLD/conf/regime`
+verdicts for TON/XPL/SOL and OKX rejected pending algo-order sync because the
+raw endpoint was called without `ordType`.
+
+**Result:** `python -m crypt --once --execution-only` now runs only the H1
+Core4 execution path, uses `EXECUTION_SYMBOLS` for startup symbol checks, and
+does not instantiate the legacy H4 monitor. The startup log now prints only the
+execution symbols in this mode. Pending algo orders are queried by the required
+OKX algo order types, so the sync should no longer produce `Parameter ordType
+error`. The dry-run freshness check also accepts timezone-aware Parquet
+`open_time` values, fixing the pandas `tzinfo with the tz parameter` failure.
+Standard-library logs are now routed into loguru, so execution INFO messages
+are visible in the operator console and `logs/crypt.log`. The execution-only
+heartbeat now keeps checking `EXECUTION_SYMBOLS`, not the legacy monitor
+symbol basket. Dry-run sizing can also use `EXECUTION_DRY_RUN_CAPITAL` so a
+small real OKX balance does not prevent testing the same `$10k`/`$30k` sizing
+profile used in backtests. OKX swap sizing now rounds down to exchange lot
+size / ccxt amount precision instead of whole contracts, so SOL sizes like
+`0.48` contracts are valid when OKX reports `lotSz=0.01`.
+
+**Acceptance:** `pytest tests/execution tests/backtester/test_backtester_multi_signal.py -q`
+(57 tests), `ruff check src/crypt/__main__.py src/crypt/execution
+tests/execution`, and `mypy src/crypt/__main__.py src/crypt/execution`
+passed.
+
+**Links:** `src/crypt/__main__.py`,
+`src/crypt/execution/okx_order_client.py`,
+`docs/execution/live_execution.md`.
+
+---
+
+## 2026-06-28 — Live execution Telegram reporting
+
+**What:** added Telegram reporting for live Core4 execution: daily full sync,
+every entry, and every exit.
+
+**Why now:** before real money, the owner needs operator-visible proof of
+account state and every trade lifecycle event, not only logs/state files.
+
+**Result:** when Telegram is configured, live execution sends one full sync
+report per UTC day with balance, positions, orders, algo orders, sync status,
+and blocker reasons. Entry notifications are sent after local state records a
+position. Exit notifications are sent after OKX fill classification, startup
+reconciliation, or TTL market close. The last daily sync report date is
+persisted to avoid restart spam.
+
+The follow-up parity audit added startup validation against strategy
+`backtest_args`, `drain_on_group_change` handling for `signal_events`, and
+stronger live-vs-`ExecutionSim` assertions for leverage and locked margin.
+
+**Acceptance:** `pytest tests/execution tests/backtester/test_backtester_multi_signal.py -q`
+(53 tests), `ruff check src/crypt/execution tests/execution`, and
+`mypy src/crypt/execution` passed.
+
+**Links:** `src/crypt/execution/notifications.py`,
+`src/crypt/execution/executor.py`, `docs/execution/live_execution.md`.
+
+---
+
+## 2026-06-28 — OKX live order parameter audit against signal_executor
+
+**What:** compared the Core4 live ccxt order path with the cloned
+`signal_executor` direct OKX REST implementation and tightened the live order
+parameters.
+
+**Why now:** before live money, the owner wanted confirmation that the ccxt
+wrapper sends the same critical OKX fields as the known direct executor:
+isolated margin, side-specific position mode, attached SL/TP, reduce-only
+closes, and algo-order cancellation support.
+
+**Result:** live execution now sets isolated leverage for both long and short
+sides, sends entry orders with isolated margin and explicit position side, uses
+a market stop and limit take-profit attached to the entry, sends reduce-only
+market closes with the original position side, and blocks new entries unless
+OKX reports long/short position mode.
+
+**Acceptance:** `pytest tests/execution tests/backtester/test_backtester_multi_signal.py -q`
+(46 tests), `ruff check src/crypt/execution tests/execution`, and
+`mypy src/crypt/execution` passed.
+
+**Links:** `signal_executor/internal/secondary/exchange/okx/okx.go`,
+`src/crypt/execution/okx_order_client.py`,
+`docs/execution/live_execution.md`.
+
+---
+
+## 2026-06-27 — Investor Core4 report and live close accounting
+
+**What:** added a plain-language HTML report for a non-technical investor and
+extended live state accounting for positions that disappear from OKX.
+
+**Why now:** the owner wants to show Core4 to a friend/investor without trader
+or programmer jargon, and live execution state needs to explain closed
+positions in dollars rather than only `status=closed`.
+
+**Result:** `reports/core4_investor_report.html` summarizes the work in plain
+Russian, compares three practical modes, shows $1k/$10k/$30k scaling, and
+includes yearly/monthly tables for the banked-profit and calmer variants.
+
+Live execution now classifies missing exchange positions from recent fills and
+persists exit time, exit price, exit reason, estimated realized PnL, and exit
+fee when a matching fill is available.
+
+**Acceptance:** `pytest tests/execution tests/backtester/test_backtester_multi_signal.py -q`
+(40 tests), `ruff check src/crypt/execution tests/execution`, and
+`mypy src/crypt/execution` passed.
+
+**Links:** `reports/core4_investor_report.html`,
+`src/crypt/execution/fill_classifier.py`, `tests/execution/test_fill_classifier.py`.
+
+---
+
+## 2026-06-27 — Core4 live execution parity migration
+
+**What:** migrated M4 live execution from the old scalar `crypt_ensemble` path
+to Core v4 registry strategy execution with multi-event `signal_events`.
+
+**Why now:** the owner wants to present Core v4 and start real-time trading, but
+live execution had to match the exact backtested strategy before any investor
+or live-money discussion. The old live path would have traded a different
+strategy shape.
+
+**Result:** live execution now loads the selected Core v4 JSON through the
+backtester registry, waits for closed H1 candles, uses the current forming H1
+open as the backtester-equivalent next-open entry, processes every same-bar
+event in order, applies event-level risk/RRR/TTL/exit overrides, and keeps the
+owner rule `max_positions = 0`.
+
+Full OKX sync was added before startup reconciliation, before every H1 entry
+decision, and after order placement. The state schema is v2 with donor/event
+metadata, trailing fields, and last exchange sync status. New entries are
+blocked on orphan positions/orders, missing exchange positions, or invalid
+balance.
+
+**Acceptance:** local validation passed:
+`pytest tests/execution tests/backtester/test_backtester_multi_signal.py -q`
+(36 tests), `ruff check src/crypt/execution tests/execution`, and
+`mypy src/crypt/execution`. Synthetic parity now checks that live entry
+decisions match `ExecutionSim.run()` for the same `signal_events`.
+
+**Links:** `docs/execution/live_execution.md`, ADR-0048,
+`src/crypt/execution/`, `tests/execution/`,
+`tests/backtester/test_backtester_multi_signal.py`.
+
+---
+
 ## 2026-06-26 — Monthly profit sweep mode added to backtester
 
 **What:** added an explicit `--capital-sweep monthly_profit` mode to

@@ -1,7 +1,7 @@
 # Live execution module (M4)
 
-Spec for `src/crypt/execution/` — the component that turns
-`crypt_ensemble` signals into real OKX orders.
+Spec for `src/crypt/execution/` — the component that turns backtester strategy
+signals into real OKX orders.
 
 Read ADR-0033 before this document. The ADR records architectural decisions;
 this document records the runtime contract.
@@ -16,7 +16,7 @@ the backtester.
 
 | Backtester component | Live equivalent |
 |---|---|
-| `crypt_ensemble.generate(strategy_data)` | `LiveSignalRunner.get_latest_signal()` |
+| Any registry strategy `generate(strategy_data)` | `LiveSignalRunner.get_latest_signal_batch()` |
 | `BasicRiskModel.calculate_position(ctx)` | `LiveRiskCalculator.calculate(ctx)` |
 | `ExecutionSim._risk_base_capital_for_entry()` | `LiveRiskCalculator.monthly_risk_base()` |
 | `ExitGeometryConfig` + `resolve_exit_levels()` | same imports, same call |
@@ -36,9 +36,11 @@ src/crypt/execution/
     __init__.py
     settings.py          # ExecutionSettings (pydantic-settings, from .env)
     position_state.py    # LivePosition dataclass + JSON persistence
+    exchange_sync.py     # Exchange snapshot + local/exchange reconciliation
     risk_calculator.py   # LiveRiskCalculator — wraps BasicRiskModel
-    signal_runner.py     # LiveSignalRunner — runs crypt_ensemble on Parquet
+    signal_runner.py     # LiveSignalRunner — runs registry strategies on Parquet
     okx_order_client.py  # OKXTradingClient — order placement / management
+    notifications.py     # Execution Telegram notifications
     executor.py          # LiveExecutionManager — H1 tick orchestrator
 ```
 
@@ -52,34 +54,50 @@ Loaded from `.env` via `pydantic-settings`. All keys prefixed `EXECUTION_`.
 |---|---|---|
 | `EXECUTION_ENABLED` | `false` | Must be set to `true` to activate |
 | `EXECUTION_DRY_RUN` | `true` | Log orders without placing them |
-| `EXECUTION_STRATEGY_CONFIG` | — | Path to strategy JSON (required) |
+| `EXECUTION_DRY_RUN_CAPITAL` | `0.0` | Optional dry-run-only sizing capital; `0` uses real OKX balance |
+| `EXECUTION_STRATEGY_CONFIG` | `strategies/archive/filtered_donor_portfolio_causal_v4_core4_no_island_long_riskx0p85.json` | Path to strategy JSON |
 | `EXECUTION_DATA_DIR` | `data` | Root Parquet directory |
 | `EXECUTION_STATE_PATH` | `data/live_positions.json` | State file |
-| `EXECUTION_TP_MOVE_PCT` | `0.016` | Matches Optuna best |
-| `EXECUTION_RRR` | `2.5` | Reward/risk ratio |
-| `EXECUTION_TTL_BARS` | `36` | H1 bars |
-| `EXECUTION_RISK_PERCENT` | `1.5` | % of monthly base per trade |
-| `EXECUTION_MAX_POSITIONS` | `1` | Max simultaneous open positions |
+| `EXECUTION_EXIT_GEOMETRY` | `sl_rrr` | Fallback exit geometry for legacy/sparse events |
+| `EXECUTION_TP_MOVE_PCT` | `0.016` | Fallback TP percent for legacy single-signal strategies |
+| `EXECUTION_STRUCTURAL_SL_MODE` | `cap` | Fallback structural SL handling |
+| `EXECUTION_MIN_TP_MOVE_PCT` | `0.004` | Fallback minimum TP move for `tp_pct` |
+| `EXECUTION_RRR` | `2.0` | Fallback reward/risk ratio |
+| `EXECUTION_TTL_BARS` | `0` | Fallback H1 bars; `0` disables fallback TTL |
+| `EXECUTION_RISK_PERCENT` | `1.0` | Fallback % of monthly base per trade |
+| `EXECUTION_TRAIL_ACTIVATION_RRR` | `0.0` | Fallback trailing activation; `0` disables trailing |
+| `EXECUTION_TRAIL_DISTANCE_ATR` | `0.0` | Fallback trailing distance |
+| `EXECUTION_MAX_POSITIONS` | `0` | Backtester-compatible cap; `0` means unlimited and is the Core v4 default |
 | `EXECUTION_MAX_LEVERAGE` | `25.0` | OKX isolated margin max |
 | `EXECUTION_RISK_BASE_PERIOD` | `monthly` | Same as backtest |
 | `EXECUTION_TAKER_FEE` | `0.0005` | 0.05% |
 | `EXECUTION_MAKER_FEE` | `0.0002` | 0.02% |
 | `EXECUTION_MAX_CAPITAL_RISK_PCT` | `10.0` | Circuit breaker |
+| `EXECUTION_REQUIRE_EXCHANGE_SYNC` | `true` | When live money is enabled, block new entries unless OKX account state is synced |
 
 ---
 
 ## 4. Signal runner
 
-`LiveSignalRunner.get_latest_signal(symbol) -> SignalRow | None`
+`LiveSignalRunner.get_latest_signal_batch(symbol) -> SignalBatch | None`
 
 1. Loads `CryptParquetDataLoader(data_dir, symbol, primary_timeframe="1h").load()`
    to get `StrategyData` with all H1/H4/D1 history.
-2. Calls `crypt_ensemble.generate(strategy_data, params, backtest_args)` to
-   produce the full signal DataFrame.
-3. Returns the **last closed bar's row** if `signal != 0` and `sl_price` is
-   not NaN, otherwise `None`.
+2. Loads the strategy JSON via the backtester registry. Core v4 is
+   `filtered_donor_portfolio`, not `crypt_ensemble`.
+3. Calls the strategy's `generate(strategy_data)` to produce the full signal
+   DataFrame.
+4. Returns the **last closed bar's complete entry event list**:
+   - for Core v4, `signal_events` is a list of donor event dictionaries;
+   - for legacy strategies, a non-zero scalar `signal`/`sl_price` row is
+     converted to one event.
 4. A "closed bar" is any bar before the current forming bar — the same
    no-lookahead rule enforced by the backtester.
+
+The signal batch also carries the current forming H1 candle open when OKX
+returns it. This is the live equivalent of the backtester's `next_open`. If the
+next open cannot be known, the executor must skip new entries; it must not use
+the signal candle close as a substitute.
 
 **Data freshness**: before calling `generate()`, the runner updates the Parquet
 files by fetching recent bars from OKX via `OKXClient.fetch_ohlcv()` and
@@ -90,18 +108,27 @@ frame is up to date at each H1 tick.
 
 ## 5. Risk calculator
 
-`LiveRiskCalculator.calculate(symbol, signal_row, capital) -> RiskResult | None`
+`LiveRiskCalculator.calculate(symbol, signal_event, capital) -> RiskResult | None`
 
 Mirrors `ExecutionSim._try_open_position()` exactly:
 
 1. `risk_base_capital = monthly_risk_base(entry_time, capital)` — same logic as
    `ExecutionSim._risk_base_capital_for_entry()`: captures balance at the start
    of each calendar month.
-2. `total_locked_margin = sum(pos.locked_margin for pos in open_positions[symbol])`
+2. `total_locked_margin = sum(pos.locked_margin for all open positions)`
 3. Calls `BasicRiskModel.calculate_position(EntryContext(...))`.
 4. Checks `_can_open_position()` — leverage consistency, available balance.
 5. Computes `fee_entry = taker_fee * position_value`.
 6. Guards: `fee_entry < risk_value * 2` and `net_exposure >= min_net_exposure * balance`.
+
+For multi-signal Core v4 events, the event's own `risk_percent`, `rrr`,
+`position_ttl_bars`, `trail_activation_rrr`, `trail_distance_atr`,
+`exit_geometry`, `tp_move_pct`, `structural_sl_mode`, and `min_tp_move_pct`
+override the fallback environment settings exactly as `ExecutionSim` does.
+
+At startup, live execution validates the fallback settings against the loaded
+strategy JSON `backtest_args` for all money-impacting defaults. A mismatch
+raises before any order can be placed.
 
 If any guard fails → returns `None` (do not trade).
 
@@ -112,7 +139,22 @@ If any guard fails → returns `None` (do not trade).
 `OKXTradingClient.open_position(symbol, risk_result, dry_run) -> str | None`
 
 Steps:
-1. `await exchange.set_leverage(max_leverage, symbol, {'mgnMode': 'isolated'})`
+1. Set OKX isolated leverage for both long/short position sides:
+   ```python
+   await exchange.set_leverage(
+       max_leverage,
+       symbol,
+       {'marginMode': 'isolated', 'posSide': 'long'},
+   )
+   await exchange.set_leverage(
+       max_leverage,
+       symbol,
+       {'marginMode': 'isolated', 'posSide': 'short'},
+   )
+   ```
+   OKX isolated leverage is side-specific in long/short position mode. Core4
+   portfolio execution uses this mode so live orders can mirror independent
+   backtester entries.
 2. Convert `risk_result.size` (asset units) to `contracts`:
    ```python
    market = exchange.market(ccxt_symbol)
@@ -125,11 +167,27 @@ Steps:
    await exchange.create_order(
        ccxt_symbol, 'market', side, contracts,
        params={
-           'stopLoss': {'triggerPrice': exchange.price_to_precision(ccxt_symbol, sl_price)},
-           'takeProfit': {'triggerPrice': exchange.price_to_precision(ccxt_symbol, tp_price)},
+           'marginMode': 'isolated',
+           'positionSide': 'long' if is_long else 'short',
+           'stopLoss': {
+               'triggerPrice': exchange.price_to_precision(ccxt_symbol, sl_price),
+               'type': 'market',
+               'triggerPriceType': 'last',
+           },
+           'takeProfit': {
+               'triggerPrice': exchange.price_to_precision(ccxt_symbol, tp_price),
+               'price': exchange.price_to_precision(ccxt_symbol, tp_price),
+               'type': 'limit',
+               'triggerPriceType': 'last',
+           },
        }
    )
    ```
+   `signal_executor` uses OKX's direct `attachAlgoOrds` payload for the same
+   structure (`tdMode=isolated`, `posSide`, market SL, limit TP). Live Core4
+   keeps `last` trigger prices because the backtester uses last-trade OHLCV;
+   switching the stop to mark price would make live stop behavior diverge from
+   the historical candles.
 5. Returns OKX order ID (or `None` in dry_run).
 
 **Symbol conversion**: OKX native `SOL-USDT-SWAP` → ccxt unified `SOL/USDT:USDT`
@@ -137,17 +195,60 @@ via `exchange.market_id(symbol)` reverse lookup after `load_markets()`.
 
 ---
 
-## 7. Exit management
+## 7. Exchange sync and exit management
+
+Before startup reconciliation, before every H1 entry decision, and after every
+order placement, the executor must fetch an OKX account snapshot:
+
+- USDT total/free/used balance;
+- open positions for every configured symbol;
+- regular open orders;
+- pending algo orders including SL/TP when available;
+- recent fills/trades when available.
+- account position mode; it must be OKX long/short mode, not net/one-way mode.
+
+The snapshot is compared with `data/live_positions.json`.
+
+Blocking mismatches:
+
+- OKX has an open position that is not represented in local state;
+- OKX has open regular or algo orders for a symbol with no tracked live
+  position;
+- local state says a position is open, but OKX has no matching position and the
+  close/fill cannot be classified;
+- OKX account is not in long/short position mode;
+- balance or position endpoints fail while `EXECUTION_DRY_RUN=false`.
+
+When a blocking mismatch exists, the executor must persist the sync report,
+log/alert it, and skip all new entries. It may still try safe risk-reducing
+actions such as cancelling known orphan orders when an operator explicitly
+enables that workflow.
+
+### 7a. Telegram execution notifications
+
+When `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are configured, live execution
+must send:
+
+- one full sync report per UTC day, persisted by date in `live_positions.json`
+  so service restarts do not spam repeated daily reports;
+- one entry notification after a position is recorded in local state;
+- one exit notification after a position is marked closed from OKX fills,
+  startup reconciliation, or TTL market close.
+
+The daily sync report includes account balance, open local positions, exchange
+positions, regular orders, algo SL/TP orders, current sync status, and blocking
+reasons. Telegram failures must be logged and must not stop state persistence or
+order management.
 
 At each H1 tick, for each open position:
 
-### 7a. SL/TP fill detection
+### 7b. SL/TP fill detection
 
 Query OKX positions: `await exchange.fetch_positions([ccxt_symbol])`.
 If the position for this `position_id` is no longer open (size = 0), it was
 closed by SL or TP. Update state file with realized PnL from OKX trade history.
 
-### 7b. TTL expiry
+### 7c. TTL expiry
 
 ```python
 ttl_expiry = position.entry_time + timedelta(hours=position.ttl_bars)
@@ -161,6 +262,10 @@ if datetime.now(UTC) >= ttl_expiry:
 
 This mirrors `ExecutionSim._update_active_positions()` where TTL fires at
 `next_open` of bar `bar_opened + ttl_bars`.
+
+The market close order must include `reduceOnly=True`, `marginMode=isolated`,
+and the original position side (`long` for closing a long, `short` for closing
+a short).
 
 ---
 
@@ -182,9 +287,13 @@ This mirrors `ExecutionSim._risk_base_capital_for_entry()` for
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "risk_window_month": [2026, 6],
   "monthly_risk_base": 10000.0,
+  "last_exchange_sync_at": "2026-06-09T15:02:00+00:00",
+  "last_exchange_sync_ok": true,
+  "last_exchange_sync_errors": [],
+  "last_daily_sync_report_date": "2026-06-09",
   "positions": [
     {
       "position_id": "uuid",
@@ -202,7 +311,21 @@ This mirrors `ExecutionSim._risk_base_capital_for_entry()` for
       "is_long": false,
       "ttl_bars": 36,
       "entry_order_id": "okx-order-id",
-      "status": "open"
+      "status": "open",
+      "selected_strategy": "dssv2_013321_ps_macd_squeeze_recent",
+      "position_group": "dssv2_013321_ps_macd_squeeze_recent",
+      "signal_event": {
+        "signal": -1,
+        "risk_percent": 0.85,
+        "rrr": 2.0
+      },
+      "trail_activation_rrr": 0.0,
+      "trail_distance_atr": 0.0,
+      "trail_active": false,
+      "trail_stop_price": null,
+      "best_favorable_price": null,
+      "last_sync_status": "ok",
+      "last_sync_at": "2026-06-09T15:02:00+00:00"
     }
   ]
 }
@@ -217,11 +340,14 @@ corruption on crash.
 
 On startup, `LiveExecutionManager.reconcile()`:
 1. Reads `live_positions.json`.
-2. For each position with `status = "open"`, queries OKX.
-3. If OKX has no open position for that symbol → treat as externally closed,
-   log INFO, remove from state.
-4. If OKX has an open position → keep tracking.
-5. Monthly risk base is read from state file; if missing (fresh start), set to
+2. Fetches a full OKX snapshot for all configured execution symbols.
+3. For each position with `status = "open"`, checks the exchange snapshot.
+4. If OKX has no open position for that symbol → treat as externally closed,
+   log INFO, remove from the open set, and recompute sync status.
+5. If OKX has an open position → keep tracking.
+6. Orphan exchange positions/orders still block new entries until an operator
+   resolves or imports them.
+7. Monthly risk base is read from state file; if missing (fresh start), set to
    current OKX balance.
 
 ---
@@ -256,12 +382,27 @@ not simulated.
 
 ## 13. Integration with scheduler
 
-`src/crypt/__main__.py` registers a second periodic task alongside the existing
-H4 tick:
+`src/crypt/__main__.py` supports two runtime shapes:
 
-```python
-if settings.execution_enabled:
-    scheduler.add_h1_job(execution_manager.on_h1_close)
+```bash
+# One-shot trading dry-run. This is the preferred operator check.
+PYTHONPATH=src \
+MPLCONFIGDIR=/tmp/matplotlib \
+EXECUTION_ENABLED=true \
+EXECUTION_DRY_RUN=true \
+EXECUTION_DRY_RUN_CAPITAL=10000 \
+EXECUTION_STRATEGY_CONFIG=strategies/archive/filtered_donor_portfolio_causal_v4_core4_no_island_long_riskx0p85.json \
+EXECUTION_SYMBOLS=SOL-USDT-SWAP \
+uv run python -m crypt --once --execution-only
+
+# Long-running trading service, H1 Core4 execution only.
+PYTHONPATH=src EXECUTION_ENABLED=true uv run python -m crypt --execution-only
+
+# Combined legacy H4 monitor plus H1 execution. Use only when both are wanted.
+PYTHONPATH=src EXECUTION_ENABLED=true uv run python -m crypt
 ```
 
-The H1 job runs 5 seconds after each H1 close (same buffer as H4).
+`--execution-only` skips the legacy H4 signal monitor and uses
+`EXECUTION_SYMBOLS` for startup OKX symbol health checks. Operator dry-runs for
+Core4 must use this mode; otherwise console output can include unrelated
+`HOLD/conf/regime` verdicts from the older alerting pipeline.

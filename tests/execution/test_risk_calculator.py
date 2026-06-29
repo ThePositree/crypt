@@ -196,3 +196,22 @@ class TestCalculate:
             open_positions=[],
         )
         assert decision is None
+
+    def test_event_overrides_risk_percent_and_rrr(self) -> None:
+        calc = LiveRiskCalculator(_settings(exit_geometry="sl_rrr", risk_percent=1.0, rrr=2.0))
+        decision = calc.calculate(
+            signal=1,
+            sl_price=95.0,
+            entry_price=100.0,
+            capital=10_000.0,
+            risk_base_capital=10_000.0,
+            open_positions=[],
+            risk_percent=0.5,
+            rrr=4.0,
+        )
+
+        assert decision is not None
+        rr = decision.risk_result
+        # 0.5% of $10k risks $50 over a $5 stop distance.
+        assert rr.size == pytest.approx(10.0)
+        assert rr.tp_price == pytest.approx(120.0)

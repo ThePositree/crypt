@@ -6,6 +6,165 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-28 — Core4 execution-only dry-run cleanup
+
+- Added `python -m crypt --execution-only` so Core4 live dry-runs and service
+  runs can skip the legacy H4 alert monitor and use `EXECUTION_SYMBOLS` for
+  startup OKX symbol checks.
+- Fixed live candle freshness checks for timezone-aware Parquet `open_time`
+  values; dry-run no longer fails with pandas' `tzinfo with the tz parameter`
+  error.
+- Execution-only startup logs now print the execution symbols instead of the
+  legacy monitor symbol basket.
+- Added INFO-level operator logs for each execution H1 tick: exchange sync
+  summary, strategy generation start, no-event result, elapsed time, open
+  position count, and final sync status.
+- Routed standard-library `logging` through loguru so live execution and
+  backtester strategy INFO logs actually appear in the `crypt` console/file
+  output.
+- Fixed execution-only heartbeat health checks so the periodic 6-hour check
+  keeps using `EXECUTION_SYMBOLS` instead of the legacy monitor basket.
+- Added dry-run-only sizing capital (`EXECUTION_DRY_RUN_CAPITAL`) so operator
+  dry-runs can test `$10k`/`$30k` position sizing while still syncing the real
+  OKX account balance and positions.
+- Fixed OKX SOL swap sizing: live execution now rounds base-asset size down to
+  OKX `lotSz` / ccxt amount precision (`0.01` contracts for SOL-USDT-SWAP)
+  instead of flooring to whole contracts. This allows small live accounts to
+  place valid fractional-contract orders and matches the cloned
+  `signal_executor` contract rounding model.
+- Fixed OKX pending algo-order sync: the raw OKX endpoint is now queried with
+  required `ordType` values (`conditional`, `oco`, `trigger`,
+  `move_order_stop`) instead of calling it without `ordType`.
+- Updated live execution docs and task instructions so the operator dry-run no
+  longer emits unrelated `HOLD/conf/regime` verdicts for the old symbol basket.
+- Validation: `pytest tests/execution tests/backtester/test_backtester_multi_signal.py -q`
+  (57 tests), `ruff check src/crypt/__main__.py src/crypt/execution
+  tests/execution`, and `mypy src/crypt/__main__.py src/crypt/execution`
+  passed.
+- ADRs touched: ADR-0048.
+- Files touched: `README.md`, `docs/execution/`, `docs/tasks/`,
+  `src/crypt/`, `tests/execution/`, `CHANGELOG.md`.
+
+---
+
+## 2026-06-28 — Live execution Telegram reporting
+
+- Added execution Telegram notifications for Core4 live trading: one full sync
+  report per UTC day, one message after every recorded entry, and one message
+  after every recorded exit.
+- Persisted `last_daily_sync_report_date` in `live_positions.json` so service
+  restarts do not spam duplicate daily sync reports.
+- Startup reconciliation now keeps missing OKX positions as closed history,
+  classifies the close from recent fills when possible, and sends an exit
+  notification instead of silently dropping the local position.
+- TTL closes now record `exit_time` and `exit_reason=ttl_expired` before
+  notifying.
+- Tightened live/backtester parity after re-audit: live startup now validates
+  money-impacting execution defaults against strategy JSON `backtest_args`,
+  `SignalEvent` carries `drain_on_group_change`, and live entry state records
+  `risk_result.required_leverage` rather than assuming the configured max.
+- Removed the backlog item for live sync blocker alerts; daily full-sync
+  reporting now surfaces blocked sync status and reasons when Telegram is
+  configured.
+- Validation: `pytest tests/execution tests/backtester/test_backtester_multi_signal.py -q` (53 tests),
+  `ruff check src/crypt/execution tests/execution`, and
+  `mypy src/crypt/execution` passed.
+- ADRs touched: ADR-0048.
+- Files touched: `README.md`, `docs/execution/`, `docs/tasks/`,
+  `src/crypt/execution/`, `tests/execution/`, `CHANGELOG.md`.
+
+---
+
+## 2026-06-28 — OKX live order parameter audit
+
+- Compared the live `OKXTradingClient` ccxt path against the cloned
+  `signal_executor` direct OKX REST implementation.
+- Aligned live order parameters with OKX long/short isolated execution:
+  leverage is now set for both `long` and `short` sides, entry orders include
+  isolated margin and `positionSide`, take-profit is a limit attached algo at
+  the target price, and market closes include `reduceOnly`, isolated margin,
+  and the original position side.
+- Kept live SL/TP trigger type on `last` price for backtester parity. The
+  cloned direct executor uses mark-price SL, but Core4 backtests use
+  last-trade OHLCV; switching live SL to mark would create hidden divergence.
+- Added full-sync validation for OKX account position mode. New entries are
+  blocked unless the account is in long/short mode.
+- Updated the live execution spec and README with the OKX long/short mode
+  requirement.
+- Validation: `pytest tests/execution tests/backtester/test_backtester_multi_signal.py -q` (46 tests),
+  `ruff check src/crypt/execution tests/execution`, and
+  `mypy src/crypt/execution` passed.
+- ADRs touched: ADR-0048.
+- Files touched: `README.md`, `docs/execution/`, `docs/tasks/`,
+  `src/crypt/execution/`, `tests/execution/`, `CHANGELOG.md`.
+
+---
+
+## 2026-06-27 — Core4 monthly distribution research pass
+
+- Exact-tested Core4 v4 monthly-profit sweep variants focused on drawdown and
+  monthly distribution: DSS bar-range cap, DSS reduced-risk branches, daily
+  loss limits, low-risk NR7 addition, and margin caps.
+- Found no dominant replacement for v4. The best money baseline remains
+  $43,271 total account on $10k with -14.57% DD; the best checked DD cut was
+  DSS half-risk at $38,459 and -11.64% DD.
+- Rejected low-risk NR7 addition because it worsened DD to -18.75%.
+- Recorded that `max_positions` must not be used as a research/control lever
+  for this project.
+- Scanned strategy-search artifacts for sparse high-WR donor ideas. Local
+  post-2026-06-19 Stage 1 gate-fix artifacts contain only 2023 specialist
+  traces, not balanced exports; older v3 discovery sparse seeds were recorded
+  as rerun candidates, not portfolio-ready strategies.
+- Inspected the owner-run sparse donor Stage 1 matrix on the ADR-0046 train
+  window (`2022-01-01` → `2024-01-01`). Out of 10,000 generated candidates,
+  only two rare Stage 1 candidates exported: a 17-signal VWAP reclaim and a
+  16-signal short-only SMC premium/discount reversal.
+- After the two strict Stage 1 exports failed exact validation, mined the
+  `weak_barrier_win_rate` near-miss layer and generated 15 replayable sparse
+  shortlist JSONs under
+  `results/sparse_donor_stage1_train_2022_2023_v2/weak_barrier_shortlist/`.
+- Began Core v4 live-execution parity migration. Live execution now loads
+  strategy configs through the backtester registry, defaults to the selected
+  Core v4 config, supports multi-signal `signal_events`, requires a current H1
+  next-open price instead of using signal-close as an entry proxy, stores
+  donor/event metadata in state schema v2, and blocks new entries on full OKX
+  exchange-sync mismatches.
+- Added normalized exchange snapshot/reconciliation models and tests for
+  orphan exchange positions/orders, missing exchange positions, multi-event
+  signal extraction, same-bar multi-event executor handling, and event-level
+  risk overrides.
+- Added synthetic live-vs-`ExecutionSim` parity coverage for same-bar
+  `signal_events`, including entry time, next-open entry price, side, SL, TP,
+  size, risk base, donor id, and TTL.
+- Fixed live sync ordering so a local position that has disappeared from OKX is
+  marked closed and sync status is recomputed before deciding whether new
+  entries can be opened in that H1 tick.
+- Extended TTL cleanup to cancel OKX pending algo SL/TP orders through the
+  ccxt-exposed OKX raw cancel-algos endpoint when available.
+- Added live close classification from recent OKX fills: closed positions now
+  persist exit time, exit price, exit reason, estimated realized PnL, and exit
+  fee when a matching fill is available.
+- Updated `.env.example`, README, and the live execution spec for Core v4
+  defaults, `EXECUTION_STATE_PATH`, `EXECUTION_RISK_PERCENT`,
+  `EXECUTION_MAX_POSITIONS=0`, and mandatory exchange sync.
+- Aligned live fallback execution defaults with Core v4 `backtest_args`
+  (`exit_geometry=sl_rrr`, `risk_percent=1.0`, `rrr=2.0`, `ttl=0`) and fixed
+  live TTL handling so `ttl_bars=0` disables TTL as in `ExecutionSim`.
+- Added ADR-0048 for Core v4 live execution parity and full exchange sync.
+- Added `reports/core4_investor_report.html`, a plain-language Tailwind report
+  for an investor/friend with Core4 regime summaries, yearly/monthly tables,
+  $1k/$10k/$30k scaling, and a changelog-derived story of what worked and what
+  was rejected.
+- Validation: `pytest tests/execution tests/backtester/test_backtester_multi_signal.py -q` (40 tests),
+  `ruff check src/crypt/execution tests/execution`, and
+  `mypy src/crypt/execution` passed.
+- ADRs touched: ADR-0048.
+- Files touched: `.env.example`, `README.md`, `strategies/archive/`,
+  `docs/execution/`, `docs/decisions/`, `docs/tasks/`, `src/backtester/`,
+  `src/crypt/execution/`, `tests/execution/`, `reports/`, `CHANGELOG.md`.
+
+---
+
 ## 2026-06-26 — Monthly profit sweep backtest mode
 
 - Added `--capital-sweep monthly_profit` to `backtester run`. At each month

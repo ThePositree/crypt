@@ -1473,6 +1473,7 @@ class ExecutionSim:
             "capital_before": pos.capital_before,
             "capital_after": pd.NA,
             "holding_bars": max(last_bar_index - pos.bar_opened, 0),
+            "position_ttl_bars": pos.position_ttl_bars,
             "leverage": pos.leverage,
             "locked_margin": pos.locked_margin,
             "available_balance_before": pos.available_balance_before,

@@ -1,5 +1,51 @@
 # In progress
 
+## Core4 live execution dry-run validation (2026-06-27)
+
+**What:** run the updated Core v4 live executor in `EXECUTION_DRY_RUN=true`
+against the real OKX account and inspect 1-2 real H1 ticks before any live
+money switch.
+
+**Why now:** the code migration is complete locally, but only the real OKX
+account can prove credentials, balance/position/order snapshot shape, pending
+algo order visibility, and live logs.
+
+**Expected gain:** catch exchange/API/account-shape problems while no orders are
+being placed.
+
+**Acceptance:**
+1. Start with `EXECUTION_ENABLED=true EXECUTION_DRY_RUN=true`.
+2. Logs show clean full exchange sync: balance, no orphan positions/orders, and
+   no `last_exchange_sync_errors`.
+3. Exchange sync confirms OKX is in long/short position mode; one-way/net mode
+   is a blocker before live money.
+4. Telegram receives one daily full-sync report when configured.
+5. On an H1 tick, the executor either skips because no Core v4 event exists or
+   logs a dry-run order with sane entry, SL, TP, contracts, donor id, and risk
+   base; if an entry or exit occurs, Telegram receives that event.
+6. Only after owner review may `EXECUTION_DRY_RUN=false` be considered.
+
+**Command:**
+```bash
+PYTHONPATH=src \
+MPLCONFIGDIR=/tmp/matplotlib \
+EXECUTION_ENABLED=true \
+EXECUTION_DRY_RUN=true \
+EXECUTION_DRY_RUN_CAPITAL=10000 \
+EXECUTION_STRATEGY_CONFIG=strategies/archive/filtered_donor_portfolio_causal_v4_core4_no_island_long_riskx0p85.json \
+EXECUTION_SYMBOLS=SOL-USDT-SWAP \
+uv run python -m crypt --once --execution-only
+```
+
+Use `--execution-only` for this check. The legacy H4 alert monitor is not part
+of Core4 trading validation and should not print `HOLD/conf/regime` verdicts
+during the dry-run.
+
+**Links:** `docs/execution/live_execution.md`, ADR-0048,
+`src/crypt/execution/`.
+
+---
+
 ## Core4 v4 drawdown reduction / validation (2026-06-26)
 
 **What:** continue from
@@ -35,6 +81,99 @@ worst month, negative month count, and per-strategy PnL.
 `results/core4_fine_frontier_after_fix/`,
 `results/core4_combo_variants_after_fix/`,
 `results/core4_risk_scale_after_fix/`.
+
+**Update (2026-06-27):** monthly-profit sweep exact tests were run on the
+current v4 baseline and several distribution variants for SOL 2022-12-18 →
+2026-06-10 with $10k initial capital. The baseline remains the strongest
+money result among checked variants: total account $43,271, +$33,271 PnL,
+-14.57% drawdown, 36 positive months and 7 negative months. The best drawdown
+reduction branch was DSS half-risk: total account $38,459 and -11.64%
+drawdown, but it gave up roughly $4,812 vs baseline. DSS risk x0.65 was a
+middle branch: total account $41,013 and -13.19% drawdown. Daily loss 3R kept
+money close to baseline ($42,663) but did not improve drawdown (-14.57%).
+DSS bar-range cap improved profit factor to 1.42 and DD to -14.06%, but cut
+total account to $41,483. Adding low-risk NR7 was rejected: total account
+$43,007 but drawdown worsened to -18.75% and negative months increased.
+`max_positions` is not an allowed research/control lever per owner direction;
+discard the diagnostic max-position artifacts and do not use them for
+conclusions.
+
+**Current conclusion:** no checked variant dominates v4 on all owner criteria.
+If prioritizing money, keep v4 or daily-loss-3 as the nearest branches. If
+prioritizing smoother drawdown, DSS risk x0.65 is the least painful reduction,
+while DSS half-risk is the cleanest DD cut but sacrifices too much profit.
+
+**Sparse donor scan (2026-06-27):** owner suggested adding many rare high-WR
+strategies to v4. Local scan was redirected away from exact `trades.csv` and
+toward strategy-search artifacts. The relevant Stage 1 gate fix landed on
+2026-06-19: the hidden `tp_first > sl_first` requirement was removed, leaving
+the configured WR threshold as the actual Stage 1 WR gate. Local post-fix
+search artifacts are thin: only
+`results/dss_sol_v2_barrier_wr55_10pd_2023first_seed60619/` and
+`...seed60620/` were found. They exported no balanced candidates, but they
+contain useful 2023 specialists rejected for too few 2022 signals. Top traces:
+
+- `dssv2_017163`: `pt_compression_breakout` with
+  `pf_bar_range_min+pf_side_long_only`, 21 signals in 2023, 71.43% barrier WR,
+  only 3 signals in 2022.
+- `dssv2_061351`: `pt_nr4_breakout` with
+  `pf_bb_width+pf_body_to_range_min+pf_volume_ratio`, 24 signals in 2023,
+  62.50% barrier WR, only 4 signals in 2022.
+- `dssv2_023651`: `pt_nr4_breakout` with `pf_rsi_zone+pf_side_short_only`,
+  21 signals in 2023, 61.90% barrier WR, only 4 signals in 2022.
+
+Older pre-fix v3 discovery artifacts under `results/20260608_193549/` contain
+promising sparse seeds, but they must be rerun under the post-2026-06-19 DSS
+gate before use. Best-looking seed families include:
+`h1_vwap_reclaim` off-hours quiet-volume low-BB-width (30 events, 72.41% label
+WR across 11 monthly windows), `h1_hammer` low-BB-width close-near-high (39
+events, 74.36% label WR), `h1_tweezer_top` Asia short-side trend-strength
+(78 events, 74.03% label WR), and `h1_bb_rejection` low-BB-width EMA50-side
+(48 events, 72.92% label WR). These are not exact candidates yet.
+
+Owner smoke-ran
+`search-signals-matrix --windows bad_2023_09,bad_2024_05,bad_2025_01,bad_2026_04 --catalog all --stage-mode stage1 --min-trades 3 --min-signals-per-week 0 --stage1-min-wr 0.62 --n-trials 100`
+into `results/sparse_donor_stage1_bad_months_matrix_v1/`. Runtime was about
+3 minutes for 5 algorithms x 100 trials. All five algorithms finished cleanly,
+but exported zero Stage 1 candidates and zero specialists. The strongest
+near-misses mostly passed only one bad-month slice with too few or weak signals
+elsewhere, so the 4-window smoke is too strict for the intended "basket of rare
+specialists" idea. Next sparse donor searches should be single bad-month
+specialist runs first, then merge the best specialists into a candidate basket.
+
+Owner then redirected away from bad-month-specific search and back to the
+ADR-0046 anti-overfit chronology. Active owner-run search:
+`results/sparse_donor_stage1_train_2022_2023_v2/`, command uses
+`--windows train_2022_2023:2022-01-01:2024-01-01 --catalog all --stage-mode stage1 --min-trades 15 --min-signals-per-week 0 --stage1-min-wr 0.62 --n-trials 2000`.
+Early partial read while the run was still active showed roughly 380-397
+candidates processed per algorithm and one `staged` Stage 1 survivor:
+`dssv2_000099`, `pt_vwap_reclaim` with
+`pf_bar_range_min+pf_ps_smc_equal_level_recent`, 17 train signals and 64.7%
+Stage 1 barrier WR. Wait for `summary.md` / `stage1_ranked.csv` before making
+any portfolio conclusion.
+
+Final read: the 10,000-candidate matrix exported only two Stage 1 candidates:
+`staged_seed73023/stage1_candidates/stage1_001_dssv2_000099_pt_vwap_reclaim.json`
+(17 train signals, 64.7% Stage 1 barrier WR, mixed side with 29% longs) and
+`smac_qd_seed5151/stage1_candidates/stage1_001_smac_000961_pt_ps_smc_premium_discount_reversal.json`
+(16 train signals, 62.5% Stage 1 barrier WR, short-only). CatCMA-QD,
+Hyperband-QD, and Island-QD exported no Stage 1 candidates. Rejection shape:
+roughly 1,095-1,254 candidates per algorithm had too few signals, 718-871 had
+weak barrier WR, and 25-33 were overtrading. This confirms the rare-donor path
+can find usable sparse candidates, but the current gates are too strict to
+produce a large basket from 2,000 trials/algorithm. Next step is exact
+validation of the two exports on 2024 and 2025-latest, then either relax to
+`--stage1-min-wr 0.60` or lower `--min-trades` to 10 for a broader basket.
+
+Owner reported the two strict Stage 1 exports were exact-validation failures.
+Before launching another search, the weak-barrier near-miss layer was mined.
+Generated 15 replayable candidate JSONs under
+`results/sparse_donor_stage1_train_2022_2023_v2/weak_barrier_shortlist/`
+plus `shortlist.csv` and `README.md`. These candidates have 17-45 train
+signals, Stage 1 barrier WR from 48.9% to 61.1%, and several use high RRR
+settings where exact execution can still make money despite missing the 62%
+barrier-WR gate. Next step: exact-run this shortlist on 2024 validation before
+starting another Stage 1 matrix.
 
 ---
 
@@ -421,27 +560,6 @@ uv run backtester walk-forward \
 **Expected artifact:** `results/walk_forward_nr4_sol/<timestamp>/summary.md` — table of IS vs OOS returns per window + interpretation verdict.
 
 **Why this matters:** answers whether NR4 has genuine edge or is overfit to 2024-2025.
-
----
-
-## M4 scheduler integration — next steps (2026-06-09)
-
-Scheduler wired. Module is complete and integrated. **Next owner action: dry-run validation.**
-
-**What remains:**
-1. Deploy or start locally with `EXECUTION_ENABLED=true EXECUTION_DRY_RUN=true`.
-2. After 1 H1 close (~:02 UTC), confirm logs show:
-   - `"H1 tick at …"`
-   - `"Signal for SOL-USDT-SWAP: signal=…"` or `"No actionable signal"`
-   - `data/execution_state.json` created.
-3. Switch `EXECUTION_DRY_RUN=false` only after owner confirms dry-run logs look correct.
-
-**Key files:**
-- `src/crypt/__main__.py` — H1 scheduler wired (H1Scheduler + LiveExecutionManager)
-- `src/crypt/execution/` — complete module
-- `.env.example` — all EXECUTION_* vars documented
-- `docs/execution/live_execution.md` — spec
-- `docs/decisions/0033-m4-live-execution-architecture.md` — ADR
 
 ---
 

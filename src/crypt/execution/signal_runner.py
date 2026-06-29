@@ -1,17 +1,12 @@
-"""LiveSignalRunner — generates crypt_ensemble signals on live Parquet data.
+"""Live signal runner for backtester strategies.
 
-Runs the same `CryptEnsembleStrategy.generate()` code path as the backtester
-to guarantee signal parity. The strategy is instantiated once per symbol and
-reused across ticks.
-
-The runner first appends any new closed H1/H4/D1 bars from OKX to the local
-Parquet files, then loads the full history and runs `generate()`. Only the
-last closed bar's signal is returned to the caller.
+The runner loads the same strategy JSON and calls the same ``generate`` method
+as historical backtests. Its live-specific job is only to refresh closed
+Parquet candles and expose the latest closed-bar entry events.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -20,56 +15,54 @@ from typing import Any
 
 import pandas as pd
 
+from backtester.cli_runner import build_strategy_instance, load_strategy_config
 from backtester.data_loader import CryptParquetDataLoader
-from backtester.strategies.crypt_ensemble import CryptEnsembleStrategy
+from backtester.strategy import BaseStrategy
 from crypt.data.store import ParquetStore
 from crypt.exchange.okx import OKXClient
 from crypt.models import Timeframe
 
 logger = logging.getLogger(__name__)
 
-# How stale is "too stale" — if the newest H1 bar is older than this, the
-# data pipeline has failed and we skip signal generation.
 _MAX_DATA_STALENESS = timedelta(hours=3)
-
-# Timeframes to refresh before running the signal.
 _REFRESH_TIMEFRAMES = (Timeframe.H1, Timeframe.H4, Timeframe.D1)
 
 
 @dataclass(frozen=True)
-class SignalRow:
-    """A single actionable signal from the last closed bar."""
+class SignalEvent:
+    """One actionable event emitted by a closed signal bar."""
 
     bar_time: datetime
-    signal: int          # 1 = long, -1 = short
+    signal: int
     sl_price: float
-    bar_close: float     # close price of the signal bar (entry price proxy)
-    rrr: float | None    # bar-level override if present
+    next_open: float
+    rrr: float | None
     risk_percent: float | None
+    position_ttl_bars: int | None
+    trail_activation_rrr: float | None
+    trail_distance_atr: float | None
+    exit_geometry: str | None
+    tp_move_pct: float | None
+    structural_sl_mode: str | None
+    min_tp_move_pct: float | None
+    selected_strategy: str
+    position_group: str
+    raw_event: dict[str, Any]
+    drain_on_group_change: bool = False
 
 
-def _load_strategy_config(path: Path) -> dict[str, Any]:
-    """Load strategy JSON config from disk."""
-    if not path.exists():
-        raise FileNotFoundError(f"Strategy config not found: {path}")
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    return dict(raw)
+@dataclass(frozen=True)
+class SignalBatch:
+    """All actionable events emitted by one closed bar."""
+
+    bar_time: datetime
+    next_time: datetime
+    next_open: float
+    events: list[SignalEvent]
 
 
 class LiveSignalRunner:
-    """
-    Fetches fresh OKX bars, runs `crypt_ensemble.generate()`, and
-    returns the last closed bar's signal if actionable.
-
-    Parameters
-    ----------
-    strategy_config_path : Path
-        Path to the crypt_ensemble JSON strategy config.
-    data_dir : Path
-        Root directory for symbol Parquet files.
-    okx_client : OKXClient
-        Authenticated (or public) OKX client for fetching fresh candles.
-    """
+    """Refresh live data and run a backtester registry strategy."""
 
     def __init__(
         self,
@@ -80,16 +73,25 @@ class LiveSignalRunner:
         self._data_dir = data_dir
         self._okx = okx_client
         self._store = ParquetStore(data_dir)
+        self._next_open_by_symbol: dict[str, tuple[datetime, float]] = {}
 
-        cfg = _load_strategy_config(strategy_config_path)
-        # Disable tqdm progress bar for live execution (it would spam logs).
-        params = dict(cfg.get("params", {}))
+        cfg = load_strategy_config(str(strategy_config_path), logger)
+        if cfg is None:
+            raise ValueError(f"Invalid strategy config: {strategy_config_path}")
+
+        params = dict(cfg.params)
         params["progress"] = False
-        self._strategy = CryptEnsembleStrategy(params)
-        self._strategy_version = cfg.get("version", "unknown")
+        strategy = build_strategy_instance(cfg.name, params, logger=logger)
+        if strategy is None:
+            raise ValueError(f"Unsupported strategy config: {strategy_config_path}")
+
+        self._strategy: BaseStrategy = strategy
+        self._strategy_name = cfg.name
+        self._strategy_version = cfg.version
 
         logger.info(
-            "LiveSignalRunner initialized with strategy version '%s'",
+            "LiveSignalRunner initialized with strategy %s version '%s'",
+            self._strategy_name,
             self._strategy_version,
         )
 
@@ -98,48 +100,29 @@ class LiveSignalRunner:
         for tf in _REFRESH_TIMEFRAMES:
             candles = await self._okx.fetch_ohlcv(symbol, tf, limit=100)
             closed = [c for c in candles if c.closed]
-            if closed:
-                try:
-                    self._store.save_candles(closed)
-                    logger.debug(
-                        "Refreshed %d closed %s bars for %s",
-                        len(closed),
-                        tf.value,
-                        symbol,
+            if tf == Timeframe.H1:
+                forming = [c for c in candles if not c.closed]
+                if forming:
+                    first_forming = sorted(forming, key=lambda c: c.open_time)[0]
+                    self._next_open_by_symbol[symbol] = (
+                        first_forming.open_time.astimezone(UTC),
+                        float(first_forming.o),
                     )
-                except Exception:
-                    logger.exception("Failed to save candles for %s %s", symbol, tf.value)
+            if not closed:
+                continue
+            try:
+                self._store.save_candles(closed)
+                logger.debug(
+                    "Refreshed %d closed %s bars for %s",
+                    len(closed),
+                    tf.value,
+                    symbol,
+                )
+            except Exception:
+                logger.exception("Failed to save candles for %s %s", symbol, tf.value)
 
-    def _check_data_freshness(self, symbol: str) -> bool:
-        """
-        Return True if the H1 Parquet data is recent enough to generate signals.
-        Logs a WARNING and returns False if data is stale.
-        """
-        h1_df = self._store.load_candles(symbol, Timeframe.H1, limit=1)
-        if h1_df.empty:
-            logger.warning("No H1 data for %s — skipping signal generation", symbol)
-            return False
-
-        last_bar_time = pd.Timestamp(h1_df["open_time"].iloc[-1], tz=UTC)
-        age = datetime.now(UTC) - last_bar_time.to_pydatetime()
-        if age > _MAX_DATA_STALENESS:
-            logger.warning(
-                "H1 data for %s is %.1f hours old (max %.0f h) — skipping",
-                symbol,
-                age.total_seconds() / 3600,
-                _MAX_DATA_STALENESS.total_seconds() / 3600,
-            )
-            return False
-        return True
-
-    def get_latest_signal(self, symbol: str) -> SignalRow | None:
-        """
-        Run crypt_ensemble on the full Parquet history and return the last
-        closed bar's signal if it is actionable (signal != 0, sl_price valid).
-
-        Returns None if there is no signal, the data is stale, or the
-        strategy produces an error.
-        """
+    def get_latest_signal_batch(self, symbol: str) -> SignalBatch | None:
+        """Return latest closed-bar events using backtester next-open semantics."""
         if not self._check_data_freshness(symbol):
             return None
 
@@ -155,57 +138,179 @@ class LiveSignalRunner:
             return None
 
         try:
-            logger.debug("Running crypt_ensemble.generate() for %s", symbol)
+            logger.info("Running %s.generate() for %s", self._strategy_name, symbol)
             signal_df = self._strategy.generate(strategy_data)
         except Exception:
-            logger.exception("crypt_ensemble.generate() failed for %s", symbol)
+            logger.exception("%s.generate() failed for %s", self._strategy_name, symbol)
             return None
 
         if signal_df.empty:
+            logger.info("%s.generate() returned an empty signal frame for %s", self._strategy_name, symbol)
             return None
 
-        # The last row corresponds to the most recent closed H1 bar.
-        last = signal_df.iloc[-1]
-        sig = int(last.get("signal", 0))
-        if sig not in (1, -1):
+        row = signal_df.iloc[-1]
+        bar_time = _timestamp_to_utc(signal_df.index[-1])
+        next_open_info = self._next_open_by_symbol.get(symbol)
+        if next_open_info is None:
+            logger.warning(
+                "No current forming H1 open for %s after refresh — skipping entries",
+                symbol,
+            )
+            return None
+        next_time, next_open = next_open_info
+        if next_time <= bar_time:
+            logger.warning(
+                "Current H1 open %s is not after signal bar %s for %s — skipping",
+                next_time.isoformat(),
+                bar_time.isoformat(),
+                symbol,
+            )
+            return None
+        if next_open <= 0:
+            logger.warning("No valid next_open for %s at %s", symbol, bar_time.isoformat())
             return None
 
-        sl = float(last.get("sl_price", float("nan")))
-        if pd.isna(sl) or sl <= 0:
-            logger.debug("Signal at %s has invalid sl_price=%.4f — skipping", symbol, sl)
+        events = [
+            event
+            for raw in _events_from_row(row)
+            if (event := _signal_event_from_raw(bar_time, next_open, raw)) is not None
+        ]
+        if not events:
+            logger.info("No actionable events for %s at closed H1 bar %s", symbol, bar_time.isoformat())
             return None
-
-        bar_time_raw = signal_df.index[-1]
-        if isinstance(bar_time_raw, pd.Timestamp):
-            bar_time = bar_time_raw.to_pydatetime(warn=False).replace(tzinfo=UTC)
-        else:
-            bar_time = datetime.now(UTC)
-
-        rrr_raw = last.get("rrr")
-        rrr = float(rrr_raw) if rrr_raw is not None and not pd.isna(rrr_raw) else None
-
-        rp_raw = last.get("risk_percent")
-        risk_pct = float(rp_raw) if rp_raw is not None and not pd.isna(rp_raw) else None
-
-        # Use the primary (H1) DataFrame close price as the entry price proxy.
-        # The backtester uses next bar's open; bar close is the best available
-        # approximation at the time of signal generation.
-        bar_close_raw = strategy_data.primary.iloc[-1]["close"] if not strategy_data.primary.empty else 0.0
-        bar_close = float(bar_close_raw) if bar_close_raw else 0.0
 
         logger.info(
-            "Signal for %s: signal=%d sl_price=%.4f close=%.4f bar_time=%s",
+            "Signal batch for %s: events=%d bar_time=%s next_time=%s next_open=%.4f",
             symbol,
-            sig,
-            sl,
-            bar_close,
+            len(events),
             bar_time.isoformat(),
+            next_time.isoformat(),
+            next_open,
         )
-        return SignalRow(
+        return SignalBatch(
             bar_time=bar_time,
-            signal=sig,
-            sl_price=sl,
-            bar_close=bar_close,
-            rrr=rrr,
-            risk_percent=risk_pct,
+            next_time=next_time,
+            next_open=next_open,
+            events=events,
         )
+
+    def get_latest_signal(self, symbol: str) -> SignalEvent | None:
+        """Backward-compatible helper returning the first event in a batch."""
+        batch = self.get_latest_signal_batch(symbol)
+        if batch is None:
+            return None
+        return batch.events[0] if batch.events else None
+
+    def _check_data_freshness(self, symbol: str) -> bool:
+        h1_df = self._store.load_candles(symbol, Timeframe.H1, limit=1)
+        if h1_df.empty:
+            logger.warning("No H1 data for %s — skipping signal generation", symbol)
+            return False
+
+        last_bar_time = _timestamp_to_utc(h1_df["open_time"].iloc[-1])
+        age = datetime.now(UTC) - last_bar_time
+        if age > _MAX_DATA_STALENESS:
+            logger.warning(
+                "H1 data for %s is %.1f hours old (max %.0f h) — skipping",
+                symbol,
+                age.total_seconds() / 3600,
+                _MAX_DATA_STALENESS.total_seconds() / 3600,
+            )
+            return False
+        return True
+
+
+def _timestamp_to_utc(raw: Any) -> datetime:
+    if isinstance(raw, pd.Timestamp):
+        ts = raw.tz_localize(UTC) if raw.tzinfo is None else raw
+        dt: datetime = ts.to_pydatetime(warn=False)
+        return dt.astimezone(UTC)
+    if isinstance(raw, datetime):
+        return raw.replace(tzinfo=UTC) if raw.tzinfo is None else raw.astimezone(UTC)
+    return datetime.now(UTC)
+
+
+def _events_from_row(row: pd.Series) -> list[dict[str, Any]]:
+    raw_events = row.get("signal_events")
+    if isinstance(raw_events, list):
+        return [dict(event) for event in raw_events if isinstance(event, dict)]
+
+    signal = int(row.get("signal", 0))
+    if signal not in (1, -1):
+        return []
+    sl_price = float(row.get("sl_price", float("nan")))
+    if pd.isna(sl_price) or sl_price <= 0:
+        return []
+
+    event: dict[str, Any] = {"signal": signal, "sl_price": sl_price}
+    for key in (
+        "rrr",
+        "risk_percent",
+        "position_ttl_bars",
+        "trail_activation_rrr",
+        "trail_distance_atr",
+        "exit_geometry",
+        "tp_move_pct",
+        "structural_sl_mode",
+        "min_tp_move_pct",
+        "selected_strategy",
+        "position_group",
+        "drain_on_group_change",
+    ):
+        if key in row.index and not pd.isna(row[key]):
+            value = row[key]
+            event[key] = value.item() if hasattr(value, "item") else value
+    return [event]
+
+
+def _signal_event_from_raw(
+    bar_time: datetime,
+    next_open: float,
+    raw: dict[str, Any],
+) -> SignalEvent | None:
+    signal = int(raw.get("signal", 0))
+    if signal not in (1, -1):
+        return None
+    sl_price = float(raw.get("sl_price", float("nan")))
+    if pd.isna(sl_price) or sl_price <= 0:
+        return None
+    return SignalEvent(
+        bar_time=bar_time,
+        signal=signal,
+        sl_price=sl_price,
+        next_open=next_open,
+        rrr=_optional_float(raw, "rrr"),
+        risk_percent=_optional_float(raw, "risk_percent"),
+        position_ttl_bars=_optional_int(raw, "position_ttl_bars"),
+        trail_activation_rrr=_optional_float(raw, "trail_activation_rrr"),
+        trail_distance_atr=_optional_float(raw, "trail_distance_atr"),
+        exit_geometry=_optional_str(raw, "exit_geometry"),
+        tp_move_pct=_optional_float(raw, "tp_move_pct"),
+        structural_sl_mode=_optional_str(raw, "structural_sl_mode"),
+        min_tp_move_pct=_optional_float(raw, "min_tp_move_pct"),
+        selected_strategy=str(raw.get("selected_strategy", "")),
+        position_group=str(raw.get("position_group", raw.get("selected_strategy", ""))),
+        drain_on_group_change=bool(raw.get("drain_on_group_change", False)),
+        raw_event=dict(raw),
+    )
+
+
+def _optional_float(raw: dict[str, Any], key: str) -> float | None:
+    value = raw.get(key)
+    if value is None or pd.isna(value):
+        return None
+    return float(value)
+
+
+def _optional_int(raw: dict[str, Any], key: str) -> int | None:
+    value = raw.get(key)
+    if value is None or pd.isna(value):
+        return None
+    return int(value)
+
+
+def _optional_str(raw: dict[str, Any], key: str) -> str | None:
+    value = raw.get(key)
+    if value is None or pd.isna(value):
+        return None
+    return str(value)
