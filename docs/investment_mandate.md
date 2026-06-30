@@ -174,10 +174,16 @@ Keep fixed SL + fixed TP by default. When trailing is enabled:
 
 1. Until price reaches `trail_activation_rrr × sl_distance` in profit, use
    normal fixed SL and fixed TP (`rrr`).
-2. After activation, disable fixed TP; exit on trailing stop:
-   - **Short:** `lowest_favorable_price + trail_distance_atr × ATR`
-   - **Long:** `highest_favorable_price - trail_distance_atr × ATR`
-3. SL before activation does not move.
+2. At entry, freeze the native OKX callback distance:
+   `callbackSpread = trail_distance_atr × closed ATR14 available at the entry
+   bar open`. Do not recalculate the distance from later ATR values.
+3. After activation, exit on the native trailing stop:
+   - **Short:** `lowest_favorable_price + callbackSpread`
+   - **Long:** `highest_favorable_price - callbackSpread`
+4. Keep fixed TP only when it lies strictly before the activation price. If
+   activation is equal to or before TP, omit fixed TP so it cannot race the
+   active OKX `move_order_stop`.
+5. SL before activation does not move.
 
 Optuna dimensions (initial ranges, adjust in spec):
 

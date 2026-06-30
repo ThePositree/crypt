@@ -1,6 +1,6 @@
 # ADR-0029: Isolated-margin mode is always on
 
-- **Status**: accepted
+- **Status**: accepted; unconditional maximum-leverage selection superseded by ADR-0049
 - **Date**: 2026-06-09
 - **Owner**: agent (owner direction in chat)
 

@@ -124,6 +124,10 @@ class BacktestArgs:
     tp_move_pct: float | None = None
     structural_sl_mode: str = "cap"
     min_tp_move_pct: float = 0.004
+    maintenance_margin_rate: float = 0.004
+    liquidation_fee_rate: float = 0.0005
+    liquidation_buffer_pct: float = 0.005
+    maintenance_margin_tier_schedule: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "max_positions", 0)
@@ -234,6 +238,10 @@ _BACKTEST_ARG_KEYS = frozenset(
         "tp_move_pct",
         "structural_sl_mode",
         "min_tp_move_pct",
+        "maintenance_margin_rate",
+        "liquidation_fee_rate",
+        "liquidation_buffer_pct",
+        "maintenance_margin_tier_schedule",
     }
 )
 
@@ -519,6 +527,10 @@ def backtest_run_kwargs(args: BacktestArgs) -> dict[str, Any]:
         "tp_move_pct": args.tp_move_pct,
         "structural_sl_mode": args.structural_sl_mode,
         "min_tp_move_pct": args.min_tp_move_pct,
+        "maintenance_margin_rate": args.maintenance_margin_rate,
+        "liquidation_fee_rate": args.liquidation_fee_rate,
+        "liquidation_buffer_pct": args.liquidation_buffer_pct,
+        "maintenance_margin_tier_schedule": args.maintenance_margin_tier_schedule,
     }
 
 

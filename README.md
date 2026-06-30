@@ -840,7 +840,7 @@ Short version:
 3. Attach a persistent volume at `/app/data`; set `LOG_DIR=data/logs`.
 4. Confirm build succeeds and Telegram alert arrives.
 
-## Core v4 Live Execution
+## Core4 v3 Live Execution
 
 Live execution is off by default. Start with dry-run only:
 
@@ -850,27 +850,53 @@ MPLCONFIGDIR=/tmp/matplotlib \
 EXECUTION_ENABLED=true \
 EXECUTION_DRY_RUN=true \
 EXECUTION_DRY_RUN_CAPITAL=10000 \
-EXECUTION_STRATEGY_CONFIG=strategies/archive/filtered_donor_portfolio_causal_v4_core4_no_island_long_riskx0p85.json \
+EXECUTION_STRATEGY_CONFIG=strategies/archive/filtered_donor_portfolio_causal_v3_core4.json \
 EXECUTION_SYMBOLS=SOL-USDT-SWAP \
 uv run python -m crypt --once --execution-only
 ```
 
 The live runner loads the strategy through the same backtester registry as
-`backtester run`, processes Core v4 `signal_events` in order, and blocks new
+`backtester run`, processes Core4 v3 `signal_events` in order, and blocks new
 entries unless OKX balance/positions/orders are synced with
 `data/live_positions.json`. OKX must be in long/short position mode; net/one-way
-mode is blocked because Core v4 can hold independent long and short entries.
+mode is blocked because Core4 v3 can hold independent long and short entries.
 Use `--execution-only` for trading dry-runs and trading service processes; it
 skips the legacy H4 alert monitor that prints `HOLD/conf/regime` verdicts and
 uses `EXECUTION_SYMBOLS` for startup health checks.
 When Telegram is configured, live execution sends one full sync report per UTC
-day plus one message for every recorded entry and exit. Keep
-`EXECUTION_MAX_POSITIONS=0` for Core v4. On startup, live execution refuses to
+day, an `ENTRY ATTEMPT` followed by `ENTRY` or `ENTRY REJECTED` / `EXECUTION
+ERROR` for every actionable donor event, and one message for every recorded
+exit. New exchange-sync blockers and execution-cycle failures are reported
+immediately. A sync blocker is reported again on every H1 execution cycle while
+it remains active. Attempts and rejections, including the complete rejection
+reason, are also written to the console and `logs/crypt.log`.
+
+The normal H1 trigger connects to the OKX business WebSocket at `HH:59:30 UTC`
+and starts processing as soon as OKX confirms the closing H1 candle and
+publishes the new hour's open. H4 and UTC-day confirmations are also required
+at their boundaries. The former `*:02 UTC` REST cycle remains only as a
+duplicate-guarded fallback if WebSocket confirmation fails.
+The filtered Core4 live runner then uses a validated donor-frame cache: exact
+full-history features are retained, while only the latest donor tail is
+replayed and checked against cached overlap. Current measured hourly signal
+latency is about 6.8 seconds instead of 31.8 seconds; any mismatch forces a
+complete rebuild.
+Keep
+`EXECUTION_MAX_POSITIONS=0` for Core4 v3. On startup, live execution refuses to
 run if the money-impacting `EXECUTION_*` defaults diverge from the strategy
 JSON `backtest_args`. `EXECUTION_DRY_RUN_CAPITAL` lets a dry-run size entries
 as if the account had `$10k` while still syncing the real OKX account; it is
 ignored for live money. Switch `EXECUTION_DRY_RUN=false` only after real H1
 dry-run logs show clean sync and sane SL/TP/size output.
+
+Core4 v3 selects liquidation-safe leverage with a buffer beyond every
+structural stop. For SOL live execution, `maintenance_margin_tier_schedule`
+tracks OKX isolated SWAP position tiers so larger aggregate same-side positions
+use the higher MMR and lower maximum leverage tier. Trailing donors use native
+OKX `move_order_stop` orders; the backtester uses the same fixed entry-time
+activation price and callback spread.
+Missing protection or an unsafe exchange liquidation level blocks new entries
+and is reported to Telegram every H1 cycle.
 
 ## Running as a service (local VPS / Linux)
 

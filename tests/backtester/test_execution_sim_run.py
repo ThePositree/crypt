@@ -440,12 +440,13 @@ def test_basic_long_take_profit_path():
     assert trade["pnl_abs"] == pytest.approx(pnl_abs)
     assert trade["capital_before"] == pytest.approx(1000.0)
     assert trade["capital_after"] == pytest.approx(1000.0 + pnl_abs)
-    assert trade["leverage"] == pytest.approx(100.0)
-    assert trade["locked_margin"] == pytest.approx(position_value / 100.0)
+    assert trade["leverage"] == pytest.approx(14.0)
+    assert trade["locked_margin"] == pytest.approx(position_value / 14.0)
     assert trade["available_balance_before"] == pytest.approx(1000.0)
     assert trade["open_positions_before"] == 0
     assert trade["total_locked_margin_before"] == pytest.approx(0.0)
-    assert trade["total_locked_margin_after_entry"] == pytest.approx(position_value / 100.0)
+    assert trade["total_locked_margin_after_entry"] == pytest.approx(position_value / 14.0)
+    assert trade["liquidation_price"] < trade["sl_price"] - trade["entry_price"] * 0.005
     assert trade["holding_bars"] == 1
     assert bool(trade["is_long"]) is True
 
@@ -531,6 +532,8 @@ def test_long_trailing_stop_activates_and_exits_with_taker_fee():
     assert trade["exit_reason"] == "trailing_stop"
     assert trade["exit_price"] == pytest.approx(108.0)
     assert trade["trail_stop_price"] == pytest.approx(108.0)
+    assert trade["trail_activation_price"] == pytest.approx(104.0)
+    assert trade["trail_callback_spread"] == pytest.approx(2.0)
     assert bool(trade["trail_active"]) is True
     assert trade["fee_exit"] == pytest.approx(trade["size"] * 108.0 * 0.001)
 
@@ -721,7 +724,7 @@ def test_stop_loss_for_long_and_short():
     df_long = _base_df(
         opens=[100.0, 101.0, 102.0],
         highs=[101.0, 102.0, 103.0],
-        lows=[99.0, 90.0, 101.0],
+        lows=[99.0, 95.0, 101.0],
         closes=[100.5, 95.0, 102.5],
         signals=[1, 0, 0],
         sl_prices=[95.0, 100.0, 101.0],
@@ -743,7 +746,7 @@ def test_stop_loss_for_long_and_short():
     # Short: SL hit on high
     df_short = _base_df(
         opens=[100.0, 101.0, 102.0],
-        highs=[101.0, 120.0, 103.0],
+        highs=[101.0, 105.0, 103.0],
         lows=[99.0, 100.0, 101.0],
         closes=[100.5, 110.0, 102.5],
         signals=[-1, 0, 0],
@@ -762,6 +765,62 @@ def test_stop_loss_for_long_and_short():
     trades_short = sim_short.run(df_short)
     assert len(trades_short) == 1
     assert trades_short.iloc[0]["exit_reason"] == "stop_loss"
+
+
+def test_worst_case_records_liquidation_when_bar_crosses_liquidation_price() -> None:
+    df = _base_df(
+        opens=[100.0, 100.0, 100.0],
+        highs=[101.0, 101.0, 101.0],
+        lows=[99.0, 80.0, 99.0],
+        closes=[100.0, 90.0, 100.0],
+        signals=[1, 0, 0],
+        sl_prices=[95.0, 95.0, 95.0],
+    )
+
+    trades = ExecutionSim(
+        initial_capital=10_000.0,
+        taker_fee=0.0,
+        maker_fee=0.0,
+        risk_percent=1.0,
+        rrr=2.0,
+        max_positions=1,
+        max_allowed_leverage=25.0,
+        min_net_exposure=0.0,
+        bar_exit_policy="worst_case",
+    ).run(df)
+
+    assert len(trades) == 1
+    trade = trades.iloc[0]
+    assert trade["exit_reason"] == "liquidation"
+    assert trade["exit_price"] == pytest.approx(trade["liquidation_price"])
+
+
+def test_closed_trade_exports_maintenance_margin_tier_schedule() -> None:
+    df = _base_df(
+        opens=[100.0, 100.0, 100.0],
+        highs=[100.5, 101.0, 103.0],
+        lows=[99.5, 99.0, 99.0],
+        closes=[100.0, 100.0, 102.0],
+        signals=[1, 0, 0],
+        sl_prices=[99.0, 99.0, 99.0],
+    )
+
+    trades = ExecutionSim(
+        initial_capital=10_000.0,
+        taker_fee=0.0,
+        maker_fee=0.0,
+        risk_percent=1.0,
+        rrr=2.0,
+        max_positions=1,
+        max_allowed_leverage=25.0,
+        min_net_exposure=0.0,
+        maintenance_margin_tier_schedule="okx_sol_usdt_swap_2026_06_29",
+    ).run(df)
+
+    assert len(trades) == 1
+    assert trades.iloc[0]["maintenance_margin_tier_schedule"] == (
+        "okx_sol_usdt_swap_2026_06_29"
+    )
 
 
 def test_ttl_expiration_exit():
@@ -828,9 +887,7 @@ def test_open_positions_are_reported_without_realized_pnl_at_last_bar():
     assert trade["total_locked_margin_after_entry"] == pytest.approx(trade["locked_margin"])
 
 
-def test_isolated_futures_max_leverage_keeps_concurrent_entries_consistent():
-    # ADR-0026 selects max leverage for fitting positions, so compatible
-    # isolated entries can coexist instead of being rejected by leverage drift.
+def test_liquidation_safe_common_leverage_rejects_incompatible_wider_stop():
     df = _base_df(
         opens=[100.0, 101.0, 102.0, 103.0, 104.0],
         highs=[101.0, 102.0, 150.0, 150.0, 150.0],
@@ -853,9 +910,9 @@ def test_isolated_futures_max_leverage_keeps_concurrent_entries_consistent():
 
     trades = sim.run(df)
 
-    assert len(trades) == 2
-    assert trades["leverage"].tolist() == [100.0, 100.0]
-    assert trades["exit_reason"].tolist() == ["take_profit", "open"]
+    assert len(trades) == 1
+    assert trades["leverage"].tolist() == [14.0]
+    assert trades["exit_reason"].tolist() == ["take_profit"]
 
 
 def test_isolated_futures_insufficient_margin_blocks_position():
@@ -910,13 +967,13 @@ def test_margin_state_tracks_concurrent_positions_at_entry():
 
     assert len(trades) == 3
     assert trades["open_positions_before"].tolist() == [0, 1, 2]
-    assert trades["available_balance_before"].tolist() == pytest.approx([1000.0, 998.0, 996.004])
-    assert trades["locked_margin"].tolist() == pytest.approx([2.0, 1.996, 1.992008])
-    assert trades["total_locked_margin_before"].tolist() == pytest.approx([0.0, 2.0, 3.996])
+    assert trades["available_balance_before"].tolist() == pytest.approx([1000.0, 987.5, 975.15625])
+    assert trades["locked_margin"].tolist() == pytest.approx([12.5, 12.34375, 12.189453125])
+    assert trades["total_locked_margin_before"].tolist() == pytest.approx([0.0, 12.5, 24.84375])
     assert trades["total_locked_margin_after_entry"].tolist() == pytest.approx(
-        [2.0, 3.996, 5.988008]
+        [12.5, 24.84375, 37.033203125]
     )
-    assert trades["leverage"].tolist() == pytest.approx([100.0, 100.0, 100.0])
+    assert trades["leverage"].tolist() == pytest.approx([16.0, 16.0, 16.0])
 
 
 def test_trades_dataframe_columns_and_types():
@@ -960,23 +1017,34 @@ def test_trades_dataframe_columns_and_types():
         "sl_price",
         "trail_activation_rrr",
         "trail_distance_atr",
+        "trail_activation_price",
+        "trail_callback_spread",
         "trail_stop_price",
         "trail_active",
         "exit_reason",
-            "capital_before",
-            "capital_after",
-            "holding_bars",
-            "position_ttl_bars",
-            "position_group",
-            "leverage",
+        "capital_before",
+        "capital_after",
+        "holding_bars",
+        "position_ttl_bars",
+        "position_group",
+        "leverage",
         "locked_margin",
         "available_balance_before",
         "open_positions_before",
         "total_locked_margin_before",
         "total_locked_margin_after_entry",
         "is_long",
+        "liquidation_price",
+        "maintenance_margin_rate",
+        "liquidation_fee_rate",
+        "liquidation_buffer_pct",
+        "maintenance_margin_tier_schedule",
         "entry_bar_index",
         "exit_bar_index",
+        "capital_sweep_amount",
+        "capital_sweep_month",
+        "banked_profit_after",
+        "trading_capital_after_sweep",
     }
 
     assert set(trades.columns) == expected_columns
@@ -987,6 +1055,7 @@ def test_trades_dataframe_columns_and_types():
     assert row["risk_base_capital"] == pytest.approx(1000.0)
     assert isinstance(row["exit_time"], pd.Timestamp)
     assert isinstance(row["is_long"], (bool, np.bool_))  # type: ignore[name-defined]
+    assert pd.isna(row["maintenance_margin_tier_schedule"])
     assert isinstance(row["entry_bar_index"], (int, float, np.integer))
     assert isinstance(row["exit_bar_index"], (int, float, np.integer))
     assert row["exit_bar_index"] >= row["entry_bar_index"]
@@ -1138,7 +1207,7 @@ def test_intrabar_policy_worst_case_prefers_stop_loss():
     # With bar_exit_policy="worst_case" we expect SL to be chosen.
     df = _base_df(
         opens=[100.0, 101.0, 102.0],
-        highs=[101.0, 120.0, 103.0],
+        highs=[101.0, 105.0, 103.0],
         lows=[99.0, 80.0, 101.0],
         closes=[100.5, 90.0, 102.5],
         signals=[-1, 0, 0],

@@ -14,9 +14,10 @@ from loguru import logger
 from crypt.config import Settings
 from crypt.execution.executor import LiveExecutionManager
 from crypt.execution.settings import ExecutionSettings
+from crypt.runtime.h1_websocket import H1Boundary, H1WebSocketScheduler
 from crypt.runtime.health import run_health_check
 from crypt.runtime.orchestrator import Orchestrator
-from crypt.runtime.scheduler import H1Scheduler, H4Scheduler
+from crypt.runtime.scheduler import H4Scheduler
 
 _HEARTBEAT_INTERVAL_S = 30 * 60  # 30 minutes
 _OKX_HEALTH_INTERVAL_S = 6 * 60 * 60  # 6 hours
@@ -183,19 +184,36 @@ async def _main() -> None:
     else:
         orchestrator = Orchestrator(settings)
         h4_scheduler = H4Scheduler(orchestrator.tick)
-    h1_scheduler: H1Scheduler | None = None
+    h1_scheduler: H1WebSocketScheduler | None = None
 
     if exec_bundle is not None:
         exec_manager, exec_settings = exec_bundle
 
-        async def _execution_tick() -> None:
-            for sym in exec_settings.symbols:
-                try:
-                    await exec_manager.on_h1_close(sym)
-                except Exception as exc:
-                    logger.error("Execution tick failed for {}: {}", sym, exc)
+        async def _execution_tick(
+            symbol: str,
+            websocket_boundary: H1Boundary | None,
+            trigger_source: str,
+        ) -> None:
+            await exec_manager.on_h1_close(
+                symbol,
+                websocket_boundary=websocket_boundary,
+                trigger_source=trigger_source,
+            )
 
-        h1_scheduler = H1Scheduler(_execution_tick)
+        async def _execution_error(
+            context: str,
+            error: BaseException | str,
+        ) -> None:
+            await exec_manager.notify_execution_error(
+                context=context,
+                error=error,
+            )
+
+        h1_scheduler = H1WebSocketScheduler(
+            _execution_tick,
+            exec_settings.symbols,
+            error_callback=_execution_error,
+        )
 
     loop = asyncio.get_running_loop()
     stop_event = asyncio.Event()
@@ -248,6 +266,13 @@ async def _main() -> None:
             await stop_event.wait()
     except asyncio.CancelledError:
         pass
+    except Exception as exc:
+        if exec_bundle is not None:
+            await exec_bundle[0].notify_execution_error(
+                context="execution service startup/runtime",
+                error=exc,
+            )
+        raise
     finally:
         if heartbeat_task is not None:
             heartbeat_task.cancel()

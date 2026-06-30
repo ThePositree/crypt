@@ -628,6 +628,7 @@ name = "crypt"
 version = "0.0.0"
 source = { editable = "." }
 dependencies = [
+    { name = "aiohttp" },
     { name = "aiogram" },
     { name = "apscheduler" },
     { name = "ccxt" },
@@ -662,6 +663,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiohttp", specifier = ">=3.13" },
     { name = "aiogram", specifier = ">=3.10" },
     { name = "apscheduler", specifier = ">=3.10" },
     { name = "ccxt", specifier = ">=4.4" },

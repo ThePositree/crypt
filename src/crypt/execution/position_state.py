@@ -10,6 +10,7 @@ migration in `_migrate_state`.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -17,7 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-_SCHEMA_VERSION = 2
+_SCHEMA_VERSION = 6
 
 
 @dataclass
@@ -26,13 +27,13 @@ class LivePosition:
 
     position_id: str
     symbol: str
-    signal_time: str          # ISO-8601 UTC
-    entry_time: str           # ISO-8601 UTC
+    signal_time: str  # ISO-8601 UTC
+    entry_time: str  # ISO-8601 UTC
     entry_price: float
     sl_price: float
     tp_price: float
-    size: float               # base asset units (e.g. SOL)
-    contracts: float          # OKX contract count, rounded to exchange lot size
+    size: float  # base asset units (e.g. SOL)
+    contracts: float  # OKX contract count, rounded to exchange lot size
     leverage: float
     locked_margin: float
     risk_base_capital: float
@@ -40,11 +41,28 @@ class LivePosition:
     ttl_bars: int
     entry_order_id: str | None
     status: Literal["open", "closing", "closed"]
+    event_id: str = ""
+    client_order_id: str = ""
+    algo_client_order_id: str = ""
+    close_client_order_id: str = ""
+    stop_algo_order_id: str = ""
+    take_profit_order_id: str = ""
+    trailing_algo_client_order_id: str = ""
+    trailing_algo_order_id: str = ""
     selected_strategy: str = ""
     position_group: str = ""
     signal_event: dict[str, object] = field(default_factory=dict)
+    liquidation_price: float | None = None
+    maintenance_margin_rate: float = 0.004
+    liquidation_fee_rate: float = 0.0005
+    liquidation_buffer_pct: float = 0.005
+    maintenance_margin_tier_schedule: str | None = None
+    entry_fee: float = 0.0
     trail_activation_rrr: float = 0.0
     trail_distance_atr: float = 0.0
+    trail_activation_price: float | None = None
+    trail_callback_spread: float | None = None
+    fixed_take_profit_enabled: bool = True
     trail_active: bool = False
     trail_stop_price: float | None = None
     best_favorable_price: float | None = None
@@ -87,6 +105,19 @@ class LivePosition:
         signal_event: dict[str, object] | None = None,
         trail_activation_rrr: float = 0.0,
         trail_distance_atr: float = 0.0,
+        liquidation_price: float | None = None,
+        maintenance_margin_rate: float = 0.004,
+        liquidation_fee_rate: float = 0.0005,
+        liquidation_buffer_pct: float = 0.005,
+        maintenance_margin_tier_schedule: str | None = None,
+        event_id: str = "",
+        client_order_id: str = "",
+        algo_client_order_id: str = "",
+        entry_fee: float = 0.0,
+        trailing_algo_client_order_id: str = "",
+        trail_activation_price: float | None = None,
+        trail_callback_spread: float | None = None,
+        fixed_take_profit_enabled: bool = True,
     ) -> LivePosition:
         return cls(
             position_id=str(uuid.uuid4()),
@@ -105,9 +136,28 @@ class LivePosition:
             ttl_bars=ttl_bars,
             entry_order_id=entry_order_id,
             status="open",
+            event_id=event_id
+            or build_event_id(
+                symbol=symbol,
+                signal_time=signal_time,
+                selected_strategy=selected_strategy,
+                is_long=is_long,
+            ),
+            client_order_id=client_order_id,
+            algo_client_order_id=algo_client_order_id,
+            entry_fee=entry_fee,
+            trailing_algo_client_order_id=trailing_algo_client_order_id,
+            trail_activation_price=trail_activation_price,
+            trail_callback_spread=trail_callback_spread,
+            fixed_take_profit_enabled=fixed_take_profit_enabled,
             selected_strategy=selected_strategy,
             position_group=position_group,
             signal_event=signal_event or {},
+            liquidation_price=liquidation_price,
+            maintenance_margin_rate=maintenance_margin_rate,
+            liquidation_fee_rate=liquidation_fee_rate,
+            liquidation_buffer_pct=liquidation_buffer_pct,
+            maintenance_margin_tier_schedule=maintenance_margin_tier_schedule,
             trail_activation_rrr=trail_activation_rrr,
             trail_distance_atr=trail_distance_atr,
         )
@@ -190,7 +240,7 @@ def _migrate_state(raw: dict) -> dict:  # type: ignore[type-arg]
     version = raw.get("schema_version", 0)
     if version == _SCHEMA_VERSION:
         return raw
-    if version <= 1:
+    if version < _SCHEMA_VERSION:
         raw["schema_version"] = _SCHEMA_VERSION
         raw.setdefault("last_exchange_sync_at", None)
         raw.setdefault("last_exchange_sync_ok", False)
@@ -200,6 +250,11 @@ def _migrate_state(raw: dict) -> dict:  # type: ignore[type-arg]
             pos.setdefault("selected_strategy", "")
             pos.setdefault("position_group", "")
             pos.setdefault("signal_event", {})
+            pos.setdefault("liquidation_price", None)
+            pos.setdefault("maintenance_margin_rate", 0.004)
+            pos.setdefault("liquidation_fee_rate", 0.0005)
+            pos.setdefault("liquidation_buffer_pct", 0.005)
+            pos.setdefault("maintenance_margin_tier_schedule", None)
             pos.setdefault("trail_activation_rrr", 0.0)
             pos.setdefault("trail_distance_atr", 0.0)
             pos.setdefault("trail_active", False)
@@ -212,5 +267,45 @@ def _migrate_state(raw: dict) -> dict:  # type: ignore[type-arg]
             pos.setdefault("exit_reason", None)
             pos.setdefault("realized_pnl", None)
             pos.setdefault("exit_fee", None)
+            signal_time = datetime.fromisoformat(str(pos["signal_time"]))
+            pos.setdefault(
+                "event_id",
+                build_event_id(
+                    symbol=str(pos["symbol"]),
+                    signal_time=signal_time,
+                    selected_strategy=str(pos.get("selected_strategy", "")),
+                    is_long=bool(pos["is_long"]),
+                ),
+            )
+            pos.setdefault("client_order_id", "")
+            pos.setdefault("algo_client_order_id", "")
+            pos.setdefault("close_client_order_id", "")
+            pos.setdefault("stop_algo_order_id", "")
+            pos.setdefault("take_profit_order_id", "")
+            pos.setdefault("trailing_algo_client_order_id", "")
+            pos.setdefault("trailing_algo_order_id", "")
+            pos.setdefault("entry_fee", 0.0)
+            pos.setdefault("trail_activation_price", None)
+            pos.setdefault("trail_callback_spread", None)
+            pos.setdefault("fixed_take_profit_enabled", True)
         return raw
     return raw
+
+
+def build_event_id(
+    *,
+    symbol: str,
+    signal_time: datetime,
+    selected_strategy: str,
+    is_long: bool,
+) -> str:
+    """Build a deterministic identity for one strategy event."""
+    payload = "|".join(
+        [
+            symbol,
+            signal_time.astimezone(UTC).isoformat(),
+            selected_strategy,
+            "long" if is_long else "short",
+        ]
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:24]

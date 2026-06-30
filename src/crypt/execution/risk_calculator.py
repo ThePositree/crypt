@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 
 from backtester.exit_geometry import ExitGeometryConfig, exit_geometry_config_from_args
 from backtester.fee_model import StaticPercentFeeModel
-from backtester.margin_policy import ISOLATED_FUTURES_ALWAYS, per_entry_margin_cap
+from backtester.margin_policy import per_entry_margin_cap
 from backtester.risk_model import BasicRiskModel, EntryContext, RiskResult
 from crypt.execution.position_state import ExecutionState, LivePosition
 from crypt.execution.settings import ExecutionSettings
@@ -57,6 +57,10 @@ class LiveRiskCalculator:
             max_positions=settings.max_positions,
             max_allowed_leverage=settings.max_leverage,
             exit_geometry_config=self._exit_geometry_config,
+            maintenance_margin_rate=settings.maintenance_margin_rate,
+            liquidation_fee_rate=settings.liquidation_fee_rate,
+            liquidation_buffer_pct=settings.liquidation_buffer_pct,
+            maintenance_margin_tier_schedule=settings.maintenance_margin_tier_schedule,
         )
         self._fee_model = StaticPercentFeeModel(
             taker_fee=settings.taker_fee,
@@ -163,6 +167,14 @@ class LiveRiskCalculator:
             self._settings.risk_percent if risk_percent is None else float(risk_percent)
         )
         effective_rrr = self._settings.rrr if rrr is None else float(rrr)
+        is_long_signal = signal == 1
+        same_side_positions = [
+            position
+            for position in open_positions
+            if position.status == "open" and position.is_long is is_long_signal
+        ]
+        same_side_leverage = same_side_positions[0].leverage if same_side_positions else None
+        same_side_size = sum(position.size for position in same_side_positions)
         risk_model = self._risk_model
         if (
             exit_geometry is not None
@@ -185,6 +197,10 @@ class LiveRiskCalculator:
                     if min_tp_move_pct is not None
                     else self._exit_geometry_config.min_tp_move_pct,
                 ),
+                maintenance_margin_rate=self._settings.maintenance_margin_rate,
+                liquidation_fee_rate=self._settings.liquidation_fee_rate,
+                liquidation_buffer_pct=self._settings.liquidation_buffer_pct,
+                maintenance_margin_tier_schedule=self._settings.maintenance_margin_tier_schedule,
             )
 
         entry_ctx = EntryContext(
@@ -197,23 +213,14 @@ class LiveRiskCalculator:
             open_positions=n_open,
             risk_percent=effective_risk_percent,
             rrr=effective_rrr,
+            existing_leverage=same_side_leverage,
+            existing_position_size=same_side_size,
         )
 
         risk_result = risk_model.calculate_position(entry_ctx)
         if risk_result is None:
             logger.debug("BasicRiskModel rejected entry at price %s", entry_price)
             return None
-
-        # Leverage consistency (ADR-0029: one leverage for all open positions)
-        if ISOLATED_FUTURES_ALWAYS and open_positions:
-            existing_leverage = open_positions[0].leverage
-            if existing_leverage != risk_result.required_leverage:
-                logger.debug(
-                    "Leverage mismatch: existing=%.0f, new=%.0f — skipping",
-                    existing_leverage,
-                    risk_result.required_leverage,
-                )
-                return None
 
         # Available balance check (mirrors ExecutionSim._can_open_position)
         available_balance = capital - total_locked_margin
@@ -243,12 +250,16 @@ class LiveRiskCalculator:
             open_positions=n_open,
             risk_percent=effective_risk_percent,
             rrr=effective_rrr,
+            existing_leverage=same_side_leverage,
+            existing_position_size=same_side_size,
         )
         fee_entry = self._fee_model.calculate_entry_fee(risk_result.position_value, fee_ctx)
         net_exposure = risk_result.position_value - fee_entry
 
         if fee_entry >= risk_result.risk_value * 2:
-            logger.debug("Fee %.4f >= 2x risk_value %.4f — skipping", fee_entry, risk_result.risk_value)
+            logger.debug(
+                "Fee %.4f >= 2x risk_value %.4f — skipping", fee_entry, risk_result.risk_value
+            )
             return None
 
         if net_exposure < self._settings.min_net_exposure * available_balance:

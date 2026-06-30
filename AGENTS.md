@@ -115,6 +115,23 @@ For owner runs, determine status from:
 State this limitation explicitly instead of reporting an owner run as failed
 solely because its PID is invisible inside the sandbox.
 
+### Do not persist one-off CLI commands
+
+Before adding any CLI command, executable module, or repository script, prove
+that the operation is a recurring owner/operator workflow rather than a
+one-time diagnostic or repair. One-off actions must use ephemeral shell or
+`python -c` code that imports existing project functions and leaves no command
+or script behind.
+
+Persist a new CLI only when at least one of these is true:
+
+- the owner explicitly asks for a reusable command;
+- the workflow is expected to recur and its stable inputs/outputs are defined;
+- automation, deployment, or acceptance tests require a durable interface.
+
+When uncertain, do not create the CLI. First perform the operation ephemerally
+and collect evidence that reuse is real.
+
 ### Document task intent, not only task mechanics
 
 Task files must explain the work broadly enough that the next agent can

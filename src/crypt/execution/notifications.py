@@ -6,6 +6,7 @@ import asyncio
 import html
 import random
 from dataclasses import dataclass
+from datetime import datetime
 
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
@@ -79,19 +80,93 @@ class ExecutionTelegramNotifier:
 
     async def send_entry_opened(self, pos: LivePosition) -> None:
         side = "LONG" if pos.is_long else "SHORT"
+        protection = (
+            f"SL: ${pos.sl_price:,.4f} | TP: ${pos.tp_price:,.4f}"
+            if pos.fixed_take_profit_enabled
+            else f"SL: ${pos.sl_price:,.4f} | fixed TP: not placed"
+        )
+        trailing = (
+            (
+                f"Trailing: activePx ${pos.trail_activation_price:,.4f} | "
+                f"callback ${pos.trail_callback_spread:,.4f}"
+            )
+            if pos.trail_activation_price is not None and pos.trail_callback_spread is not None
+            else "Trailing: disabled"
+        )
         text = "\n".join(
             [
                 _title("ENTRY", ok=True, dry_run=self._dry_run),
                 f"{_esc(pos.symbol)} {side}",
                 f"Contracts: {pos.contracts} | size: {pos.size:.4f}",
                 f"Entry: ${pos.entry_price:,.4f}",
-                f"SL: ${pos.sl_price:,.4f} | TP: ${pos.tp_price:,.4f}",
+                protection,
+                trailing,
+                (
+                    f"Estimated liquidation: ${pos.liquidation_price:,.4f}"
+                    if pos.liquidation_price is not None
+                    else "Estimated liquidation: unavailable"
+                ),
                 f"Margin: ${pos.locked_margin:,.2f} | leverage: {pos.leverage:.0f}x",
                 f"Risk base: ${pos.risk_base_capital:,.2f}",
                 f"Order: {_esc(pos.entry_order_id or 'dry-run')}",
             ]
         )
         await self._send(text)
+
+    async def send_entry_attempt(
+        self,
+        *,
+        symbol: str,
+        is_long: bool,
+        strategy: str,
+        signal_time: datetime,
+        entry_price: float,
+        sl_price: float,
+    ) -> None:
+        side = "LONG" if is_long else "SHORT"
+        await self._send(
+            "\n".join(
+                [
+                    _title("ENTRY ATTEMPT", ok=None, dry_run=self._dry_run),
+                    f"{_esc(symbol)} {side}",
+                    f"Strategy: {_esc(strategy or 'unknown')}",
+                    f"Signal: {_esc(signal_time.isoformat())}",
+                    f"Expected entry: ${entry_price:,.4f}",
+                    f"Structural SL: ${sl_price:,.4f}",
+                ]
+            )
+        )
+
+    async def send_entry_rejected(
+        self,
+        *,
+        symbol: str,
+        is_long: bool,
+        strategy: str,
+        reason: str,
+    ) -> None:
+        side = "LONG" if is_long else "SHORT"
+        await self._send(
+            "\n".join(
+                [
+                    _title("ENTRY REJECTED", ok=False, dry_run=self._dry_run),
+                    f"{_esc(symbol)} {side}",
+                    f"Strategy: {_esc(strategy or 'unknown')}",
+                    f"Reason: {_esc(reason)}",
+                ]
+            )
+        )
+
+    async def send_execution_error(self, *, context: str, detail: str) -> None:
+        await self._send(
+            "\n".join(
+                [
+                    _title("EXECUTION ERROR", ok=False, dry_run=self._dry_run),
+                    f"Context: {_esc(context)}",
+                    f"Error: {_esc(detail[:2000])}",
+                ]
+            )
+        )
 
     async def send_position_closed(self, pos: LivePosition) -> None:
         side = "LONG" if pos.is_long else "SHORT"
@@ -120,7 +195,9 @@ class ExecutionTelegramNotifier:
                 return
             except Exception as exc:
                 if attempt == _MAX_RETRIES:
-                    logger.error("Execution Telegram send failed after %d retries: %s", _MAX_RETRIES, exc)
+                    logger.error(
+                        "Execution Telegram send failed after %d retries: %s", _MAX_RETRIES, exc
+                    )
                     return
                 wait = (_RETRY_BACKOFF**attempt) * random.uniform(0.5, 1.5)
                 logger.warning(
@@ -136,9 +213,9 @@ class ExecutionTelegramNotifier:
         await self._bot.session.close()
 
 
-def _title(kind: str, *, ok: bool, dry_run: bool) -> str:
+def _title(kind: str, *, ok: bool | None, dry_run: bool) -> str:
     marker = "DRY RUN" if dry_run else "LIVE"
-    status = "OK" if ok else "BLOCKED"
+    status = "PENDING" if ok is None else ("OK" if ok else "BLOCKED")
     return f"<b>{kind}</b> [{marker}] [{status}]"
 
 

@@ -14,6 +14,96 @@ when finished.
 > **+15%/month** on **$10k** SOL **2025** continuous backtest after fees;
 > max **10% intra-month DD**; auto-trading only after **promote** verdict.
 
+## P0 — Make live entry/exit state crash-safe
+
+**What:** add persisted pre-submit entry intent and deterministic restart
+adoption; make TTL close preserve or restore protection until the reduce-only
+close is confirmed; compensate-close entries whose trailing or post-fill
+liquidation/tier checks fail.
+
+**Why now:** the 2026-06-30 full parity audit found windows where an OKX
+position can exist without a persisted local position, or remain open after
+its protection has been cancelled. Alerts do not make those states safe.
+
+**Expected gain:** a process crash, timeout, or one failed OKX request cannot
+leave real money unmanaged or unprotected.
+
+**Acceptance:** fault-injection tests at every post-submit boundary prove that
+restart adopts exactly one exchange position; TTL close failure retains valid
+protection; missing trailing and unsafe post-fill state produce a confirmed
+reduce-only close and reconciled local state.
+
+**Links:** `docs/execution/live_backtest_parity_audit_2026-06-30.md`,
+`src/crypt/execution/executor.py`, `src/crypt/execution/position_state.py`.
+
+---
+
+## P0 — Use one exact fill allocation ledger
+
+**What:** replace side/subtype/unconditional fill matching with a consumed-fill
+ledger keyed by order/algo/client identity and allocated quantity.
+
+**Why now:** multiple same-side local trades are aggregated into one OKX
+position. If returned fills omit client IDs, the current fallback can classify
+one partial close as the close of multiple local positions.
+
+**Expected gain:** Telegram PnL, persisted trade state, protection cancellation,
+and replay remain correct under overlapping Core4 trades.
+
+**Acceptance:** tests cover two same-side positions, partial closes, missing
+optional IDs, stop/TP/trailing/TTL fills, and restart; every fill quantity is
+consumed at most once and ambiguous fills block classification rather than
+guessing.
+
+**Links:** `docs/execution/live_backtest_parity_audit_2026-06-30.md`,
+`src/crypt/execution/fill_classifier.py`.
+
+---
+
+## P0 — Add exchange precision, fee timing, and funding parity
+
+**What:** make OKX amount/tick precision a shared pre-trade policy, debit entry
+fees at entry, and account for historical/live funding per position.
+
+**Why now:** the canonical backtest uses continuous sizes/prices and delays
+entry fees until close, while OKX rounds and charges immediately. Funding is
+absent from both trade ledgers even though OKX cash includes it. Therefore the
+current `$562,554` final-capital result is not yet the exact live economic
+baseline.
+
+**Expected gain:** overlapping position eligibility, capital compounding,
+reported PnL, and live sizing use the same dollars.
+
+**Acceptance:** shared-policy unit tests pass at the current roughly `$105`
+balance and at `$10,000`; funding settlement fixtures reconcile; the owner
+reruns canonical v3 and receives a new artifact whose changed figures are
+explained.
+
+**Links:** `docs/execution/live_backtest_parity_audit_2026-06-30.md`,
+`src/backtester/execution_sim.py`, `src/crypt/execution/okx_order_client.py`.
+
+---
+
+## P1 — Calibrate H1 execution and mark-price liquidation
+
+**What:** ingest mark-price candles for liquidation, measure live H1-open
+slippage/drift/rejections, stress triggered-limit taker fees, and define the
+finest execution model supported by available data.
+
+**Why now:** live market fills several seconds after H1 open and OKX liquidates
+on mark price. H1 last-trade OHLC cannot reproduce either exactly.
+
+**Expected gain:** performance reports distinguish deterministic policy parity
+from unavoidable exchange execution uncertainty and quantify its dollar cost.
+
+**Acceptance:** a report compares baseline against measured slippage,
+`0.1%` rejection, taker-TP, and mark-price liquidation scenarios; the chosen
+model is documented and used by both canonical tests and replay.
+
+**Links:** `docs/execution/live_backtest_parity_audit_2026-06-30.md`.
+
+---
+
 ## P1 — Core4 portfolio-level regime/off-switch research
 
 **What:** research entry-known portfolio-level off-switches for the current
@@ -137,6 +227,30 @@ validated through the normal backtester before any promotion decision.
 
 **Links:** ADR-0046, `docs/trade_filter_research.md`,
 `results/trade_filter_research_2022_2026/`.
+
+---
+
+## P2 — Investigate pytest shutdown hang after H1 executor thread-pool test
+
+**What:** isolate why
+`test_on_h1_close_rechecks_sync_after_marking_missing_position_closed` reaches
+`PASSED` but the pytest process does not terminate on the current PC after the
+test uses `run_in_executor`.
+
+**Why now:** the 2026-06-29 Telegram reporting work passed all assertions, but
+the full execution test process had to exclude this one test to terminate
+cleanly. Repeated isolated runs show the same post-test shutdown hang.
+
+**Expected gain:** restore a trustworthy one-command execution test suite and
+confirm that the live service can also shut down cleanly after a signal
+generation thread has run.
+
+**Acceptance:** the isolated test exits with code 0 without manual
+interruption, and the complete `pytest tests/execution -q` command terminates
+successfully.
+
+**Links:** `src/crypt/execution/executor.py`,
+`tests/execution/test_executor_multi_event.py`.
 
 ---
 
@@ -812,7 +926,7 @@ engineering polish unless it directly supports that outcome.
       `compare-grid` supports `--max-positions-values`, summaries include
       `max_positions`, best-run export respects the selected value, and
       focused tests cover the wiring.
-- [ ] **Model liquidation-aware isolated-futures leverage explicitly** — P1.
+- [x] **Model liquidation-aware isolated-futures leverage explicitly** — P1.
       What: decide and implement how leverage is selected when liquidation is
       allowed to act as the effective stop in isolated futures. Why now: using
       maximum OKX leverage (`25x`) minimizes locked margin, but if liquidation
@@ -825,6 +939,9 @@ engineering polish unless it directly supports that outcome.
       tests cover liquidation closer/farther than structural SL, and no
       candidate can silently score risk against a stop that would not be
       reached before liquidation.
+      Completed 2026-06-29 via ADR-0049: safe leverage selection, explicit
+      liquidation exits, OKX same-side aggregation, exported liquidation
+      fields, live exchange validation, and focused tests.
 
 - [x] **Vend `backtester/` into crypt monorepo** — P1. Remove nested
       `backtester/.git`; commit donor sources from the `crypt` root. ADR-0021;

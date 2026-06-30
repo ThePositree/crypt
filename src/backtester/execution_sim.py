@@ -8,8 +8,18 @@ from tqdm.auto import tqdm
 
 from .exit_geometry import exit_geometry_config_from_args
 from .fee_model import ExitContext, FeeModel, StaticPercentFeeModel
-from .margin_policy import ISOLATED_FUTURES_ALWAYS, per_entry_margin_cap
+from .margin_policy import (
+    DEFAULT_LIQUIDATION_BUFFER_PCT,
+    DEFAULT_LIQUIDATION_FEE_RATE,
+    DEFAULT_MAINTENANCE_MARGIN_RATE,
+    ISOLATED_FUTURES_ALWAYS,
+    aggregate_linear_liquidation_price,
+    aggregate_liquidation_is_beyond_stops,
+    leverage_is_within_size_tier,
+    per_entry_margin_cap,
+)
 from .risk_model import BasicRiskModel, EntryContext, RiskModel
+from .trailing_policy import build_native_trailing_geometry, with_closed_atr14
 
 
 class _NotEnoughBarsError(Exception):
@@ -115,11 +125,18 @@ class Position:
     total_locked_margin_before: float
     total_locked_margin_after_entry: float
     is_long: bool
+    liquidation_price: float
+    maintenance_margin_rate: float
+    liquidation_fee_rate: float
+    liquidation_buffer_pct: float
+    maintenance_margin_tier_schedule: str | None
     metadata: dict[str, Any]
     position_ttl_bars: int = 0
     position_group: str = ""
     trail_activation_rrr: float = 0.0
     trail_distance_atr: float = 0.0
+    trail_activation_price: float | None = None
+    trail_callback_spread: float | None = None
     trail_active: bool = False
     best_favorable_price: float | None = None
     trail_stop_price: float | None = None
@@ -148,6 +165,7 @@ class ExitReason(str, Enum):
     TAKE_PROFIT = "take_profit"
     STOP_LOSS = "stop_loss"
     TRAILING_STOP = "trailing_stop"
+    LIQUIDATION = "liquidation"
     TTL_EXPIRED = "ttl_expired"
     OPEN = "open"
 
@@ -236,6 +254,10 @@ class ExecutionSim:
         tp_move_pct: float | None = None,
         structural_sl_mode: str = "cap",
         min_tp_move_pct: float = 0.004,
+        maintenance_margin_rate: float = DEFAULT_MAINTENANCE_MARGIN_RATE,
+        liquidation_fee_rate: float = DEFAULT_LIQUIDATION_FEE_RATE,
+        liquidation_buffer_pct: float = DEFAULT_LIQUIDATION_BUFFER_PCT,
+        maintenance_margin_tier_schedule: str | None = None,
         risk_model: RiskModel | None = None,
         fee_model: FeeModel | None = None,
     ):
@@ -392,6 +414,10 @@ class ExecutionSim:
         self.trading_begin = trading_begin
         self.trading_end = trading_end
         self.capital_sweep = capital_sweep_normalized
+        self.maintenance_margin_rate = maintenance_margin_rate
+        self.liquidation_fee_rate = liquidation_fee_rate
+        self.liquidation_buffer_pct = liquidation_buffer_pct
+        self.maintenance_margin_tier_schedule = maintenance_margin_tier_schedule
         self._exit_geometry_config = exit_geometry_config_from_args(
             exit_geometry=exit_geometry,
             tp_move_pct=tp_move_pct,
@@ -406,6 +432,10 @@ class ExecutionSim:
             max_positions=self.max_positions,
             max_allowed_leverage=self.max_allowed_leverage,
             exit_geometry_config=self._exit_geometry_config,
+            maintenance_margin_rate=self.maintenance_margin_rate,
+            liquidation_fee_rate=self.liquidation_fee_rate,
+            liquidation_buffer_pct=self.liquidation_buffer_pct,
+            maintenance_margin_tier_schedule=self.maintenance_margin_tier_schedule,
         )
         self._fee_model: FeeModel = fee_model or StaticPercentFeeModel(
             taker_fee=self.taker_fee,
@@ -461,18 +491,6 @@ class ExecutionSim:
         bool
             True if position can be opened, False otherwise
         """
-        # Check if we have existing positions
-        if active_positions:
-            # Isolated OKX semantics: one leverage for all open positions (ADR-0029).
-            common_leverage = active_positions[0].leverage
-            if common_leverage > 0 and common_leverage != new_leverage:
-                self._logger.debug(
-                    "Isolated futures: leverage mismatch. Existing: %d, New: %d",
-                    common_leverage,
-                    new_leverage,
-                )
-                return False
-
         required_margin = new_position_value / new_leverage
         max_allowed_margin = per_entry_margin_cap(
             available_balance=available_balance,
@@ -600,8 +618,7 @@ class ExecutionSim:
 
             # TTL
             if not exit_reason and (
-                pos.position_ttl_bars > 0
-                and (i + 1) - pos.bar_opened >= pos.position_ttl_bars
+                pos.position_ttl_bars > 0 and (i + 1) - pos.bar_opened >= pos.position_ttl_bars
             ):
                 exit_price = next_open
                 exit_reason = ExitReason.TTL_EXPIRED
@@ -649,6 +666,8 @@ class ExecutionSim:
                         "sl_price": pos.sl_price,
                         "trail_activation_rrr": pos.trail_activation_rrr,
                         "trail_distance_atr": pos.trail_distance_atr,
+                        "trail_activation_price": pos.trail_activation_price,
+                        "trail_callback_spread": pos.trail_callback_spread,
                         "trail_stop_price": pos.trail_stop_price,
                         "trail_active": pos.trail_active,
                         "exit_reason": reason_value,
@@ -664,6 +683,11 @@ class ExecutionSim:
                         "total_locked_margin_before": pos.total_locked_margin_before,
                         "total_locked_margin_after_entry": pos.total_locked_margin_after_entry,
                         "is_long": pos.is_long,
+                        "liquidation_price": pos.liquidation_price,
+                        "maintenance_margin_rate": pos.maintenance_margin_rate,
+                        "liquidation_fee_rate": pos.liquidation_fee_rate,
+                        "liquidation_buffer_pct": pos.liquidation_buffer_pct,
+                        "maintenance_margin_tier_schedule": pos.maintenance_margin_tier_schedule,
                         "entry_bar_index": pos.bar_opened,
                         "exit_bar_index": i,
                         **pos.metadata,
@@ -673,6 +697,26 @@ class ExecutionSim:
                 capital = new_capital
             else:
                 remaining_positions.append(pos)
+
+        for is_long in (True, False):
+            side_positions = [
+                position for position in remaining_positions if position.is_long is is_long
+            ]
+            if not side_positions:
+                continue
+            liquidation = aggregate_linear_liquidation_price(
+                entries=[(position.entry_price, position.size) for position in side_positions],
+                is_long=is_long,
+                leverage=side_positions[0].leverage,
+                maintenance_margin_rate=side_positions[0].maintenance_margin_rate,
+                liquidation_fee_rate=side_positions[0].liquidation_fee_rate,
+                maintenance_margin_tier_schedule=side_positions[
+                    0
+                ].maintenance_margin_tier_schedule,
+            )
+            if liquidation is not None:
+                for position in side_positions:
+                    position.liquidation_price = liquidation
 
         return capital, remaining_positions
 
@@ -712,6 +756,14 @@ class ExecutionSim:
             Price at which the position is considered closed, or None if
             no TP/SL exit occurs in this bar.
         """
+        liquidation_hit = (
+            current_low <= pos.liquidation_price
+            if pos.is_long
+            else current_high >= pos.liquidation_price
+        )
+        if liquidation_hit and self.bar_exit_policy == "worst_case":
+            return ExitReason.LIQUIDATION, pos.liquidation_price
+
         if pos.trail_activation_rrr > 0:
             return self._resolve_trailing_bar_exit(
                 pos=pos,
@@ -756,19 +808,19 @@ class ExecutionSim:
         current_low: float,
         trail_atr: float | None,
     ) -> tuple[ExitReason | None, float | None]:
-        if trail_atr is None or pd.isna(trail_atr) or trail_atr <= 0:
-            return self._resolve_fixed_exit_before_trailing_atr(pos, current_high, current_low)
-
-        sl_dist = abs(pos.entry_price - pos.sl_price)
+        del trail_atr  # Native OKX callback spread is fixed at entry.
+        activation_price = pos.trail_activation_price
+        callback_spread = pos.trail_callback_spread
+        if activation_price is None or callback_spread is None or callback_spread <= 0:
+            raise RuntimeError("trailing position has no fixed OKX activation/callback geometry")
         if pos.is_long:
             original_sl_hit = current_low <= pos.sl_price
-            activation_price = pos.entry_price + sl_dist * pos.trail_activation_rrr
             activation_hit = current_high >= activation_price
             if not pos.trail_active:
                 if original_sl_hit and (not activation_hit or self.bar_exit_policy == "worst_case"):
                     return ExitReason.STOP_LOSS, pos.sl_price
                 if not activation_hit:
-                    tp_hit = current_high >= pos.tp_price
+                    tp_hit = pos.tp_price < activation_price and current_high >= pos.tp_price
                     if tp_hit:
                         return ExitReason.TAKE_PROFIT, pos.tp_price
                     if original_sl_hit:
@@ -781,20 +833,19 @@ class ExecutionSim:
                     pos.best_favorable_price or pos.entry_price, current_high
                 )
 
-            proposed_stop = pos.best_favorable_price - trail_atr * pos.trail_distance_atr
+            proposed_stop = pos.best_favorable_price - callback_spread
             pos.trail_stop_price = max(pos.sl_price, proposed_stop)
             if current_low <= pos.trail_stop_price:
                 return ExitReason.TRAILING_STOP, pos.trail_stop_price
             return None, None
 
         original_sl_hit = current_high >= pos.sl_price
-        activation_price = pos.entry_price - sl_dist * pos.trail_activation_rrr
         activation_hit = current_low <= activation_price
         if not pos.trail_active:
             if original_sl_hit and (not activation_hit or self.bar_exit_policy == "worst_case"):
                 return ExitReason.STOP_LOSS, pos.sl_price
             if not activation_hit:
-                tp_hit = current_low <= pos.tp_price
+                tp_hit = pos.tp_price > activation_price and current_low <= pos.tp_price
                 if tp_hit:
                     return ExitReason.TAKE_PROFIT, pos.tp_price
                 if original_sl_hit:
@@ -805,7 +856,7 @@ class ExecutionSim:
         else:
             pos.best_favorable_price = min(pos.best_favorable_price or pos.entry_price, current_low)
 
-        proposed_stop = pos.best_favorable_price + trail_atr * pos.trail_distance_atr
+        proposed_stop = pos.best_favorable_price + callback_spread
         pos.trail_stop_price = min(pos.sl_price, proposed_stop)
         if current_high >= pos.trail_stop_price:
             return ExitReason.TRAILING_STOP, pos.trail_stop_price
@@ -1060,6 +1111,7 @@ class ExecutionSim:
         capital: float,
         active_positions: list[Position],
         entry_ctx: _EntryContextDict,
+        entry_trail_atr: float | None,
     ) -> list[Position]:
         """
         Try to open a new position based on signal and risk settings.
@@ -1103,6 +1155,10 @@ class ExecutionSim:
         total_locked_margin = sum(pos.locked_margin for pos in active_positions)
         open_positions_before = len(active_positions)
 
+        is_long_signal = signal == 1
+        same_side_positions_before = [
+            pos for pos in active_positions if pos.is_long is is_long_signal
+        ]
         entry_context = EntryContext(
             signal=signal,
             sl_price=sl_price,
@@ -1113,14 +1169,17 @@ class ExecutionSim:
             open_positions=open_positions_before,
             risk_percent=risk_percent,
             rrr=rrr,
+            existing_leverage=(
+                same_side_positions_before[0].leverage if same_side_positions_before else None
+            ),
+            existing_position_size=sum(pos.size for pos in same_side_positions_before),
         )
 
         risk_model = self._risk_model
         if (
             entry_ctx["exit_geometry"] != self._exit_geometry_config.mode
             or entry_ctx["tp_move_pct"] != self._exit_geometry_config.tp_move_pct
-            or entry_ctx["structural_sl_mode"]
-            != self._exit_geometry_config.structural_sl_mode
+            or entry_ctx["structural_sl_mode"] != self._exit_geometry_config.structural_sl_mode
             or entry_ctx["min_tp_move_pct"] != self._exit_geometry_config.min_tp_move_pct
         ):
             risk_model = BasicRiskModel(
@@ -1133,10 +1192,55 @@ class ExecutionSim:
                     structural_sl_mode=entry_ctx["structural_sl_mode"],
                     min_tp_move_pct=entry_ctx["min_tp_move_pct"],
                 ),
+                maintenance_margin_rate=self.maintenance_margin_rate,
+                liquidation_fee_rate=self.liquidation_fee_rate,
+                liquidation_buffer_pct=self.liquidation_buffer_pct,
+                maintenance_margin_tier_schedule=self.maintenance_margin_tier_schedule,
             )
         risk_result = risk_model.calculate_position(entry_context)
         if risk_result is None:
             return active_positions
+        same_side_positions = same_side_positions_before
+        aggregate_size = sum(pos.size for pos in same_side_positions) + risk_result.size
+        if not leverage_is_within_size_tier(
+            position_size=aggregate_size,
+            leverage=risk_result.required_leverage,
+            configured_max_leverage=self.max_allowed_leverage,
+            tier_schedule=risk_result.maintenance_margin_tier_schedule,
+        ):
+            return active_positions
+        aggregate_safe, aggregate_liquidation = aggregate_liquidation_is_beyond_stops(
+            entries_and_stops=[
+                (pos.entry_price, pos.size, pos.sl_price) for pos in same_side_positions
+            ]
+            + [(entry_price, risk_result.size, risk_result.sl_price)],
+            is_long=risk_result.is_long,
+            leverage=risk_result.required_leverage,
+            maintenance_margin_rate=risk_result.maintenance_margin_rate,
+            liquidation_fee_rate=risk_result.liquidation_fee_rate,
+            buffer_pct=risk_result.liquidation_buffer_pct,
+            maintenance_margin_tier_schedule=risk_result.maintenance_margin_tier_schedule,
+        )
+        if not aggregate_safe or aggregate_liquidation is None:
+            return active_positions
+        trail_activation_rrr = entry_ctx["trail_activation_rrr"]
+        trail_distance_atr = entry_ctx["trail_distance_atr"]
+        trail_activation_price: float | None = None
+        trail_callback_spread: float | None = None
+        if trail_activation_rrr > 0:
+            if entry_trail_atr is None or pd.isna(entry_trail_atr) or entry_trail_atr <= 0:
+                return active_positions
+            geometry = build_native_trailing_geometry(
+                entry_price=entry_price,
+                stop_price=risk_result.sl_price,
+                take_profit_price=risk_result.tp_price,
+                is_long=risk_result.is_long,
+                activation_rrr=trail_activation_rrr,
+                distance_atr=trail_distance_atr,
+                entry_atr=float(entry_trail_atr),
+            )
+            trail_activation_price = geometry.activation_price
+            trail_callback_spread = geometry.callback_spread
 
         position_value = risk_result.position_value
         risk_value = risk_result.risk_value
@@ -1187,13 +1291,22 @@ class ExecutionSim:
             open_positions_before=open_positions_before,
             total_locked_margin_before=total_locked_margin,
             total_locked_margin_after_entry=total_locked_margin_after_entry,
+            liquidation_price=risk_result.liquidation_price,
+            maintenance_margin_rate=risk_result.maintenance_margin_rate,
+            liquidation_fee_rate=risk_result.liquidation_fee_rate,
+            liquidation_buffer_pct=risk_result.liquidation_buffer_pct,
+            maintenance_margin_tier_schedule=risk_result.maintenance_margin_tier_schedule,
             metadata=entry_ctx["metadata"],
             position_ttl_bars=entry_ctx["position_ttl_bars"],
             position_group=position_group,
-            trail_activation_rrr=entry_ctx["trail_activation_rrr"],
-            trail_distance_atr=entry_ctx["trail_distance_atr"],
+            trail_activation_rrr=trail_activation_rrr,
+            trail_distance_atr=trail_distance_atr,
+            trail_activation_price=trail_activation_price,
+            trail_callback_spread=trail_callback_spread,
         )
         active_positions.append(new_position)
+        for position in [*same_side_positions, new_position]:
+            position.liquidation_price = aggregate_liquidation
 
         return active_positions
 
@@ -1272,14 +1385,16 @@ class ExecutionSim:
             - any strategy metadata columns from the signal row, for example
               confidence, score, regime, rationale, and per-engine strengths
         """
-        trailing_requested = self.trail_activation_rrr > 0 or (
-            "trail_activation_rrr" in df.columns
-            and pd.to_numeric(df["trail_activation_rrr"], errors="coerce").fillna(0).gt(0).any()
-        ) or (
-            _signal_events_request_trailing(df)
+        trailing_requested = (
+            self.trail_activation_rrr > 0
+            or (
+                "trail_activation_rrr" in df.columns
+                and pd.to_numeric(df["trail_activation_rrr"], errors="coerce").fillna(0).gt(0).any()
+            )
+            or (_signal_events_request_trailing(df))
         )
         if trailing_requested and "trail_atr" not in df.columns:
-            df = _with_closed_atr14(df)
+            df = with_closed_atr14(df)
 
         try:
             columns_meta = self._validate_input_df(df)
@@ -1406,6 +1521,11 @@ class ExecutionSim:
                     columns_meta=columns_meta,
                 )
                 for entry_ctx in entry_contexts:
+                    entry_trail_atr = (
+                        float(df.iloc[i + 1]["trail_atr"])
+                        if "trail_atr" in df.columns and not pd.isna(df.iloc[i + 1]["trail_atr"])
+                        else None
+                    )
                     active_positions = self._try_open_position(
                         i=i,
                         current_time=current_time,
@@ -1414,6 +1534,7 @@ class ExecutionSim:
                         capital=capital,
                         active_positions=active_positions,
                         entry_ctx=entry_ctx,
+                        entry_trail_atr=entry_trail_atr,
                     )
 
         if active_positions:
@@ -1431,8 +1552,7 @@ class ExecutionSim:
         if trade_history and pending_capital_sweep_amount:
             last_trade = trade_history[-1]
             last_trade["capital_sweep_amount"] = (
-                float(last_trade.get("capital_sweep_amount", 0.0))
-                + pending_capital_sweep_amount
+                float(last_trade.get("capital_sweep_amount", 0.0)) + pending_capital_sweep_amount
             )
             last_trade["capital_sweep_month"] = pending_capital_sweep_month
             last_trade["banked_profit_after"] = banked_profit
@@ -1467,6 +1587,8 @@ class ExecutionSim:
             "sl_price": pos.sl_price,
             "trail_activation_rrr": pos.trail_activation_rrr,
             "trail_distance_atr": pos.trail_distance_atr,
+            "trail_activation_price": pos.trail_activation_price,
+            "trail_callback_spread": pos.trail_callback_spread,
             "trail_stop_price": pos.trail_stop_price,
             "trail_active": pos.trail_active,
             "exit_reason": ExitReason.OPEN.value,
@@ -1481,25 +1603,15 @@ class ExecutionSim:
             "total_locked_margin_before": pos.total_locked_margin_before,
             "total_locked_margin_after_entry": pos.total_locked_margin_after_entry,
             "is_long": pos.is_long,
+            "liquidation_price": pos.liquidation_price,
+            "maintenance_margin_rate": pos.maintenance_margin_rate,
+            "liquidation_fee_rate": pos.liquidation_fee_rate,
+            "liquidation_buffer_pct": pos.liquidation_buffer_pct,
+            "maintenance_margin_tier_schedule": pos.maintenance_margin_tier_schedule,
             "entry_bar_index": pos.bar_opened,
             "exit_bar_index": pd.NA,
             **pos.metadata,
         }
-
-
-def _with_closed_atr14(df: pd.DataFrame) -> pd.DataFrame:
-    enriched = df.copy()
-    previous_close = enriched["close"].shift(1)
-    true_range = pd.concat(
-        [
-            enriched["high"] - enriched["low"],
-            (enriched["high"] - previous_close).abs(),
-            (enriched["low"] - previous_close).abs(),
-        ],
-        axis=1,
-    ).max(axis=1)
-    enriched["trail_atr"] = true_range.rolling(14).mean().shift(1)
-    return enriched
 
 
 def _trade_metadata_from_row(row) -> dict[str, Any]:

@@ -20,6 +20,7 @@ class ClosedPositionFill:
     exit_reason: str
     realized_pnl: float | None
     exit_fee: float | None
+    filled_contracts: float = 0.0
 
 
 def classify_closed_position_from_fills(
@@ -33,7 +34,8 @@ def classify_closed_position_from_fills(
     candidates = [
         fill
         for fill in fills
-        if _fill_side(fill) == close_side
+        if _fill_matches_position(fill, pos)
+        and _fill_side(fill) == close_side
         and (fill_time := _fill_time(fill)) is not None
         and fill_time >= entry_time
     ]
@@ -44,6 +46,7 @@ def classify_closed_position_from_fills(
             exit_reason="exchange_closed_unknown",
             realized_pnl=None,
             exit_fee=None,
+            filled_contracts=0.0,
         )
 
     weighted_price_numerator = 0.0
@@ -63,7 +66,9 @@ def classify_closed_position_from_fills(
         amount_sum += amount
 
     exit_price = (
-        weighted_price_numerator / amount_sum if weighted_price_numerator > 0 and amount_sum > 0 else None
+        weighted_price_numerator / amount_sum
+        if weighted_price_numerator > 0 and amount_sum > 0
+        else None
     )
     realized_pnl = _realized_pnl(pos=pos, exit_price=exit_price, exit_fee=fee_sum)
     return ClosedPositionFill(
@@ -72,6 +77,7 @@ def classify_closed_position_from_fills(
         exit_reason=_exit_reason(pos, exit_price),
         realized_pnl=realized_pnl,
         exit_fee=fee_sum,
+        filled_contracts=amount_sum,
     )
 
 
@@ -107,7 +113,9 @@ def _fill_fee(fill: dict[str, Any]) -> float:
         return abs(_float_or_none(fee.get("cost")) or 0.0)
     fees = fill.get("fees")
     if isinstance(fees, list):
-        return sum(abs(_float_or_none(item.get("cost")) or 0.0) for item in fees if isinstance(item, dict))
+        return sum(
+            abs(_float_or_none(item.get("cost")) or 0.0) for item in fees if isinstance(item, dict)
+        )
     return 0.0
 
 
@@ -122,7 +130,40 @@ def _realized_pnl(
     entry_value = pos.size * pos.entry_price
     exit_value = pos.size * exit_price
     gross = exit_value - entry_value if pos.is_long else entry_value - exit_value
-    return gross - exit_fee
+    return gross - pos.entry_fee - exit_fee
+
+
+def _fill_matches_position(fill: dict[str, Any], pos: LivePosition) -> bool:
+    info = fill.get("info")
+    raw = info if isinstance(info, dict) else {}
+
+    inst_id = raw.get("instId")
+    if inst_id and str(inst_id) != pos.symbol:
+        return False
+
+    expected_side = "long" if pos.is_long else "short"
+    pos_side = raw.get("posSide")
+    if pos_side and str(pos_side).lower() != expected_side:
+        return False
+
+    algo_client_id = raw.get("algoClOrdId") or raw.get("attachAlgoClOrdId")
+    close_client_id = raw.get("clOrdId") or fill.get("clientOrderId")
+    expected_ids = {
+        identifier
+        for identifier in (
+            pos.algo_client_order_id,
+            pos.trailing_algo_client_order_id,
+            pos.close_client_order_id,
+        )
+        if identifier
+    }
+    if expected_ids and (algo_client_id or close_client_id):
+        return str(algo_client_id or close_client_id) in expected_ids
+
+    subtype = str(raw.get("subType") or "")
+    if subtype:
+        return subtype == ("5" if pos.is_long else "6")
+    return True
 
 
 def _exit_reason(pos: LivePosition, exit_price: float | None) -> str:

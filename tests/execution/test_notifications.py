@@ -97,3 +97,41 @@ async def test_entry_and_exit_messages_are_sent() -> None:
     assert "ENTRY" in bot.messages[0][1]
     assert "EXIT" in bot.messages[1][1]
     assert "PnL: $39.48" in bot.messages[1][1]
+
+
+@pytest.mark.asyncio
+async def test_entry_attempt_rejection_and_execution_error_are_sent() -> None:
+    bot = _FakeBot()
+    notifier = ExecutionTelegramNotifier(
+        _bot=bot,  # type: ignore[arg-type]
+        _chat_id="chat-1",
+        _dry_run=True,
+    )
+
+    await notifier.send_entry_attempt(
+        symbol="SOL-USDT-SWAP",
+        is_long=False,
+        strategy="dss_donor",
+        signal_time=datetime(2026, 6, 29, 10, tzinfo=UTC),
+        entry_price=145.25,
+        sl_price=147.10,
+    )
+    await notifier.send_entry_rejected(
+        symbol="SOL-USDT-SWAP",
+        is_long=False,
+        strategy="dss_donor",
+        reason="insufficient margin",
+    )
+    await notifier.send_execution_error(
+        context="place entry for SOL-USDT-SWAP",
+        detail="ExchangeError: order rejected",
+    )
+
+    assert len(bot.messages) == 3
+    assert "ENTRY ATTEMPT" in bot.messages[0][1]
+    assert "[PENDING]" in bot.messages[0][1]
+    assert "dss_donor" in bot.messages[0][1]
+    assert "ENTRY REJECTED" in bot.messages[1][1]
+    assert "insufficient margin" in bot.messages[1][1]
+    assert "EXECUTION ERROR" in bot.messages[2][1]
+    assert "order rejected" in bot.messages[2][1]

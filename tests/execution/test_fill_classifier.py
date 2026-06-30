@@ -69,9 +69,35 @@ def test_classifies_short_stop_loss_fill() -> None:
 def test_no_matching_fill_is_unknown() -> None:
     result = classify_closed_position_from_fills(
         pos=_position(is_long=True),
-    fills=[{"side": "buy", "timestamp": 1_782_561_600_000, "price": 104.0}],
+        fills=[{"side": "buy", "timestamp": 1_782_561_600_000, "price": 104.0}],
     )
 
     assert result.exit_reason == "exchange_closed_unknown"
     assert result.exit_price is None
     assert result.realized_pnl is None
+
+
+def test_ignores_other_position_algo_fill() -> None:
+    pos = _position(is_long=True)
+    pos.algo_client_order_id = "algo-this-position"
+
+    result = classify_closed_position_from_fills(
+        pos=pos,
+        fills=[
+            {
+                "side": "sell",
+                "timestamp": 1_782_561_600_000,
+                "price": 104.0,
+                "amount": 10.0,
+                "info": {
+                    "instId": "SOL-USDT-SWAP",
+                    "posSide": "long",
+                    "algoClOrdId": "algo-other-position",
+                    "subType": "5",
+                },
+            }
+        ],
+    )
+
+    assert result.exit_reason == "exchange_closed_unknown"
+    assert result.exit_price is None

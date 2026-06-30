@@ -55,7 +55,7 @@ Loaded from `.env` via `pydantic-settings`. All keys prefixed `EXECUTION_`.
 | `EXECUTION_ENABLED` | `false` | Must be set to `true` to activate |
 | `EXECUTION_DRY_RUN` | `true` | Log orders without placing them |
 | `EXECUTION_DRY_RUN_CAPITAL` | `0.0` | Optional dry-run-only sizing capital; `0` uses real OKX balance |
-| `EXECUTION_STRATEGY_CONFIG` | `strategies/archive/filtered_donor_portfolio_causal_v4_core4_no_island_long_riskx0p85.json` | Path to strategy JSON |
+| `EXECUTION_STRATEGY_CONFIG` | `strategies/archive/filtered_donor_portfolio_causal_v3_core4.json` | Path to strategy JSON |
 | `EXECUTION_DATA_DIR` | `data` | Root Parquet directory |
 | `EXECUTION_STATE_PATH` | `data/live_positions.json` | State file |
 | `EXECUTION_EXIT_GEOMETRY` | `sl_rrr` | Fallback exit geometry for legacy/sparse events |
@@ -104,6 +104,18 @@ files by fetching recent bars from OKX via `OKXClient.fetch_ohlcv()` and
 appending any bars newer than the last stored timestamp. This ensures the signal
 frame is up to date at each H1 tick.
 
+For normal scheduled execution, the primary trigger is the OKX business
+WebSocket described in `docs/execution/h1_websocket_trigger.md`. It connects at
+`HH:59:30 UTC`, waits for exchange-confirmed H1/H4/D1 candles and the new H1
+open, persists that boundary, and starts signal generation immediately. The
+REST refresh at `*:02 UTC` is a fallback, not the primary clock.
+
+`filtered_donor_portfolio` uses the validated latest-bar cache described in
+`docs/execution/live_signal_cache.md`. The complete backtester `generate()`
+path remains unchanged. On the current 39,734-bar SOL dataset, measured runtime
+was 31.8 seconds for a full rebuild, 13.2 seconds for a cold live cache, and
+6.8 seconds for the next validated hourly append.
+
 ---
 
 ## 5. Risk calculator
@@ -123,8 +135,10 @@ Mirrors `ExecutionSim._try_open_position()` exactly:
 
 For multi-signal Core v4 events, the event's own `risk_percent`, `rrr`,
 `position_ttl_bars`, `trail_activation_rrr`, `trail_distance_atr`,
-`exit_geometry`, `tp_move_pct`, `structural_sl_mode`, and `min_tp_move_pct`
-override the fallback environment settings exactly as `ExecutionSim` does.
+`exit_geometry`, `tp_move_pct`, `structural_sl_mode`, `min_tp_move_pct`,
+`maintenance_margin_rate`, `liquidation_fee_rate`,
+`liquidation_buffer_pct`, and `maintenance_margin_tier_schedule` override the
+fallback environment settings exactly as `ExecutionSim` does.
 
 At startup, live execution validates the fallback settings against the loaded
 strategy JSON `backtest_args` for all money-impacting defaults. A mismatch
@@ -162,7 +176,9 @@ Steps:
    ```
    Minimum 1 contract. If `contracts < 1` → reject (position too small).
 3. `side = 'sell' if short else 'buy'`
-4. Place market order with embedded SL and TP:
+4. Place an idempotent market order with a stable client ID and direct OKX
+   `attachAlgoOrds` structural SL. Attach the fixed TP only when it lies
+   strictly before native trailing activation.
    ```python
    await exchange.create_order(
        ccxt_symbol, 'market', side, contracts,
@@ -184,11 +200,19 @@ Steps:
    )
    ```
    `signal_executor` uses OKX's direct `attachAlgoOrds` payload for the same
-   structure (`tdMode=isolated`, `posSide`, market SL, limit TP). Live Core4
+   structure (`tdMode=isolated`, `posSide`, market SL, optional limit TP). Live Core4
    keeps `last` trigger prices because the backtester uses last-trade OHLCV;
    switching the stop to mark price would make live stop behavior diverge from
    the historical candles.
-5. Returns OKX order ID (or `None` in dry_run).
+5. Confirm the average fill and filled contracts from OKX. For a
+   trailing-enabled event, place a separate reduce-only `move_order_stop`
+   using the actual fill:
+   - `activePx = entry +/- stop_distance * trail_activation_rrr`;
+   - `callbackSpread = closed_entry_ATR14 * trail_distance_atr`.
+6. Persist the entry, fixed protection IDs, native trailing client/algo IDs,
+   actual fees, liquidation geometry, and maintenance-margin tier schedule.
+
+See `docs/execution/native_okx_trailing.md`.
 
 **Symbol conversion**: OKX native `SOL-USDT-SWAP` → ccxt unified `SOL/USDT:USDT`
 via `exchange.market_id(symbol)` reverse lookup after `load_markets()`.
@@ -204,6 +228,7 @@ order placement, the executor must fetch an OKX account snapshot:
 - open positions for every configured symbol;
 - regular open orders;
 - pending algo orders including SL/TP when available;
+- native `move_order_stop` protection for every trailing-enabled position;
 - recent fills/trades when available.
 - account position mode; it must be OKX long/short mode, not net/one-way mode.
 
@@ -231,14 +256,36 @@ must send:
 
 - one full sync report per UTC day, persisted by date in `live_positions.json`
   so service restarts do not spam repeated daily reports;
-- one entry notification after a position is recorded in local state;
+- one `ENTRY ATTEMPT` message for every actionable donor event before risk
+  sizing or OKX order calls;
+- one terminal result for every entry attempt:
+  - `ENTRY` when the position was recorded successfully;
+  - `ENTRY REJECTED` when a deterministic risk, margin, group, size, or circuit
+    breaker rejects the event;
+  - `EXECUTION ERROR` when leverage setup, order placement, candle refresh,
+    signal generation, exchange synchronization, or another execution step
+    raises;
 - one exit notification after a position is marked closed from OKX fills,
   startup reconciliation, or TTL market close.
+
+Every attempt and rejection is also written to the normal service log with the
+same symbol, side, strategy, prices, and rejection reason. Telegram is not the
+only audit trail.
 
 The daily sync report includes account balance, open local positions, exchange
 positions, regular orders, algo SL/TP orders, current sync status, and blocking
 reasons. Telegram failures must be logged and must not stop state persistence or
 order management.
+
+Entry-attempt messages include symbol, side, donor strategy, signal time,
+expected entry, and structural SL. Rejection/error messages include the
+operator-facing reason. A persistent exchange-sync blocker is sent on every H1
+execution cycle while it remains active. Repeated alerts are intentional: the
+operator must not miss a condition that prevents entries.
+
+The notification contract is best-effort: failure to reach Telegram is retried
+and logged, but never changes whether an otherwise valid order is placed or
+whether state is persisted.
 
 At each H1 tick, for each open position:
 
@@ -253,7 +300,7 @@ closed by SL or TP. Update state file with realized PnL from OKX trade history.
 ```python
 ttl_expiry = position.entry_time + timedelta(hours=position.ttl_bars)
 if datetime.now(UTC) >= ttl_expiry:
-    # 1. Cancel OKX algo orders (SL/TP)
+    # 1. Cancel this position's TP, structural SL, and native trailing algo
     await client.cancel_algo_orders_for_position(symbol, order_id)
     # 2. Place market close
     await client.close_position_at_market(symbol, opposite_side, contracts)
@@ -262,6 +309,11 @@ if datetime.now(UTC) >= ttl_expiry:
 
 This mirrors `ExecutionSim._update_active_positions()` where TTL fires at
 `next_open` of bar `bar_opened + ttl_bars`.
+
+An attached limit TP and structural SL may be linked by OKX as OCO. Cancelling
+the TP can therefore make a subsequent explicit SL cancellation return `51400`
+(`filled, canceled or does not exist`). Protection cancellation is idempotent:
+that terminal response is success, not a reason to abort the reduce-only close.
 
 The market close order must include `reduceOnly=True`, `marginMode=isolated`,
 and the original position side (`long` for closing a long, `short` for closing
@@ -287,7 +339,7 @@ This mirrors `ExecutionSim._risk_base_capital_for_entry()` for
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 6,
   "risk_window_month": [2026, 6],
   "monthly_risk_base": 10000.0,
   "last_exchange_sync_at": "2026-06-09T15:02:00+00:00",
@@ -391,7 +443,7 @@ MPLCONFIGDIR=/tmp/matplotlib \
 EXECUTION_ENABLED=true \
 EXECUTION_DRY_RUN=true \
 EXECUTION_DRY_RUN_CAPITAL=10000 \
-EXECUTION_STRATEGY_CONFIG=strategies/archive/filtered_donor_portfolio_causal_v4_core4_no_island_long_riskx0p85.json \
+EXECUTION_STRATEGY_CONFIG=strategies/archive/filtered_donor_portfolio_causal_v3_core4.json \
 EXECUTION_SYMBOLS=SOL-USDT-SWAP \
 uv run python -m crypt --once --execution-only
 

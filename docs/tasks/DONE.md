@@ -4,6 +4,158 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-06-30 — Validated latest-bar Core4 signal cache
+
+**What:** added a live-only donor-frame cache and latest-row generation path
+without replacing the full external backtester strategy contract.
+
+**Why now:** WebSocket triggering removed two minutes of fixed delay, but full
+Core4 generation still took about 32 seconds and could miss entries during a
+fast move.
+
+**Result:** live rebuilds exact full-history discovery features, recalculates
+donors on a 512-bar tail, validates 128 cached overlap bars exactly, and
+automatically performs a cold rebuild after any history or frame mismatch.
+Backtester `generate()` remains the full-history path.
+
+**Acceptance:** on 39,734 real SOL H1 bars, full generation took `31.8s`, cold
+live cache generation `13.2s`, and the next append `6.8s`. The complete latest
+event dictionary matched the full result exactly. Cache append/invalidation
+unit tests, focused execution/backtester tests, ruff, and strict mypy pass.
+Owner-run artifact
+`results/core4_v3_cache_parity_20260630/20260630_151804/` was compared with
+canonical `results/core4_v3_liqsafe_native_trailing_tiered_20260629/20260629_160832/`;
+`trades.csv`, metrics, diagnostics, signals, equity, and OHLCV are all
+byte-identical.
+
+**Links:** ADR-0052, `docs/execution/live_signal_cache.md`,
+`src/backtester/strategies/filtered_donor_portfolio.py`.
+
+## 2026-06-30 — WebSocket-confirmed H1 live trigger and rejection logs
+
+**What:** replaced the fixed two-minute primary execution delay with an OKX
+business WebSocket boundary listener and made entry attempts/rejections visible
+in normal logs as well as Telegram.
+
+**Why now:** live detected the 2026-06-30 SMAC long but started at `14:02 UTC`;
+price had moved from the backtest open `$72.84` to `$73.52`, so the `0.1%`
+drift guard rejected a trade the backtester would have entered.
+
+**Result:** the service subscribes at `HH:59:30 UTC`, waits for confirmed
+H1/H4/UTC-day candles plus the new H1 open, persists those candles, and starts
+the Core4 cycle immediately. Text ping, reconnect/resubscribe, duplicate
+prevention, error notification, and the `*:02` REST fallback follow the
+resilience pattern reviewed in the owner's `goex` project.
+
+**Acceptance:** real OKX business WebSocket smoke subscription returned
+`candle1H` data and an acknowledgement; focused execution/runtime tests pass;
+ruff, strict mypy, and offline lock validation pass.
+
+**Links:** ADR-0051, `docs/execution/h1_websocket_trigger.md`,
+`src/crypt/runtime/h1_websocket.py`.
+
+## 2026-06-29 — OKX SOL maintenance-margin tiers in liquidation model
+
+**What:** added the fixed OKX SOL-USDT isolated SWAP tier schedule
+`okx_sol_usdt_swap_2026_06_29` to the shared liquidation model, strategy
+config, live settings, persisted positions, and trade exports.
+
+**Why now:** the first liquidation fix still used `maintenance_margin_rate=0.004`
+for every size. OKX applies that only up to `5000` SOL contracts; larger
+aggregate same-side positions get higher MMR and lower maximum leverage.
+
+**Result:** both backtester and live execution resolve maintenance margin rate
+and maximum leverage from position size, and aggregate liquidation uses total
+same-side size. v3 nested donor replay receives the same liquidation/tier
+defaults as the outer portfolio run. Leverage is side-scoped: an open same-side
+position reuses its current leverage and never calls OKX leverage-change before
+adding to that side; an empty side chooses fresh leverage from the current tier.
+Old single-rate configs remain backward-compatible.
+
+**Validation:** focused liquidation/simulation/live-risk/replay tests pass,
+strict `src/crypt/execution` mypy passes, and focused ruff `E,F,I` passes.
+
+**Links:** `src/backtester/margin_policy.py`,
+`strategies/archive/filtered_donor_portfolio_causal_v3_core4.json`,
+`docs/execution/liquidation_safe_leverage.md`.
+
+---
+
+## 2026-06-29 — Real reduce-only close integration test
+
+**What:** used ephemeral Python importing production functions to bind and
+cancel the legacy Island trade's exact TP/SL, submit an idempotent reduce-only
+market close, confirm its fill, persist fees/PnL, notify Telegram, reconcile
+OKX, and replay the result.
+
+**Result:** order `3699121635279626240` filled `0.41` SOL contracts at `73.43`.
+Entry fee was `$0.01515155`, exit fee `$0.01505315`, and realized PnL
+`-$0.2270047`. OKX ended with zero positions, regular orders, and algo orders;
+cash and equity both read `$104.7729953`; sync was clean.
+
+**Finding:** canceling the attached TP automatically canceled its linked SL as
+OCO. OKX then returned `51400` for the redundant SL cancellation. Protection
+cleanup now treats terminal/not-found cancellation as idempotent success.
+
+**Links:** `src/crypt/execution/okx_order_client.py`,
+`tests/execution/test_okx_order_client.py`,
+`docs/execution/live_execution.md`.
+
+---
+
+## 2026-06-29 — Liquidation-safe v3 and native OKX trailing parity
+
+**What:** corrected the canonical backtester and live Core4 v3 executor for
+real OKX liquidation, same-side aggregation, native trailing, candle
+continuity, idempotent orders, confirmed fills/fees, per-position protection,
+and exact trade replay.
+
+**Why now:** the first live SOL long opened at 25x with liquidation `71.2843`
+above structural stop `70.9484`; live also lacked the trailing behavior scored
+by the v3 backtest.
+
+**Result:** new entries select the highest safe whole leverage (20x for the
+observed geometry), enforce a 0.5% price buffer, model worst-case liquidation,
+place an OKX `move_order_stop` with fixed entry ATR spread, and block on any
+missing/unsafe protection. Telegram reports every attempt, terminal result,
+runtime error, and repeated sync blocker.
+
+**Acceptance:** the complete unit suite passes when excluding one test that
+prints `PASSED` but hangs during pytest shutdown; focused ruff and strict
+`src/crypt/execution` mypy pass. Live read-only reconciliation binds the
+existing SL/TP correctly and reports only its genuine unsafe liquidation.
+
+**Links:** ADR-0049, ADR-0050, `docs/execution/`,
+`src/backtester/trailing_policy.py`, `src/crypt/execution/`.
+
+---
+
+## 2026-06-29 — Complete Telegram visibility for live entry attempts and failures
+
+**What:** extended Core4 execution notifications from completed entries/exits
+to every actionable entry attempt, deterministic rejection, and runtime error.
+
+**Why now:** the owner cannot continuously inspect service logs and needs to
+know when a donor tries to enter, whether OKX accepted the path, and why an
+entry did not happen.
+
+**Result:** every donor event now emits `ENTRY ATTEMPT` before sizing or OKX
+calls, followed by `ENTRY`, `ENTRY REJECTED`, or `EXECUTION ERROR`. Telegram
+also receives candle refresh, signal generation, leverage, order placement,
+TTL close, startup/runtime, and exchange-sync blocker errors.
+Persistent sync blockers are reported on every H1 execution cycle.
+
+**Acceptance:** 57 terminating execution tests plus 3 shared multi-signal
+tests pass; notification, rejection, success, leverage-error, and repeated
+sync-blocker coverage is included. `ruff check` and strict `mypy` pass.
+One pre-existing H1 thread-pool test passes its assertions but hangs during
+pytest shutdown and is tracked separately in `BACKLOG.md`.
+
+**Links:** `src/crypt/execution/notifications.py`,
+`src/crypt/execution/executor.py`, `docs/execution/live_execution.md`.
+
+---
+
 ## 2026-06-28 — Core4 execution-only dry-run cleanup
 
 **What:** separated Core4 live execution dry-runs from the legacy H4 alert

@@ -134,6 +134,10 @@ class Backtester:
         tp_move_pct: float | None = None,
         structural_sl_mode: str = "cap",
         min_tp_move_pct: float = 0.004,
+        maintenance_margin_rate: float = 0.004,
+        liquidation_fee_rate: float = 0.0005,
+        liquidation_buffer_pct: float = 0.005,
+        maintenance_margin_tier_schedule: str | None = None,
         risk_free_rate_annual: float = 0.02,
     ) -> ResultsAnalyzer:
         """
@@ -266,6 +270,10 @@ class Backtester:
             tp_move_pct=tp_move_pct,
             structural_sl_mode=structural_sl_mode,
             min_tp_move_pct=min_tp_move_pct,
+            maintenance_margin_rate=maintenance_margin_rate,
+            liquidation_fee_rate=liquidation_fee_rate,
+            liquidation_buffer_pct=liquidation_buffer_pct,
+            maintenance_margin_tier_schedule=maintenance_margin_tier_schedule,
         )
 
         execution_context = execution_context_from_run_kwargs(

@@ -10,6 +10,8 @@ from pathlib import Path
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from backtester.margin_policy import OKX_SOL_USDT_SWAP_TIER_SCHEDULE
+
 
 class ExecutionSettings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -45,9 +47,7 @@ class ExecutionSettings(BaseSettings):
 
     # ── strategy ───────────────────────────────────────────────────────────
     strategy_config: Path = Field(
-        default=Path(
-            "strategies/archive/filtered_donor_portfolio_causal_v4_core4_no_island_long_riskx0p85.json"
-        ),
+        default=Path("strategies/archive/filtered_donor_portfolio_causal_v3_core4.json"),
         description="Path to the backtester strategy JSON config.",
     )
     data_dir: Path = Field(default=Path("data"))
@@ -65,6 +65,12 @@ class ExecutionSettings(BaseSettings):
     trail_distance_atr: float = Field(default=0.0, ge=0.0)
     max_positions: int = Field(default=0, ge=0)
     max_leverage: float = Field(default=25.0, gt=0.0)
+    maintenance_margin_rate: float = Field(default=0.004, ge=0.0, lt=1.0)
+    liquidation_fee_rate: float = Field(default=0.0005, ge=0.0, lt=1.0)
+    liquidation_buffer_pct: float = Field(default=0.005, ge=0.0, lt=1.0)
+    maintenance_margin_tier_schedule: str | None = Field(
+        default=OKX_SOL_USDT_SWAP_TIER_SCHEDULE
+    )
     risk_base_period: str = Field(default="monthly")
 
     # ── fee model (mirrors StaticPercentFeeModel defaults) ────────────────
@@ -73,13 +79,14 @@ class ExecutionSettings(BaseSettings):
 
     # ── safety guards ──────────────────────────────────────────────────────
     max_capital_risk_pct: float = Field(
-        default=10.0,
+        default=100.0,
         description=(
             "Circuit breaker: skip new entries when total locked margin "
             "exceeds this percentage of available balance."
         ),
     )
     min_net_exposure: float = Field(default=0.01)
+    max_entry_drift_pct: float = Field(default=0.001, ge=0.0, lt=1.0)
     max_allowed_margin: float = Field(default=1.0)
     require_exchange_sync: bool = Field(
         default=True,

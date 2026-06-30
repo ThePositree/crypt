@@ -1,5 +1,55 @@
 # In progress
 
+## Core4 v3 live takeover and exact trade verification (2026-06-29)
+
+**What:** start the liquidation-safe/native-trailing v3 executor and verify the
+first new native-trailing trade. The legacy Island position was closed through
+the production client on 2026-06-29 and its fill/state/sync path is complete.
+
+**Why now:** the first live trade proved that 25x liquidation (`71.2843`) was
+above its structural stop (`70.9484`). The audit also found missing live
+trailing, candle gaps, order retry duplication risk, incomplete protection
+identity, and OKX same-side aggregation differences.
+
+**Expected gain:** future entries cannot silently liquidate before their stop;
+every entry/exit/error reaches Telegram; v3 live orders and the canonical
+backtester share leverage, aggregate liquidation, fixed entry-time native
+trailing geometry, fees, fill identity, and TTL precedence.
+
+**Acceptance:**
+
+1. Completed: canonical tiered/liquidation-safe/native-trailing v3 artifact is
+   `results/core4_v3_liqsafe_native_trailing_tiered_20260629/20260629_160832/`.
+2. Startup repairs any future H1/H4 gaps and then reports continuity clean.
+3. The next service restart logs WebSocket preparation at `HH:59:30`, an OKX
+   confirmed boundary near `HH:00`, and `source=websocket`; `*:02` logs a
+   skipped REST fallback for the already-completed boundary.
+4. Completed: owner reran through `2026-06-29 14:00 UTC`; all seven exported
+   CSV artifacts are byte-identical to canonical `20260629_160832`.
+5. The next v3 trailing entry has a persisted `move_order_stop`, safe aggregate
+   OKX liquidation, and clean sync.
+6. Replay that completed entry with `matched=true`.
+
+**Completed live-close evidence:** position `1166b4b0` closed reduce-only via
+order `3699121635279626240` at `73.43`, fees and PnL reconciled exactly, and the
+post-close snapshot contained zero positions/orders with clean sync.
+
+**Next action:** do not treat the current v3 backtest as execution-exact and do
+not leave live unattended. Complete the crash-safe entry/TTL/protection P0,
+then the shared precision/fee/funding P0. After those changes, the owner reruns
+canonical v3 and restarts live for the first exact trade verification.
+
+**Links:** ADR-0049, ADR-0050, ADR-0051,
+ADR-0052,
+`docs/execution/live_backtest_parity_audit_2026-06-30.md`,
+`docs/execution/liquidation_safe_leverage.md`,
+`docs/execution/native_okx_trailing.md`,
+`docs/execution/live_trade_replay.md`,
+`docs/execution/h1_websocket_trigger.md`,
+`docs/execution/live_signal_cache.md`.
+
+---
+
 ## Core4 live execution dry-run validation (2026-06-27)
 
 **What:** run the updated Core v4 live executor in `EXECUTION_DRY_RUN=true`
@@ -19,10 +69,12 @@ being placed.
    no `last_exchange_sync_errors`.
 3. Exchange sync confirms OKX is in long/short position mode; one-way/net mode
    is a blocker before live money.
-4. Telegram receives one daily full-sync report when configured.
+4. Telegram receives one daily full-sync report when configured, reports every
+   execution-cycle failure, and repeats an active sync blocker every H1 cycle.
 5. On an H1 tick, the executor either skips because no Core v4 event exists or
-   logs a dry-run order with sane entry, SL, TP, contracts, donor id, and risk
-   base; if an entry or exit occurs, Telegram receives that event.
+   sends `ENTRY ATTEMPT` followed by `ENTRY`, `ENTRY REJECTED`, or `EXECUTION
+   ERROR`; successful dry-run details include sane entry, SL, TP, contracts,
+   donor id, and risk base.
 6. Only after owner review may `EXECUTION_DRY_RUN=false` be considered.
 
 **Command:**
@@ -46,9 +98,13 @@ during the dry-run.
 
 ---
 
-## Core4 v4 drawdown reduction / validation (2026-06-26)
+## Superseded Core4 v4 drawdown branch — not active (2026-06-26)
 
-**What:** continue from
+**Status:** superseded by the owner's 2026-06-29 decision that causal v3 is the
+active portfolio. The figures below are historical and invalid after the
+liquidation/native-trailing execution changes.
+
+**What:** previously continued from
 `strategies/archive/filtered_donor_portfolio_causal_v4_core4_no_island_long_riskx0p85.json`,
 the current best post-fix core4 balance.
 

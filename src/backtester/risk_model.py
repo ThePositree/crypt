@@ -5,7 +5,14 @@ from dataclasses import dataclass
 from typing import Optional
 
 from .exit_geometry import ExitGeometryConfig, resolve_exit_levels
-from .margin_policy import per_entry_margin_cap, select_leverage_and_locked_margin
+from .margin_policy import (
+    DEFAULT_LIQUIDATION_BUFFER_PCT,
+    DEFAULT_LIQUIDATION_FEE_RATE,
+    DEFAULT_MAINTENANCE_MARGIN_RATE,
+    maintenance_margin_rate_for_size,
+    per_entry_margin_cap,
+    select_liquidation_safe_leverage_and_locked_margin,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +58,8 @@ class EntryContext:
     open_positions: int
     risk_percent: float
     rrr: float
+    existing_leverage: float | None = None
+    existing_position_size: float = 0.0
 
 
 @dataclass
@@ -93,6 +102,11 @@ class RiskResult:
     tp_price: float
     is_long: bool
     available_balance: float
+    liquidation_price: float
+    maintenance_margin_rate: float
+    liquidation_fee_rate: float
+    liquidation_buffer_pct: float
+    maintenance_margin_tier_schedule: str | None
 
 
 class RiskModel:
@@ -144,6 +158,10 @@ class BasicRiskModel(RiskModel):
         max_positions: int,
         max_allowed_leverage: float,
         exit_geometry_config: ExitGeometryConfig | None = None,
+        maintenance_margin_rate: float = DEFAULT_MAINTENANCE_MARGIN_RATE,
+        liquidation_fee_rate: float = DEFAULT_LIQUIDATION_FEE_RATE,
+        liquidation_buffer_pct: float = DEFAULT_LIQUIDATION_BUFFER_PCT,
+        maintenance_margin_tier_schedule: str | None = None,
     ) -> None:
         """
         Create a basic risk model.
@@ -167,6 +185,10 @@ class BasicRiskModel(RiskModel):
         self._max_positions = max_positions
         self._max_allowed_leverage = max_allowed_leverage
         self._exit_geometry_config = exit_geometry_config or ExitGeometryConfig()
+        self._maintenance_margin_rate = maintenance_margin_rate
+        self._liquidation_fee_rate = liquidation_fee_rate
+        self._liquidation_buffer_pct = liquidation_buffer_pct
+        self._maintenance_margin_tier_schedule = maintenance_margin_tier_schedule
 
     def calculate_position(self, ctx: EntryContext) -> Optional[RiskResult]:
         """
@@ -223,10 +245,19 @@ class BasicRiskModel(RiskModel):
             max_positions=self._max_positions,
             open_positions=ctx.open_positions,
         )
-        leverage_result = select_leverage_and_locked_margin(
+        leverage_result = select_liquidation_safe_leverage_and_locked_margin(
             position_value=position_value,
+            position_size=size + ctx.existing_position_size,
             per_entry_cap=per_entry_cap,
             max_allowed_leverage=self._max_allowed_leverage,
+            entry_price=entry_price,
+            stop_price=sl_price,
+            is_long=is_long,
+            maintenance_margin_rate=self._maintenance_margin_rate,
+            liquidation_fee_rate=self._liquidation_fee_rate,
+            liquidation_buffer_pct=self._liquidation_buffer_pct,
+            maintenance_margin_tier_schedule=self._maintenance_margin_tier_schedule,
+            existing_leverage=ctx.existing_leverage,
         )
         if leverage_result is None:
             logger.debug(
@@ -236,7 +267,12 @@ class BasicRiskModel(RiskModel):
             )
             return None
 
-        required_leverage, locked_margin = leverage_result
+        required_leverage, locked_margin, liquidation_price = leverage_result
+        resolved_maintenance_margin_rate = maintenance_margin_rate_for_size(
+            position_size=size + ctx.existing_position_size,
+            default_rate=self._maintenance_margin_rate,
+            tier_schedule=self._maintenance_margin_tier_schedule,
+        )
 
         return RiskResult(
             size=size,
@@ -249,4 +285,9 @@ class BasicRiskModel(RiskModel):
             tp_price=tp_price,
             is_long=is_long,
             available_balance=available_balance,
+            liquidation_price=liquidation_price,
+            maintenance_margin_rate=resolved_maintenance_margin_rate,
+            liquidation_fee_rate=self._liquidation_fee_rate,
+            liquidation_buffer_pct=self._liquidation_buffer_pct,
+            maintenance_margin_tier_schedule=self._maintenance_margin_tier_schedule,
         )

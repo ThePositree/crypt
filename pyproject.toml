@@ -10,6 +10,7 @@ authors = [{ name = "n-tretyakov" }]
 # Runtime dependencies. Concrete versions are resolved and locked by `uv lock`.
 # Minimums are set to the latest majors known to work as of project start.
 dependencies = [
+    "aiohttp>=3.13",
     "ccxt>=4.4",
     "pandas>=2.2",
     "numpy>=1.26",

@@ -1,6 +1,6 @@
 {
   "name": "filtered_donor_portfolio",
-  "version": "filtered-donor-portfolio-causal-v3-core4-2026-06-26",
+  "version": "filtered-donor-portfolio-causal-v3-core4-liqsafe-native-trailing-2026-06-29",
   "params": {
     "portfolio_id": "filtered_donor_portfolio_causal_v3_core4",
     "progress": true,
@@ -9,6 +9,13 @@
       "dssv2_013321_ps_macd_squeeze_recent": "strategies/archive/dssv2_013321_ps_macd_squeeze_recent.json",
       "island_2023_021396_engulfing_bb_trend": "strategies/archive/island_2023_021396_engulfing_bb_trend.json",
       "smac_003335_double_bottom_body_to_range": "strategies/archive/smac_003335_double_bottom_body_to_range.json"
+    },
+    "nested_backtest_args": {
+      "max_allowed_leverage": 25.0,
+      "maintenance_margin_rate": 0.004,
+      "liquidation_fee_rate": 0.0005,
+      "liquidation_buffer_pct": 0.005,
+      "maintenance_margin_tier_schedule": "okx_sol_usdt_swap_2026_06_29"
     },
     "filters": {
       "crypt_ensemble_h1_discovery_nr4_vwap_robust": [
@@ -102,6 +109,10 @@
     "trail_distance_atr": 0.0,
     "max_positions": 0,
     "max_allowed_margin": 1.0,
-    "max_allowed_leverage": 25.0
+    "max_allowed_leverage": 25.0,
+    "maintenance_margin_rate": 0.004,
+    "liquidation_fee_rate": 0.0005,
+    "liquidation_buffer_pct": 0.005,
+    "maintenance_margin_tier_schedule": "okx_sol_usdt_swap_2026_06_29"
   }
 }

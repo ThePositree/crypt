@@ -6,6 +6,125 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-06-30 — Full live/backtest parity audit
+
+- Confirmed byte-identical signal/cache parity and shared risk, leverage,
+  aggregate liquidation, TTL, and native-trailing policy paths.
+- Found P0 live safety gaps: non-atomic post-fill state, protection removed
+  before confirmed TTL close, non-fail-safe trailing/post-fill safety errors,
+  and ambiguous multi-position fill attribution.
+- Found economic model gaps requiring a new canonical run after fixes:
+  exchange amount/tick rounding, entry-fee timing, funding, market
+  slippage/drift rejection, triggered-limit fee class, and mark-price
+  liquidation.
+- All non-hanging tests pass; one assertion-passing executor test still hangs
+  at shutdown. Focused static checks retain existing `ExecutionSim` findings.
+- ADRs: none.
+- Files touched: `docs/execution/`, `docs/tasks/`, `CHANGELOG.md`.
+
+## 2026-06-30 — Validated live Core4 signal cache
+
+- Added a live-only `generate_latest()` path for filtered donor portfolios.
+- Cached complete donor frames, recalculated exact full-history discovery
+  features, replayed only a 512-bar donor tail, and required exact agreement
+  across 128 overlap bars before accepting an append.
+- Revised history, missing overlap, or any donor-frame mismatch now forces a
+  cold complete donor rebuild.
+- Kept external `backtester run` on the unchanged complete `generate()` path.
+- Measured on 39,734 SOL H1 bars: full `31.8s`, cold cache `13.2s`, hourly
+  append `6.8s`; the complete latest event matched exactly.
+- Owner reran the canonical 39,711-bar backtest through
+  `2026-06-29 14:00 UTC`; all seven exported CSV artifacts are byte-identical
+  to pre-cache artifact `20260629_160832`.
+- Focused execution/backtester tests, ruff, and strict mypy pass.
+- ADRs: added ADR-0052.
+- Files touched: `src/backtester/`, `src/crypt/execution/`,
+  `tests/backtester/`, `docs/execution/`, `docs/decisions/`, `docs/tasks/`,
+  `README.md`.
+
+## 2026-06-30 — WebSocket-confirmed H1 execution
+
+- Replaced the fixed `*:02 UTC` primary Core4 trigger with an OKX business
+  WebSocket listener prepared at `HH:59:30 UTC`.
+- Execution now waits for `confirm=1` on the closing H1 candle, relevant H4/D1
+  confirmations, and the first forming H1 update containing the real next open.
+- Added text ping, reconnect/resubscribe, per-symbol/hour duplicate protection,
+  execution error alerts, and retained `*:02` REST as a fallback.
+- Added normal INFO/WARNING logs for every `ENTRY ATTEMPT` and `ENTRY REJECTED`
+  with the same reason sent to Telegram.
+- Verified a real public `candle1H` subscription against OKX. Focused
+  execution/runtime tests, ruff, strict mypy, and `uv lock --check --offline`
+  pass.
+- ADRs: added ADR-0051.
+- Files touched: `src/crypt/runtime/`, `src/crypt/execution/`,
+  `src/crypt/__main__.py`, `tests/runtime/`, `tests/execution/`,
+  `docs/execution/`, `docs/decisions/`, `docs/tasks/`, `README.md`,
+  `pyproject.toml`, `uv.lock`.
+
+## 2026-06-29 — OKX SOL tiered liquidation model before v3 rerun
+
+- Added `okx_sol_usdt_swap_2026_06_29` maintenance-margin tier schedule so
+  SOL backtests/live execution use higher MMR and lower max leverage after the
+  OKX size thresholds instead of assuming `0.004` forever.
+- Made leverage selection side-scoped: an open same-side position reuses its
+  current leverage and rejects unsafe aggregate tier transitions, while an
+  empty side chooses fresh leverage from the current OKX tier.
+- Threaded the schedule through backtester CLI, risk model, simulator exports,
+  live settings, persisted positions, replay, and startup parity validation.
+- Updated v3 Core4 strategy config, docs, README, `.env.example`, and tests.
+- Validation: focused pytest passed; strict `src/crypt/execution` mypy passed;
+  focused ruff `E,F,I` passed.
+- ADRs touched: ADR-0049.
+- Files touched: `src/backtester/`, `src/crypt/execution/`, `strategies/`,
+  `tests/`, `docs/execution/`, `docs/decisions/`, `docs/tasks/`, `README.md`,
+  `.env.example`.
+
+---
+
+## 2026-06-29 — Liquidation-safe v3 and native OKX trailing parity
+
+- Added shared OKX linear-liquidation formulas, a 0.5% stop buffer, safe
+  leverage selection, explicit worst-case liquidation exits, and same-side
+  aggregate liquidation.
+- Replaced dynamic per-bar ATR trailing with native OKX `move_order_stop`
+  geometry: fixed entry-known ATR14 callback spread and actual-fill activation.
+- Added stable entry/close/algo client IDs, fill confirmation and fees,
+  per-position SL/TP/trailing binding/cancellation, candle-gap repair, repeated
+  sync alerts, and exact closed-trade replay.
+- Real close test filled `0.41` SOL contracts at `73.43`, reconciled
+  `-$0.2270047` including both fees, and ended with zero positions/orders and
+  clean sync. OKX OCO sibling cancellation code `51400` is now idempotent.
+- Set owner-selected causal v3 as the live default; all previous performance
+  artifacts require a full rerun.
+- Validation: full unit suite passes excluding one assertion-passing pytest
+  shutdown hang; focused ruff and strict execution mypy pass.
+- ADRs: added ADR-0049 and ADR-0050.
+- Files touched: `src/backtester/`, `src/crypt/execution/`, `strategies/`,
+  `tests/`, `docs/execution/`, `docs/decisions/`, `docs/tasks/`, `README.md`.
+
+---
+
+## 2026-06-29 — Complete live execution Telegram error reporting
+
+- Added `ENTRY ATTEMPT` and `ENTRY REJECTED` Telegram messages so every
+  actionable Core4 donor event has an operator-visible start and terminal
+  result.
+- Added immediate `EXECUTION ERROR` messages for leverage/order failures, TTL
+  close failures, candle refresh and signal generation failures, execution
+  tick crashes, startup/runtime failures, missing OKX credentials, and exchange
+  sync blockers.
+- Persistent exchange-sync errors are sent on every H1 execution cycle by
+  explicit owner direction; repeated blocker alerts are intentional.
+- Updated live execution documentation, README, and dry-run acceptance criteria.
+- Validation: 57 terminating execution tests and 3 shared multi-signal tests
+  passed; `ruff check` and strict `mypy` passed. One H1 thread-pool test reaches
+  `PASSED` but hangs during pytest shutdown and is tracked in `BACKLOG.md`.
+- ADRs touched: ADR-0048 contract implementation only; no new decision.
+- Files touched: `README.md`, `docs/execution/`, `docs/tasks/`,
+  `src/crypt/`, `tests/execution/`, `CHANGELOG.md`.
+
+---
+
 ## 2026-06-28 — Core4 execution-only dry-run cleanup
 
 - Added `python -m crypt --execution-only` so Core4 live dry-runs and service

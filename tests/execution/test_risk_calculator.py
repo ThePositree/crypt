@@ -215,3 +215,82 @@ class TestCalculate:
         # 0.5% of $10k risks $50 over a $5 stop distance.
         assert rr.size == pytest.approx(10.0)
         assert rr.tp_price == pytest.approx(120.0)
+
+    def test_opposite_side_position_does_not_force_its_leverage(self) -> None:
+        calc = LiveRiskCalculator(
+            _settings(
+                max_positions=0,
+                exit_geometry="sl_rrr",
+                risk_percent=1.0,
+                rrr=2.0,
+                maintenance_margin_tier_schedule="okx_sol_usdt_swap_2026_06_29",
+            )
+        )
+        existing_short = LivePosition.create(
+            symbol="SOL-USDT-SWAP",
+            signal_time=datetime(2026, 6, 1, tzinfo=UTC),
+            entry_time=datetime(2026, 6, 1, 1, tzinfo=UTC),
+            entry_price=100.0,
+            sl_price=101.0,
+            tp_price=98.0,
+            size=10.0,
+            contracts=10.0,
+            leverage=25.0,
+            locked_margin=40.0,
+            risk_base_capital=12_100_000.0,
+            is_long=False,
+            ttl_bars=36,
+            entry_order_id=None,
+        )
+
+        decision = calc.calculate(
+            signal=1,
+            sl_price=99.0,
+            entry_price=100.0,
+            capital=12_100_000.0,
+            risk_base_capital=12_100_000.0,
+            open_positions=[existing_short],
+        )
+
+        assert decision is not None
+        assert decision.risk_result.size > 120_000.0
+        assert decision.risk_result.required_leverage <= 20.0
+        assert decision.risk_result.required_leverage != 25.0
+
+    def test_same_side_existing_leverage_rejects_when_aggregate_crosses_tier_cap(self) -> None:
+        calc = LiveRiskCalculator(
+            _settings(
+                max_positions=0,
+                exit_geometry="sl_rrr",
+                risk_percent=1.0,
+                rrr=2.0,
+                maintenance_margin_tier_schedule="okx_sol_usdt_swap_2026_06_29",
+            )
+        )
+        existing_long = LivePosition.create(
+            symbol="SOL-USDT-SWAP",
+            signal_time=datetime(2026, 6, 1, tzinfo=UTC),
+            entry_time=datetime(2026, 6, 1, 1, tzinfo=UTC),
+            entry_price=100.0,
+            sl_price=99.0,
+            tp_price=102.0,
+            size=90_000.0,
+            contracts=90_000.0,
+            leverage=25.0,
+            locked_margin=360_000.0,
+            risk_base_capital=2_000_000.0,
+            is_long=True,
+            ttl_bars=36,
+            entry_order_id=None,
+        )
+
+        decision = calc.calculate(
+            signal=1,
+            sl_price=99.0,
+            entry_price=100.0,
+            capital=2_000_000.0,
+            risk_base_capital=2_000_000.0,
+            open_positions=[existing_long],
+        )
+
+        assert decision is None

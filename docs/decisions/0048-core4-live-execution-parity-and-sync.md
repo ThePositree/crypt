@@ -4,6 +4,11 @@
 - **Date**: 2026-06-27
 - **Supersedes**: parts of ADR-0033 that hardcoded `crypt_ensemble` scalar live signals
 
+**2026-06-29 amendment:** the owner selected causal v3 as the active Core4
+portfolio. ADR-0049 supersedes leverage/liquidation assumptions and ADR-0050
+supersedes trailing execution details; this ADR's multi-signal and exchange
+sync architecture remains accepted.
+
 ## Context
 
 ADR-0033 introduced the first M4 live execution module around a single

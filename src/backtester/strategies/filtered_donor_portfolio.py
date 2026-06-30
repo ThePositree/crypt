@@ -7,12 +7,17 @@ from typing import Any
 
 import optuna
 import pandas as pd
+from pandas.testing import assert_frame_equal
 from tqdm.auto import tqdm
 
 from backtester.data_contracts import StrategyData, StrategyInput
 from backtester.router_runtime import ArchivedStrategySpec, build_archived_signal_frames
 from backtester.strategy import BaseStrategy
-from backtester.strategy_discovery.features import build_donor_discovery_features
+from backtester.strategy_discovery.features import (
+    DiscoveryDataset,
+    build_discovery_dataset,
+    build_donor_discovery_features,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +31,9 @@ class PortfolioFilterRule:
 
 class FilteredDonorPortfolioStrategy(BaseStrategy):
     """Release every donor signal that passes its entry-known filter."""
+
+    _LIVE_TAIL_BARS = 512
+    _LIVE_VALIDATION_BARS = 128
 
     def __init__(self, params: dict[str, Any]) -> None:
         super().__init__(params)
@@ -42,64 +50,24 @@ class FilteredDonorPortfolioStrategy(BaseStrategy):
             str(strategy_id): self._parse_rules(raw_rules)
             for strategy_id, raw_rules in raw_filters.items()
         }
+        raw_nested_backtest_args = params.get("nested_backtest_args", {})
+        if not isinstance(raw_nested_backtest_args, dict):
+            raise ValueError("nested_backtest_args must be a mapping when provided")
+        self._nested_backtest_args = dict(raw_nested_backtest_args)
         unknown = set(self._filters) - set(self._strategy_paths)
         if unknown:
             raise ValueError(f"filters reference unknown strategies: {sorted(unknown)}")
         self._progress = bool(params.get("progress", True))
         self._portfolio_id = str(params.get("portfolio_id", "filtered_donor_portfolio"))
+        self._cached_specs: tuple[ArchivedStrategySpec, ...] | None = None
+        self._live_cached_primary: pd.DataFrame | None = None
+        self._live_cached_frames: dict[str, pd.DataFrame] | None = None
 
     def generate(self, data: StrategyInput) -> pd.DataFrame:
-        from backtester.cli_runner import build_backtest_args, load_strategy_config
-
         primary = data.primary if isinstance(data, StrategyData) else data
-        specs: list[ArchivedStrategySpec] = []
-        for strategy_id in sorted(self._strategy_paths):
-            cfg = load_strategy_config(str(self._strategy_paths[strategy_id]), logger)
-            if cfg is None:
-                path = self._strategy_paths[strategy_id]
-                raise ValueError(f"Invalid nested strategy config: {path}")
-            args = build_backtest_args(
-                cfg,
-                capital=10_000.0,
-                risk_percent=1.0,
-                rrr=2.0,
-                trail_activation_rrr=0.0,
-                trail_distance_atr=0.0,
-                maker_fee=0.0002,
-                taker_fee=0.0005,
-                ttl=0,
-                max_positions=0,
-                max_allowed_leverage=25.0,
-                max_allowed_margin=1.0,
-                risk_base_period="monthly",
-                max_daily_profit=None,
-                max_daily_loss=None,
-                trading_begin=None,
-                trading_end=None,
-                exit_geometry="sl_rrr",
-                tp_move_pct=None,
-                structural_sl_mode="cap",
-                min_tp_move_pct=0.004,
-            )
-            specs.append(
-                ArchivedStrategySpec(
-                    strategy_id=strategy_id,
-                    name=cfg.name,
-                    params=dict(cfg.params),
-                    execution=args,
-                )
-            )
-
+        specs = list(self._get_specs())
         logger.info("Filtered donor portfolio signal preparation starting")
-        frames = build_archived_signal_frames(data=data, specs=specs)
-        frames = {
-            spec.strategy_id: _apply_nested_replay_controls(
-                frame=frames[spec.strategy_id],
-                primary=primary,
-                params=spec.params,
-            )
-            for spec in specs
-        }
+        frames = self._controlled_frames(data=data, primary=primary, specs=specs)
         catalog_features = _catalog_features(primary)
         frames = {
             strategy_id: frame.join(catalog_features, how="left")
@@ -121,20 +89,256 @@ class FilteredDonorPortfolioStrategy(BaseStrategy):
             disable=not self._progress,
         )
         for timestamp in iterator:
-            events: list[dict[str, Any]] = []
-            for spec in specs:
-                frame = frames[spec.strategy_id]
-                if timestamp not in frame.index:
-                    continue
-                row = frame.loc[timestamp]
-                signal = int(row.get("signal", 0))
-                if signal not in (1, -1):
-                    continue
-                if not self._passes_filters(row, self._filters.get(spec.strategy_id, [])):
-                    continue
-                events.append(_event_from_signal_row(row, spec))
-            output.at[timestamp, "signal_events"] = events
+            output.at[timestamp, "signal_events"] = self._events_at(
+                timestamp=timestamp,
+                specs=specs,
+                frames=frames,
+            )
         return output
+
+    def generate_latest(self, data: StrategyInput) -> pd.DataFrame:
+        """Build only the latest portfolio row with a validated donor-frame cache."""
+        primary = data.primary if isinstance(data, StrategyData) else data
+        if primary.empty:
+            return primary.copy()
+
+        specs = list(self._get_specs())
+        symbol = str(data.metadata.get("symbol", "")) if isinstance(data, StrategyData) else ""
+        dataset = build_discovery_dataset(
+            data=data,
+            window_label="filtered_donor_portfolio_live",
+            symbol=symbol,
+        )
+        frames = self._updated_live_frames(
+            data=data,
+            primary=primary,
+            dataset=dataset,
+            specs=specs,
+        )
+        timestamp = primary.index[-1]
+        catalog_row = _catalog_features_from_primary_features(dataset.features).loc[[timestamp]]
+        latest_frames = {
+            strategy_id: frame.loc[[timestamp]].join(catalog_row, how="left")
+            for strategy_id, frame in frames.items()
+        }
+        _validate_filter_features_available(latest_frames, self._filters)
+
+        output = primary.loc[[timestamp]].copy()
+        output["signal"] = 0
+        output["sl_price"] = 0.0
+        output["signal_events"] = pd.Series(
+            [self._events_at(timestamp=timestamp, specs=specs, frames=latest_frames)],
+            index=output.index,
+            dtype="object",
+        )
+        output["portfolio_id"] = self._portfolio_id
+        return output
+
+    def _get_specs(self) -> tuple[ArchivedStrategySpec, ...]:
+        from backtester.cli_runner import build_backtest_args, load_strategy_config
+
+        if self._cached_specs is not None:
+            return self._cached_specs
+
+        specs: list[ArchivedStrategySpec] = []
+        for strategy_id in sorted(self._strategy_paths):
+            cfg = load_strategy_config(str(self._strategy_paths[strategy_id]), logger)
+            if cfg is None:
+                path = self._strategy_paths[strategy_id]
+                raise ValueError(f"Invalid nested strategy config: {path}")
+            nested_defaults = {
+                "capital": 10_000.0,
+                "risk_percent": 1.0,
+                "rrr": 2.0,
+                "trail_activation_rrr": 0.0,
+                "trail_distance_atr": 0.0,
+                "maker_fee": 0.0002,
+                "taker_fee": 0.0005,
+                "ttl": 0,
+                "max_positions": 0,
+                "max_allowed_leverage": 25.0,
+                "max_allowed_margin": 1.0,
+                "risk_base_period": "monthly",
+                "max_daily_profit": None,
+                "max_daily_loss": None,
+                "trading_begin": None,
+                "trading_end": None,
+                "exit_geometry": "sl_rrr",
+                "tp_move_pct": None,
+                "structural_sl_mode": "cap",
+                "min_tp_move_pct": 0.004,
+            }
+            nested_defaults.update(self._nested_backtest_args)
+            args = build_backtest_args(
+                cfg,
+                **nested_defaults,
+            )
+            specs.append(
+                ArchivedStrategySpec(
+                    strategy_id=strategy_id,
+                    name=cfg.name,
+                    params=dict(cfg.params),
+                    execution=args,
+                )
+            )
+        self._cached_specs = tuple(specs)
+        return self._cached_specs
+
+    def _controlled_frames(
+        self,
+        *,
+        data: StrategyInput,
+        primary: pd.DataFrame,
+        specs: list[ArchivedStrategySpec],
+        dataset: DiscoveryDataset | None = None,
+    ) -> dict[str, pd.DataFrame]:
+        frames = build_archived_signal_frames(data=data, specs=specs, dataset=dataset)
+        return {
+            spec.strategy_id: _apply_nested_replay_controls(
+                frame=frames[spec.strategy_id],
+                primary=primary,
+                params=spec.params,
+            )
+            for spec in specs
+        }
+
+    def _updated_live_frames(
+        self,
+        *,
+        data: StrategyInput,
+        primary: pd.DataFrame,
+        dataset: DiscoveryDataset,
+        specs: list[ArchivedStrategySpec],
+    ) -> dict[str, pd.DataFrame]:
+        cached_primary = self._live_cached_primary
+        cached_frames = self._live_cached_frames
+        cache_valid = (
+            cached_primary is not None
+            and cached_frames is not None
+            and len(primary) >= len(cached_primary)
+            and primary.iloc[: len(cached_primary)].equals(cached_primary)
+        )
+        if not cache_valid:
+            if cached_primary is not None:
+                logger.warning("Live donor cache invalidated by revised or incompatible history")
+            frames = self._controlled_frames(
+                data=data,
+                primary=primary,
+                specs=specs,
+                dataset=dataset,
+            )
+            self._store_live_cache(primary, frames)
+            logger.info("Live donor cache cold-built through %s", primary.index[-1])
+            return frames
+
+        assert cached_primary is not None
+        assert cached_frames is not None
+        if len(primary) == len(cached_primary):
+            logger.info("Live donor cache hit through %s", primary.index[-1])
+            return cached_frames
+
+        tail_start = max(0, len(cached_primary) - self._LIVE_TAIL_BARS)
+        if tail_start == len(cached_primary):
+            return self._cold_rebuild_live_cache(data, primary, dataset, specs)
+        tail_index = primary.index[tail_start:]
+        tail_data = _slice_strategy_input(data, tail_index)
+        tail_dataset = DiscoveryDataset(
+            window_label=dataset.window_label,
+            symbol=dataset.symbol,
+            primary=dataset.primary.loc[tail_index],
+            features=dataset.features.loc[tail_index],
+        )
+        tail_frames = self._controlled_frames(
+            data=tail_data,
+            primary=primary.loc[tail_index],
+            specs=specs,
+            dataset=tail_dataset,
+        )
+
+        overlap_end = len(cached_primary)
+        overlap_start = max(tail_start, overlap_end - self._LIVE_VALIDATION_BARS)
+        overlap_index = primary.index[overlap_start:overlap_end]
+        if overlap_index.empty:
+            return self._cold_rebuild_live_cache(data, primary, dataset, specs)
+        try:
+            for spec in specs:
+                assert_frame_equal(
+                    cached_frames[spec.strategy_id].loc[overlap_index],
+                    tail_frames[spec.strategy_id].loc[overlap_index],
+                    check_exact=True,
+                    check_dtype=True,
+                    check_freq=False,
+                )
+        except AssertionError:
+            logger.warning("Live donor cache overlap mismatch; rebuilding complete donor frames")
+            return self._cold_rebuild_live_cache(data, primary, dataset, specs)
+
+        cached_last = cached_primary.index[-1]
+        frames = {
+            spec.strategy_id: pd.concat(
+                [
+                    cached_frames[spec.strategy_id],
+                    tail_frames[spec.strategy_id].loc[
+                        tail_frames[spec.strategy_id].index > cached_last
+                    ],
+                ]
+            )
+            for spec in specs
+        }
+        self._store_live_cache(primary, frames)
+        logger.info(
+            "Live donor cache appended %d bar(s) through %s",
+            len(primary) - len(cached_primary),
+            primary.index[-1],
+        )
+        return frames
+
+    def _cold_rebuild_live_cache(
+        self,
+        data: StrategyInput,
+        primary: pd.DataFrame,
+        dataset: DiscoveryDataset,
+        specs: list[ArchivedStrategySpec],
+    ) -> dict[str, pd.DataFrame]:
+        frames = self._controlled_frames(
+            data=data,
+            primary=primary,
+            specs=specs,
+            dataset=dataset,
+        )
+        self._store_live_cache(primary, frames)
+        return frames
+
+    def _store_live_cache(
+        self,
+        primary: pd.DataFrame,
+        frames: dict[str, pd.DataFrame],
+    ) -> None:
+        self._live_cached_primary = primary.copy()
+        self._live_cached_frames = {
+            strategy_id: frame.copy() for strategy_id, frame in frames.items()
+        }
+
+    def _events_at(
+        self,
+        *,
+        timestamp: pd.Timestamp,
+        specs: list[ArchivedStrategySpec],
+        frames: dict[str, pd.DataFrame],
+    ) -> list[dict[str, Any]]:
+        events: list[dict[str, Any]] = []
+        for spec in specs:
+            frame = frames[spec.strategy_id]
+            if timestamp not in frame.index:
+                continue
+            row = frame.loc[timestamp]
+            signal = int(row.get("signal", 0))
+            if signal not in (1, -1):
+                continue
+            if not self._passes_filters(row, self._filters.get(spec.strategy_id, [])):
+                continue
+            events.append(_event_from_signal_row(row, spec))
+        return events
 
     @staticmethod
     def _parse_rules(raw_rules: Any) -> list[PortfolioFilterRule]:
@@ -173,6 +377,10 @@ class FilteredDonorPortfolioStrategy(BaseStrategy):
 
 def _catalog_features(primary: pd.DataFrame) -> pd.DataFrame:
     features = build_donor_discovery_features(primary=primary, h4=None, d1=None)
+    return _catalog_features_from_primary_features(features)
+
+
+def _catalog_features_from_primary_features(features: pd.DataFrame) -> pd.DataFrame:
     closed_features = features.shift(1)
     catalog = pd.DataFrame(index=features.index)
     catalog["entry_hour"] = catalog.index.hour
@@ -204,6 +412,24 @@ def _catalog_features(primary: pd.DataFrame) -> pd.DataFrame:
         "boolean"
     )
     return catalog
+
+
+def _slice_strategy_input(
+    data: StrategyInput,
+    index: pd.Index,
+) -> StrategyInput:
+    if not isinstance(data, StrategyData):
+        return data.loc[index]
+    candles = {
+        key: (frame.loc[frame.index.intersection(index)] if key == "H1" else frame)
+        for key, frame in data.candles.items()
+    }
+    return StrategyData(
+        primary=data.primary.loc[index],
+        candles=candles,
+        extras=data.extras,
+        metadata=data.metadata,
+    )
 
 
 def _apply_nested_replay_controls(

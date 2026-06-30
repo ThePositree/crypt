@@ -105,6 +105,7 @@ class ShadowPortfolio:
                     capital=state.capital,
                     active_positions=state.active_positions,
                     entry_ctx=pending.row,  # type: ignore[arg-type]
+                    entry_trail_atr=trail_atr,
                 )
 
         state.pending_signal = PendingSignal(

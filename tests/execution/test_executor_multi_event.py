@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -7,11 +8,17 @@ import pandas as pd
 import pytest
 
 from backtester.execution_sim import ExecutionSim
-from crypt.execution.exchange_sync import ExchangeBalance, ExchangePosition, ExchangeSnapshot
+from crypt.execution.exchange_sync import (
+    ExchangeBalance,
+    ExchangeOrder,
+    ExchangePosition,
+    ExchangeSnapshot,
+)
 from crypt.execution.executor import (
     LiveExecutionManager,
     _validate_execution_settings_match_strategy,
 )
+from crypt.execution.okx_order_client import EntryOrderResult
 from crypt.execution.position_state import ExecutionState, LivePosition
 from crypt.execution.risk_calculator import LiveRiskCalculator
 from crypt.execution.settings import ExecutionSettings
@@ -36,6 +43,9 @@ class _FakeTradingClient:
     async def get_contract_size(self, symbol: str) -> float:  # noqa: ARG002
         return 1.0
 
+    async def get_last_price(self, symbol: str) -> float:  # noqa: ARG002
+        return 100.0
+
     async def size_asset_units_to_contracts(
         self,
         symbol: str,  # noqa: ARG002
@@ -51,7 +61,10 @@ class _FakeTradingClient:
         size_asset_units: float,
         sl_price: float,
         tp_price: float,
-    ) -> str:
+        client_order_id: str,
+        algo_client_order_id: str,
+        include_take_profit: bool = True,
+    ) -> EntryOrderResult:
         self.opened.append(
             {
                 "symbol": okx_symbol,
@@ -59,30 +72,68 @@ class _FakeTradingClient:
                 "size": size_asset_units,
                 "sl_price": sl_price,
                 "tp_price": tp_price,
+                "client_order_id": client_order_id,
+                "algo_client_order_id": algo_client_order_id,
+                "include_take_profit": include_take_profit,
             }
         )
-        return f"order-{len(self.opened)}"
+        return EntryOrderResult(
+            order_id=f"order-{len(self.opened)}",
+            average_price=100.0,
+            filled_contracts=float(int(size_asset_units / 0.01)) * 0.01,
+            fee=0.0,
+        )
+
+    async def place_trailing_stop(self, **_kwargs: object) -> str:
+        return "trailing-algo-1"
 
 
 class _SyncingTradingClient(_FakeTradingClient):
     async def get_exchange_snapshot(self, symbols: list[str]) -> ExchangeSnapshot:
         positions = []
+        algo_orders = []
+        open_orders = []
         if self.opened:
             positions = [
                 ExchangePosition(
                     symbol=symbols[0],
-                    contracts=float(len(self.opened)),
+                    contracts=sum(float(item["size"]) for item in self.opened),
                     side="long" if bool(self.opened[-1]["is_long"]) else "short",
                 )
+            ]
+            algo_orders = [
+                ExchangeOrder(
+                    symbol=symbols[0],
+                    order_id=f"algo-{index}",
+                    kind="algo",
+                    client_order_id=str(opened["algo_client_order_id"]),
+                )
+                for index, opened in enumerate(self.opened, start=1)
+            ]
+            open_orders = [
+                ExchangeOrder(
+                    symbol=symbols[0],
+                    order_id=f"tp-{index}",
+                    kind="regular",
+                    side="sell" if bool(opened["is_long"]) else "buy",
+                    amount=float(opened["size"]),
+                    price=float(opened["tp_price"]),
+                )
+                for index, opened in enumerate(self.opened, start=1)
             ]
         return ExchangeSnapshot(
             fetched_at=datetime(2026, 6, 27, 11, tzinfo=UTC),
             balance=ExchangeBalance(total=10_000.0, free=9_000.0, used=1_000.0),
             positions=positions,
-            open_orders=[],
-            algo_orders=[],
+            open_orders=open_orders,
+            algo_orders=algo_orders,
             recent_fills=[],
         )
+
+
+class _LeverageFailingTradingClient(_FakeTradingClient):
+    async def set_isolated_leverage(self, symbol: str, leverage: int) -> None:
+        raise RuntimeError(f"leverage rejected for {symbol} at {leverage}x")
 
 
 class _BatchSignalRunner:
@@ -97,9 +148,17 @@ class _BatchSignalRunner:
         return self.batch
 
 
+class _RejectingRiskCalculator:
+    def calculate(self, **kwargs: object) -> None:  # noqa: ARG002
+        return None
+
+
 class _FakeNotifier:
     def __init__(self) -> None:
         self.daily: list[tuple[ExchangeSnapshot, ExecutionState]] = []
+        self.attempts: list[dict[str, object]] = []
+        self.rejections: list[dict[str, object]] = []
+        self.errors: list[tuple[str, str]] = []
         self.entries: list[LivePosition] = []
         self.exits: list[LivePosition] = []
 
@@ -114,11 +173,59 @@ class _FakeNotifier:
     async def send_entry_opened(self, pos: LivePosition) -> None:
         self.entries.append(pos)
 
+    async def send_entry_attempt(self, **kwargs: object) -> None:
+        self.attempts.append(kwargs)
+
+    async def send_entry_rejected(self, **kwargs: object) -> None:
+        self.rejections.append(kwargs)
+
+    async def send_execution_error(self, *, context: str, detail: str) -> None:
+        self.errors.append((context, detail))
+
     async def send_position_closed(self, pos: LivePosition) -> None:
         self.exits.append(pos)
 
     async def close(self) -> None:
         return None
+
+
+@pytest.mark.asyncio
+async def test_entry_attempt_and_rejection_are_written_to_normal_log(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    event = SignalEvent(
+        bar_time=datetime(2026, 6, 30, 13, tzinfo=UTC),
+        signal=1,
+        sl_price=72.1907,
+        next_open=72.84,
+        rrr=1.5,
+        risk_percent=0.75,
+        position_ttl_bars=116,
+        trail_activation_rrr=1.5,
+        trail_distance_atr=0.25,
+        exit_geometry="sl_rrr",
+        tp_move_pct=None,
+        structural_sl_mode="cap",
+        min_tp_move_pct=0.004,
+        selected_strategy="smac_donor",
+        position_group="smac_donor",
+        raw_event={"signal": 1},
+    )
+    manager = LiveExecutionManager.__new__(LiveExecutionManager)
+    manager._notifier = None
+    with caplog.at_level(logging.INFO, logger="crypt.execution.executor"):
+        await manager._notify_entry_attempt("SOL-USDT-SWAP", event, 72.84)
+        await manager._notify_entry_rejected(
+            "SOL-USDT-SWAP",
+            event,
+            "entry drift 0.934% exceeds 0.100%",
+        )
+
+    combined = caplog.text
+    assert "ENTRY ATTEMPT" in combined
+    assert "entry=72.8400" in combined
+    assert "ENTRY REJECTED" in combined
+    assert "entry drift 0.934% exceeds 0.100%" in combined
 
 
 def _settings(tmp_path: Path) -> ExecutionSettings:
@@ -212,6 +319,74 @@ async def test_try_open_signal_batch_processes_all_events_in_order(tmp_path: Pat
 
 
 @pytest.mark.asyncio
+async def test_try_open_signal_batch_reuses_same_side_leverage_without_setting_it(
+    tmp_path: Path,
+) -> None:
+    settings = _settings(tmp_path)
+    manager = LiveExecutionManager.__new__(LiveExecutionManager)
+    manager._settings = settings
+    manager._app_settings = _FakeAppSettings()
+    manager._trading_client = _FakeTradingClient()
+    manager._risk_calc = LiveRiskCalculator(settings)
+    existing = LivePosition.create(
+        symbol="SOL-USDT-SWAP",
+        signal_time=datetime(2026, 6, 27, 8, tzinfo=UTC),
+        entry_time=datetime(2026, 6, 27, 9, tzinfo=UTC),
+        entry_price=100.0,
+        sl_price=98.0,
+        tp_price=104.0,
+        size=10.0,
+        contracts=10,
+        leverage=25.0,
+        locked_margin=40.0,
+        risk_base_capital=10_000.0,
+        is_long=True,
+        ttl_bars=0,
+        entry_order_id="entry-0",
+        selected_strategy="existing",
+        position_group="existing",
+    )
+    manager._state = ExecutionState(
+        schema_version=2,
+        risk_window_month=None,
+        monthly_risk_base=10_000.0,
+        positions=[existing],
+    )
+
+    batch = SignalBatch(
+        bar_time=datetime(2026, 6, 27, 10, tzinfo=UTC),
+        next_time=datetime(2026, 6, 27, 11, tzinfo=UTC),
+        next_open=100.0,
+        events=[
+            SignalEvent(
+                bar_time=datetime(2026, 6, 27, 10, tzinfo=UTC),
+                signal=1,
+                sl_price=98.0,
+                next_open=100.0,
+                rrr=2.0,
+                risk_percent=1.0,
+                position_ttl_bars=24,
+                trail_activation_rrr=0.0,
+                trail_distance_atr=0.0,
+                exit_geometry="sl_rrr",
+                tp_move_pct=None,
+                structural_sl_mode="cap",
+                min_tp_move_pct=0.004,
+                selected_strategy="new_same_side",
+                position_group="new_same_side",
+                raw_event={"selected_strategy": "new_same_side", "signal": 1},
+            )
+        ],
+    )
+
+    await manager._try_open_signal_batch("SOL-USDT-SWAP", batch, snapshot=None)  # type: ignore[arg-type]
+
+    assert len(manager._state.positions) == 2
+    assert manager._trading_client.opened
+    assert not hasattr(manager._trading_client, "leverage")
+
+
+@pytest.mark.asyncio
 async def test_try_open_signal_batch_notifies_each_entry(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
     notifier = _FakeNotifier()
@@ -255,7 +430,135 @@ async def test_try_open_signal_batch_notifies_each_entry(tmp_path: Path) -> None
 
     await manager._try_open_signal_batch("SOL-USDT-SWAP", batch, snapshot=None)  # type: ignore[arg-type]
 
+    assert [attempt["strategy"] for attempt in notifier.attempts] == ["donor_long"]
     assert [pos.symbol for pos in notifier.entries] == ["SOL-USDT-SWAP"]
+    assert notifier.rejections == []
+    assert notifier.errors == []
+
+
+@pytest.mark.asyncio
+async def test_risk_rejection_notifies_attempt_and_terminal_result(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    notifier = _FakeNotifier()
+    manager = LiveExecutionManager.__new__(LiveExecutionManager)
+    manager._settings = settings
+    manager._trading_client = _FakeTradingClient()
+    manager._risk_calc = _RejectingRiskCalculator()
+    manager._notifier = notifier
+    manager._state = ExecutionState(
+        schema_version=2,
+        risk_window_month=None,
+        monthly_risk_base=10_000.0,
+        positions=[],
+    )
+    event = SignalEvent(
+        bar_time=datetime(2026, 6, 29, 10, tzinfo=UTC),
+        signal=-1,
+        sl_price=102.0,
+        next_open=100.0,
+        rrr=2.0,
+        risk_percent=1.0,
+        position_ttl_bars=24,
+        trail_activation_rrr=0.0,
+        trail_distance_atr=0.0,
+        exit_geometry="sl_rrr",
+        tp_move_pct=None,
+        structural_sl_mode="cap",
+        min_tp_move_pct=0.004,
+        selected_strategy="donor_short",
+        position_group="donor_short",
+        raw_event={"selected_strategy": "donor_short", "signal": -1},
+    )
+
+    await manager._try_open_event(
+        symbol="SOL-USDT-SWAP",
+        event=event,
+        entry_time=datetime(2026, 6, 29, 11, tzinfo=UTC),
+        entry_price=100.0,
+        capital=10_000.0,
+        risk_base=10_000.0,
+    )
+
+    assert len(notifier.attempts) == 1
+    assert len(notifier.rejections) == 1
+    assert notifier.rejections[0]["strategy"] == "donor_short"
+    assert manager._state.positions == []
+
+
+@pytest.mark.asyncio
+async def test_leverage_failure_notifies_execution_error(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    notifier = _FakeNotifier()
+    manager = LiveExecutionManager.__new__(LiveExecutionManager)
+    manager._settings = settings
+    manager._trading_client = _LeverageFailingTradingClient()
+    manager._risk_calc = LiveRiskCalculator(settings)
+    manager._notifier = notifier
+    manager._state = ExecutionState(
+        schema_version=2,
+        risk_window_month=None,
+        monthly_risk_base=10_000.0,
+        positions=[],
+    )
+    event = SignalEvent(
+        bar_time=datetime(2026, 6, 29, 10, tzinfo=UTC),
+        signal=1,
+        sl_price=98.0,
+        next_open=100.0,
+        rrr=2.0,
+        risk_percent=1.0,
+        position_ttl_bars=24,
+        trail_activation_rrr=0.0,
+        trail_distance_atr=0.0,
+        exit_geometry="sl_rrr",
+        tp_move_pct=None,
+        structural_sl_mode="cap",
+        min_tp_move_pct=0.004,
+        selected_strategy="donor_long",
+        position_group="donor_long",
+        raw_event={"selected_strategy": "donor_long", "signal": 1},
+    )
+
+    await manager._try_open_event(
+        symbol="SOL-USDT-SWAP",
+        event=event,
+        entry_time=datetime(2026, 6, 29, 11, tzinfo=UTC),
+        entry_price=100.0,
+        capital=10_000.0,
+        risk_base=10_000.0,
+    )
+
+    assert len(notifier.attempts) == 1
+    assert notifier.rejections == []
+    assert len(notifier.errors) == 1
+    assert "set leverage" in notifier.errors[0][0]
+    assert "leverage rejected" in notifier.errors[0][1]
+    assert manager._state.positions == []
+
+
+@pytest.mark.asyncio
+async def test_sync_blocker_alert_is_sent_on_every_failed_sync() -> None:
+    notifier = _FakeNotifier()
+    manager = LiveExecutionManager.__new__(LiveExecutionManager)
+    manager._notifier = notifier
+    manager._state = ExecutionState(
+        schema_version=2,
+        risk_window_month=None,
+        monthly_risk_base=10_000.0,
+        positions=[],
+        last_exchange_sync_ok=False,
+        last_exchange_sync_errors=["position_mode_not_long_short"],
+    )
+
+    await manager._notify_sync_blocker(False)
+    await manager._notify_sync_blocker(False)
+    manager._state.last_exchange_sync_errors = ["orphan_exchange_position:SOL-USDT-SWAP"]
+    await manager._notify_sync_blocker(False)
+
+    assert len(notifier.errors) == 3
+    assert "position_mode_not_long_short" in notifier.errors[0][1]
+    assert "position_mode_not_long_short" in notifier.errors[1][1]
+    assert "orphan_exchange_position" in notifier.errors[2][1]
 
 
 @pytest.mark.asyncio
@@ -446,9 +749,7 @@ async def test_on_h1_close_rechecks_sync_after_marking_missing_position_closed(
     await manager.on_h1_close("SOL-USDT-SWAP")
 
     assert stale_pos_position.status == "closed"
-    assert [pos.selected_strategy for pos in manager._state.all_open_positions()] == [
-        "new_donor"
-    ]
+    assert [pos.selected_strategy for pos in manager._state.all_open_positions()] == ["new_donor"]
     assert manager._state.last_exchange_sync_ok
 
 
@@ -485,7 +786,13 @@ async def test_manage_open_positions_ttl_zero_does_not_expire(tmp_path: Path) ->
     snapshot = ExchangeSnapshot(
         fetched_at=datetime(2026, 6, 27, 11, tzinfo=UTC),
         balance=ExchangeBalance(total=10_000.0, free=9_000.0, used=1_000.0),
-        positions=[ExchangePosition(symbol="SOL-USDT-SWAP", contracts=10.0)],
+        positions=[
+            ExchangePosition(
+                symbol="SOL-USDT-SWAP",
+                contracts=10.0,
+                side="long",
+            )
+        ],
         open_orders=[],
         algo_orders=[],
         recent_fills=[],
@@ -494,6 +801,70 @@ async def test_manage_open_positions_ttl_zero_does_not_expire(tmp_path: Path) ->
     await manager._manage_open_positions("SOL-USDT-SWAP", snapshot)
 
     assert pos.status == "open"
+
+
+def test_exchange_sync_binds_legacy_stop_and_take_profit_ids(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    pos = LivePosition.create(
+        symbol="SOL-USDT-SWAP",
+        signal_time=datetime(2026, 6, 29, 11, tzinfo=UTC),
+        entry_time=datetime(2026, 6, 29, 12, tzinfo=UTC),
+        entry_price=73.47,
+        sl_price=70.9484,
+        tp_price=75.9916,
+        size=0.4164,
+        contracts=0.41,
+        leverage=25.0,
+        locked_margin=1.22,
+        risk_base_capital=105.0,
+        is_long=True,
+        ttl_bars=16,
+        entry_order_id="3698898461833158656",
+    )
+    manager = LiveExecutionManager.__new__(LiveExecutionManager)
+    manager._settings = settings
+    manager._state = ExecutionState(
+        schema_version=2,
+        risk_window_month=None,
+        monthly_risk_base=105.0,
+        positions=[pos],
+    )
+    snapshot = ExchangeSnapshot(
+        fetched_at=datetime(2026, 6, 29, 13, tzinfo=UTC),
+        balance=ExchangeBalance(total=105.0, free=103.78, used=1.22),
+        positions=[
+            ExchangePosition(
+                symbol="SOL-USDT-SWAP",
+                contracts=0.41,
+                side="long",
+            )
+        ],
+        open_orders=[
+            ExchangeOrder(
+                symbol="SOL-USDT-SWAP",
+                order_id="tp-order",
+                kind="regular",
+                side="sell",
+                amount=0.41,
+                price=75.99,
+            )
+        ],
+        algo_orders=[
+            ExchangeOrder(
+                symbol="SOL-USDT-SWAP",
+                order_id="sl-algo",
+                kind="algo",
+                side="sell",
+                amount=0.41,
+                price=70.95,
+            )
+        ],
+        recent_fills=[],
+    )
+
+    assert manager._apply_exchange_sync(snapshot=snapshot)
+    assert pos.stop_algo_order_id == "sl-algo"
+    assert pos.take_profit_order_id == "tp-order"
 
 
 @pytest.mark.asyncio
@@ -533,10 +904,10 @@ async def test_manage_open_positions_records_exchange_close_fill(tmp_path: Path)
         open_orders=[],
         algo_orders=[],
         recent_fills=[
-                {
-                    "side": "sell",
-                    "timestamp": 1_782_561_600_000,
-                    "price": 104.0,
+            {
+                "side": "sell",
+                "timestamp": 1_782_561_600_000,
+                "price": 104.0,
                 "amount": 10.0,
                 "fee": {"cost": 0.52},
             }

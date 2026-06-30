@@ -22,7 +22,7 @@ from backtester.strategies import (
     crypt_ensemble_incremental as _crypt_ensemble_incremental,
 )
 from backtester.strategies import dss_incremental as _dss_incremental
-from backtester.strategy_discovery.features import build_discovery_dataset
+from backtester.strategy_discovery.features import DiscoveryDataset, build_discovery_dataset
 
 _BUILTIN_ADAPTER_MODULES = (
     _crypt_ensemble_incremental,
@@ -149,15 +149,17 @@ def build_archived_signal_frames(
     *,
     data: StrategyInput,
     specs: list[ArchivedStrategySpec],
+    dataset: DiscoveryDataset | None = None,
 ) -> dict[str, pd.DataFrame]:
     """Build all six archived signal streams from one shared feature dataset."""
 
     symbol = str(data.metadata.get("symbol", "")) if isinstance(data, StrategyData) else ""
-    dataset = build_discovery_dataset(
-        data=data,
-        window_label="promoted_router",
-        symbol=symbol,
-    )
+    if dataset is None:
+        dataset = build_discovery_dataset(
+            data=data,
+            window_label="promoted_router",
+            symbol=symbol,
+        )
     output: dict[str, pd.DataFrame] = {}
     for spec in specs:
         adapter = build_incremental_adapter(spec.name)
