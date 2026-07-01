@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from backtester.execution_sim import ExecutionSim
+from backtester.results_analyzer import ResultsAnalyzer
 
 
 def _df_not_enough_bars() -> pd.DataFrame:
@@ -429,9 +430,9 @@ def test_basic_long_take_profit_path():
     assert trade["tp_price"] == pytest.approx(tp_price)
     assert trade["fee_entry"] == pytest.approx(fee_entry)
 
-    # Exit by take profit, maker fee for exit
+    # Triggered limit TP is conservatively charged as taker.
     exit_value = size * tp_price
-    fee_exit = exit_value * 0.0002
+    fee_exit = exit_value * 0.001
     pnl_abs = exit_value - position_value - (fee_entry + fee_exit)
 
     assert trade["exit_reason"] == "take_profit"
@@ -489,7 +490,7 @@ def test_basic_short_take_profit_path():
     fee_entry = position_value * 0.001
     tp_price = entry_price - sl_dist * 2.0
     exit_value = size * tp_price
-    fee_exit = exit_value * 0.0002
+    fee_exit = exit_value * 0.001
     pnl_abs = position_value - exit_value - (fee_entry + fee_exit)
 
     assert trade["entry_price"] == pytest.approx(entry_price)
@@ -504,13 +505,13 @@ def test_basic_short_take_profit_path():
 
 def test_long_trailing_stop_activates_and_exits_with_taker_fee():
     df = _base_df(
-        opens=[100.0, 101.0, 102.0],
-        highs=[101.0, 110.0, 103.0],
-        lows=[99.0, 107.0, 101.0],
-        closes=[100.5, 108.0, 102.5],
-        signals=[1, 0, 0],
-        sl_prices=[95.0, 100.0, 101.0],
-        trail_atrs=[2.0, 2.0, 2.0],
+        opens=[100.0, 101.0, 102.0, 102.0],
+        highs=[101.0, 110.0, 103.0, 103.0],
+        lows=[99.0, 107.0, 101.0, 101.0],
+        closes=[100.5, 108.0, 102.5, 102.5],
+        signals=[1, 0, 0, 0],
+        sl_prices=[95.0, 100.0, 101.0, 101.0],
+        trail_atrs=[2.0, 2.0, 2.0, 2.0],
     )
     sim = ExecutionSim(
         initial_capital=1000.0,
@@ -530,23 +531,23 @@ def test_long_trailing_stop_activates_and_exits_with_taker_fee():
     assert len(trades) == 1
     trade = trades.iloc[0]
     assert trade["exit_reason"] == "trailing_stop"
-    assert trade["exit_price"] == pytest.approx(108.0)
+    assert trade["exit_price"] == pytest.approx(102.0)
     assert trade["trail_stop_price"] == pytest.approx(108.0)
     assert trade["trail_activation_price"] == pytest.approx(104.0)
     assert trade["trail_callback_spread"] == pytest.approx(2.0)
     assert bool(trade["trail_active"]) is True
-    assert trade["fee_exit"] == pytest.approx(trade["size"] * 108.0 * 0.001)
+    assert trade["fee_exit"] == pytest.approx(trade["size"] * 102.0 * 0.001)
 
 
 def test_short_trailing_stop_activates_and_exits_with_taker_fee():
     df = _base_df(
-        opens=[100.0, 101.0, 102.0],
-        highs=[101.0, 98.0, 103.0],
-        lows=[99.0, 95.0, 101.0],
-        closes=[100.5, 96.0, 102.5],
-        signals=[-1, 0, 0],
-        sl_prices=[105.0, 100.0, 101.0],
-        trail_atrs=[2.0, 2.0, 2.0],
+        opens=[100.0, 101.0, 102.0, 102.0],
+        highs=[101.0, 98.0, 103.0, 103.0],
+        lows=[99.0, 95.0, 101.0, 101.0],
+        closes=[100.5, 96.0, 102.5, 102.5],
+        signals=[-1, 0, 0, 0],
+        sl_prices=[105.0, 100.0, 101.0, 101.0],
+        trail_atrs=[2.0, 2.0, 2.0, 2.0],
     )
     sim = ExecutionSim(
         initial_capital=1000.0,
@@ -566,10 +567,10 @@ def test_short_trailing_stop_activates_and_exits_with_taker_fee():
     assert len(trades) == 1
     trade = trades.iloc[0]
     assert trade["exit_reason"] == "trailing_stop"
-    assert trade["exit_price"] == pytest.approx(97.0)
+    assert trade["exit_price"] == pytest.approx(102.0)
     assert trade["trail_stop_price"] == pytest.approx(97.0)
     assert bool(trade["trail_active"]) is True
-    assert trade["fee_exit"] == pytest.approx(trade["size"] * 97.0 * 0.001)
+    assert trade["fee_exit"] == pytest.approx(trade["size"] * 102.0 * 0.001)
 
 
 def test_per_bar_risk_percent_and_rrr_override_defaults():
@@ -767,7 +768,7 @@ def test_stop_loss_for_long_and_short():
     assert trades_short.iloc[0]["exit_reason"] == "stop_loss"
 
 
-def test_worst_case_records_liquidation_when_bar_crosses_liquidation_price() -> None:
+def test_nearer_structural_stop_precedes_liquidation_on_last_price_path() -> None:
     df = _base_df(
         opens=[100.0, 100.0, 100.0],
         highs=[101.0, 101.0, 101.0],
@@ -791,8 +792,8 @@ def test_worst_case_records_liquidation_when_bar_crosses_liquidation_price() -> 
 
     assert len(trades) == 1
     trade = trades.iloc[0]
-    assert trade["exit_reason"] == "liquidation"
-    assert trade["exit_price"] == pytest.approx(trade["liquidation_price"])
+    assert trade["exit_reason"] == "stop_loss"
+    assert trade["exit_price"] == pytest.approx(trade["sl_price"])
 
 
 def test_closed_trade_exports_maintenance_margin_tier_schedule() -> None:
@@ -1043,9 +1044,11 @@ def test_trades_dataframe_columns_and_types():
         "exit_bar_index",
         "capital_sweep_amount",
         "capital_sweep_month",
-        "banked_profit_after",
-        "trading_capital_after_sweep",
-    }
+            "banked_profit_after",
+            "trading_capital_after_sweep",
+            "account_capital_at_end",
+            "account_capital_at_end_time",
+        }
 
     assert set(trades.columns) == expected_columns
 
@@ -1420,3 +1423,95 @@ def test_entry_price_nan_on_signal_bar_falls_back_to_next_open():
     # Should behave like the basic long path: entry at next bar open
     assert trade["entry_time"] == df.index[1]
     assert trade["entry_price"] == pytest.approx(101.0)
+
+
+def test_entry_fee_is_debited_before_next_same_bar_entry() -> None:
+    idx = pd.date_range("2026-01-01", periods=2, freq="h")
+    df = pd.DataFrame(
+        {
+            "open": [100.0, 100.0],
+            "high": [100.5, 100.5],
+            "low": [99.5, 99.5],
+            "close": [100.0, 100.0],
+            "signal_events": [
+                [
+                    {"signal": 1, "sl_price": 99.0, "selected_strategy": "first"},
+                    {"signal": 1, "sl_price": 99.0, "selected_strategy": "second"},
+                ],
+                [],
+            ],
+        },
+        index=idx,
+    )
+
+    trades = ExecutionSim(
+        initial_capital=10_000.0,
+        taker_fee=0.0005,
+        risk_percent=1.0,
+        max_allowed_leverage=100.0,
+        min_net_exposure=0.0,
+    ).run(df)
+
+    assert len(trades) == 2
+    first, second = trades.iloc[0], trades.iloc[1]
+    assert first["fee_entry"] == pytest.approx(5.0)
+    assert second["capital_before"] == pytest.approx(9_995.0)
+    assert second["size"] < first["size"]
+
+
+def test_precision_policy_rounds_size_protection_and_trailing_geometry() -> None:
+    df = _base_df(
+        opens=[100.0, 100.0],
+        highs=[100.5, 100.5],
+        lows=[99.5, 99.5],
+        closes=[100.0, 100.0],
+        signals=[1, 0],
+        sl_prices=[98.934, 99.0],
+        trail_atrs=[1.234, 1.234],
+        freq="h",
+    )
+
+    trades = ExecutionSim(
+        initial_capital=10_000.0,
+        risk_percent=1.0,
+        rrr=2.0,
+        trail_activation_rrr=1.0,
+        trail_distance_atr=0.33,
+        max_allowed_leverage=100.0,
+        min_net_exposure=0.0,
+        instrument_precision_policy="okx_sol_usdt_swap_2026_07_01",
+    ).run(df)
+
+    assert len(trades) == 1
+    trade = trades.iloc[0]
+    assert trade["size"] == pytest.approx(93.80)
+    assert trade["sl_price"] == pytest.approx(98.93)
+    assert trade["tp_price"] == pytest.approx(102.13)
+    assert trade["trail_activation_price"] == pytest.approx(101.07)
+    assert trade["trail_callback_spread"] == pytest.approx(0.41)
+
+
+def test_open_position_entry_fee_reduces_reported_ending_capital() -> None:
+    df = _base_df(
+        opens=[100.0, 100.0],
+        highs=[100.5, 100.5],
+        lows=[99.5, 99.5],
+        closes=[100.0, 100.0],
+        signals=[1, 0],
+        sl_prices=[99.0, 99.0],
+        freq="h",
+    )
+    trades = ExecutionSim(
+        initial_capital=10_000.0,
+        taker_fee=0.0005,
+        risk_percent=1.0,
+        max_allowed_leverage=100.0,
+        min_net_exposure=0.0,
+    ).run(df)
+
+    metrics = ResultsAnalyzer(trades).generate()
+    entry_fee = float(trades.iloc[0]["fee_entry"])
+
+    assert trades.iloc[0]["exit_reason"] == "open"
+    assert metrics["final_capital"] == pytest.approx(10_000.0 - entry_fee)
+    assert metrics["total_pnl_abs"] == pytest.approx(-entry_fee, abs=0.01)

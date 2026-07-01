@@ -4,6 +4,126 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-07-01 — Durable live recovery and conservative H1 execution
+
+**What:** completed restart recovery for entry/close state and replaced
+unproven H1 liquidation/trailing ordering with a conservative executable
+policy.
+
+**Why now:** the re-audit found that persisted entry intents and `closing`
+positions could be abandoned, while the canonical result selected deeper
+liquidation before a nearer stop and assumed favorable-then-adverse trailing
+movement inside one H1 candle.
+
+**Result:** live adopts actual fills/protection by deterministic client IDs,
+retries remaining partial close quantity, preserves transitional positions in
+sync/risk state, sets leverage only for the requested side, checks actual
+exchange leverage/precision, deduplicates fills, and reports health failures.
+Backtest stop precedence, trailing, gaps, aggregate liquidation refresh, and
+triggered-TP fees now use conservative rules.
+
+**Acceptance:** fault-injection recovery tests and the full non-hanging project
+suite pass. Focused changed-code Ruff and live mypy pass. A new owner-run
+canonical backtest remains required because old `$588,744.28` results are
+invalidated by the execution-policy change.
+
+**Links:** ADR-0055,
+`docs/execution/live_backtest_parity_audit_2026-06-30.md`,
+`docs/execution/live_execution.md`.
+
+---
+
+## 2026-07-01 — Full-code live/backtest re-audit
+
+**What:** audited the complete signal, backtest, live execution, OKX order,
+reconciliation, persistence, scheduler, data-store, Telegram, and validation
+paths without changing trading behavior.
+
+**Result:** signal/precision/fee parity remains verified, but unattended live
+is blocked by incomplete restart adoption for entry intents and `closing`
+positions. The audit also identified unresolved H1 liquidation/trailing path
+ambiguity and several P1 exchange/operations gaps.
+
+**Acceptance:** the non-hanging functional suite passes; repository-wide Ruff
+reports 232 findings and strict mypy reports 280 errors in 24 files. Focused
+live execution mypy passes.
+
+**Links:** `docs/execution/live_backtest_parity_audit_2026-06-30.md`,
+`docs/tasks/BACKLOG.md`.
+
+---
+
+## 2026-07-01 — Entry drift changed from rejection to alert-only
+
+**What:** removed the `0.1%` pre-entry drift rejection while retaining the
+threshold as operator observability.
+
+**Why now:** a hard gate skipped live trades that the H1 backtester always
+takes, creating a larger parity error than measurable market slippage.
+
+**Result:** live logs an over-threshold quote and proceeds immediately. After
+fill it sends `ENTRY DRIFT [OK]` with H1 open, pre-submit quote, actual fill,
+H1-to-fill drift, quote-to-fill drift, and explicit confirmation that the
+entry executed. Post-fill liquidation and leverage safety remain blocking.
+
+**Acceptance:** the `1%` synthetic drift test opens exactly one position,
+sends no rejection, and emits the expected post-fill alert. Full execution
+tests, focused Ruff, and strict mypy pass.
+
+**Links:** ADR-0054, ADR-0051, `docs/execution/live_execution.md`.
+
+---
+
+## 2026-07-01 — Owner-verified OKX precision and entry-fee parity
+
+**What:** applied the dated OKX SOL amount/price precision policy to live and
+backtest execution and moved entry-fee cash debits to entry time.
+
+**Result:** owner-run artifact
+`results/core4_v3_precision_fee_parity_20260701/20260701_091336/` produced
+3,420 entries, `$588,744.28` final capital, `45.17%` wins, `1.24` profit
+factor, `-6.78%` maximum drawdown, and 144 liquidations. Signals and OHLCV are
+byte-identical to the previous canonical artifact, proving the result changed
+only through execution policy.
+
+**Acceptance:** every exported size, SL, TP, trailing activation, and callback
+is on the OKX step/tick. Final capital reconciles exactly from closed PnL and
+the `$190.4181` entry fees on two still-open positions.
+
+**Links:** ADR-0053,
+`docs/execution/live_backtest_parity_audit_2026-06-30.md`.
+
+---
+
+## 2026-07-01 — Partial crash-safety groundwork and exact fill allocation
+
+**What:** persisted entry intent before OKX submission, made TTL close-first,
+added deterministic fail-safe closes for missing trailing/unsafe post-fill
+state, and allocated recent fills once by exact client/algo identity.
+
+**Why now:** the full parity audit found crash windows that could leave a real
+position orphaned or unprotected, plus a same-side fill fallback that could
+assign one close to multiple local trades.
+
+**Result:** entry and close IDs survive transport ambiguity; TTL protection is
+retained until a close confirms; trailing/liquidation/tier failures reduce-only
+close immediately; ambiguous multi-position fills remain unclassified instead
+of corrupting PnL. Entry-attempt Telegram delivery no longer delays orders.
+
+**Acceptance:** fault-injection and overlapping-fill tests pass; the complete
+`tests/execution` and `tests/backtester` suite passes except the pre-existing
+assertion-passing pytest shutdown hang.
+
+**Re-audit note:** this work persists the intent before submit but does not yet
+adopt it after restart, and `status="closing"` is skipped by reconciliation.
+The remaining recovery work is tracked as P0.
+
+**Links:** ADR-0053,
+`docs/execution/live_backtest_parity_audit_2026-06-30.md`,
+`src/crypt/execution/`.
+
+---
+
 ## 2026-06-30 — Validated latest-bar Core4 signal cache
 
 **What:** added a live-only donor-frame cache and latest-row generation path

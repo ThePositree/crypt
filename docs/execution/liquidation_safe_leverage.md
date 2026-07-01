@@ -102,16 +102,18 @@ Every accepted risk result and backtester trade exports:
 ## Backtester liquidation exit
 
 The simulator checks the estimated liquidation level on every position bar.
-When the candle reaches both the structural stop and liquidation price, their
-true intrabar order is unknown:
+With last-trade OHLC, the structural stop is closer to entry than a
+liquidation-safe liquidation level. A continuous last-price path must cross
+that stop first, so a bar touching both records the stop, not liquidation.
 
-- `worst_case` records `exit_reason=liquidation` at the estimated liquidation
-  price;
-- `best_case` keeps the normal structural-stop result.
+Liquidation is recorded only when its trigger is touched without a prior
+reachable structural/trailing stop in the modeled path. If a bar opens through
+an exit trigger, the fill uses the adverse bar open rather than the trigger
+price.
 
-This is deliberately conservative. It makes liquidation visible in historical
-results instead of assuming that a last-price stop always executes before
-OKX's mark-price liquidation engine.
+Exact OKX liquidation remains a separate mark-price problem. Historical
+mark-price candles are required before the simulator can model a mark-price
+liquidation that occurs while the last-price structural stop has not fired.
 
 ## Live validation
 

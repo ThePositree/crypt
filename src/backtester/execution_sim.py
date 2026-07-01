@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import Any, TypedDict
 
 import pandas as pd
@@ -8,6 +8,7 @@ from tqdm.auto import tqdm
 
 from .exit_geometry import exit_geometry_config_from_args
 from .fee_model import ExitContext, FeeModel, StaticPercentFeeModel
+from .instrument_precision import instrument_precision_from_name
 from .margin_policy import (
     DEFAULT_LIQUIDATION_BUFFER_PCT,
     DEFAULT_LIQUIDATION_FEE_RATE,
@@ -159,7 +160,7 @@ class Position:
             raise ValueError("Leverage must be at least 1.0")
 
 
-class ExitReason(str, Enum):
+class ExitReason(StrEnum):
     """Standardized reasons for closing a position."""
 
     TAKE_PROFIT = "take_profit"
@@ -258,6 +259,7 @@ class ExecutionSim:
         liquidation_fee_rate: float = DEFAULT_LIQUIDATION_FEE_RATE,
         liquidation_buffer_pct: float = DEFAULT_LIQUIDATION_BUFFER_PCT,
         maintenance_margin_tier_schedule: str | None = None,
+        instrument_precision_policy: str | None = None,
         risk_model: RiskModel | None = None,
         fee_model: FeeModel | None = None,
     ):
@@ -333,12 +335,12 @@ class ExecutionSim:
             ``daily_rrr <= -max_daily_loss``, new positions will not be opened
             until the next trading day. Disabled if None or 0.
         trading_begin : int | None, optional
-            Start of trading session in hours (0–23) based on the timestamp in
+            Start of trading session in hours (0-23) based on the timestamp in
             the input DataFrame. New positions are opened only on bars where
             ``trading_begin <= hour < trading_end`` (if configured). Disabled
             if None.
         trading_end : int | None, optional
-            End of trading session in hours (1–24). New positions are opened
+            End of trading session in hours (1-24). New positions are opened
             only on bars where ``trading_begin <= hour < trading_end``.
             Disabled if None.
 
@@ -359,6 +361,7 @@ class ExecutionSim:
                - leverage matches existing positions
                - available balance covers required margin
         """
+        del is_perpetual  # Retained for backward-compatible public construction.
         allowed_policies = {"best_case", "worst_case"}
         allowed_risk_base_periods = {"trade", "weekly", "monthly", "backtest"}
         allowed_capital_sweeps = {"none", "monthly_profit"}
@@ -418,6 +421,8 @@ class ExecutionSim:
         self.liquidation_fee_rate = liquidation_fee_rate
         self.liquidation_buffer_pct = liquidation_buffer_pct
         self.maintenance_margin_tier_schedule = maintenance_margin_tier_schedule
+        self.instrument_precision_policy = instrument_precision_policy
+        self._instrument_precision = instrument_precision_from_name(instrument_precision_policy)
         self._exit_geometry_config = exit_geometry_config_from_args(
             exit_geometry=exit_geometry,
             tp_move_pct=tp_move_pct,
@@ -577,11 +582,21 @@ class ExecutionSim:
             next_record = records[i + 1]
             next_time = timestamps[i + 1]
             next_open = next_record["open"]
+            current_open = row["open"]
             current_high = row["high"]
             current_low = row["low"]
 
             trail_atr = row["trail_atr"] if "trail_atr" in row.dtype.names else None
-            yield i, row, next_open, current_high, current_low, trail_atr, next_time
+            yield (
+                i,
+                row,
+                next_open,
+                current_open,
+                current_high,
+                current_low,
+                trail_atr,
+                next_time,
+            )
 
     def _update_active_positions(
         self,
@@ -589,6 +604,7 @@ class ExecutionSim:
         active_positions: list[Position],
         capital: float,
         i: int,
+        current_open: float,
         current_high: float,
         current_low: float,
         trail_atr: float | None,
@@ -607,10 +623,15 @@ class ExecutionSim:
             Positions that remain open after this bar.
         """
         remaining_positions: list[Position] = []
+        positions_to_process = sorted(
+            active_positions,
+            key=_adverse_exit_priority,
+        )
 
-        for pos in active_positions:
+        for position_index, pos in enumerate(positions_to_process):
             exit_reason, exit_price = self._resolve_bar_exit(
                 pos=pos,
+                current_open=current_open,
                 current_high=current_high,
                 current_low=current_low,
                 trail_atr=trail_atr,
@@ -627,7 +648,9 @@ class ExecutionSim:
             if exit_reason:
                 exit_value = pos.size * exit_price
                 entry_value = pos.size * pos.entry_price
-                is_maker = exit_reason is ExitReason.TAKE_PROFIT
+                # An OKX triggered TP limit can execute immediately as taker.
+                # Use the conservative taker class; live stores the actual fee.
+                is_maker = False
                 exit_ctx = ExitContext(exit_reason=exit_reason.value)
                 fee_exit = self._fee_model.calculate_exit_fee(
                     exit_value,
@@ -638,11 +661,13 @@ class ExecutionSim:
                 fees = pos.fee_entry + fee_exit
                 if pos.is_long:
                     pnl_abs = exit_value - entry_value - fees
+                    capital_delta = exit_value - entry_value - fee_exit
                 else:
                     pnl_abs = entry_value - exit_value - fees
+                    capital_delta = entry_value - exit_value - fee_exit
 
                 pnl_rel = pnl_abs / entry_value if entry_value != 0 else 0.0
-                new_capital = capital + pnl_abs
+                new_capital = capital + capital_delta
 
                 # Public API: expose string value of ExitReason in trade history.
                 reason_value = (
@@ -695,12 +720,25 @@ class ExecutionSim:
                 )
 
                 capital = new_capital
+                self._refresh_aggregate_liquidation(
+                    [
+                        *remaining_positions,
+                        *positions_to_process[position_index + 1 :],
+                    ]
+                )
             else:
                 remaining_positions.append(pos)
 
+        self._refresh_aggregate_liquidation(remaining_positions)
+
+        return capital, remaining_positions
+
+    @staticmethod
+    def _refresh_aggregate_liquidation(positions: list[Position]) -> None:
+        """Refresh side liquidation after every constituent close."""
         for is_long in (True, False):
             side_positions = [
-                position for position in remaining_positions if position.is_long is is_long
+                position for position in positions if position.is_long is is_long
             ]
             if not side_positions:
                 continue
@@ -718,12 +756,11 @@ class ExecutionSim:
                 for position in side_positions:
                     position.liquidation_price = liquidation
 
-        return capital, remaining_positions
-
     def _resolve_bar_exit(
         self,
         *,
         pos: Position,
+        current_open: float | None = None,
         current_high: float,
         current_low: float,
         trail_atr: float | None,
@@ -756,21 +793,31 @@ class ExecutionSim:
             Price at which the position is considered closed, or None if
             no TP/SL exit occurs in this bar.
         """
-        liquidation_hit = (
-            current_low <= pos.liquidation_price
-            if pos.is_long
-            else current_high >= pos.liquidation_price
-        )
-        if liquidation_hit and self.bar_exit_policy == "worst_case":
-            return ExitReason.LIQUIDATION, pos.liquidation_price
-
         if pos.trail_activation_rrr > 0:
-            return self._resolve_trailing_bar_exit(
+            trailing_reason, trailing_price = self._resolve_trailing_bar_exit(
                 pos=pos,
+                current_open=current_open,
                 current_high=current_high,
                 current_low=current_low,
                 trail_atr=trail_atr,
             )
+            if trailing_reason is not None:
+                return trailing_reason, trailing_price
+            liquidation_hit = (
+                current_low <= pos.liquidation_price
+                if pos.is_long
+                else current_high >= pos.liquidation_price
+            )
+            if liquidation_hit:
+                return (
+                    ExitReason.LIQUIDATION,
+                    _adverse_trigger_fill(
+                        trigger=pos.liquidation_price,
+                        bar_open=current_open,
+                        is_long=pos.is_long,
+                    ),
+                )
+            return None, None
 
         if pos.is_long:
             tp_hit = current_high >= pos.tp_price
@@ -779,6 +826,21 @@ class ExecutionSim:
             tp_hit = current_low <= pos.tp_price
             sl_hit = current_high >= pos.sl_price
 
+        liquidation_hit = (
+            current_low <= pos.liquidation_price
+            if pos.is_long
+            else current_high >= pos.liquidation_price
+        )
+        if liquidation_hit and not sl_hit:
+            return (
+                ExitReason.LIQUIDATION,
+                _adverse_trigger_fill(
+                    trigger=pos.liquidation_price,
+                    bar_open=current_open,
+                    is_long=pos.is_long,
+                ),
+            )
+
         if not tp_hit and not sl_hit:
             return None, None
 
@@ -786,7 +848,14 @@ class ExecutionSim:
             return ExitReason.TAKE_PROFIT, pos.tp_price
 
         if sl_hit and not tp_hit:
-            return ExitReason.STOP_LOSS, pos.sl_price
+            return (
+                ExitReason.STOP_LOSS,
+                _adverse_trigger_fill(
+                    trigger=pos.sl_price,
+                    bar_open=current_open,
+                    is_long=pos.is_long,
+                ),
+            )
 
         # Both TP and SL are hit within the same bar:
         # resolve according to bar_exit_policy.
@@ -794,7 +863,14 @@ class ExecutionSim:
             return ExitReason.TAKE_PROFIT, pos.tp_price
 
         if self.bar_exit_policy == "worst_case":
-            return ExitReason.STOP_LOSS, pos.sl_price
+            return (
+                ExitReason.STOP_LOSS,
+                _adverse_trigger_fill(
+                    trigger=pos.sl_price,
+                    bar_open=current_open,
+                    is_long=pos.is_long,
+                ),
+            )
 
         # This should be unreachable due to __init__ validation, but kept
         # defensively to avoid silent inconsistencies.
@@ -804,6 +880,7 @@ class ExecutionSim:
         self,
         *,
         pos: Position,
+        current_open: float | None,
         current_high: float,
         current_low: float,
         trail_atr: float | None,
@@ -818,17 +895,51 @@ class ExecutionSim:
             activation_hit = current_high >= activation_price
             if not pos.trail_active:
                 if original_sl_hit and (not activation_hit or self.bar_exit_policy == "worst_case"):
-                    return ExitReason.STOP_LOSS, pos.sl_price
+                    return (
+                        ExitReason.STOP_LOSS,
+                        _adverse_trigger_fill(
+                            trigger=pos.sl_price,
+                            bar_open=current_open,
+                            is_long=True,
+                        ),
+                    )
                 if not activation_hit:
                     tp_hit = pos.tp_price < activation_price and current_high >= pos.tp_price
                     if tp_hit:
                         return ExitReason.TAKE_PROFIT, pos.tp_price
                     if original_sl_hit:
-                        return ExitReason.STOP_LOSS, pos.sl_price
+                        return (
+                            ExitReason.STOP_LOSS,
+                            _adverse_trigger_fill(
+                                trigger=pos.sl_price,
+                                bar_open=current_open,
+                                is_long=True,
+                            ),
+                        )
                     return None, None
                 pos.trail_active = True
                 pos.best_favorable_price = max(pos.entry_price, current_high)
+                proposed_stop = pos.best_favorable_price - callback_spread
+                pos.trail_stop_price = max(pos.sl_price, proposed_stop)
+                if self.bar_exit_policy == "worst_case":
+                    return None, None
             else:
+                previous_stop = pos.trail_stop_price or max(
+                    pos.sl_price,
+                    (pos.best_favorable_price or pos.entry_price) - callback_spread,
+                )
+                if (
+                    self.bar_exit_policy == "worst_case"
+                    and current_low <= previous_stop
+                ):
+                    return (
+                        ExitReason.TRAILING_STOP,
+                        _adverse_trigger_fill(
+                            trigger=previous_stop,
+                            bar_open=current_open,
+                            is_long=True,
+                        ),
+                    )
                 pos.best_favorable_price = max(
                     pos.best_favorable_price or pos.entry_price, current_high
                 )
@@ -836,30 +947,75 @@ class ExecutionSim:
             proposed_stop = pos.best_favorable_price - callback_spread
             pos.trail_stop_price = max(pos.sl_price, proposed_stop)
             if current_low <= pos.trail_stop_price:
-                return ExitReason.TRAILING_STOP, pos.trail_stop_price
+                return (
+                    ExitReason.TRAILING_STOP,
+                    _adverse_trigger_fill(
+                        trigger=pos.trail_stop_price,
+                        bar_open=current_open,
+                        is_long=True,
+                    ),
+                )
             return None, None
 
         original_sl_hit = current_high >= pos.sl_price
         activation_hit = current_low <= activation_price
         if not pos.trail_active:
             if original_sl_hit and (not activation_hit or self.bar_exit_policy == "worst_case"):
-                return ExitReason.STOP_LOSS, pos.sl_price
+                return (
+                    ExitReason.STOP_LOSS,
+                    _adverse_trigger_fill(
+                        trigger=pos.sl_price,
+                        bar_open=current_open,
+                        is_long=False,
+                    ),
+                )
             if not activation_hit:
                 tp_hit = pos.tp_price > activation_price and current_low <= pos.tp_price
                 if tp_hit:
                     return ExitReason.TAKE_PROFIT, pos.tp_price
                 if original_sl_hit:
-                    return ExitReason.STOP_LOSS, pos.sl_price
+                    return (
+                        ExitReason.STOP_LOSS,
+                        _adverse_trigger_fill(
+                            trigger=pos.sl_price,
+                            bar_open=current_open,
+                            is_long=False,
+                        ),
+                    )
                 return None, None
             pos.trail_active = True
             pos.best_favorable_price = min(pos.entry_price, current_low)
+            proposed_stop = pos.best_favorable_price + callback_spread
+            pos.trail_stop_price = min(pos.sl_price, proposed_stop)
+            if self.bar_exit_policy == "worst_case":
+                return None, None
         else:
+            previous_stop = pos.trail_stop_price or min(
+                pos.sl_price,
+                (pos.best_favorable_price or pos.entry_price) + callback_spread,
+            )
+            if self.bar_exit_policy == "worst_case" and current_high >= previous_stop:
+                return (
+                    ExitReason.TRAILING_STOP,
+                    _adverse_trigger_fill(
+                        trigger=previous_stop,
+                        bar_open=current_open,
+                        is_long=False,
+                    ),
+                )
             pos.best_favorable_price = min(pos.best_favorable_price or pos.entry_price, current_low)
 
         proposed_stop = pos.best_favorable_price + callback_spread
         pos.trail_stop_price = min(pos.sl_price, proposed_stop)
         if current_high >= pos.trail_stop_price:
-            return ExitReason.TRAILING_STOP, pos.trail_stop_price
+            return (
+                ExitReason.TRAILING_STOP,
+                _adverse_trigger_fill(
+                    trigger=pos.trail_stop_price,
+                    bar_open=current_open,
+                    is_long=False,
+                ),
+            )
         return None, None
 
     def _resolve_fixed_exit_before_trailing_atr(
@@ -1112,14 +1268,14 @@ class ExecutionSim:
         active_positions: list[Position],
         entry_ctx: _EntryContextDict,
         entry_trail_atr: float | None,
-    ) -> list[Position]:
+    ) -> tuple[float, list[Position]]:
         """
         Try to open a new position based on signal and risk settings.
 
         Returns
         -------
-        list[Position]
-            Updated list of active positions (possibly unchanged).
+        tuple[float, list[Position]]
+            Capital after any immediate entry fee and updated active positions.
         """
         signal = entry_ctx["signal"]
         sl_price = entry_ctx["sl_price"]
@@ -1131,11 +1287,11 @@ class ExecutionSim:
         if (signal != 1 and signal != -1) or (
             len(active_positions) >= self.max_positions and self.max_positions > 0
         ):
-            return active_positions
+            return capital, active_positions
         if entry_ctx["drain_on_group_change"] and active_positions:
             active_groups = {position.position_group for position in active_positions}
             if position_group not in active_groups:
-                return active_positions
+                return capital, active_positions
 
         if ctx_entry_price is not None:
             entry_price = ctx_entry_price
@@ -1149,7 +1305,7 @@ class ExecutionSim:
 
         if pd.isna(sl_price):
             self._logger.debug("Missing SL price, skipping signal")
-            return active_positions
+            return capital, active_positions
 
         # Calculate total margin already locked in active positions
         total_locked_margin = sum(pos.locked_margin for pos in active_positions)
@@ -1199,21 +1355,38 @@ class ExecutionSim:
             )
         risk_result = risk_model.calculate_position(entry_context)
         if risk_result is None:
-            return active_positions
+            return capital, active_positions
+        precision = self._instrument_precision
+        position_size = risk_result.size
+        sl_price_rounded = risk_result.sl_price
+        tp_price_rounded = risk_result.tp_price
+        if precision is not None:
+            contracts = precision.asset_size_to_contracts(position_size)
+            if contracts <= 0:
+                return capital, active_positions
+            position_size = precision.contracts_to_asset_size(contracts)
+            sl_price_rounded = precision.round_price(sl_price_rounded)
+            tp_price_rounded = precision.round_price(tp_price_rounded)
+            if risk_result.is_long:
+                valid_geometry = sl_price_rounded < entry_price < tp_price_rounded
+            else:
+                valid_geometry = tp_price_rounded < entry_price < sl_price_rounded
+            if not valid_geometry:
+                return capital, active_positions
         same_side_positions = same_side_positions_before
-        aggregate_size = sum(pos.size for pos in same_side_positions) + risk_result.size
+        aggregate_size = sum(pos.size for pos in same_side_positions) + position_size
         if not leverage_is_within_size_tier(
             position_size=aggregate_size,
             leverage=risk_result.required_leverage,
             configured_max_leverage=self.max_allowed_leverage,
             tier_schedule=risk_result.maintenance_margin_tier_schedule,
         ):
-            return active_positions
+            return capital, active_positions
         aggregate_safe, aggregate_liquidation = aggregate_liquidation_is_beyond_stops(
             entries_and_stops=[
                 (pos.entry_price, pos.size, pos.sl_price) for pos in same_side_positions
             ]
-            + [(entry_price, risk_result.size, risk_result.sl_price)],
+            + [(entry_price, position_size, sl_price_rounded)],
             is_long=risk_result.is_long,
             leverage=risk_result.required_leverage,
             maintenance_margin_rate=risk_result.maintenance_margin_rate,
@@ -1222,18 +1395,18 @@ class ExecutionSim:
             maintenance_margin_tier_schedule=risk_result.maintenance_margin_tier_schedule,
         )
         if not aggregate_safe or aggregate_liquidation is None:
-            return active_positions
+            return capital, active_positions
         trail_activation_rrr = entry_ctx["trail_activation_rrr"]
         trail_distance_atr = entry_ctx["trail_distance_atr"]
         trail_activation_price: float | None = None
         trail_callback_spread: float | None = None
         if trail_activation_rrr > 0:
             if entry_trail_atr is None or pd.isna(entry_trail_atr) or entry_trail_atr <= 0:
-                return active_positions
+                return capital, active_positions
             geometry = build_native_trailing_geometry(
                 entry_price=entry_price,
-                stop_price=risk_result.sl_price,
-                take_profit_price=risk_result.tp_price,
+                stop_price=sl_price_rounded,
+                take_profit_price=tp_price_rounded,
                 is_long=risk_result.is_long,
                 activation_rrr=trail_activation_rrr,
                 distance_atr=trail_distance_atr,
@@ -1241,11 +1414,17 @@ class ExecutionSim:
             )
             trail_activation_price = geometry.activation_price
             trail_callback_spread = geometry.callback_spread
+            if precision is not None:
+                trail_activation_price = precision.round_price(trail_activation_price)
+                trail_callback_spread = precision.round_price(trail_callback_spread)
+                if trail_callback_spread <= 0:
+                    return capital, active_positions
 
-        position_value = risk_result.position_value
-        risk_value = risk_result.risk_value
+        position_value = position_size * entry_price
+        risk_value = position_size * abs(entry_price - sl_price_rounded)
         available_balance = risk_result.available_balance
-        total_locked_margin_after_entry = total_locked_margin + risk_result.locked_margin
+        locked_margin = position_value / risk_result.required_leverage
+        total_locked_margin_after_entry = total_locked_margin + locked_margin
 
         # Entry fee and exposure checks remain in the engine so that they can
         # combine risk and commission information.
@@ -1254,10 +1433,10 @@ class ExecutionSim:
 
         # Protection: fee should not be larger than risk
         if fee_entry >= risk_value * 2:
-            return active_positions
+            return capital, active_positions
 
         if net_exposure < self.min_net_exposure * available_balance:
-            return active_positions
+            return capital, active_positions
 
         if not self._can_open_position(
             position_value,
@@ -1271,22 +1450,22 @@ class ExecutionSim:
                 risk_value,
                 risk_result.sl_dist,
             )
-            return active_positions
+            return capital, active_positions
 
         new_position = Position(
             signal_time=current_time,
             entry_time=entry_time,
             entry_price=entry_price,
             risk_base_capital=risk_base_capital,
-            size=risk_result.size,
-            tp_price=risk_result.tp_price,
-            sl_price=risk_result.sl_price,
+            size=position_size,
+            tp_price=tp_price_rounded,
+            sl_price=sl_price_rounded,
             bar_opened=bar_opened,
             fee_entry=fee_entry,
             capital_before=capital,
             leverage=risk_result.required_leverage,
             is_long=risk_result.is_long,
-            locked_margin=risk_result.locked_margin,
+            locked_margin=locked_margin,
             available_balance_before=available_balance,
             open_positions_before=open_positions_before,
             total_locked_margin_before=total_locked_margin,
@@ -1308,7 +1487,7 @@ class ExecutionSim:
         for position in [*same_side_positions, new_position]:
             position.liquidation_price = aggregate_liquidation
 
-        return active_positions
+        return capital - fee_entry, active_positions
 
     def run(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -1415,9 +1594,16 @@ class ExecutionSim:
         pending_capital_sweep_amount = 0.0
         pending_capital_sweep_month: str | None = None
 
-        for i, row, next_open, current_high, current_low, trail_atr, next_time in self._iter_bars(
-            df
-        ):
+        for (
+            i,
+            row,
+            next_open,
+            current_open,
+            current_high,
+            current_low,
+            trail_atr,
+            next_time,
+        ) in self._iter_bars(df):
             if capital <= 1:
                 self._logger.warning("Capital below 1, exiting")
                 break
@@ -1436,6 +1622,7 @@ class ExecutionSim:
                 active_positions=active_positions,
                 capital=capital,
                 i=i,
+                current_open=current_open,
                 current_high=current_high,
                 current_low=current_low,
                 trail_atr=trail_atr,
@@ -1526,7 +1713,7 @@ class ExecutionSim:
                         if "trail_atr" in df.columns and not pd.isna(df.iloc[i + 1]["trail_atr"])
                         else None
                     )
-                    active_positions = self._try_open_position(
+                    capital, active_positions = self._try_open_position(
                         i=i,
                         current_time=current_time,
                         next_time=next_time,
@@ -1565,6 +1752,8 @@ class ExecutionSim:
             trade.setdefault("capital_sweep_month", pd.NA)
             trade.setdefault("banked_profit_after", banked_profit)
             trade.setdefault("trading_capital_after_sweep", capital)
+            trade["account_capital_at_end"] = capital
+            trade["account_capital_at_end_time"] = df.index[-1]
 
         return pd.DataFrame(trade_history) if trade_history else pd.DataFrame()
 
@@ -1629,6 +1818,28 @@ def _trade_metadata_from_row(row) -> dict[str, Any]:
             continue
         metadata[column] = value.item() if hasattr(value, "item") else value
     return metadata
+
+
+def _adverse_trigger_fill(
+    *,
+    trigger: float,
+    bar_open: float | None,
+    is_long: bool,
+) -> float:
+    """Apply adverse gap-through slippage to a market-triggered exit."""
+    if bar_open is None:
+        return trigger
+    return min(trigger, bar_open) if is_long else max(trigger, bar_open)
+
+
+def _adverse_exit_priority(pos: Position) -> tuple[int, float]:
+    """Process nearer same-side protective exits before deeper liquidation."""
+    protective = (
+        pos.trail_stop_price
+        if pos.trail_active and pos.trail_stop_price is not None
+        else pos.sl_price
+    )
+    return (0, -protective) if pos.is_long else (1, protective)
 
 
 def _trade_metadata_from_event(event: dict[str, Any] | None) -> dict[str, Any]:

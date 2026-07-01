@@ -6,6 +6,86 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-07-01 — Durable recovery and conservative execution parity
+
+- Added durable entry lifecycle and restart adoption of actual OKX entry
+  price, contracts, fee, liquidation, and protection by deterministic client
+  ID.
+- Kept `closing` positions managed across restart, accumulated exact close
+  fills, and retry only remaining reduce-only contracts after partial closes.
+- Made isolated leverage side-specific; sync now verifies exchange leverage,
+  isolated mode, protection, precision, and exact fill/order identity.
+- Changed H1 execution to nearer-stop-first liquidation ordering,
+  adverse-before-favorable trailing under `worst_case`, gap-open market fills,
+  per-close aggregate liquidation refresh, and conservative taker TP fees.
+- Routed periodic/startup health failures to Telegram, made parquet writes
+  atomic/refuse corrupt overwrite, and bounded H1 callbacks before REST
+  fallback.
+- Added fee/precision config parity and actual-fill stop-risk alerts. Funding
+  remains excluded by owner decision.
+- Validation: full non-hanging project test suite passes; focused changed live
+  code passes Ruff and strict mypy. New owner-run Core4 v3 canonical backtest
+  is required.
+- ADRs: added ADR-0055.
+- Files touched: `src/backtester/`, `src/crypt/`, `tests/`, `strategies/`,
+  `docs/execution/`, `docs/decisions/`, `docs/tasks/`, `.env.example`.
+
+## 2026-07-01 — Full-code live/backtest re-audit
+
+- Confirmed signal, precision, and entry-fee parity, then found incomplete
+  restart adoption for persisted entry intents and `closing` positions.
+- Found H1 path-model errors/ambiguities in stop-versus-liquidation precedence,
+  native trailing, gap fills, and same-side aggregate liquidation updates.
+- Recorded P1 gaps in side-specific leverage setup, fill recovery/identity,
+  actual-fill risk, configuration parity, health alerts, atomic parquet writes,
+  and WebSocket callback deadlines.
+- Validation: non-hanging functional suite passes; repository-wide Ruff has
+  232 findings, strict mypy has 280 errors in 24 files, and focused live
+  execution mypy passes.
+- ADRs: none.
+- Files touched: `docs/execution/`, `docs/tasks/`, `CHANGELOG.md`.
+
+## 2026-07-01 — Entry drift is alert-only
+
+- Removed the `EXECUTION_MAX_ENTRY_DRIFT_PCT` entry rejection; the setting now
+  controls only warning/Telegram sensitivity.
+- Live proceeds at market, then reports `ENTRY DRIFT [OK]` with H1 open,
+  pre-submit quote, actual fill, H1-to-fill drift, quote-to-fill drift, and
+  explicit confirmation that the entry executed.
+- Retained fail-safe closes for post-fill liquidation and leverage-tier
+  violations.
+- Validation: full execution tests excluding the known shutdown hang, focused
+  Ruff, and strict mypy pass.
+- ADRs: added ADR-0054; partially superseded ADR-0051.
+- Files touched: `src/crypt/execution/`, `tests/execution/`,
+  `docs/execution/`, `docs/decisions/`, `docs/tasks/`, `.env.example`.
+
+## 2026-07-01 — Crash-safe live execution and precision/fee parity
+
+- Persisted live entry intent before order submission and added deterministic
+  reduce-only compensation for missing trailing or unsafe post-fill state.
+- Changed TTL to confirm the market close before cancelling protection and to
+  persist confirmed close state immediately.
+- Replaced multi-position fill guessing with one-time exact identity
+  allocation; ambiguous fills remain unknown.
+- Added dated OKX SOL contract/amount/price precision to both live and
+  backtester execution, including rounded trailing geometry.
+- Debited entry fees at entry in both same-bar live sizing and the backtester;
+  final metrics now include entry fees on still-open positions.
+- Made entry-attempt Telegram delivery non-blocking and removed the CCXT
+  all-market health-check failure caused by malformed unrelated instruments.
+- Funding remains excluded by owner decision.
+- Owner-run canonical artifact `20260701_091336` produced 3,420 entries,
+  `$588,744.28` final capital, `45.17%` wins, `1.24` profit factor,
+  `-6.78%` maximum drawdown, and 144 liquidations. Signal and OHLCV artifacts
+  are byte-identical to the prior baseline, so changes are execution-only.
+- Validation: complete execution/backtester tests pass excluding one known
+  pytest shutdown hang; focused Ruff and strict mypy pass.
+- ADRs: added ADR-0053.
+- Files touched: `src/backtester/`, `src/crypt/execution/`,
+  `src/crypt/runtime/`, `strategies/archive/`, `tests/`, `docs/execution/`,
+  `docs/decisions/`, `docs/tasks/`.
+
 ## 2026-06-30 — Full live/backtest parity audit
 
 - Confirmed byte-identical signal/cache parity and shared risk, leverage,

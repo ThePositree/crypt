@@ -1,6 +1,6 @@
 {
   "name": "filtered_donor_portfolio",
-  "version": "filtered-donor-portfolio-causal-v3-core4-liqsafe-native-trailing-2026-06-29",
+  "version": "filtered-donor-portfolio-causal-v3-core4-recovery-conservative-intrabar-2026-07-01",
   "params": {
     "portfolio_id": "filtered_donor_portfolio_causal_v3_core4",
     "progress": true,
@@ -15,7 +15,8 @@
       "maintenance_margin_rate": 0.004,
       "liquidation_fee_rate": 0.0005,
       "liquidation_buffer_pct": 0.005,
-      "maintenance_margin_tier_schedule": "okx_sol_usdt_swap_2026_06_29"
+      "maintenance_margin_tier_schedule": "okx_sol_usdt_swap_2026_06_29",
+      "instrument_precision_policy": "okx_sol_usdt_swap_2026_07_01"
     },
     "filters": {
       "crypt_ensemble_h1_discovery_nr4_vwap_robust": [
@@ -113,6 +114,9 @@
     "maintenance_margin_rate": 0.004,
     "liquidation_fee_rate": 0.0005,
     "liquidation_buffer_pct": 0.005,
-    "maintenance_margin_tier_schedule": "okx_sol_usdt_swap_2026_06_29"
+    "maintenance_margin_tier_schedule": "okx_sol_usdt_swap_2026_06_29",
+    "instrument_precision_policy": "okx_sol_usdt_swap_2026_07_01",
+    "taker_fee": 0.0005,
+    "maker_fee": 0.0002
   }
 }

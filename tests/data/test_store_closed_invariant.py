@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from crypt.data.store import ParquetStore
+from crypt.data.store import ParquetStore, _read_parquet
 from crypt.models import Candle, Timeframe
 
 
@@ -98,3 +98,11 @@ class TestIngestorClosedFilter:
             store = ParquetStore(Path(tmp))
             with pytest.raises(ValueError):
                 store.save_candles([_make_candle(closed=False)])
+
+
+def test_corrupt_parquet_is_not_treated_as_missing(tmp_path: Path) -> None:
+    path = tmp_path / "corrupt.parquet"
+    path.write_bytes(b"not parquet")
+
+    with pytest.raises(RuntimeError, match="refusing to overwrite"):
+        _read_parquet(path)

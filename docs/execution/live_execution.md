@@ -72,6 +72,7 @@ Loaded from `.env` via `pydantic-settings`. All keys prefixed `EXECUTION_`.
 | `EXECUTION_RISK_BASE_PERIOD` | `monthly` | Same as backtest |
 | `EXECUTION_TAKER_FEE` | `0.0005` | 0.05% |
 | `EXECUTION_MAKER_FEE` | `0.0002` | 0.02% |
+| `EXECUTION_INSTRUMENT_PRECISION_POLICY` | `okx_sol_usdt_swap_2026_07_01` | Dated contract/amount/tick policy; must match strategy JSON |
 | `EXECUTION_MAX_CAPITAL_RISK_PCT` | `10.0` | Circuit breaker |
 | `EXECUTION_REQUIRE_EXCHANGE_SYNC` | `true` | When live money is enabled, block new entries unless OKX account state is synced |
 
@@ -144,6 +145,9 @@ At startup, live execution validates the fallback settings against the loaded
 strategy JSON `backtest_args` for all money-impacting defaults. A mismatch
 raises before any order can be placed.
 
+The validation includes maker/taker fee rates and the dated instrument
+precision policy. Environment overrides may not silently change either.
+
 If any guard fails → returns `None` (do not trade).
 
 ---
@@ -153,28 +157,28 @@ If any guard fails → returns `None` (do not trade).
 `OKXTradingClient.open_position(symbol, risk_result, dry_run) -> str | None`
 
 Steps:
-1. Set OKX isolated leverage for both long/short position sides:
+1. Set OKX isolated leverage only for the side being opened:
    ```python
    await exchange.set_leverage(
        max_leverage,
        symbol,
        {'marginMode': 'isolated', 'posSide': 'long'},
    )
-   await exchange.set_leverage(
-       max_leverage,
-       symbol,
-       {'marginMode': 'isolated', 'posSide': 'short'},
-   )
    ```
    OKX isolated leverage is side-specific in long/short position mode. Core4
-   portfolio execution uses this mode so live orders can mirror independent
-   backtester entries.
+   must never rewrite the opposite side because it may contain an open
+   position or pending order.
 2. Convert `risk_result.size` (asset units) to `contracts`:
    ```python
    market = exchange.market(ccxt_symbol)
    contracts = math.floor(risk_result.size / market['contractSize'])
    ```
-   Minimum 1 contract. If `contracts < 1` → reject (position too small).
+   Round down to the market amount step and reject below the market minimum.
+   For the dated `SOL-USDT-SWAP` metadata snapshot used by Core4 v3
+   (`okx_sol_usdt_swap_2026_07_01`), contract size is `1 SOL`, amount step and
+   minimum are `0.01 contracts`, and price tick is `0.01 USDT`. The backtester
+   applies the same policy before tier, liquidation, margin, fee, and PnL
+   calculations.
 3. `side = 'sell' if short else 'buy'`
 4. Place an idempotent market order with a stable client ID and direct OKX
    `attachAlgoOrds` structural SL. Attach the fixed TP only when it lies
@@ -211,6 +215,38 @@ Steps:
    - `callbackSpread = closed_entry_ATR14 * trail_distance_atr`.
 6. Persist the entry, fixed protection IDs, native trailing client/algo IDs,
    actual fees, liquidation geometry, and maintenance-margin tier schedule.
+   Entry fees reduce available backtest capital immediately, matching OKX cash
+   timing; closing a trade credits gross price PnL less only the exit fee.
+   Backtests charge triggered TP limits as taker because OKX may execute them
+   immediately; live reconciliation stores the actual exchange fee.
+
+### Durable order lifecycle
+
+Every entry persists an explicit lifecycle before the first exchange write:
+
+```text
+entry_intent -> entry_submitted -> entry_filled -> protected
+```
+
+Every forced/TTL close persists:
+
+```text
+open -> closing -> closed
+```
+
+On startup, deterministic client IDs are queried before side-level inference:
+
+- an unsubmitted/not-found intent with no matching exchange position is
+  cancelled locally;
+- a filled entry adopts actual order ID, average price, contracts, and fee;
+- a filled trailing entry must confirm all required protection, repair it
+  idempotently, or close reduce-only;
+- a `closing` record adopts its close fill, or retries the same deterministic
+  reduce-only close while the exchange side remains open;
+- lifecycle records are never excluded merely because their status is not
+  `open`.
+
+Recovery must converge without duplicating an entry or close.
 
 See `docs/execution/native_okx_trailing.md`.
 
@@ -243,6 +279,10 @@ Blocking mismatches:
   close/fill cannot be classified;
 - OKX account is not in long/short position mode;
 - balance or position endpoints fail while `EXECUTION_DRY_RUN=false`.
+
+Exchange order/fill identity is matched by both client ID and exchange order
+ID. Trade IDs are deduplicated. Recovery queries deterministic order IDs
+directly and does not depend only on a rolling latest-100 fill window.
 
 When a blocking mismatch exists, the executor must persist the sync report,
 log/alert it, and skip all new entries. It may still try safe risk-reducing
@@ -286,6 +326,14 @@ operator must not miss a condition that prevents entries.
 The notification contract is best-effort: failure to reach Telegram is retried
 and logged, but never changes whether an otherwise valid order is placed or
 whether state is persisted.
+
+Entry drift is alert-only (ADR-0054). A quote or actual fill farther than
+`EXECUTION_MAX_ENTRY_DRIFT_PCT` from the H1 backtest open must be logged and
+sent to Telegram after submission; it must not reject the entry. The alert
+contains the H1 open, pre-submit quote, actual fill, H1-to-fill drift, and
+quote-to-fill drift. Telegram labels it `ENTRY DRIFT [OK]` and explicitly says
+the entry executed; it is not an `EXECUTION ERROR`. Liquidation and leverage
+safety remain independent blocking checks.
 
 At each H1 tick, for each open position:
 

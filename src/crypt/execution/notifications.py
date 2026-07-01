@@ -157,6 +157,33 @@ class ExecutionTelegramNotifier:
             )
         )
 
+    async def send_entry_drift_alert(
+        self,
+        *,
+        symbol: str,
+        strategy: str,
+        h1_open: float,
+        quote: float,
+        fill: float,
+        h1_fill_drift_pct: float,
+        quote_fill_drift_pct: float,
+    ) -> None:
+        await self._send(
+            "\n".join(
+                [
+                    _title("ENTRY DRIFT", ok=True, dry_run=self._dry_run),
+                    f"{_esc(symbol)}",
+                    f"Strategy: {_esc(strategy or 'unknown')}",
+                    f"H1 open: ${h1_open:,.4f}",
+                    f"Pre-submit quote: ${quote:,.4f}",
+                    f"Actual fill: ${fill:,.4f}",
+                    f"H1-to-fill drift: {h1_fill_drift_pct:.3%}",
+                    f"Quote-to-fill drift: {quote_fill_drift_pct:.3%}",
+                    "Result: entry executed",
+                ]
+            )
+        )
+
     async def send_execution_error(self, *, context: str, detail: str) -> None:
         await self._send(
             "\n".join(

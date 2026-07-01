@@ -14,76 +14,6 @@ when finished.
 > **+15%/month** on **$10k** SOL **2025** continuous backtest after fees;
 > max **10% intra-month DD**; auto-trading only after **promote** verdict.
 
-## P0 — Make live entry/exit state crash-safe
-
-**What:** add persisted pre-submit entry intent and deterministic restart
-adoption; make TTL close preserve or restore protection until the reduce-only
-close is confirmed; compensate-close entries whose trailing or post-fill
-liquidation/tier checks fail.
-
-**Why now:** the 2026-06-30 full parity audit found windows where an OKX
-position can exist without a persisted local position, or remain open after
-its protection has been cancelled. Alerts do not make those states safe.
-
-**Expected gain:** a process crash, timeout, or one failed OKX request cannot
-leave real money unmanaged or unprotected.
-
-**Acceptance:** fault-injection tests at every post-submit boundary prove that
-restart adopts exactly one exchange position; TTL close failure retains valid
-protection; missing trailing and unsafe post-fill state produce a confirmed
-reduce-only close and reconciled local state.
-
-**Links:** `docs/execution/live_backtest_parity_audit_2026-06-30.md`,
-`src/crypt/execution/executor.py`, `src/crypt/execution/position_state.py`.
-
----
-
-## P0 — Use one exact fill allocation ledger
-
-**What:** replace side/subtype/unconditional fill matching with a consumed-fill
-ledger keyed by order/algo/client identity and allocated quantity.
-
-**Why now:** multiple same-side local trades are aggregated into one OKX
-position. If returned fills omit client IDs, the current fallback can classify
-one partial close as the close of multiple local positions.
-
-**Expected gain:** Telegram PnL, persisted trade state, protection cancellation,
-and replay remain correct under overlapping Core4 trades.
-
-**Acceptance:** tests cover two same-side positions, partial closes, missing
-optional IDs, stop/TP/trailing/TTL fills, and restart; every fill quantity is
-consumed at most once and ambiguous fills block classification rather than
-guessing.
-
-**Links:** `docs/execution/live_backtest_parity_audit_2026-06-30.md`,
-`src/crypt/execution/fill_classifier.py`.
-
----
-
-## P0 — Add exchange precision, fee timing, and funding parity
-
-**What:** make OKX amount/tick precision a shared pre-trade policy, debit entry
-fees at entry, and account for historical/live funding per position.
-
-**Why now:** the canonical backtest uses continuous sizes/prices and delays
-entry fees until close, while OKX rounds and charges immediately. Funding is
-absent from both trade ledgers even though OKX cash includes it. Therefore the
-current `$562,554` final-capital result is not yet the exact live economic
-baseline.
-
-**Expected gain:** overlapping position eligibility, capital compounding,
-reported PnL, and live sizing use the same dollars.
-
-**Acceptance:** shared-policy unit tests pass at the current roughly `$105`
-balance and at `$10,000`; funding settlement fixtures reconcile; the owner
-reruns canonical v3 and receives a new artifact whose changed figures are
-explained.
-
-**Links:** `docs/execution/live_backtest_parity_audit_2026-06-30.md`,
-`src/backtester/execution_sim.py`, `src/crypt/execution/okx_order_client.py`.
-
----
-
 ## P1 — Calibrate H1 execution and mark-price liquidation
 
 **What:** ingest mark-price candles for liquidation, measure live H1-open
@@ -97,8 +27,9 @@ on mark price. H1 last-trade OHLC cannot reproduce either exactly.
 from unavoidable exchange execution uncertainty and quantify its dollar cost.
 
 **Acceptance:** a report compares baseline against measured slippage,
-`0.1%` rejection, taker-TP, and mark-price liquidation scenarios; the chosen
-model is documented and used by both canonical tests and replay.
+historical hypothetical rejection, taker-TP, and mark-price liquidation
+scenarios; the chosen model is documented and used by both canonical tests and
+replay. Live rejection is no longer an active policy (ADR-0054).
 
 **Links:** `docs/execution/live_backtest_parity_audit_2026-06-30.md`.
 

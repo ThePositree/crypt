@@ -19,6 +19,7 @@ from typing import Any
 
 import ccxt.async_support as ccxt
 
+from backtester.instrument_precision import InstrumentPrecision
 from crypt.execution.exchange_sync import (
     ExchangeBalance,
     ExchangeOrder,
@@ -29,6 +30,8 @@ from crypt.utils.retry import retry_with_backoff
 
 _logger = logging.getLogger(__name__)
 _OKX_PENDING_ALGO_ORD_TYPES = ("conditional", "oco", "trigger", "move_order_stop")
+_FILL_CONFIRM_TIMEOUT_S = 10.0
+_FILL_CONFIRM_POLL_S = 0.25
 
 
 @dataclass(frozen=True)
@@ -298,7 +301,16 @@ class OKXTradingClient:
             )
         except Exception as exc:
             raise RuntimeError(f"failed to fetch OKX fills for {okx_symbol}") from exc
-        return [dict(item) for item in fills]
+        deduplicated: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for item in fills:
+            fill = dict(item)
+            identity = _fill_identity(fill)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            deduplicated.append(fill)
+        return deduplicated
 
     async def get_contract_size(self, okx_symbol: str) -> float:
         """Return the contract size for the symbol (e.g. 1.0 SOL per contract)."""
@@ -307,8 +319,24 @@ class OKXTradingClient:
         market = self._exchange.market(ccxt_sym)
         return float(market.get("contractSize", 1.0) or 1.0)
 
+    async def get_instrument_precision(self, okx_symbol: str) -> InstrumentPrecision:
+        """Return the live exchange precision contract for one instrument."""
+        await self._ensure_markets()
+        ccxt_sym = self._ccxt_symbol(okx_symbol)
+        market = self._exchange.market(ccxt_sym)
+        step = _market_amount_step(market)
+        price_precision = (market.get("precision") or {}).get("price")
+        if not price_precision:
+            raise RuntimeError(f"OKX returned no price precision for {okx_symbol}")
+        return InstrumentPrecision(
+            contract_size=float(market.get("contractSize", 1.0) or 1.0),
+            amount_step=step,
+            min_amount=_market_min_amount(market, step),
+            price_tick=float(price_precision),
+        )
+
     async def get_last_price(self, okx_symbol: str) -> float:
-        """Return the latest tradable last price for entry drift checks."""
+        """Return the latest tradable last price for sizing and drift measurement."""
         await self._ensure_markets()
         ccxt_sym = self._ccxt_symbol(okx_symbol)
 
@@ -352,12 +380,18 @@ class OKXTradingClient:
     # Write methods (no-ops in dry_run mode)
     # ------------------------------------------------------------------
 
-    async def set_isolated_leverage(self, okx_symbol: str, leverage: int) -> None:
+    async def set_isolated_leverage(
+        self,
+        okx_symbol: str,
+        leverage: int,
+        *,
+        is_long: bool,
+    ) -> None:
         """Set isolated margin leverage for the symbol.
 
         Must be called before placing entry orders (OKX requirement).
-        In OKX long/short position mode isolated leverage is side-specific, so
-        live execution sets both sides before opening Core4 portfolio entries.
+        In OKX long/short position mode isolated leverage is side-specific.
+        Never rewrite the opposite side because it may have a position/order.
         """
         await self._ensure_markets()
         ccxt_sym = self._ccxt_symbol(okx_symbol)
@@ -366,29 +400,29 @@ class OKXTradingClient:
             _logger.info("[DRY RUN] Would set isolated leverage %dx for %s", leverage, okx_symbol)
             return
 
-        async def _call(pos_side: str) -> None:
+        pos_side = "long" if is_long else "short"
+
+        async def _call() -> None:
             await self._exchange.set_leverage(
                 leverage,
                 ccxt_sym,
                 {"marginMode": "isolated", "posSide": pos_side},
             )
 
-        async def _call_long() -> None:
-            await _call("long")
-
-        async def _call_short() -> None:
-            await _call("short")
-
         try:
-            for pos_side, call in (("long", _call_long), ("short", _call_short)):
-                await retry_with_backoff(
-                    call,
-                    max_attempts=self._max_retries,
-                    base_delay=self._retry_base_delay,
-                    max_delay=self._retry_max_delay,
-                    label=f"set_leverage {okx_symbol} {pos_side}",
-                )
-            _logger.info("Leverage set to %dx (isolated) for %s", leverage, okx_symbol)
+            await retry_with_backoff(
+                _call,
+                max_attempts=self._max_retries,
+                base_delay=self._retry_base_delay,
+                max_delay=self._retry_max_delay,
+                label=f"set_leverage {okx_symbol} {pos_side}",
+            )
+            _logger.info(
+                "Leverage set to %dx (isolated) for %s %s",
+                leverage,
+                okx_symbol,
+                pos_side,
+            )
         except Exception as exc:
             _logger.error("set_leverage %s failed: %s", okx_symbol, exc)
             raise
@@ -599,18 +633,79 @@ class OKXTradingClient:
         *,
         okx_symbol: str,
         client_order_id: str,
+        strict: bool = False,
     ) -> dict[str, Any] | None:
         method = getattr(self._exchange, "privateGetTradeOrder", None)
         if method is None:
             return None
         try:
             response = await method({"instId": okx_symbol, "clOrdId": client_order_id})
-        except Exception:
+        except Exception as exc:
+            if strict:
+                raise RuntimeError(
+                    f"failed to query OKX order by client ID {client_order_id}"
+                ) from exc
             return None
         data = response.get("data", []) if isinstance(response, dict) else []
         if not isinstance(data, list) or not data or not isinstance(data[0], dict):
             return None
         return dict(data[0])
+
+    async def get_order_by_client_id(
+        self,
+        *,
+        okx_symbol: str,
+        client_order_id: str,
+    ) -> dict[str, Any] | None:
+        """Fetch one regular order for deterministic restart recovery."""
+        await self._ensure_markets()
+        return await self._fetch_order_by_client_id(
+            okx_symbol=okx_symbol,
+            client_order_id=client_order_id,
+            strict=True,
+        )
+
+    async def recover_entry_fill(
+        self,
+        *,
+        okx_symbol: str,
+        client_order_id: str,
+    ) -> EntryOrderResult | None:
+        """Return an already-filled entry by client ID without submitting."""
+        details = await self.get_order_by_client_id(
+            okx_symbol=okx_symbol,
+            client_order_id=client_order_id,
+        )
+        if details is None or details.get("state") not in {
+            "filled",
+            "canceled",
+            "mmp_canceled",
+        }:
+            return None
+        if (_float_or_none(details.get("accFillSz")) or 0.0) <= 0:
+            return None
+        return _entry_result_from_details(details, fallback_order_id=client_order_id)
+
+    async def recover_close_fill(
+        self,
+        *,
+        okx_symbol: str,
+        client_order_id: str,
+    ) -> CloseOrderResult | None:
+        """Return an already-filled close by client ID without submitting."""
+        details = await self.get_order_by_client_id(
+            okx_symbol=okx_symbol,
+            client_order_id=client_order_id,
+        )
+        if details is None or details.get("state") not in {
+            "filled",
+            "canceled",
+            "mmp_canceled",
+        }:
+            return None
+        if (_float_or_none(details.get("accFillSz")) or 0.0) <= 0:
+            return None
+        return _close_result_from_details(details, fallback_order_id=client_order_id)
 
     async def _confirm_entry_fill(
         self,
@@ -620,28 +715,18 @@ class OKXTradingClient:
         client_order_id: str,
     ) -> EntryOrderResult:
         details: dict[str, Any] | None = None
-        for _ in range(10):
+        deadline = asyncio.get_running_loop().time() + _FILL_CONFIRM_TIMEOUT_S
+        while asyncio.get_running_loop().time() < deadline:
             details = await self._fetch_order_by_client_id(
                 okx_symbol=okx_symbol,
                 client_order_id=client_order_id,
             )
             if details is not None and details.get("state") == "filled":
                 break
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(_FILL_CONFIRM_POLL_S)
         if details is None or details.get("state") != "filled":
             raise RuntimeError(f"entry order {order_id} was not confirmed filled by OKX")
-        average_price = _float_or_none(details.get("avgPx"))
-        filled_contracts = _float_or_none(details.get("accFillSz"))
-        if average_price is None or average_price <= 0:
-            raise RuntimeError(f"entry order {order_id} has no average fill price")
-        if filled_contracts is None or filled_contracts <= 0:
-            raise RuntimeError(f"entry order {order_id} has no filled size")
-        return EntryOrderResult(
-            order_id=order_id,
-            average_price=average_price,
-            filled_contracts=filled_contracts,
-            fee=abs(_float_or_none(details.get("fee")) or 0.0),
-        )
+        return _entry_result_from_details(details, fallback_order_id=order_id)
 
     async def close_position_at_market(
         self,
@@ -722,28 +807,18 @@ class OKXTradingClient:
         client_order_id: str,
     ) -> CloseOrderResult:
         details: dict[str, Any] | None = None
-        for _ in range(10):
+        deadline = asyncio.get_running_loop().time() + _FILL_CONFIRM_TIMEOUT_S
+        while asyncio.get_running_loop().time() < deadline:
             details = await self._fetch_order_by_client_id(
                 okx_symbol=okx_symbol,
                 client_order_id=client_order_id,
             )
             if details is not None and details.get("state") == "filled":
                 break
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(_FILL_CONFIRM_POLL_S)
         if details is None or details.get("state") != "filled":
             raise RuntimeError(f"close order {order_id} was not confirmed filled by OKX")
-        average_price = _float_or_none(details.get("avgPx"))
-        filled_contracts = _float_or_none(details.get("accFillSz"))
-        if average_price is None or average_price <= 0:
-            raise RuntimeError(f"close order {order_id} has no average fill price")
-        if filled_contracts is None or filled_contracts <= 0:
-            raise RuntimeError(f"close order {order_id} has no filled size")
-        return CloseOrderResult(
-            order_id=order_id,
-            average_price=average_price,
-            filled_contracts=filled_contracts,
-            fee=abs(_float_or_none(details.get("fee")) or 0.0),
-        )
+        return _close_result_from_details(details, fallback_order_id=order_id)
 
     async def cancel_algo_orders(self, okx_symbol: str) -> None:
         """Cancel all open algo (conditional/SL/TP) orders for the symbol.
@@ -926,6 +1001,8 @@ def _normalize_position(symbol: str, raw: dict[str, Any]) -> ExchangePosition:
     entry_price = raw.get("entryPrice") or raw.get("entry_price")
     liquidation_price = raw.get("liquidationPrice") or raw.get("liquidation_price")
     unrealized = raw.get("unrealizedPnl") or raw.get("unrealized_pnl")
+    leverage = raw.get("leverage")
+    margin_mode = raw.get("marginMode") or raw.get("margin_mode")
     return ExchangePosition(
         symbol=symbol,
         contracts=contracts,
@@ -933,6 +1010,8 @@ def _normalize_position(symbol: str, raw: dict[str, Any]) -> ExchangePosition:
         entry_price=_float_or_none(entry_price),
         liquidation_price=_float_or_none(liquidation_price),
         unrealized_pnl=_float_or_none(unrealized),
+        leverage=_float_or_none(leverage),
+        margin_mode=str(margin_mode) if margin_mode is not None else None,
         raw=dict(raw),
     )
 
@@ -965,6 +1044,63 @@ def _float_or_none(value: Any) -> float | None:
     if value is None or value == "":
         return None
     return float(value)
+
+
+def _entry_result_from_details(
+    details: dict[str, Any],
+    *,
+    fallback_order_id: str,
+) -> EntryOrderResult:
+    order_id = str(details.get("ordId") or details.get("id") or fallback_order_id)
+    average_price = _float_or_none(details.get("avgPx"))
+    filled_contracts = _float_or_none(details.get("accFillSz"))
+    if average_price is None or average_price <= 0:
+        raise RuntimeError(f"entry order {order_id} has no average fill price")
+    if filled_contracts is None or filled_contracts <= 0:
+        raise RuntimeError(f"entry order {order_id} has no filled size")
+    return EntryOrderResult(
+        order_id=order_id,
+        average_price=average_price,
+        filled_contracts=filled_contracts,
+        fee=abs(_float_or_none(details.get("fee")) or 0.0),
+    )
+
+
+def _close_result_from_details(
+    details: dict[str, Any],
+    *,
+    fallback_order_id: str,
+) -> CloseOrderResult:
+    entry = _entry_result_from_details(details, fallback_order_id=fallback_order_id)
+    return CloseOrderResult(
+        order_id=entry.order_id,
+        average_price=entry.average_price,
+        filled_contracts=entry.filled_contracts,
+        fee=entry.fee,
+    )
+
+
+def _fill_identity(fill: dict[str, Any]) -> str:
+    info = fill.get("info")
+    raw = info if isinstance(info, dict) else {}
+    for value in (
+        fill.get("id"),
+        raw.get("tradeId"),
+        raw.get("fillId"),
+    ):
+        if value not in (None, ""):
+            return f"trade:{value}"
+    return "|".join(
+        str(value)
+        for value in (
+            raw.get("ordId") or fill.get("order"),
+            fill.get("timestamp"),
+            fill.get("side"),
+            fill.get("price"),
+            fill.get("amount"),
+            raw.get("fillIdxPx"),
+        )
+    )
 
 
 def _okx_cash_balance(balance: dict[str, Any]) -> float | None:

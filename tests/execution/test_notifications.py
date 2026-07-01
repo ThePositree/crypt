@@ -135,3 +135,29 @@ async def test_entry_attempt_rejection_and_execution_error_are_sent() -> None:
     assert "insufficient margin" in bot.messages[1][1]
     assert "EXECUTION ERROR" in bot.messages[2][1]
     assert "order rejected" in bot.messages[2][1]
+
+
+@pytest.mark.asyncio
+async def test_entry_drift_message_states_that_entry_was_executed() -> None:
+    bot = _FakeBot()
+    notifier = ExecutionTelegramNotifier(
+        _bot=bot,  # type: ignore[arg-type]
+        _chat_id="chat-1",
+        _dry_run=False,
+    )
+
+    await notifier.send_entry_drift_alert(
+        symbol="SOL-USDT-SWAP",
+        strategy="smac_donor",
+        h1_open=100.0,
+        quote=100.8,
+        fill=101.0,
+        h1_fill_drift_pct=0.01,
+        quote_fill_drift_pct=0.001984,
+    )
+
+    text = bot.messages[0][1]
+    assert "ENTRY DRIFT" in text
+    assert "[OK]" in text
+    assert "H1-to-fill drift: 1.000%" in text
+    assert "Result: entry executed" in text

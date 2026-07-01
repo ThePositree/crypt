@@ -90,6 +90,7 @@ def replay_position(
         bar_number = bar_index + 1
         reason, price = sim._resolve_bar_exit(
             pos=simulated,
+            current_open=float(row.o),
             current_high=float(row.h),
             current_low=float(row.l),
             trail_atr=None,

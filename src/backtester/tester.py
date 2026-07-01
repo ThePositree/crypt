@@ -138,6 +138,7 @@ class Backtester:
         liquidation_fee_rate: float = 0.0005,
         liquidation_buffer_pct: float = 0.005,
         maintenance_margin_tier_schedule: str | None = None,
+        instrument_precision_policy: str | None = None,
         risk_free_rate_annual: float = 0.02,
     ) -> ResultsAnalyzer:
         """
@@ -236,6 +237,7 @@ class Backtester:
             ("Max Allowed Margin", max_allowed_margin),
             ("Risk Base Period", risk_base_period),
             ("Capital Sweep", capital_sweep),
+            ("Instrument Precision", instrument_precision_policy or "continuous"),
         ]:
             self._logger.info("  %s: %s", param, value)
         if max_daily_profit is not None:
@@ -274,6 +276,7 @@ class Backtester:
             liquidation_fee_rate=liquidation_fee_rate,
             liquidation_buffer_pct=liquidation_buffer_pct,
             maintenance_margin_tier_schedule=maintenance_margin_tier_schedule,
+            instrument_precision_policy=instrument_precision_policy,
         )
 
         execution_context = execution_context_from_run_kwargs(

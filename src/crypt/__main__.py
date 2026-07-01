@@ -95,7 +95,11 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-async def _heartbeat_loop(settings: Settings, stop_event: asyncio.Event) -> None:
+async def _heartbeat_loop(
+    settings: Settings,
+    stop_event: asyncio.Event,
+    execution_manager: LiveExecutionManager | None = None,
+) -> None:
     """
     Logs a liveness line every 30 minutes and re-runs the OKX health check
     every 6 hours so prolonged outages are surfaced between ticks.
@@ -115,7 +119,13 @@ async def _heartbeat_loop(settings: Settings, stop_event: asyncio.Event) -> None
 
         if elapsed_since_okx >= _OKX_HEALTH_INTERVAL_S:
             logger.info("Periodic OKX health check…")
-            await run_health_check(settings)
+            issues = await run_health_check(settings)
+            if execution_manager is not None:
+                for issue in issues:
+                    await execution_manager.notify_execution_error(
+                        context="periodic service health check",
+                        error=issue,
+                    )
             last_okx_check = now
 
 
@@ -234,7 +244,13 @@ async def _main() -> None:
     heartbeat_task: asyncio.Task[None] | None = None
 
     try:
-        await run_health_check(health_settings)
+        health_issues = await run_health_check(health_settings)
+        if exec_bundle is not None:
+            for issue in health_issues:
+                await exec_bundle[0].notify_execution_error(
+                    context="service startup health check",
+                    error=issue,
+                )
 
         # Reconcile live positions against OKX state on startup.
         if exec_bundle is not None:
@@ -255,7 +271,12 @@ async def _main() -> None:
                 h1_scheduler.start()
 
             heartbeat_task = asyncio.create_task(
-                _heartbeat_loop(health_settings, stop_event), name="heartbeat"
+                _heartbeat_loop(
+                    health_settings,
+                    stop_event,
+                    exec_bundle[0] if exec_bundle is not None else None,
+                ),
+                name="heartbeat",
             )
             # Run one tick immediately so we don't wait up to 4h / 1h on startup.
             if orchestrator is not None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -132,3 +133,27 @@ async def test_failed_websocket_callback_can_be_retried_by_rest_fallback() -> No
 
     assert calls == ["websocket", "rest_fallback"]
     assert errors == ["H1 execution callback for SOL-USDT-SWAP via websocket"]
+
+
+@pytest.mark.asyncio
+async def test_timed_out_callback_releases_boundary_for_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("crypt.runtime.h1_websocket._EXECUTION_CALLBACK_TIMEOUT_S", 0.01)
+    calls: list[str] = []
+    boundary_time = datetime(2026, 6, 30, 14, tzinfo=UTC)
+
+    async def callback(
+        _symbol: str,
+        _websocket_boundary: H1Boundary | None,
+        source: str,
+    ) -> None:
+        calls.append(source)
+        if source == "websocket":
+            await asyncio.sleep(1)
+
+    scheduler = H1WebSocketScheduler(callback, ["SOL-USDT-SWAP"])
+    await scheduler._dispatch("SOL-USDT-SWAP", boundary_time, None, "websocket")
+    await scheduler._dispatch("SOL-USDT-SWAP", boundary_time, None, "rest_fallback")
+
+    assert calls == ["websocket", "rest_fallback"]

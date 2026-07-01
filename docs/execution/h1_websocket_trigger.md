@@ -44,6 +44,10 @@ The trigger tracks each `(symbol, boundary)` in memory:
 
 Order-level event IDs remain the durable restart protection.
 
+The callback has a bounded deadline shorter than the REST fallback interval.
+If it exceeds the deadline, the in-flight marker is released, an execution
+error is sent, and the `*:02` fallback may process the boundary.
+
 ## Failure behavior
 
 - Subscription errors, malformed payloads, disconnects, or a missing confirmed

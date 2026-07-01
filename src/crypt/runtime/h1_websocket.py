@@ -16,6 +16,7 @@ from loguru import logger
 from crypt.models import Candle, Timeframe
 
 _OKX_BUSINESS_WS_URL = "wss://ws.okx.com:8443/ws/v5/business"
+_EXECUTION_CALLBACK_TIMEOUT_S = 90.0
 _CHANNEL_TO_TIMEFRAME = {
     "candle1H": Timeframe.H1,
     "candle4H": Timeframe.H4,
@@ -171,7 +172,8 @@ class H1WebSocketScheduler:
             source,
         )
         try:
-            await self._callback(symbol, payload, source)
+            async with asyncio.timeout(_EXECUTION_CALLBACK_TIMEOUT_S):
+                await self._callback(symbol, payload, source)
         except Exception as exc:
             logger.exception(
                 "H1 execution callback failed for {} boundary={} source={}",

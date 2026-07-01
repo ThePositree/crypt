@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-_SCHEMA_VERSION = 6
+_SCHEMA_VERSION = 7
 
 
 @dataclass
@@ -41,6 +41,13 @@ class LivePosition:
     ttl_bars: int
     entry_order_id: str | None
     status: Literal["open", "closing", "closed"]
+    entry_state: Literal[
+        "entry_intent",
+        "entry_submitted",
+        "entry_filled",
+        "protected",
+        "entry_aborted",
+    ] = "protected"
     event_id: str = ""
     client_order_id: str = ""
     algo_client_order_id: str = ""
@@ -73,6 +80,11 @@ class LivePosition:
     exit_reason: str | None = None
     realized_pnl: float | None = None
     exit_fee: float | None = None
+    close_filled_contracts: float = 0.0
+    close_fill_notional: float = 0.0
+    close_fee_accum: float = 0.0
+    close_attempt: int = 0
+    close_order_ids: list[str] = field(default_factory=list)
 
     @property
     def entry_dt(self) -> datetime:
@@ -136,6 +148,7 @@ class LivePosition:
             ttl_bars=ttl_bars,
             entry_order_id=entry_order_id,
             status="open",
+            entry_state="entry_intent" if entry_order_id is None else "protected",
             event_id=event_id
             or build_event_id(
                 symbol=symbol,
@@ -177,10 +190,10 @@ class ExecutionState:
     last_daily_sync_report_date: str | None = None
 
     def open_positions_for(self, symbol: str) -> list[LivePosition]:
-        return [p for p in self.positions if p.symbol == symbol and p.status == "open"]
+        return [p for p in self.positions if p.symbol == symbol and p.status != "closed"]
 
     def all_open_positions(self) -> list[LivePosition]:
-        return [p for p in self.positions if p.status == "open"]
+        return [p for p in self.positions if p.status != "closed"]
 
 
 def load_state(path: Path) -> ExecutionState:
@@ -288,6 +301,15 @@ def _migrate_state(raw: dict) -> dict:  # type: ignore[type-arg]
             pos.setdefault("trail_activation_price", None)
             pos.setdefault("trail_callback_spread", None)
             pos.setdefault("fixed_take_profit_enabled", True)
+            pos.setdefault(
+                "entry_state",
+                "protected" if pos.get("entry_order_id") else "entry_intent",
+            )
+            pos.setdefault("close_filled_contracts", 0.0)
+            pos.setdefault("close_fill_notional", 0.0)
+            pos.setdefault("close_fee_accum", 0.0)
+            pos.setdefault("close_attempt", 0)
+            pos.setdefault("close_order_ids", [])
         return raw
     return raw
 

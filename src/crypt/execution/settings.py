@@ -10,6 +10,7 @@ from pathlib import Path
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from backtester.instrument_precision import instrument_precision_from_name
 from backtester.margin_policy import OKX_SOL_USDT_SWAP_TIER_SCHEDULE
 
 
@@ -71,23 +72,28 @@ class ExecutionSettings(BaseSettings):
     maintenance_margin_tier_schedule: str | None = Field(
         default=OKX_SOL_USDT_SWAP_TIER_SCHEDULE
     )
+    instrument_precision_policy: str | None = Field(
+        default="okx_sol_usdt_swap_2026_07_01"
+    )
     risk_base_period: str = Field(default="monthly")
 
     # ── fee model (mirrors StaticPercentFeeModel defaults) ────────────────
-    taker_fee: float = Field(default=0.0005)
-    maker_fee: float = Field(default=0.0002)
+    taker_fee: float = Field(default=0.0005, ge=0.0, lt=1.0)
+    maker_fee: float = Field(default=0.0002, ge=0.0, lt=1.0)
 
     # ── safety guards ──────────────────────────────────────────────────────
     max_capital_risk_pct: float = Field(
         default=100.0,
+        ge=0.0,
+        le=100.0,
         description=(
             "Circuit breaker: skip new entries when total locked margin "
             "exceeds this percentage of available balance."
         ),
     )
-    min_net_exposure: float = Field(default=0.01)
+    min_net_exposure: float = Field(default=0.01, ge=0.0)
     max_entry_drift_pct: float = Field(default=0.001, ge=0.0, lt=1.0)
-    max_allowed_margin: float = Field(default=1.0)
+    max_allowed_margin: float = Field(default=1.0, gt=0.0)
     require_exchange_sync: bool = Field(
         default=True,
         description="Block live entries when local state does not match OKX state.",
@@ -130,4 +136,10 @@ class ExecutionSettings(BaseSettings):
         allowed = {"trade", "weekly", "monthly", "backtest"}
         if v not in allowed:
             raise ValueError(f"risk_base_period must be one of {sorted(allowed)}")
+        return v
+
+    @field_validator("instrument_precision_policy")
+    @classmethod
+    def _validate_instrument_precision_policy(cls, v: str | None) -> str | None:
+        instrument_precision_from_name(v)
         return v

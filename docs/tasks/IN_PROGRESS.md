@@ -18,8 +18,9 @@ trailing geometry, fees, fill identity, and TTL precedence.
 
 **Acceptance:**
 
-1. Completed: canonical tiered/liquidation-safe/native-trailing v3 artifact is
-   `results/core4_v3_liqsafe_native_trailing_tiered_20260629/20260629_160832/`.
+1. Superseded: precision/fee artifact
+   `results/core4_v3_precision_fee_parity_20260701/20260701_091336/` predates
+   conservative intrabar execution and is no longer canonical.
 2. Startup repairs any future H1/H4 gaps and then reports continuity clean.
 3. The next service restart logs WebSocket preparation at `HH:59:30`, an OKX
    confirmed boundary near `HH:00`, and `source=websocket`; `*:02` logs a
@@ -34,13 +35,13 @@ trailing geometry, fees, fill identity, and TTL precedence.
 order `3699121635279626240` at `73.43`, fees and PnL reconciled exactly, and the
 post-close snapshot contained zero positions/orders with clean sync.
 
-**Next action:** do not treat the current v3 backtest as execution-exact and do
-not leave live unattended. Complete the crash-safe entry/TTL/protection P0,
-then the shared precision/fee/funding P0. After those changes, the owner reruns
-canonical v3 and restarts live for the first exact trade verification.
+**Next action:** owner runs the new canonical Core4 v3 backtest and returns the
+artifact. Review dollars, drawdown, trailing exits, and liquidation count
+before restarting live. After that acceptance, start supervised live and
+verify the first completed trade. Drift remains alert-only under ADR-0054.
 
 **Links:** ADR-0049, ADR-0050, ADR-0051,
-ADR-0052,
+ADR-0052, ADR-0053, ADR-0055,
 `docs/execution/live_backtest_parity_audit_2026-06-30.md`,
 `docs/execution/liquidation_safe_leverage.md`,
 `docs/execution/native_okx_trailing.md`,

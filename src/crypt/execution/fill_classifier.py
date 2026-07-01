@@ -23,6 +23,28 @@ class ClosedPositionFill:
     filled_contracts: float = 0.0
 
 
+def allocate_closed_position_fills(
+    *,
+    positions: list[LivePosition],
+    fills: list[dict[str, Any]],
+) -> dict[str, ClosedPositionFill]:
+    """Allocate each identified fill to at most one local position."""
+    allocated: dict[str, list[dict[str, Any]]] = {
+        position.position_id: [] for position in positions
+    }
+    for fill in fills:
+        matches = [position for position in positions if _fill_matches_position(fill, position)]
+        if len(matches) == 1:
+            allocated[matches[0].position_id].append(fill)
+    return {
+        position.position_id: classify_closed_position_from_fills(
+            pos=position,
+            fills=allocated[position.position_id],
+        )
+        for position in positions
+    }
+
+
 def classify_closed_position_from_fills(
     *,
     pos: LivePosition,
@@ -31,14 +53,22 @@ def classify_closed_position_from_fills(
     """Infer close details for a position that is absent from exchange positions."""
     close_side = "sell" if pos.is_long else "buy"
     entry_time = pos.entry_dt.astimezone(UTC)
-    candidates = [
-        fill
-        for fill in fills
-        if _fill_matches_position(fill, pos)
-        and _fill_side(fill) == close_side
-        and (fill_time := _fill_time(fill)) is not None
-        and fill_time >= entry_time
-    ]
+    candidates: list[dict[str, Any]] = []
+    seen_fill_ids: set[str] = set()
+    for fill in fills:
+        fill_time = _fill_time(fill)
+        if (
+            not _fill_matches_position(fill, pos)
+            or _fill_side(fill) != close_side
+            or fill_time is None
+            or fill_time < entry_time
+        ):
+            continue
+        identity = _fill_identity(fill)
+        if identity in seen_fill_ids:
+            continue
+        seen_fill_ids.add(identity)
+        candidates.append(fill)
     if not candidates:
         return ClosedPositionFill(
             exit_time=None,
@@ -157,13 +187,39 @@ def _fill_matches_position(fill: dict[str, Any], pos: LivePosition) -> bool:
         )
         if identifier
     }
-    if expected_ids and (algo_client_id or close_client_id):
-        return str(algo_client_id or close_client_id) in expected_ids
+    expected_order_ids = {
+        identifier
+        for identifier in (
+            pos.stop_algo_order_id,
+            pos.take_profit_order_id,
+            pos.trailing_algo_order_id,
+        )
+        if identifier
+    }
+    if expected_ids or expected_order_ids:
+        observed_client_ids = {
+            str(identifier)
+            for identifier in (algo_client_id, close_client_id)
+            if identifier
+        }
+        observed_order_ids = {
+            str(identifier)
+            for identifier in (
+                raw.get("ordId"),
+                raw.get("algoId"),
+                fill.get("order"),
+            )
+            if identifier
+        }
+        return bool(
+            observed_client_ids & expected_ids
+            or observed_order_ids & expected_order_ids
+        )
 
     subtype = str(raw.get("subType") or "")
     if subtype:
         return subtype == ("5" if pos.is_long else "6")
-    return True
+    return not raw
 
 
 def _exit_reason(pos: LivePosition, exit_price: float | None) -> str:
@@ -181,6 +237,24 @@ def _exit_reason(pos: LivePosition, exit_price: float | None) -> str:
 def _near(lhs: float, rhs: float) -> bool:
     tolerance = max(abs(rhs) * _PRICE_TOLERANCE_PCT, 1e-9)
     return abs(lhs - rhs) <= tolerance
+
+
+def _fill_identity(fill: dict[str, Any]) -> str:
+    info = fill.get("info")
+    raw = info if isinstance(info, dict) else {}
+    for value in (fill.get("id"), raw.get("tradeId"), raw.get("fillId")):
+        if value not in (None, ""):
+            return f"trade:{value}"
+    return "|".join(
+        str(value)
+        for value in (
+            raw.get("ordId") or fill.get("order"),
+            fill.get("timestamp"),
+            fill.get("side"),
+            fill.get("price"),
+            fill.get("amount"),
+        )
+    )
 
 
 def _float_or_none(value: Any) -> float | None:

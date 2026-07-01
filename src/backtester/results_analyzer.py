@@ -380,6 +380,17 @@ class ResultsAnalyzer:
         closed_trades = int(len(closed_df))
         open_trades = total_entries - closed_trades
         basic = self._compute_basic_metrics(closed_df)
+        open_entry_fees = 0.0
+        if "fee_entry" in df.columns:
+            open_entry_fees = float(
+                pd.to_numeric(
+                    df.loc[df["exit_reason"].eq("open"), "fee_entry"],
+                    errors="coerce",
+                )
+                .fillna(0.0)
+                .sum()
+            )
+            basic["total_pnl_abs"] = float(basic["total_pnl_abs"]) - open_entry_fees
         period_means = self._compute_period_pnl_means(closed_df)
         exit_counts = self._compute_exit_distribution(df)
         initial_capital = float(pd.to_numeric(df["capital_before"], errors="coerce").iloc[0])
@@ -402,6 +413,36 @@ class ResultsAnalyzer:
             )
             monthly_returns_pct = self._compute_monthly_returns_pct(
                 equity_curve,
+                initial_capital,
+                closed_df,
+            )
+        ending_capital = pd.to_numeric(
+            df.get("account_capital_at_end", pd.Series(dtype=float)),
+            errors="coerce",
+        ).dropna()
+        ending_times = pd.to_datetime(
+            df.get("account_capital_at_end_time", pd.Series(dtype="datetime64[ns]")),
+            errors="coerce",
+        ).dropna()
+        if len(ending_capital) and len(ending_times):
+            final_capital = float(ending_capital.iloc[-1])
+            end_time = ending_times.iloc[-1]
+            if self.equity_curve is None:
+                self.equity_curve = pd.Series(dtype=float)
+            self.equity_curve.loc[end_time] = final_capital
+            self.equity_curve.sort_index(inplace=True)
+            total_return_pct = ((final_capital - initial_capital) / initial_capital) * 100
+            drawdown_metrics = self._compute_drawdown_metrics(
+                self.equity_curve,
+                initial_capital,
+            )
+            sharpe_ratio = self._compute_sharpe_ratio(
+                self.equity_curve,
+                initial_capital,
+                risk_free_rate_annual,
+            )
+            monthly_returns_pct = self._compute_monthly_returns_pct(
+                self.equity_curve,
                 initial_capital,
                 closed_df,
             )

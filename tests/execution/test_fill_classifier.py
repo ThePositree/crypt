@@ -4,7 +4,10 @@ from datetime import UTC, datetime
 
 import pytest
 
-from crypt.execution.fill_classifier import classify_closed_position_from_fills
+from crypt.execution.fill_classifier import (
+    allocate_closed_position_fills,
+    classify_closed_position_from_fills,
+)
 from crypt.execution.position_state import LivePosition
 
 
@@ -101,3 +104,155 @@ def test_ignores_other_position_algo_fill() -> None:
 
     assert result.exit_reason == "exchange_closed_unknown"
     assert result.exit_price is None
+
+
+def test_position_with_client_ids_does_not_guess_unidentified_fill() -> None:
+    pos = _position(is_long=True)
+    pos.algo_client_order_id = "ca-this-position"
+    pos.trailing_algo_client_order_id = "ct-this-position"
+    pos.close_client_order_id = "cx-this-position"
+
+    result = classify_closed_position_from_fills(
+        pos=pos,
+        fills=[
+            {
+                "side": "sell",
+                "timestamp": 1_782_561_600_000,
+                "price": 104.0,
+                "amount": 10.0,
+                "info": {
+                    "instId": "SOL-USDT-SWAP",
+                    "posSide": "long",
+                    "subType": "5",
+                },
+            }
+        ],
+    )
+
+    assert result.exit_reason == "exchange_closed_unknown"
+    assert result.exit_price is None
+
+
+def test_position_with_client_ids_matches_close_client_order_id() -> None:
+    pos = _position(is_long=True)
+    pos.close_client_order_id = "cx-this-position"
+
+    result = classify_closed_position_from_fills(
+        pos=pos,
+        fills=[
+            {
+                "side": "sell",
+                "timestamp": 1_782_561_600_000,
+                "price": 104.0,
+                "amount": 10.0,
+                "clientOrderId": "cx-this-position",
+                "fee": {"cost": 0.52},
+                "info": {
+                    "instId": "SOL-USDT-SWAP",
+                    "posSide": "long",
+                },
+            }
+        ],
+    )
+
+    assert result.exit_reason == "take_profit"
+    assert result.exit_price == pytest.approx(104.0)
+
+
+def test_allocator_consumes_each_fill_for_only_its_exact_position() -> None:
+    first = _position(is_long=True)
+    first.close_client_order_id = "cx-first"
+    second = _position(is_long=True)
+    second.close_client_order_id = "cx-second"
+    fills = [
+        {
+            "side": "sell",
+            "timestamp": 1_782_561_600_000,
+            "price": 104.0,
+            "amount": 4.0,
+            "clientOrderId": "cx-first",
+        },
+        {
+            "side": "sell",
+            "timestamp": 1_782_561_601_000,
+            "price": 98.0,
+            "amount": 10.0,
+            "clientOrderId": "cx-second",
+        },
+    ]
+
+    allocated = allocate_closed_position_fills(positions=[first, second], fills=fills)
+
+    assert allocated[first.position_id].filled_contracts == pytest.approx(4.0)
+    assert allocated[second.position_id].filled_contracts == pytest.approx(10.0)
+    assert allocated[first.position_id].exit_price == pytest.approx(104.0)
+    assert allocated[second.position_id].exit_price == pytest.approx(98.0)
+
+
+def test_allocator_blocks_fill_that_matches_multiple_legacy_positions() -> None:
+    first = _position(is_long=True)
+    second = _position(is_long=True)
+    ambiguous_fill = {
+        "side": "sell",
+        "timestamp": 1_782_561_600_000,
+        "price": 104.0,
+        "amount": 10.0,
+        "info": {
+            "instId": "SOL-USDT-SWAP",
+            "posSide": "long",
+            "subType": "5",
+        },
+    }
+
+    allocated = allocate_closed_position_fills(
+        positions=[first, second],
+        fills=[ambiguous_fill],
+    )
+
+    assert allocated[first.position_id].filled_contracts == 0.0
+    assert allocated[second.position_id].filled_contracts == 0.0
+
+
+def test_fill_matches_stored_exchange_algo_order_id_without_client_id() -> None:
+    pos = _position(is_long=True)
+    pos.algo_client_order_id = "ca-missing-from-fill"
+    pos.stop_algo_order_id = "algo-stop-1"
+
+    result = classify_closed_position_from_fills(
+        pos=pos,
+        fills=[
+            {
+                "id": "trade-1",
+                "order": "algo-stop-1",
+                "side": "sell",
+                "timestamp": 1_782_561_600_000,
+                "price": 98.0,
+                "amount": 10.0,
+                "info": {
+                    "instId": "SOL-USDT-SWAP",
+                    "posSide": "long",
+                    "algoId": "algo-stop-1",
+                },
+            }
+        ],
+    )
+
+    assert result.exit_price == pytest.approx(98.0)
+    assert result.filled_contracts == pytest.approx(10.0)
+
+
+def test_duplicate_trade_id_is_counted_once() -> None:
+    pos = _position(is_long=True)
+    pos.close_client_order_id = "cx-1"
+    fill = {
+        "id": "trade-duplicate",
+        "side": "sell",
+        "timestamp": 1_782_561_600_000,
+        "price": 104.0,
+        "amount": 10.0,
+        "clientOrderId": "cx-1",
+    }
+
+    result = classify_closed_position_from_fills(pos=pos, fills=[fill, dict(fill)])
+
+    assert result.filled_contracts == pytest.approx(10.0)

@@ -1,6 +1,6 @@
 # ADR-0051: WebSocket-confirmed H1 execution trigger
 
-- **Status**: accepted
+- **Status**: accepted; entry-drift rejection superseded by ADR-0054
 - **Date**: 2026-06-30
 - **Supersedes**: the fixed `*:02 UTC` primary H1 execution schedule
 
@@ -41,8 +41,10 @@ executor when H1/H4/D1 candles are complete.
   major latency source.
 - WebSocket disconnects do not stop trading permanently; the REST fallback
   still runs at `*:02`.
-- Backtester/live fill parity is improved but cannot be exact during fast moves:
-  live still uses the executable market price and retains the entry-drift guard.
+- Backtester/live fill parity is improved but cannot be exact during fast
+  moves. ADR-0054 later changed the entry-drift guard from rejection to
+  observability so live does not skip an H1 backtester trade solely due to
+  post-boundary price movement.
 
 ## References
 

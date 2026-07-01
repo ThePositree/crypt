@@ -88,7 +88,9 @@ class LiveRiskCalculator:
         if period == "trade":
             return current_capital
         if period == "backtest":
-            return state.monthly_risk_base if state.monthly_risk_base > 0 else current_capital
+            if state.monthly_risk_base <= 0:
+                state.monthly_risk_base = current_capital
+            return state.monthly_risk_base
 
         entry_time_utc = entry_time.astimezone(UTC)
         if period == "weekly":

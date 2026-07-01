@@ -29,6 +29,7 @@ class ShadowPortfolioState:
     pending_signal: PendingSignal | None = None
     previous_bar_index: int | None = None
     previous_timestamp: pd.Timestamp | None = None
+    previous_open: float | None = None
     previous_high: float | None = None
     previous_low: float | None = None
     previous_trail_atr: float | None = None
@@ -60,6 +61,7 @@ class ShadowPortfolio:
             tp_move_pct=execution.tp_move_pct,
             structural_sl_mode=execution.structural_sl_mode,
             min_tp_move_pct=execution.min_tp_move_pct,
+            instrument_precision_policy=getattr(execution, "instrument_precision_policy", None),
         )
         self.state = ShadowPortfolioState(capital=float(execution.capital))
 
@@ -82,12 +84,17 @@ class ShadowPortfolio:
                 raise ValueError("Shadow bars must be strictly increasing")
             if state.previous_bar_index is None:
                 raise RuntimeError("Shadow previous bar index is missing")
-            if state.previous_high is None or state.previous_low is None:
+            if (
+                state.previous_open is None
+                or state.previous_high is None
+                or state.previous_low is None
+            ):
                 raise RuntimeError("Shadow previous OHLC state is missing")
             state.capital, state.active_positions = self._sim._update_active_positions(
                 active_positions=state.active_positions,
                 capital=state.capital,
                 i=state.previous_bar_index,
+                current_open=float(state.previous_open),
                 current_high=float(state.previous_high),
                 current_low=float(state.previous_low),
                 trail_atr=state.previous_trail_atr,
@@ -97,7 +104,7 @@ class ShadowPortfolio:
             )
             pending = state.pending_signal
             if pending is not None:
-                state.active_positions = self._sim._try_open_position(
+                state.capital, state.active_positions = self._sim._try_open_position(
                     i=pending.bar_index,
                     current_time=pending.timestamp,
                     next_time=timestamp,
@@ -115,6 +122,7 @@ class ShadowPortfolio:
         )
         state.previous_bar_index = bar_index
         state.previous_timestamp = timestamp
+        state.previous_open = float(open_price)
         state.previous_high = float(high)
         state.previous_low = float(low)
         state.previous_trail_atr = trail_atr

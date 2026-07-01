@@ -30,6 +30,8 @@ class ExchangePosition:
     entry_price: float | None = None
     liquidation_price: float | None = None
     unrealized_pnl: float | None = None
+    leverage: float | None = None
+    margin_mode: str | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
 
@@ -131,6 +133,23 @@ def reconcile_exchange_snapshot(
                     f"position_size_mismatch:{symbol}:{side_name}:"
                     f"local={local_contracts:.8g}:exchange={exchange_contracts:.8g}"
                 )
+            exchange_leverages = {
+                pos.leverage for pos in exchange_side if pos.leverage is not None
+            }
+            if exchange_leverages and any(
+                abs(value - local_side[0].leverage) > 1e-8
+                for value in exchange_leverages
+            ):
+                blocking.append(
+                    f"position_leverage_mismatch:{symbol}:{side_name}:"
+                    f"local={local_side[0].leverage:.8g}:"
+                    f"exchange={sorted(exchange_leverages)}"
+                )
+            if any(
+                pos.margin_mode is not None and pos.margin_mode != "isolated"
+                for pos in exchange_side
+            ):
+                blocking.append(f"position_margin_mode_not_isolated:{symbol}:{side_name}")
             aggregate_size = sum(pos.size for pos in local_side)
             leverage = local_side[0].leverage
             tier_schedule = local_side[0].maintenance_margin_tier_schedule

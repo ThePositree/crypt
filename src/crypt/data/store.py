@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 
 import pandas as pd
 import pyarrow as pa
@@ -56,14 +57,19 @@ def _read_parquet(path: Path) -> pd.DataFrame | None:
     try:
         return pd.read_parquet(path)
     except Exception as exc:
-        logger.warning("Failed to read {}: {}", path, exc)
-        return None
+        logger.error("Failed to read {}: {}", path, exc)
+        raise RuntimeError(f"refusing to overwrite unreadable parquet file: {path}") from exc
 
 
 def _write_parquet(df: pd.DataFrame, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     table = pa.Table.from_pandas(df, preserve_index=False)
-    pq.write_table(table, path, compression="snappy")  # type: ignore[no-untyped-call]
+    tmp = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        pq.write_table(table, tmp, compression="snappy")  # type: ignore[no-untyped-call]
+        tmp.replace(path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def _upsert(existing: pd.DataFrame | None, new: pd.DataFrame, ts_col: str) -> pd.DataFrame:

@@ -105,15 +105,26 @@ def test_okx_to_ccxt_symbol_maps_swap_inst_id() -> None:
 
 
 @pytest.mark.asyncio
-async def test_set_isolated_leverage_sets_both_hedge_sides() -> None:
+async def test_get_instrument_precision_uses_live_market_metadata() -> None:
+    client = make_client(FakeOKXExchange())
+
+    precision = await client.get_instrument_precision("SOL-USDT-SWAP")
+
+    assert precision.contract_size == 1.0
+    assert precision.amount_step == 0.01
+    assert precision.min_amount == 0.01
+    assert precision.price_tick == 0.01
+
+
+@pytest.mark.asyncio
+async def test_set_isolated_leverage_sets_only_requested_hedge_side() -> None:
     exchange = FakeOKXExchange()
     client = make_client(exchange)
 
-    await client.set_isolated_leverage("SOL-USDT-SWAP", 25)
+    await client.set_isolated_leverage("SOL-USDT-SWAP", 25, is_long=True)
 
     assert exchange.leverage_calls == [
         (25, "SOL/USDT:USDT", {"marginMode": "isolated", "posSide": "long"}),
-        (25, "SOL/USDT:USDT", {"marginMode": "isolated", "posSide": "short"}),
     ]
 
 

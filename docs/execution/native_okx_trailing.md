@@ -61,9 +61,14 @@ after a reversal of exactly `callbackSpread`, matching OKX price-distance mode.
 H1 OHLC does not reveal tick order inside one candle. The normal intrabar
 policy remains explicit:
 
-- `worst_case`: an original stop or liquidation that is also touched wins;
-  otherwise activation/favorable extreme followed by callback is allowed;
-- `best_case`: the favorable interpretation wins.
+- `worst_case`: evaluate the adverse extreme against the stop that existed at
+  bar open before applying the favorable extreme. A trailing stop activated or
+  tightened during the bar can trigger only from a later bar. This avoids
+  assuming an unobserved favorable-then-adverse path;
+- `best_case`: activation/favorable extreme followed by callback in the same
+  bar is allowed.
+
+Gap-through exits fill at the adverse bar open.
 
 This reproduces OKX order geometry but cannot reconstruct tick-exact ordering
 from H1 candles. Exact live-trade verification therefore uses OKX algo history

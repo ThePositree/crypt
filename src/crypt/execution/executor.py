@@ -18,12 +18,13 @@ import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 
+from backtester.instrument_precision import instrument_precision_from_name
 from backtester.margin_policy import (
     aggregate_liquidation_is_beyond_stops,
     estimate_linear_liquidation_price,
     leverage_is_within_size_tier,
 )
-from backtester.trailing_policy import build_native_trailing_geometry
+from backtester.trailing_policy import NativeTrailingGeometry, build_native_trailing_geometry
 from crypt.config import Settings
 from crypt.exchange.okx import OKXClient
 from crypt.execution.exchange_sync import (
@@ -31,11 +32,15 @@ from crypt.execution.exchange_sync import (
     reconcile_exchange_snapshot,
 )
 from crypt.execution.fill_classifier import (
+    allocate_closed_position_fills,
     apply_closed_position_fill,
-    classify_closed_position_from_fills,
 )
 from crypt.execution.notifications import ExecutionTelegramNotifier
-from crypt.execution.okx_order_client import OKXTradingClient
+from crypt.execution.okx_order_client import (
+    CloseOrderResult,
+    EntryOrderResult,
+    OKXTradingClient,
+)
 from crypt.execution.position_state import (
     LivePosition,
     build_event_id,
@@ -67,6 +72,9 @@ _BACKTEST_ARG_TO_SETTING = {
     "liquidation_fee_rate": "liquidation_fee_rate",
     "liquidation_buffer_pct": "liquidation_buffer_pct",
     "maintenance_margin_tier_schedule": "maintenance_margin_tier_schedule",
+    "instrument_precision_policy": "instrument_precision_policy",
+    "taker_fee": "taker_fee",
+    "maker_fee": "maker_fee",
 }
 
 
@@ -118,6 +126,7 @@ class LiveExecutionManager:
             app_settings,
             dry_run=exec_settings.dry_run,
         )
+        self._notification_tasks: set[asyncio.Task[None]] = set()
 
     # ------------------------------------------------------------------
     # Startup
@@ -139,17 +148,24 @@ class LiveExecutionManager:
             return
 
         snapshot = await self._exchange_snapshot(self._settings.symbols)
-        self._apply_exchange_sync(snapshot=snapshot, log_summary=False)
+        snapshot = await self._recover_transitional_positions(snapshot)
+        self._bind_protection_order_ids(snapshot)
         remaining: list[LivePosition] = []
+        open_positions = [
+            position
+            for position in self._state.positions
+            if position.status == "open" and position.entry_state == "protected"
+        ]
+        fill_allocations = allocate_closed_position_fills(
+            positions=open_positions,
+            fills=snapshot.recent_fills,
+        )
         for pos in self._state.positions:
-            if pos.status != "open":
+            if pos.status != "open" or pos.entry_state != "protected":
                 remaining.append(pos)
                 continue
 
-            close_fill = classify_closed_position_from_fills(
-                pos=pos,
-                fills=snapshot.recent_fills,
-            )
+            close_fill = fill_allocations[pos.position_id]
             exact_close_detected = bool(
                 (pos.algo_client_order_id or pos.close_client_order_id)
                 and close_fill.exit_price is not None
@@ -182,6 +198,191 @@ class LiveExecutionManager:
         sync_ok = self._apply_exchange_sync(snapshot=snapshot, log_summary=True)
         await self._notify_sync_blocker(sync_ok)
         await self._notify_daily_sync_if_due(snapshot)
+        save_state(self._state, self._settings.state_path)
+
+    async def _recover_transitional_positions(
+        self,
+        snapshot: ExchangeSnapshot,
+    ) -> ExchangeSnapshot:
+        """Converge persisted entry/close transitions after a process restart."""
+        changed = False
+        for pos in self._state.positions:
+            exchange_side_open = _exchange_side_is_open(snapshot, pos)
+            if pos.status == "closing":
+                recovered_close = await self._recover_close_fill(pos)
+                if recovered_close is not None:
+                    close_complete = self._apply_confirmed_close(
+                        pos,
+                        recovered_close,
+                        reason=pos.exit_reason or "recovered_close",
+                    )
+                    if close_complete:
+                        await self._cancel_remaining_protection(pos, snapshot)
+                    elif exchange_side_open:
+                        await self._force_close_position(
+                            pos,
+                            reason=pos.exit_reason or "recovered_close",
+                        )
+                    changed = True
+                    continue
+                if exchange_side_open:
+                    logger.warning(
+                        "Restart recovery retrying close for %s position=%s",
+                        pos.symbol,
+                        pos.position_id[:8],
+                    )
+                    await self._force_close_position(
+                        pos,
+                        reason=pos.exit_reason or "recovered_close",
+                    )
+                    changed = True
+                    continue
+                pos.status = "closed"
+                pos.exit_time = pos.exit_time or datetime.now(UTC).isoformat()
+                pos.exit_reason = pos.exit_reason or "exchange_closed_unknown"
+                await self._cancel_remaining_protection(pos, snapshot)
+                changed = True
+                continue
+
+            if pos.status != "open" or pos.entry_state == "protected":
+                continue
+
+            recovered_entry = await self._recover_entry_fill(pos)
+            if recovered_entry is None:
+                order = await self._lookup_regular_order(pos)
+                if order is None and not exchange_side_open:
+                    pos.status = "closed"
+                    pos.entry_state = "entry_aborted"
+                    pos.exit_time = datetime.now(UTC).isoformat()
+                    pos.exit_reason = "entry_not_submitted"
+                    logger.warning(
+                        "Aborted unsubmitted entry intent for %s position=%s",
+                        pos.symbol,
+                        pos.position_id[:8],
+                    )
+                    changed = True
+                else:
+                    await self.notify_execution_error(
+                        context=f"recover entry for {pos.symbol} position={pos.position_id[:8]}",
+                        error="entry exists or exchange side is open but its fill is not yet recoverable",
+                    )
+                continue
+
+            await self._adopt_recovered_entry(pos, recovered_entry)
+            changed = True
+            snapshot = await self._exchange_snapshot(self._settings.symbols)
+            self._bind_protection_order_ids(snapshot)
+            missing = _missing_position_protection(pos, snapshot)
+            if "trailing" in missing:
+                try:
+                    await self._repair_native_trailing(pos)
+                    snapshot = await self._exchange_snapshot(self._settings.symbols)
+                    self._bind_protection_order_ids(snapshot)
+                    missing = _missing_position_protection(pos, snapshot)
+                except Exception as exc:
+                    logger.exception("Restart recovery could not repair native trailing")
+                    await self.notify_execution_error(
+                        context=f"repair trailing for {pos.symbol} position={pos.position_id[:8]}",
+                        error=exc,
+                    )
+            if missing:
+                await self._force_close_position(
+                    pos,
+                    reason=f"restart recovery missing protection: {','.join(missing)}",
+                )
+                snapshot = await self._exchange_snapshot(self._settings.symbols)
+            else:
+                pos.entry_state = "protected"
+                logger.warning(
+                    "Restart recovery adopted protected entry for %s position=%s order=%s",
+                    pos.symbol,
+                    pos.position_id[:8],
+                    pos.entry_order_id,
+                )
+
+        if changed:
+            save_state(self._state, self._settings.state_path)
+            snapshot = await self._exchange_snapshot(self._settings.symbols)
+        return snapshot
+
+    async def _lookup_regular_order(self, pos: LivePosition) -> dict[str, object] | None:
+        lookup = getattr(self._trading_client, "get_order_by_client_id", None)
+        if lookup is None or not pos.client_order_id:
+            return None
+        result = await lookup(
+            okx_symbol=pos.symbol,
+            client_order_id=pos.client_order_id,
+        )
+        return result if isinstance(result, dict) else None
+
+    async def _recover_entry_fill(self, pos: LivePosition) -> EntryOrderResult | None:
+        recover = getattr(self._trading_client, "recover_entry_fill", None)
+        if recover is None or not pos.client_order_id:
+            return None
+        result = await recover(
+            okx_symbol=pos.symbol,
+            client_order_id=pos.client_order_id,
+        )
+        return result if isinstance(result, EntryOrderResult) else None
+
+    async def _recover_close_fill(self, pos: LivePosition) -> CloseOrderResult | None:
+        recover = getattr(self._trading_client, "recover_close_fill", None)
+        if recover is None or not pos.close_client_order_id:
+            return None
+        result = await recover(
+            okx_symbol=pos.symbol,
+            client_order_id=pos.close_client_order_id,
+        )
+        return result if isinstance(result, CloseOrderResult) else None
+
+    async def _adopt_recovered_entry(
+        self,
+        pos: LivePosition,
+        result: EntryOrderResult,
+    ) -> None:
+        precision = await self._trading_client.get_instrument_precision(pos.symbol)
+        pos.entry_order_id = result.order_id
+        pos.entry_price = result.average_price
+        pos.contracts = result.filled_contracts
+        pos.size = result.filled_contracts * precision.contract_size
+        pos.locked_margin = pos.size * pos.entry_price / pos.leverage
+        pos.entry_fee = result.fee
+        pos.liquidation_price = estimate_linear_liquidation_price(
+            entry_price=pos.entry_price,
+            is_long=pos.is_long,
+            leverage=pos.leverage,
+            maintenance_margin_rate=pos.maintenance_margin_rate,
+            liquidation_fee_rate=pos.liquidation_fee_rate,
+        )
+        pos.entry_state = "entry_filled"
+        if pos.trail_activation_rrr > 0:
+            distance = abs(pos.entry_price - pos.sl_price)
+            activation = (
+                pos.entry_price + distance * pos.trail_activation_rrr
+                if pos.is_long
+                else pos.entry_price - distance * pos.trail_activation_rrr
+            )
+            pos.trail_activation_price = precision.round_price(activation)
+        save_state(self._state, self._settings.state_path)
+
+    async def _repair_native_trailing(self, pos: LivePosition) -> None:
+        if (
+            pos.trail_activation_price is None
+            or pos.trail_callback_spread is None
+            or pos.trail_callback_spread <= 0
+        ):
+            raise RuntimeError("persisted trailing geometry is incomplete")
+        pos.trailing_algo_order_id = (
+            await self._trading_client.place_trailing_stop(
+                okx_symbol=pos.symbol,
+                is_long=pos.is_long,
+                contracts=pos.contracts,
+                activation_price=pos.trail_activation_price,
+                callback_spread=pos.trail_callback_spread,
+                algo_client_order_id=pos.trailing_algo_client_order_id,
+            )
+            or ""
+        )
         save_state(self._state, self._settings.state_path)
 
     # ------------------------------------------------------------------
@@ -221,6 +422,7 @@ class LiveExecutionManager:
 
         # 2. Full exchange sync before trusting local state.
         snapshot = await self._exchange_snapshot(self._settings.symbols)
+        snapshot = await self._recover_transitional_positions(snapshot)
         sync_ok = self._apply_exchange_sync(snapshot=snapshot, log_summary=False)
 
         # 3. Manage open positions (TTL + fill detection)
@@ -283,15 +485,27 @@ class LiveExecutionManager:
     async def _manage_open_positions(self, symbol: str, snapshot: ExchangeSnapshot) -> None:
         """Check TTL and OKX fill status for all open positions of this symbol."""
         now = datetime.now(UTC)
+        managed_positions = [
+            pos
+            for pos in self._state.positions
+            if pos.symbol == symbol
+            and pos.status == "open"
+            and pos.entry_state == "protected"
+        ]
+        fill_allocations = allocate_closed_position_fills(
+            positions=managed_positions,
+            fills=snapshot.recent_fills,
+        )
 
         for pos in list(self._state.positions):
-            if pos.symbol != symbol or pos.status != "open":
+            if (
+                pos.symbol != symbol
+                or pos.status != "open"
+                or pos.entry_state != "protected"
+            ):
                 continue
 
-            close_fill = classify_closed_position_from_fills(
-                pos=pos,
-                fills=snapshot.recent_fills,
-            )
+            close_fill = fill_allocations[pos.position_id]
             exact_close_detected = bool(
                 (pos.algo_client_order_id or pos.close_client_order_id)
                 and close_fill.exit_price is not None
@@ -330,44 +544,51 @@ class LiveExecutionManager:
                 continue
 
     async def _close_ttl(self, pos: LivePosition) -> None:
-        """Cancel algo orders and close the position at market (TTL exit)."""
+        """Close the position at market, then cancel leftover protection."""
         try:
-            await self._trading_client.cancel_regular_order(
-                okx_symbol=pos.symbol,
-                order_id=pos.take_profit_order_id,
-            )
-            if pos.trailing_algo_client_order_id or pos.trailing_algo_order_id:
-                await self._trading_client.cancel_algo_order_for_position(
-                    okx_symbol=pos.symbol,
-                    algo_client_order_id=pos.trailing_algo_client_order_id,
-                    algo_order_id=pos.trailing_algo_order_id,
-                )
-            await self._trading_client.cancel_algo_order_for_position(
-                okx_symbol=pos.symbol,
-                algo_client_order_id=pos.algo_client_order_id,
-                algo_order_id=pos.stop_algo_order_id,
-            )
             close_client_order_id = pos.close_client_order_id or f"cx{pos.event_id}"
             pos.close_client_order_id = close_client_order_id
+            pos.status = "closing"
+            pos.exit_reason = "ttl_expired"
             save_state(self._state, self._settings.state_path)
+            remaining_contracts = max(
+                pos.contracts - pos.close_filled_contracts,
+                0.0,
+            )
             close_result = await self._trading_client.close_position_at_market(
                 okx_symbol=pos.symbol,
                 is_long=pos.is_long,
-                contracts=pos.contracts,
+                contracts=remaining_contracts,
                 client_order_id=close_client_order_id,
             )
-            pos.status = "closed"
-            pos.exit_time = datetime.now(UTC).isoformat()
-            pos.exit_reason = "ttl_expired"
             if close_result is not None:
-                pos.exit_price = close_result.average_price
-                pos.exit_fee = close_result.fee
-                gross = (
-                    (pos.exit_price - pos.entry_price) * pos.size
-                    if pos.is_long
-                    else (pos.entry_price - pos.exit_price) * pos.size
+                close_complete = self._apply_confirmed_close(
+                    pos,
+                    close_result,
+                    reason="ttl_expired",
                 )
-                pos.realized_pnl = gross - pos.entry_fee - close_result.fee
+            else:
+                pos.status = "closed"
+                pos.exit_time = datetime.now(UTC).isoformat()
+                pos.exit_reason = "ttl_expired"
+                close_complete = True
+            save_state(self._state, self._settings.state_path)
+            if not close_complete:
+                await self.notify_execution_error(
+                    context=f"partial TTL close for {pos.symbol}",
+                    error=(
+                        f"closed={pos.close_filled_contracts:.8g}/"
+                        f"{pos.contracts:.8g} contracts; recovery will retry"
+                    ),
+                )
+                return
+            if self._app_settings.okx_is_authenticated:
+                snapshot = await self._exchange_snapshot(self._settings.symbols)
+            else:
+                snapshot = ExchangeSnapshot.empty_dry_run(
+                    balance=self._state.monthly_risk_base or 10_000.0
+                )
+            await self._cancel_remaining_protection(pos, snapshot)
             logger.info(
                 "TTL close executed for position %s (%s)",
                 pos.position_id[:8],
@@ -380,7 +601,9 @@ class LiveExecutionManager:
                 pos.position_id[:8],
                 pos.symbol,
             )
-            pos.status = "open"
+            pos.status = "closing"
+            pos.exit_reason = "ttl_expired"
+            save_state(self._state, self._settings.state_path)
             await self.notify_execution_error(
                 context=f"TTL close for {pos.symbol} position={pos.position_id[:8]}",
                 error=exc,
@@ -480,26 +703,52 @@ class LiveExecutionManager:
             entry_price = await self._trading_client.get_last_price(symbol)
             drift_pct = abs(entry_price - signal_batch.next_open) / signal_batch.next_open
             if drift_pct > self._settings.max_entry_drift_pct:
-                await self._reject_signal_batch(
+                logger.warning(
+                    "ENTRY DRIFT ALERT: symbol=%s H1_open=%.4f quote=%.4f "
+                    "drift=%.3f%% threshold=%.3f%% — proceeding with entry",
                     symbol,
-                    signal_batch,
-                    reason=(
-                        f"entry drift {drift_pct:.3%} exceeds "
-                        f"{self._settings.max_entry_drift_pct:.3%}; "
-                        f"H1 open={signal_batch.next_open:.4f}, live={entry_price:.4f}"
-                    ),
+                    signal_batch.next_open,
+                    entry_price,
+                    drift_pct * 100,
+                    self._settings.max_entry_drift_pct * 100,
                 )
-                return
 
         for event in signal_batch.events:
+            position_ids_before = {item.position_id for item in self._state.positions}
             await self._try_open_event(
                 symbol=symbol,
                 event=event,
                 entry_time=entry_time,
                 entry_price=entry_price,
                 capital=capital,
-                risk_base=risk_base,
+                risk_base=(
+                    capital if self._settings.risk_base_period == "trade" else risk_base
+                ),
+                backtest_entry_price=signal_batch.next_open,
             )
+            event_id = build_event_id(
+                symbol=symbol,
+                signal_time=event.bar_time,
+                selected_strategy=event.selected_strategy,
+                is_long=event.signal == 1,
+            )
+            position = next(
+                (
+                    item
+                    for item in self._state.positions
+                    if item.event_id == event_id
+                    and item.position_id not in position_ids_before
+                ),
+                None,
+            )
+            if position is not None:
+                capital -= position.entry_fee
+                if position.status != "open":
+                    logger.warning(
+                        "Stopping same-bar entry batch after fail-safe close of event %s",
+                        event_id,
+                    )
+                    break
         if self._app_settings.okx_is_authenticated:
             post_entry_snapshot = await self._exchange_snapshot(self._settings.symbols)
             self._apply_exchange_sync(snapshot=post_entry_snapshot, log_summary=True)
@@ -513,6 +762,7 @@ class LiveExecutionManager:
         entry_price: float,
         capital: float,
         risk_base: float,
+        backtest_entry_price: float | None = None,
     ) -> None:
         """Size one Core v4 signal event and place the entry order."""
         event_id = build_event_id(
@@ -557,7 +807,77 @@ class LiveExecutionManager:
         same_side_positions = [
             position for position in open_positions if position.is_long is rr.is_long
         ]
-        aggregate_size = sum(position.size for position in same_side_positions) + rr.size
+        precision = await self._trading_client.get_instrument_precision(symbol)
+        expected_precision = instrument_precision_from_name(
+            self._settings.instrument_precision_policy
+        )
+        if expected_precision is not None and precision != expected_precision:
+            await self._notify_entry_rejected(
+                symbol,
+                event,
+                (
+                    "live OKX instrument precision differs from backtest policy: "
+                    f"live={precision!r}, backtest={expected_precision!r}"
+                ),
+            )
+            return
+        contracts = precision.asset_size_to_contracts(rr.size)
+        if contracts <= 0:
+            logger.info(
+                "Position size %.4f is below exchange min amount for %s "
+                "(contract_size=%.4f, min_contracts=%.4f) — skipping",
+                rr.size,
+                symbol,
+                precision.contract_size,
+                precision.min_amount,
+            )
+            await self._notify_entry_rejected(
+                symbol,
+                event,
+                (
+                    f"calculated size {rr.size:.4f} is below the OKX minimum "
+                    f"({precision.min_amount:.4f} contracts)"
+                ),
+            )
+            return
+        planned_size = precision.contracts_to_asset_size(contracts)
+        sl_price = precision.round_price(rr.sl_price)
+        tp_price = precision.round_price(rr.tp_price)
+        valid_geometry = (
+            sl_price < entry_price < tp_price
+            if rr.is_long
+            else tp_price < entry_price < sl_price
+        )
+        if not valid_geometry:
+            await self._notify_entry_rejected(
+                symbol,
+                event,
+                "exchange price rounding collapsed SL/entry/TP geometry",
+            )
+            return
+
+        planned_position_value = planned_size * entry_price
+        planned_risk_value = planned_size * abs(entry_price - sl_price)
+        planned_entry_fee = planned_position_value * self._settings.taker_fee
+        if planned_entry_fee >= planned_risk_value * 2:
+            await self._notify_entry_rejected(
+                symbol,
+                event,
+                "exchange-rounded entry fee is too large relative to stop risk",
+            )
+            return
+        if (
+            planned_position_value - planned_entry_fee
+            < self._settings.min_net_exposure * decision.available_balance
+        ):
+            await self._notify_entry_rejected(
+                symbol,
+                event,
+                "exchange-rounded position is below minimum net exposure",
+            )
+            return
+
+        aggregate_size = sum(position.size for position in same_side_positions) + planned_size
         if not leverage_is_within_size_tier(
             position_size=aggregate_size,
             leverage=rr.required_leverage,
@@ -578,7 +898,7 @@ class LiveExecutionManager:
                 (position.entry_price, position.size, position.sl_price)
                 for position in same_side_positions
             ]
-            + [(entry_price, rr.size, rr.sl_price)],
+            + [(entry_price, planned_size, sl_price)],
             is_long=rr.is_long,
             leverage=rr.required_leverage,
             maintenance_margin_rate=rr.maintenance_margin_rate,
@@ -592,7 +912,7 @@ class LiveExecutionManager:
                 event,
                 (
                     "OKX side-aggregated liquidation would be unsafe: "
-                    f"liq={aggregate_liquidation}, new_sl={rr.sl_price:.4f}"
+                    f"liq={aggregate_liquidation}, new_sl={sl_price:.4f}"
                 ),
             )
             return
@@ -615,32 +935,17 @@ class LiveExecutionManager:
                 )
                 return
 
-        contracts = await self._trading_client.size_asset_units_to_contracts(symbol, rr.size)
-        if contracts <= 0:
-            contract_size = await self._trading_client.get_contract_size(symbol)
-            logger.info(
-                "Position size %.4f is below exchange min amount for %s (contract_size=%.4f) — skipping",
-                rr.size,
-                symbol,
-                contract_size,
-            )
-            await self._notify_entry_rejected(
-                symbol,
-                event,
-                (
-                    f"calculated size {rr.size:.4f} is below the OKX minimum "
-                    f"(contract size {contract_size:.4f})"
-                ),
-            )
-            return
-
         # Set leverage only before opening a fresh side. OKX may reject leverage
         # changes while that side already has open positions/orders; in that
         # case the risk model has already reused the existing same-side leverage.
         leverage = int(rr.required_leverage)
         if not same_side_positions:
             try:
-                await self._trading_client.set_isolated_leverage(symbol, leverage)
+                await self._trading_client.set_isolated_leverage(
+                    symbol,
+                    leverage,
+                    is_long=rr.is_long,
+                )
             except Exception as exc:
                 logger.exception("Failed to set leverage for %s — aborting entry", symbol)
                 await self.notify_execution_error(
@@ -663,20 +968,95 @@ class LiveExecutionManager:
                 return
             trailing_geometry = build_native_trailing_geometry(
                 entry_price=entry_price,
-                stop_price=rr.sl_price,
-                take_profit_price=rr.tp_price,
+                stop_price=sl_price,
+                take_profit_price=tp_price,
                 is_long=rr.is_long,
                 activation_rrr=event.trail_activation_rrr or 0.0,
                 distance_atr=event.trail_distance_atr or 0.0,
                 entry_atr=event.trail_entry_atr,
             )
+            trailing_geometry = NativeTrailingGeometry(
+                activation_price=precision.round_price(trailing_geometry.activation_price),
+                callback_spread=precision.round_price(trailing_geometry.callback_spread),
+                fixed_take_profit_enabled=trailing_geometry.fixed_take_profit_enabled,
+            )
+            if trailing_geometry.callback_spread <= 0:
+                await self._notify_entry_rejected(
+                    symbol,
+                    event,
+                    "exchange rounding reduced trailing callback spread to zero",
+                )
+                return
+        contract_size = precision.contract_size
+        planned_locked_margin = planned_position_value / rr.required_leverage
+        planned_liquidation = estimate_linear_liquidation_price(
+            entry_price=entry_price,
+            is_long=rr.is_long,
+            leverage=rr.required_leverage,
+            maintenance_margin_rate=rr.maintenance_margin_rate,
+            liquidation_fee_rate=rr.liquidation_fee_rate,
+        )
+        if planned_liquidation is None:
+            raise RuntimeError("failed to estimate liquidation before entry submit")
+
+        new_pos = LivePosition.create(
+            symbol=symbol,
+            signal_time=event.bar_time,
+            entry_time=entry_time,
+            entry_price=entry_price,
+            sl_price=sl_price,
+            tp_price=tp_price,
+            size=planned_size,
+            contracts=contracts,
+            leverage=float(leverage),
+            locked_margin=planned_locked_margin,
+            risk_base_capital=risk_base,
+            is_long=rr.is_long,
+            ttl_bars=event.position_ttl_bars
+            if event.position_ttl_bars is not None
+            else self._settings.ttl_bars,
+            entry_order_id=None,
+            event_id=event_id,
+            client_order_id=client_order_id,
+            algo_client_order_id=algo_client_order_id,
+            entry_fee=planned_entry_fee,
+            trailing_algo_client_order_id=(
+                trailing_algo_client_order_id if trailing_geometry is not None else ""
+            ),
+            trail_activation_price=(
+                trailing_geometry.activation_price if trailing_geometry is not None else None
+            ),
+            trail_callback_spread=(
+                trailing_geometry.callback_spread if trailing_geometry is not None else None
+            ),
+            fixed_take_profit_enabled=(
+                trailing_geometry is None or trailing_geometry.fixed_take_profit_enabled
+            ),
+            selected_strategy=event.selected_strategy,
+            position_group=event.position_group,
+            signal_event=_jsonable_event(event.raw_event),
+            liquidation_price=planned_liquidation,
+            maintenance_margin_rate=rr.maintenance_margin_rate,
+            liquidation_fee_rate=rr.liquidation_fee_rate,
+            liquidation_buffer_pct=rr.liquidation_buffer_pct,
+            maintenance_margin_tier_schedule=rr.maintenance_margin_tier_schedule,
+            trail_activation_rrr=event.trail_activation_rrr or 0.0,
+            trail_distance_atr=event.trail_distance_atr or 0.0,
+        )
+        self._state.positions.append(new_pos)
+        for position in [*same_side_positions, new_pos]:
+            position.liquidation_price = aggregate_liquidation or planned_liquidation
+        save_state(self._state, self._settings.state_path)
+
         try:
+            new_pos.entry_state = "entry_submitted"
+            save_state(self._state, self._settings.state_path)
             order_result = await self._trading_client.open_position(
                 okx_symbol=symbol,
                 is_long=rr.is_long,
-                size_asset_units=rr.size,
-                sl_price=rr.sl_price,
-                tp_price=rr.tp_price,
+                size_asset_units=planned_size,
+                sl_price=sl_price,
+                tp_price=tp_price,
                 client_order_id=client_order_id,
                 algo_client_order_id=algo_client_order_id,
                 include_take_profit=(
@@ -684,21 +1064,49 @@ class LiveExecutionManager:
                 ),
             )
         except Exception as exc:
-            logger.exception("open_position failed for %s — entry aborted", symbol)
+            logger.exception(
+                "open_position failed for %s after intent was persisted — sync will reconcile",
+                symbol,
+            )
             await self.notify_execution_error(
                 context=f"place entry for {symbol} strategy={event.selected_strategy}",
                 error=exc,
             )
+            save_state(self._state, self._settings.state_path)
             return
 
         order_id = order_result.order_id if order_result is not None else None
         actual_entry_price = order_result.average_price if order_result is not None else entry_price
-        fill_drift_pct = abs(actual_entry_price - entry_price) / entry_price
+        quote_fill_drift_pct = abs(actual_entry_price - entry_price) / entry_price
+        expected_h1_open = (
+            entry_price if backtest_entry_price is None else backtest_entry_price
+        )
+        h1_fill_drift_pct = abs(actual_entry_price - expected_h1_open) / expected_h1_open
         actual_contracts = order_result.filled_contracts if order_result is not None else contracts
-        contract_size = await self._trading_client.get_contract_size(symbol)
         actual_size = actual_contracts * contract_size
         actual_position_value = actual_size * actual_entry_price
         actual_locked_margin = actual_position_value / rr.required_leverage
+        actual_stop_risk = abs(actual_entry_price - sl_price) * actual_size
+        if actual_stop_risk > rr.risk_value + 1e-8:
+            logger.warning(
+                "ACTUAL FILL RISK ABOVE PLAN: %s strategy=%s planned=%.4f actual=%.4f "
+                "entry=%.4f fill=%.4f SL=%.4f; position retained by alert-only drift policy",
+                symbol,
+                event.selected_strategy,
+                rr.risk_value,
+                actual_stop_risk,
+                entry_price,
+                actual_entry_price,
+                sl_price,
+            )
+            await self.notify_execution_error(
+                context=f"actual fill risk for {symbol} strategy={event.selected_strategy}",
+                error=(
+                    f"planned stop risk={rr.risk_value:.4f}, "
+                    f"actual stop risk={actual_stop_risk:.4f}; "
+                    "entry remains open because drift is alert-only"
+                ),
+            )
         actual_liquidation = estimate_linear_liquidation_price(
             entry_price=actual_entry_price,
             is_long=rr.is_long,
@@ -707,13 +1115,17 @@ class LiveExecutionManager:
             liquidation_fee_rate=rr.liquidation_fee_rate,
         )
         if actual_liquidation is None:
-            raise RuntimeError("failed to estimate liquidation after entry fill")
+            await self._force_close_position(
+                new_pos,
+                reason="failed to estimate liquidation after entry fill",
+            )
+            return
         actual_aggregate_safe, actual_aggregate_liquidation = aggregate_liquidation_is_beyond_stops(
             entries_and_stops=[
                 (position.entry_price, position.size, position.sl_price)
                 for position in same_side_positions
             ]
-            + [(actual_entry_price, actual_size, rr.sl_price)],
+            + [(actual_entry_price, actual_size, sl_price)],
             is_long=rr.is_long,
             leverage=rr.required_leverage,
             maintenance_margin_rate=rr.maintenance_margin_rate,
@@ -733,60 +1145,37 @@ class LiveExecutionManager:
         if trailing_geometry is not None:
             trailing_geometry = build_native_trailing_geometry(
                 entry_price=actual_entry_price,
-                stop_price=rr.sl_price,
-                take_profit_price=rr.tp_price,
+                stop_price=sl_price,
+                take_profit_price=tp_price,
                 is_long=rr.is_long,
                 activation_rrr=event.trail_activation_rrr or 0.0,
                 distance_atr=event.trail_distance_atr or 0.0,
                 entry_atr=event.trail_entry_atr or 0.0,
             )
+            trailing_geometry = NativeTrailingGeometry(
+                activation_price=precision.round_price(trailing_geometry.activation_price),
+                callback_spread=precision.round_price(trailing_geometry.callback_spread),
+                fixed_take_profit_enabled=trailing_geometry.fixed_take_profit_enabled,
+            )
 
-        # Record position in state
-        new_pos = LivePosition.create(
-            symbol=symbol,
-            signal_time=event.bar_time,
-            entry_time=entry_time,
-            entry_price=actual_entry_price,
-            sl_price=rr.sl_price,
-            tp_price=rr.tp_price,
-            size=actual_size,
-            contracts=actual_contracts,
-            leverage=float(leverage),
-            locked_margin=actual_locked_margin,
-            risk_base_capital=risk_base,
-            is_long=rr.is_long,
-            ttl_bars=event.position_ttl_bars
-            if event.position_ttl_bars is not None
-            else self._settings.ttl_bars,
-            entry_order_id=order_id,
-            event_id=event_id,
-            client_order_id=client_order_id,
-            algo_client_order_id=algo_client_order_id,
-            entry_fee=order_result.fee if order_result is not None else 0.0,
-            trailing_algo_client_order_id=(
-                trailing_algo_client_order_id if trailing_geometry is not None else ""
-            ),
-            trail_activation_price=(
-                trailing_geometry.activation_price if trailing_geometry is not None else None
-            ),
-            trail_callback_spread=(
-                trailing_geometry.callback_spread if trailing_geometry is not None else None
-            ),
-            fixed_take_profit_enabled=(
-                trailing_geometry is None or trailing_geometry.fixed_take_profit_enabled
-            ),
-            selected_strategy=event.selected_strategy,
-            position_group=event.position_group,
-            signal_event=_jsonable_event(event.raw_event),
-            liquidation_price=actual_liquidation,
-            maintenance_margin_rate=rr.maintenance_margin_rate,
-            liquidation_fee_rate=rr.liquidation_fee_rate,
-            liquidation_buffer_pct=rr.liquidation_buffer_pct,
-            maintenance_margin_tier_schedule=rr.maintenance_margin_tier_schedule,
-            trail_activation_rrr=event.trail_activation_rrr or 0.0,
-            trail_distance_atr=event.trail_distance_atr or 0.0,
+        new_pos.entry_order_id = order_id
+        new_pos.entry_state = "entry_filled"
+        new_pos.entry_price = actual_entry_price
+        new_pos.size = actual_size
+        new_pos.contracts = actual_contracts
+        new_pos.locked_margin = actual_locked_margin
+        if order_result is not None:
+            new_pos.entry_fee = order_result.fee
+        new_pos.liquidation_price = actual_liquidation
+        new_pos.trail_activation_price = (
+            trailing_geometry.activation_price if trailing_geometry is not None else None
         )
-        self._state.positions.append(new_pos)
+        new_pos.trail_callback_spread = (
+            trailing_geometry.callback_spread if trailing_geometry is not None else None
+        )
+        new_pos.fixed_take_profit_enabled = (
+            trailing_geometry is None or trailing_geometry.fixed_take_profit_enabled
+        )
         for position in [*same_side_positions, new_pos]:
             position.liquidation_price = actual_liquidation
         save_state(self._state, self._settings.state_path)
@@ -805,28 +1194,33 @@ class LiveExecutionManager:
                 )
                 save_state(self._state, self._settings.state_path)
             except Exception as exc:
+                await self._force_close_position(
+                    new_pos,
+                    reason="native trailing placement failed after entry fill",
+                )
                 await self.notify_execution_error(
                     context=f"place native trailing for {symbol} position={new_pos.position_id[:8]}",
                     error=exc,
                 )
-        await self._notify_entry_opened(new_pos)
-        if fill_drift_pct > self._settings.max_entry_drift_pct:
-            await self.notify_execution_error(
-                context=f"entry fill drift for {symbol}",
-                error=(
-                    f"quote={entry_price:.4f}, fill={actual_entry_price:.4f}, "
-                    f"drift={fill_drift_pct:.3%}"
-                ),
-            )
+                return
         if not actual_aggregate_safe:
+            await self._force_close_position(
+                new_pos,
+                reason="unsafe post-fill aggregate liquidation",
+            )
             await self.notify_execution_error(
                 context=f"unsafe post-fill liquidation for {symbol}",
                 error=(
                     f"actual entry={actual_entry_price:.4f}, "
-                    f"liq={actual_liquidation:.4f}, sl={rr.sl_price:.4f}"
+                    f"liq={actual_liquidation:.4f}, sl={sl_price:.4f}"
                 ),
             )
+            return
         if not actual_aggregate_leverage_allowed:
+            await self._force_close_position(
+                new_pos,
+                reason="unsafe post-fill leverage tier",
+            )
             await self.notify_execution_error(
                 context=f"unsafe post-fill leverage tier for {symbol}",
                 error=(
@@ -834,21 +1228,138 @@ class LiveExecutionManager:
                     f"leverage={rr.required_leverage:.0f}x"
                 ),
             )
+            return
+
+        new_pos.entry_state = "protected"
+        save_state(self._state, self._settings.state_path)
+        await self._notify_entry_opened(new_pos)
+        if h1_fill_drift_pct > self._settings.max_entry_drift_pct:
+            await self._notify_entry_drift_alert(
+                symbol=symbol,
+                event=event,
+                h1_open=expected_h1_open,
+                quote=entry_price,
+                fill=actual_entry_price,
+                h1_fill_drift_pct=h1_fill_drift_pct,
+                quote_fill_drift_pct=quote_fill_drift_pct,
+            )
 
         logger.info(
             "Position opened: %s %s %.8g contracts SL=%.4f TP=%.4f liq=%.4f "
             "margin=%.2f leverage=%.0fx strategy=%s%s",
             "LONG" if rr.is_long else "SHORT",
             symbol,
-            contracts,
-            rr.sl_price,
-            rr.tp_price,
-            rr.liquidation_price,
-            rr.locked_margin,
+            actual_contracts,
+            sl_price,
+            tp_price,
+            actual_liquidation,
+            actual_locked_margin,
             rr.required_leverage,
             event.selected_strategy,
             " [DRY RUN]" if self._settings.dry_run else "",
         )
+
+    async def _force_close_position(self, pos: LivePosition, *, reason: str) -> None:
+        """Fail-safe reduce-only close for a just-opened unsafe position."""
+        close_client_order_id = pos.close_client_order_id or f"cx{pos.event_id}"
+        pos.close_client_order_id = close_client_order_id
+        pos.status = "closing"
+        save_state(self._state, self._settings.state_path)
+        try:
+            remaining_contracts = max(
+                pos.contracts - pos.close_filled_contracts,
+                0.0,
+            )
+            close_result = await self._trading_client.close_position_at_market(
+                okx_symbol=pos.symbol,
+                is_long=pos.is_long,
+                contracts=remaining_contracts,
+                client_order_id=close_client_order_id,
+            )
+            if close_result is not None:
+                close_complete = self._apply_confirmed_close(
+                    pos,
+                    close_result,
+                    reason=reason,
+                )
+            else:
+                pos.status = "closed"
+                pos.exit_time = datetime.now(UTC).isoformat()
+                pos.exit_reason = reason
+                close_complete = True
+            if not close_complete:
+                save_state(self._state, self._settings.state_path)
+                await self.notify_execution_error(
+                    context=f"partial fail-safe close for {pos.symbol}",
+                    error=(
+                        f"closed={pos.close_filled_contracts:.8g}/"
+                        f"{pos.contracts:.8g} contracts; recovery will retry"
+                    ),
+                )
+                return
+            if self._app_settings.okx_is_authenticated:
+                snapshot = await self._exchange_snapshot(self._settings.symbols)
+            else:
+                snapshot = ExchangeSnapshot.empty_dry_run(
+                    balance=self._state.monthly_risk_base or 10_000.0
+                )
+            await self._cancel_remaining_protection(pos, snapshot)
+            save_state(self._state, self._settings.state_path)
+            logger.warning(
+                "Fail-safe close executed for %s position=%s reason=%s",
+                pos.symbol,
+                pos.position_id[:8],
+                reason,
+            )
+            await self._notify_position_closed(pos)
+        except Exception as exc:
+            pos.status = "closing"
+            pos.exit_reason = reason
+            save_state(self._state, self._settings.state_path)
+            logger.exception(
+                "Fail-safe close failed for %s position=%s reason=%s",
+                pos.symbol,
+                pos.position_id[:8],
+                reason,
+            )
+            await self.notify_execution_error(
+                context=f"fail-safe close for {pos.symbol} position={pos.position_id[:8]}",
+                error=exc,
+            )
+
+    def _apply_confirmed_close(
+        self,
+        pos: LivePosition,
+        result: CloseOrderResult,
+        *,
+        reason: str,
+    ) -> bool:
+        if result.order_id in pos.close_order_ids:
+            return pos.status == "closed"
+        remaining = max(pos.contracts - pos.close_filled_contracts, 0.0)
+        accepted_contracts = min(result.filled_contracts, remaining)
+        pos.close_order_ids.append(result.order_id)
+        pos.close_filled_contracts += accepted_contracts
+        pos.close_fill_notional += accepted_contracts * result.average_price
+        pos.close_fee_accum += result.fee
+        if pos.close_filled_contracts + 1e-8 < pos.contracts:
+            pos.status = "closing"
+            pos.exit_reason = reason
+            pos.close_attempt += 1
+            pos.close_client_order_id = f"cx{pos.event_id}r{pos.close_attempt}"
+            return False
+        pos.status = "closed"
+        pos.exit_time = datetime.now(UTC).isoformat()
+        pos.exit_reason = reason
+        pos.exit_price = pos.close_fill_notional / pos.close_filled_contracts
+        pos.exit_fee = pos.close_fee_accum
+        gross = (
+            (pos.exit_price - pos.entry_price) * pos.size
+            if pos.is_long
+            else (pos.entry_price - pos.exit_price) * pos.size
+        )
+        pos.realized_pnl = gross - pos.entry_fee - pos.exit_fee
+        return True
 
     async def _exchange_snapshot(self, symbols: list[str]) -> ExchangeSnapshot:
         if not self._app_settings.okx_is_authenticated:
@@ -951,6 +1462,7 @@ class LiveExecutionManager:
         self._state.last_daily_sync_report_date = report_date
 
     async def _notify_entry_opened(self, pos: LivePosition) -> None:
+        await self._wait_for_pending_notifications()
         notifier = getattr(self, "_notifier", None)
         if notifier is not None:
             await notifier.send_entry_opened(pos)
@@ -960,6 +1472,8 @@ class LiveExecutionManager:
         symbol: str,
         event: SignalEvent,
         entry_price: float,
+        *,
+        wait_for_delivery: bool = False,
     ) -> None:
         logger.info(
             "ENTRY ATTEMPT: symbol=%s side=%s strategy=%s signal_time=%s "
@@ -973,7 +1487,7 @@ class LiveExecutionManager:
         )
         notifier = getattr(self, "_notifier", None)
         if notifier is not None:
-            await notifier.send_entry_attempt(
+            delivery = notifier.send_entry_attempt(
                 symbol=symbol,
                 is_long=event.signal == 1,
                 strategy=event.selected_strategy,
@@ -981,6 +1495,17 @@ class LiveExecutionManager:
                 entry_price=entry_price,
                 sl_price=event.sl_price,
             )
+            if wait_for_delivery:
+                await delivery
+            else:
+                task = asyncio.create_task(delivery)
+                tasks = getattr(self, "_notification_tasks", None)
+                if tasks is None:
+                    tasks = set()
+                    self._notification_tasks = tasks
+                tasks.add(task)
+                task.add_done_callback(tasks.discard)
+                await asyncio.sleep(0)
 
     async def _notify_entry_rejected(
         self,
@@ -995,6 +1520,7 @@ class LiveExecutionManager:
             event.selected_strategy,
             reason,
         )
+        await self._wait_for_pending_notifications()
         notifier = getattr(self, "_notifier", None)
         if notifier is not None:
             await notifier.send_entry_rejected(
@@ -1002,6 +1528,45 @@ class LiveExecutionManager:
                 is_long=event.signal == 1,
                 strategy=event.selected_strategy,
                 reason=reason,
+            )
+
+    async def _wait_for_pending_notifications(self) -> None:
+        tasks: set[asyncio.Task[None]] = getattr(self, "_notification_tasks", set())
+        if tasks:
+            await asyncio.gather(*tuple(tasks), return_exceptions=True)
+
+    async def _notify_entry_drift_alert(
+        self,
+        *,
+        symbol: str,
+        event: SignalEvent,
+        h1_open: float,
+        quote: float,
+        fill: float,
+        h1_fill_drift_pct: float,
+        quote_fill_drift_pct: float,
+    ) -> None:
+        logger.warning(
+            "ENTRY DRIFT EXECUTED: symbol=%s strategy=%s H1_open=%.4f "
+            "quote=%.4f fill=%.4f H1_to_fill=%.3f%% quote_to_fill=%.3f%%",
+            symbol,
+            event.selected_strategy,
+            h1_open,
+            quote,
+            fill,
+            h1_fill_drift_pct * 100,
+            quote_fill_drift_pct * 100,
+        )
+        notifier = getattr(self, "_notifier", None)
+        if notifier is not None:
+            await notifier.send_entry_drift_alert(
+                symbol=symbol,
+                strategy=event.selected_strategy,
+                h1_open=h1_open,
+                quote=quote,
+                fill=fill,
+                h1_fill_drift_pct=h1_fill_drift_pct,
+                quote_fill_drift_pct=quote_fill_drift_pct,
             )
 
     async def _reject_signal_batch(
@@ -1012,7 +1577,12 @@ class LiveExecutionManager:
         reason: str,
     ) -> None:
         for event in signal_batch.events:
-            await self._notify_entry_attempt(symbol, event, signal_batch.next_open)
+            await self._notify_entry_attempt(
+                symbol,
+                event,
+                signal_batch.next_open,
+                wait_for_delivery=True,
+            )
             await self._notify_entry_rejected(symbol, event, reason)
 
     async def notify_execution_error(
@@ -1051,6 +1621,9 @@ class LiveExecutionManager:
         save_state(self._state, self._settings.state_path)
         await self._okx_data_client.close()
         await self._trading_client.close()
+        tasks: set[asyncio.Task[None]] = getattr(self, "_notification_tasks", set())
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
         notifier = getattr(self, "_notifier", None)
         if notifier is not None:
             await notifier.close()
@@ -1077,6 +1650,53 @@ def _price_matches(actual: float | None, expected: float) -> bool:
     if actual is None:
         return False
     return abs(actual - expected) <= max(abs(expected) * 0.001, 1e-8)
+
+
+def _exchange_side_is_open(snapshot: ExchangeSnapshot, pos: LivePosition) -> bool:
+    return any(
+        exchange_pos.symbol == pos.symbol
+        and exchange_pos.side == ("long" if pos.is_long else "short")
+        for exchange_pos in snapshot.positions
+    )
+
+
+def _missing_position_protection(
+    pos: LivePosition,
+    snapshot: ExchangeSnapshot,
+) -> list[str]:
+    algo_ids = {order.order_id for order in snapshot.algo_orders}
+    regular_ids = {order.order_id for order in snapshot.open_orders}
+    algo_client_ids = {
+        order.client_order_id for order in snapshot.algo_orders if order.client_order_id
+    }
+    stop_present = (
+        pos.stop_algo_order_id in algo_ids
+        if pos.stop_algo_order_id
+        else pos.algo_client_order_id in algo_client_ids
+    )
+    combined_tp_present = any(
+        order.client_order_id == pos.algo_client_order_id
+        and bool(order.raw.get("tpTriggerPx"))
+        for order in snapshot.algo_orders
+    )
+    tp_present = (
+        pos.take_profit_order_id in regular_ids
+        if pos.take_profit_order_id
+        else combined_tp_present
+    )
+    trailing_present = (
+        pos.trailing_algo_order_id in algo_ids
+        if pos.trailing_algo_order_id
+        else pos.trailing_algo_client_order_id in algo_client_ids
+    )
+    missing: list[str] = []
+    if not stop_present:
+        missing.append("stop")
+    if pos.fixed_take_profit_enabled and not tp_present:
+        missing.append("take_profit")
+    if pos.trail_activation_rrr > 0 and not trailing_present:
+        missing.append("trailing")
+    return missing
 
 
 def _validate_execution_settings_match_strategy(settings: ExecutionSettings) -> None:

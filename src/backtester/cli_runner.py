@@ -128,6 +128,7 @@ class BacktestArgs:
     liquidation_fee_rate: float = 0.0005
     liquidation_buffer_pct: float = 0.005
     maintenance_margin_tier_schedule: str | None = None
+    instrument_precision_policy: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "max_positions", 0)
@@ -242,6 +243,7 @@ _BACKTEST_ARG_KEYS = frozenset(
         "liquidation_fee_rate",
         "liquidation_buffer_pct",
         "maintenance_margin_tier_schedule",
+        "instrument_precision_policy",
     }
 )
 
@@ -531,6 +533,7 @@ def backtest_run_kwargs(args: BacktestArgs) -> dict[str, Any]:
         "liquidation_fee_rate": args.liquidation_fee_rate,
         "liquidation_buffer_pct": args.liquidation_buffer_pct,
         "maintenance_margin_tier_schedule": args.maintenance_margin_tier_schedule,
+        "instrument_precision_policy": args.instrument_precision_policy,
     }
 
 

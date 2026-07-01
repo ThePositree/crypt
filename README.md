@@ -860,6 +860,10 @@ The live runner loads the strategy through the same backtester registry as
 entries unless OKX balance/positions/orders are synced with
 `data/live_positions.json`. OKX must be in long/short position mode; net/one-way
 mode is blocked because Core4 v3 can hold independent long and short entries.
+Entry/close lifecycle is persisted before exchange writes. After restart the
+runner adopts actual fills and protection by deterministic client ID; partial
+reduce-only closes retain `closing` state and retry only the remaining
+contracts.
 Use `--execution-only` for trading dry-runs and trading service processes; it
 skips the legacy H4 alert monitor that prints `HOLD/conf/regime` verdicts and
 uses `EXECUTION_SYMBOLS` for startup health checks.
@@ -884,7 +888,8 @@ complete rebuild.
 Keep
 `EXECUTION_MAX_POSITIONS=0` for Core4 v3. On startup, live execution refuses to
 run if the money-impacting `EXECUTION_*` defaults diverge from the strategy
-JSON `backtest_args`. `EXECUTION_DRY_RUN_CAPITAL` lets a dry-run size entries
+JSON `backtest_args`, including maker/taker fees and
+`EXECUTION_INSTRUMENT_PRECISION_POLICY`. `EXECUTION_DRY_RUN_CAPITAL` lets a dry-run size entries
 as if the account had `$10k` while still syncing the real OKX account; it is
 ignored for live money. Switch `EXECUTION_DRY_RUN=false` only after real H1
 dry-run logs show clean sync and sane SL/TP/size output.
@@ -894,7 +899,10 @@ structural stop. For SOL live execution, `maintenance_margin_tier_schedule`
 tracks OKX isolated SWAP position tiers so larger aggregate same-side positions
 use the higher MMR and lower maximum leverage tier. Trailing donors use native
 OKX `move_order_stop` orders; the backtester uses the same fixed entry-time
-activation price and callback spread.
+activation price and callback spread. The conservative H1 model does not let a
+newly tightened trailing stop consume the earlier adverse extreme of the same
+candle, applies adverse opening gaps, and treats a nearer structural stop as
+crossed before a deeper last-price liquidation.
 Missing protection or an unsafe exchange liquidation level blocks new entries
 and is reported to Telegram every H1 cycle.
 
