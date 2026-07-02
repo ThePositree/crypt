@@ -113,6 +113,27 @@ ADR-0055 resolves the deterministic findings:
 Historical mark-price candles and measured live slippage remain empirical
 calibration work, not deterministic code defects.
 
+## 2026-07-02 minute execution resolution
+
+ADR-0056 replaces the H1-only exit approximation when complete minute data is
+configured. Strategy signals and next-H1-open entries remain unchanged.
+Historical stop, TP, and native trailing now replay sequentially on OKX
+last-trade 1m candles, while liquidation uses aligned OKX mark-price 1m
+candles. Missing or misaligned minute coverage aborts the run; there is no
+mixed-resolution fallback.
+
+Live remains faster than a closed-minute polling loop because OKX holds native
+protection continuously and liquidates from its real-time mark price. Minute
+history is therefore a backtest/replay input, not a new live execution delay.
+Tick order within one minute and actual market slippage remain irreducible
+differences.
+
+The owner artifact `20260701_141907` exposed two follow-up defects fixed on
+2026-07-02: initial capital reporting depended on exit-row order, and a
+constituent close could leave a remaining aggregate position short of the
+required liquidation buffer. Explicit initial capital/execution sequence and
+next-boundary fail-safe closure now cover both paths.
+
 The validated live signal cache remains signal-neutral: the owner-run
 39,711-bar parity run produced byte-identical CSV artifacts to canonical run
 `20260629_160832`. That result proves signal/cache parity only. It does not

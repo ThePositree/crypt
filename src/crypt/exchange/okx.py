@@ -9,6 +9,7 @@ from loguru import logger
 
 from crypt.models import (
     Candle,
+    CandlePriceType,
     FundingSnapshot,
     LongShortRatioSnapshot,
     OISnapshot,
@@ -19,6 +20,7 @@ from crypt.utils.retry import retry_with_backoff
 
 # Map our Timeframe enum values to ccxt / OKX timeframe strings.
 _TF_MAP: dict[Timeframe, str] = {
+    Timeframe.M1: "1m",
     Timeframe.M15: "15m",
     Timeframe.H1: "1h",
     Timeframe.H4: "4h",
@@ -27,6 +29,7 @@ _TF_MAP: dict[Timeframe, str] = {
 
 # Duration of each bar in seconds.
 _TF_SECONDS: dict[Timeframe, int] = {
+    Timeframe.M1: 60,
     Timeframe.M15: 15 * 60,
     Timeframe.H1: 60 * 60,
     Timeframe.H4: 4 * 60 * 60,
@@ -107,9 +110,45 @@ class OKXClient:
         limit: int = 300,
         since_ms: int | None = None,
     ) -> list[Candle]:
+        return await self._fetch_price_candles(
+            symbol=symbol,
+            timeframe=timeframe,
+            limit=limit,
+            since_ms=since_ms,
+            price_type=CandlePriceType.LAST,
+        )
+
+    async def fetch_mark_ohlcv(
+        self,
+        symbol: str,
+        timeframe: Timeframe,
+        limit: int = 100,
+        since_ms: int | None = None,
+    ) -> list[Candle]:
+        return await self._fetch_price_candles(
+            symbol=symbol,
+            timeframe=timeframe,
+            limit=limit,
+            since_ms=since_ms,
+            price_type=CandlePriceType.MARK,
+        )
+
+    async def _fetch_price_candles(
+        self,
+        *,
+        symbol: str,
+        timeframe: Timeframe,
+        limit: int,
+        since_ms: int | None,
+        price_type: CandlePriceType,
+    ) -> list[Candle]:
         tf_str = _TF_MAP[timeframe]
 
         async def _call() -> list[list[Any]]:
+            if price_type is CandlePriceType.MARK:
+                return await self._exchange.fetch_mark_ohlcv(  # type: ignore[no-any-return]
+                    symbol, tf_str, since=since_ms, limit=limit
+                )
             return await self._exchange.fetch_ohlcv(  # type: ignore[no-any-return]
                 symbol, tf_str, since=since_ms, limit=limit
             )
@@ -120,17 +159,24 @@ class OKXClient:
                 max_attempts=self._max_retries,
                 base_delay=self._retry_base_delay,
                 max_delay=self._retry_max_delay,
-                label=f"fetch_ohlcv {symbol}/{tf_str}",
+                label=f"fetch_{price_type.value}_ohlcv {symbol}/{tf_str}",
             )
         except Exception as exc:
-            logger.warning("fetch_ohlcv {}/{} failed: {}", symbol, tf_str, exc)
+            logger.warning(
+                "fetch_{}_ohlcv {}/{} failed: {}",
+                price_type.value,
+                symbol,
+                tf_str,
+                exc,
+            )
             return []
 
         now = datetime.now(tz=UTC)
         tf_seconds = _TF_SECONDS[timeframe]
         candles: list[Candle] = []
         for row in raw:
-            ts_ms, o, h, lo, c, vol = row[:6]
+            ts_ms, o, h, lo, c = row[:5]
+            vol = row[5] if price_type is CandlePriceType.LAST and len(row) > 5 else 0
             open_time = _ts_ms_to_dt(ts_ms)
             bar_close = open_time + timedelta(seconds=tf_seconds)
             # A bar is closed only when its expected end is safely in the past.
@@ -146,6 +192,7 @@ class OKXClient:
                     c=Decimal(str(c)),
                     volume=Decimal(str(vol)),
                     closed=is_closed,
+                    price_type=price_type,
                 )
             )
         return candles
@@ -159,6 +206,21 @@ class OKXClient:
     ) -> list[Candle]:
         """Fetch one page of OHLCV starting from since_ms (inclusive). Used by backfill."""
         return await self.fetch_ohlcv(symbol, timeframe, limit=limit, since_ms=since_ms)
+
+    async def fetch_mark_ohlcv_page(
+        self,
+        symbol: str,
+        timeframe: Timeframe,
+        since_ms: int,
+        limit: int = 100,
+    ) -> list[Candle]:
+        """Fetch one historical mark-price OHLCV page for backfill."""
+        return await self.fetch_mark_ohlcv(
+            symbol,
+            timeframe,
+            limit=limit,
+            since_ms=since_ms,
+        )
 
     # ------------------------------------------------------------------
     # Funding rate history

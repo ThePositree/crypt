@@ -1070,6 +1070,63 @@ async def test_restart_adopts_close_fill_from_closing_state(tmp_path: Path) -> N
 
 
 @pytest.mark.asyncio
+async def test_live_fail_safe_closes_position_after_liquidation_buffer_is_lost(
+    tmp_path: Path,
+) -> None:
+    settings = _settings(tmp_path)
+    pos = LivePosition.create(
+        symbol="SOL-USDT-SWAP",
+        signal_time=datetime(2026, 6, 29, 10, tzinfo=UTC),
+        entry_time=datetime(2026, 6, 29, 11, tzinfo=UTC),
+        entry_price=100.0,
+        sl_price=98.0,
+        tp_price=104.0,
+        size=10.0,
+        contracts=10.0,
+        leverage=25.0,
+        locked_margin=40.0,
+        risk_base_capital=10_000.0,
+        is_long=True,
+        ttl_bars=24,
+        entry_order_id="entry-unsafe",
+        selected_strategy="unsafe-buffer",
+    )
+    snapshot = ExchangeSnapshot(
+        fetched_at=datetime(2026, 6, 29, 12, tzinfo=UTC),
+        balance=ExchangeBalance(total=10_000.0, free=9_960.0, used=40.0),
+        positions=[
+            ExchangePosition(
+                symbol=pos.symbol,
+                contracts=10.0,
+                side="long",
+                liquidation_price=97.8,
+            )
+        ],
+        open_orders=[],
+        algo_orders=[],
+        recent_fills=[],
+    )
+    client = _RestartRecoveryTradingClient(snapshot)
+    manager = LiveExecutionManager.__new__(LiveExecutionManager)
+    manager._settings = settings
+    manager._app_settings = _FakeAuthenticatedAppSettings()
+    manager._trading_client = client
+    manager._notifier = _FakeNotifier()
+    manager._state = ExecutionState(
+        schema_version=7,
+        risk_window_month=None,
+        monthly_risk_base=10_000.0,
+        positions=[pos],
+    )
+
+    await manager._close_unsafe_exchange_positions(snapshot)
+
+    assert pos.status == "closed"
+    assert pos.exit_reason == "unsafe_liquidation_buffer"
+    assert len(client.closed) == 1
+
+
+@pytest.mark.asyncio
 async def test_sync_blocker_alert_is_sent_on_every_failed_sync() -> None:
     notifier = _FakeNotifier()
     manager = LiveExecutionManager.__new__(LiveExecutionManager)

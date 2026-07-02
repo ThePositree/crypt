@@ -66,6 +66,11 @@ There is **no separate annual return floor** beyond the monthly rules above.
 - If any month has **max DD > 10%** → **archive immediately** (no deep dive).
 - Months with DD ≤ 10% may still be investigated when other flags fire.
 
+Backtest summaries also report standard realized-equity peak-to-trough
+drawdown. That diagnostic does not replace the ADR-0030 monthly gate, but it
+must be shown separately so account risk is not confused with the
+below-window-start mandate metric (ADR-0057).
+
 ### 3.2 Consecutive losing months
 
 | Count | Action |

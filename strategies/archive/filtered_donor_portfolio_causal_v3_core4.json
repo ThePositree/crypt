@@ -1,6 +1,6 @@
 {
   "name": "filtered_donor_portfolio",
-  "version": "filtered-donor-portfolio-causal-v3-core4-recovery-conservative-intrabar-2026-07-01",
+  "version": "filtered-donor-portfolio-causal-v3-core4-minute-last-mark-execution-2026-07-02",
   "params": {
     "portfolio_id": "filtered_donor_portfolio_causal_v3_core4",
     "progress": true,
@@ -116,6 +116,7 @@
     "liquidation_buffer_pct": 0.005,
     "maintenance_margin_tier_schedule": "okx_sol_usdt_swap_2026_06_29",
     "instrument_precision_policy": "okx_sol_usdt_swap_2026_07_01",
+    "intrabar_execution_timeframe": "1m",
     "taker_fee": 0.0005,
     "maker_fee": 0.0002
   }

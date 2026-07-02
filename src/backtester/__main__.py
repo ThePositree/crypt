@@ -439,6 +439,7 @@ def run(
             bingx_time_zone=bingx_time_zone,
             bingx_recv_window=bingx_recv_window,
             bingx_cache_dir=bingx_cache_dir,
+            load_execution_1m=cfg.backtest_args.get("intrabar_execution_timeframe") == "1m",
         )
     except ValueError as e:
         logger.error("❌ %s", e)

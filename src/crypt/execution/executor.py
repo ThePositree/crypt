@@ -149,6 +149,7 @@ class LiveExecutionManager:
 
         snapshot = await self._exchange_snapshot(self._settings.symbols)
         snapshot = await self._recover_transitional_positions(snapshot)
+        snapshot = await self._close_unsafe_exchange_positions(snapshot)
         self._bind_protection_order_ids(snapshot)
         remaining: list[LivePosition] = []
         open_positions = [
@@ -385,6 +386,55 @@ class LiveExecutionManager:
         )
         save_state(self._state, self._settings.state_path)
 
+    async def _close_unsafe_exchange_positions(
+        self,
+        snapshot: ExchangeSnapshot,
+    ) -> ExchangeSnapshot:
+        """Fail-safe close positions whose current OKX liqPx lost its buffer."""
+        for pos in sorted(
+            self._state.positions,
+            key=lambda item: (
+                0 if item.is_long else 1,
+                -item.sl_price if item.is_long else item.sl_price,
+            ),
+        ):
+            if pos.status != "open" or pos.entry_state != "protected":
+                continue
+            exchange_pos = next(
+                (
+                    item
+                    for item in snapshot.positions
+                    if item.symbol == pos.symbol
+                    and item.side == ("long" if pos.is_long else "short")
+                ),
+                None,
+            )
+            if exchange_pos is None or exchange_pos.liquidation_price is None:
+                continue
+            buffer_distance = pos.entry_price * pos.liquidation_buffer_pct
+            safe = (
+                exchange_pos.liquidation_price
+                <= pos.sl_price - buffer_distance
+                if pos.is_long
+                else exchange_pos.liquidation_price
+                >= pos.sl_price + buffer_distance
+            )
+            if safe:
+                continue
+            await self.notify_execution_error(
+                context=f"lost liquidation buffer for {pos.symbol}",
+                error=(
+                    f"position={pos.position_id[:8]} liq={exchange_pos.liquidation_price:.8g} "
+                    f"sl={pos.sl_price:.8g}; executing reduce-only fail-safe close"
+                ),
+            )
+            await self._force_close_position(
+                pos,
+                reason="unsafe_liquidation_buffer",
+            )
+            snapshot = await self._exchange_snapshot(self._settings.symbols)
+        return snapshot
+
     # ------------------------------------------------------------------
     # Main tick
     # ------------------------------------------------------------------
@@ -429,6 +479,7 @@ class LiveExecutionManager:
         await self._manage_open_positions(symbol, snapshot=snapshot)
         if self._app_settings.okx_is_authenticated:
             snapshot = await self._exchange_snapshot(self._settings.symbols)
+            snapshot = await self._close_unsafe_exchange_positions(snapshot)
         sync_ok = self._apply_exchange_sync(snapshot=snapshot, log_summary=True)
         await self._notify_sync_blocker(sync_ok)
         await self._notify_daily_sync_if_due(snapshot)

@@ -15,10 +15,16 @@ from pydantic import BaseModel, Field
 
 
 class Timeframe(StrEnum):
+    M1 = "1m"
     M15 = "15m"
     H1 = "1h"
     H4 = "4h"
     D1 = "1d"
+
+
+class CandlePriceType(StrEnum):
+    LAST = "last"
+    MARK = "mark"
 
 
 class Regime(StrEnum):
@@ -47,6 +53,7 @@ class Candle(BaseModel):
     c: Decimal
     volume: Decimal
     closed: bool = True
+    price_type: CandlePriceType = CandlePriceType.LAST
 
 
 class FundingSnapshot(BaseModel):

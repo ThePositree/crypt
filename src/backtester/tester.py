@@ -3,7 +3,7 @@ from collections.abc import Callable
 
 import pandas as pd
 
-from backtester.data_contracts import StrategyData, StrategyInput
+from backtester.data_contracts import IntrabarExecutionData, StrategyData, StrategyInput
 from backtester.execution_context import (
     attach_execution_context,
     execution_context_from_run_kwargs,
@@ -139,6 +139,7 @@ class Backtester:
         liquidation_buffer_pct: float = 0.005,
         maintenance_margin_tier_schedule: str | None = None,
         instrument_precision_policy: str | None = None,
+        intrabar_execution_timeframe: str | None = None,
         risk_free_rate_annual: float = 0.02,
     ) -> ResultsAnalyzer:
         """
@@ -213,7 +214,8 @@ class Backtester:
         Special Cases:
         --------------
         - If strategy does not generate required columns, backtest returns empty results.
-        - If there are no trades, analyzer is still created but metrics will reflect absence of trades.
+        - If there are no trades, analyzer is still created but metrics will
+          reflect absence of trades.
         - **Supports both long (signal=1) and short (signal=-1) positions**
         Note:
         -----
@@ -238,6 +240,7 @@ class Backtester:
             ("Risk Base Period", risk_base_period),
             ("Capital Sweep", capital_sweep),
             ("Instrument Precision", instrument_precision_policy or "continuous"),
+            ("Intrabar Execution", intrabar_execution_timeframe or "primary"),
         ]:
             self._logger.info("  %s: %s", param, value)
         if max_daily_profit is not None:
@@ -277,6 +280,7 @@ class Backtester:
             liquidation_buffer_pct=liquidation_buffer_pct,
             maintenance_margin_tier_schedule=maintenance_margin_tier_schedule,
             instrument_precision_policy=instrument_precision_policy,
+            intrabar_execution_timeframe=intrabar_execution_timeframe,
         )
 
         execution_context = execution_context_from_run_kwargs(
@@ -302,7 +306,14 @@ class Backtester:
                 self._logger.error("🚨 Strategy did not generate 'sl_price' column.")
                 trades_df = pd.DataFrame()
             else:
-                trades_df = sim.run(signaled_df)
+                intrabar_data: IntrabarExecutionData | None = None
+                if intrabar_execution_timeframe is not None:
+                    if not isinstance(self.data, StrategyData):
+                        raise ValueError(
+                            "minute execution requires StrategyData from crypt-parquet"
+                        )
+                    intrabar_data = self.data.execution
+                trades_df = sim.run(signaled_df, intrabar_data=intrabar_data)
                 if trades_df.empty:
                     self._logger.warning("🚫 No trades generated for the asset.")
                 else:

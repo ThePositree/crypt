@@ -35,6 +35,9 @@ depend on an unobserved favorable within-hour price order.
 - Market-triggered gap exits fill at the adverse bar open.
 - Triggered TP limits use taker fees in historical results; live keeps actual
   exchange fees.
+- If a constituent close causes the remaining aggregate side to lose its
+  required liquidation buffer, both paths fail-safe close at the next H1
+  synchronization/open.
 
 ## Consequences
 

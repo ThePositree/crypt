@@ -27,10 +27,11 @@ from tqdm import tqdm
 from crypt.config import Settings
 from crypt.data.store import ParquetStore
 from crypt.exchange.okx import OKXClient
-from crypt.models import Timeframe
+from crypt.models import Candle, CandlePriceType, Timeframe
 
 # Milliseconds per bar for each timeframe.
 _MS_PER_BAR: dict[Timeframe, int] = {
+    Timeframe.M1: 60 * 1000,
     Timeframe.M15: 15 * 60 * 1000,
     Timeframe.H1: 60 * 60 * 1000,
     Timeframe.H4: 4 * 60 * 60 * 1000,
@@ -114,6 +115,140 @@ async def _backfill_ohlcv(
 
                 if delay_s > 0:
                     await asyncio.sleep(delay_s)
+
+
+async def _backfill_execution_1m_series(
+    client: OKXClient,
+    store: ParquetStore,
+    symbol: str,
+    from_dt: datetime,
+    to_dt: datetime,
+    page_size: int,
+    delay_s: float,
+    *,
+    mark_price: bool,
+) -> None:
+    """Backfill one complete minute execution series with monthly checkpoints."""
+    timeframe = Timeframe.M1
+    ms_per_bar = _MS_PER_BAR[timeframe]
+    start_ms = _dt_to_ms(from_dt)
+    end_ms = _dt_to_ms(to_dt)
+    total_bars = max(1, (end_ms - start_ms) // ms_per_bar)
+    price_name = "mark" if mark_price else "last"
+    desc = f"{symbol} execution/{price_name}/1m"
+    price_type = CandlePriceType.MARK if mark_price else CandlePriceType.LAST
+
+    with tqdm(total=total_bars, desc=desc, unit="bar", leave=False) as pbar:
+        cursor = start_ms
+        while cursor < end_ms:
+            cursor_dt = datetime.fromtimestamp(cursor / 1000, tz=UTC)
+            if cursor_dt.month == 12:
+                next_month = cursor_dt.replace(
+                    year=cursor_dt.year + 1,
+                    month=1,
+                    day=1,
+                    hour=0,
+                    minute=0,
+                    second=0,
+                    microsecond=0,
+                )
+            else:
+                next_month = cursor_dt.replace(
+                    month=cursor_dt.month + 1,
+                    day=1,
+                    hour=0,
+                    minute=0,
+                    second=0,
+                    microsecond=0,
+                )
+            segment_end_ms = min(_dt_to_ms(next_month), end_ms)
+            segment_end = datetime.fromtimestamp(segment_end_ms / 1000, tz=UTC)
+            if store.has_complete_minute_range(
+                symbol,
+                price_type=price_type,
+                start=cursor_dt,
+                end=segment_end,
+            ):
+                pbar.update((segment_end_ms - cursor) // ms_per_bar)
+                cursor = segment_end_ms
+                continue
+
+            buffered: list[Candle] = []
+            while cursor < segment_end_ms:
+                if mark_price:
+                    candles = await client.fetch_mark_ohlcv_page(
+                        symbol,
+                        timeframe,
+                        cursor,
+                        limit=page_size,
+                    )
+                else:
+                    candles = await client.fetch_ohlcv_page(
+                        symbol,
+                        timeframe,
+                        cursor,
+                        limit=page_size,
+                    )
+                if not candles:
+                    raise RuntimeError(
+                        f"OKX returned no {price_name} 1m data before requested end: "
+                        f"symbol={symbol} "
+                        f"cursor={datetime.fromtimestamp(cursor / 1000, tz=UTC)} "
+                        f"end={to_dt}"
+                    )
+
+                buffered.extend(
+                    candle
+                    for candle in candles
+                    if candle.closed
+                    and start_ms <= _dt_to_ms(candle.open_time) < segment_end_ms
+                )
+                last_ts_ms = _dt_to_ms(candles[-1].open_time)
+                new_cursor = last_ts_ms + ms_per_bar
+                pbar.update(
+                    max(0, min(new_cursor, segment_end_ms) - cursor) // ms_per_bar
+                )
+                if new_cursor <= cursor:
+                    raise RuntimeError(
+                        f"OKX {price_name} 1m pagination did not advance for {symbol}: "
+                        f"cursor={cursor} last={last_ts_ms}"
+                    )
+                cursor = min(new_cursor, segment_end_ms)
+                if delay_s > 0:
+                    await asyncio.sleep(delay_s)
+            store.save_candles(buffered)
+
+
+async def _backfill_execution_1m(
+    client: OKXClient,
+    store: ParquetStore,
+    symbol: str,
+    from_dt: datetime,
+    to_dt: datetime,
+    page_size: int,
+    delay_s: float,
+) -> None:
+    """Backfill last-trade and mark-price minute series used by execution replay."""
+    await _backfill_execution_1m_series(
+        client,
+        store,
+        symbol,
+        from_dt,
+        to_dt,
+        page_size,
+        delay_s,
+        mark_price=False,
+    )
+    await _backfill_execution_1m_series(
+        client,
+        store,
+        symbol,
+        from_dt,
+        to_dt,
+        page_size,
+        delay_s,
+        mark_price=True,
+    )
 
 
 async def _backfill_oi(
@@ -264,6 +399,40 @@ async def _run_backfill(
         if "ohlcv" in data_types:
             await _backfill_ohlcv(client, store, symbol, from_dt, to_dt, page_size, delay_s)
 
+        if "execution_1m" in data_types:
+            await _backfill_execution_1m(
+                client,
+                store,
+                symbol,
+                from_dt,
+                to_dt,
+                page_size,
+                delay_s,
+            )
+        else:
+            if "last_1m" in data_types:
+                await _backfill_execution_1m_series(
+                    client,
+                    store,
+                    symbol,
+                    from_dt,
+                    to_dt,
+                    page_size,
+                    delay_s,
+                    mark_price=False,
+                )
+            if "mark_1m" in data_types:
+                await _backfill_execution_1m_series(
+                    client,
+                    store,
+                    symbol,
+                    from_dt,
+                    to_dt,
+                    page_size,
+                    delay_s,
+                    mark_price=True,
+                )
+
         if "oi" in data_types:
             await _backfill_oi(client, store, symbol, from_dt, to_dt, page_size, delay_s)
 
@@ -295,7 +464,10 @@ def main() -> None:
     parser.add_argument(
         "--data-types",
         default="ohlcv,oi,ls_ratio",
-        help="Comma-separated list: ohlcv,oi,ls_ratio,taker_vol",
+        help=(
+            "Comma-separated list: ohlcv,execution_1m,last_1m,mark_1m,"
+            "oi,ls_ratio,taker_vol"
+        ),
     )
     parser.add_argument("--page-size", type=int, default=100, help="Records per API call (max 100)")
     parser.add_argument("--max-rps", type=float, default=5.0, help="Max API requests per second")
@@ -314,7 +486,15 @@ def main() -> None:
         sys.exit(1)
 
     data_types = [t.strip() for t in args.data_types.split(",") if t.strip()]
-    valid_types = {"ohlcv", "oi", "ls_ratio", "taker_vol"}
+    valid_types = {
+        "ohlcv",
+        "execution_1m",
+        "last_1m",
+        "mark_1m",
+        "oi",
+        "ls_ratio",
+        "taker_vol",
+    }
     unknown = set(data_types) - valid_types
     if unknown:
         logger.error("Unknown data types: {}. Valid: {}", unknown, valid_types)

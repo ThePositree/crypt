@@ -14,7 +14,8 @@ identity, and OKX same-side aggregation differences.
 **Expected gain:** future entries cannot silently liquidate before their stop;
 every entry/exit/error reaches Telegram; v3 live orders and the canonical
 backtester share leverage, aggregate liquidation, fixed entry-time native
-trailing geometry, fees, fill identity, and TTL precedence.
+trailing geometry, fees, fill identity, TTL precedence, and minute-resolved
+historical execution.
 
 **Acceptance:**
 
@@ -35,13 +36,40 @@ trailing geometry, fees, fill identity, and TTL precedence.
 order `3699121635279626240` at `73.43`, fees and PnL reconciled exactly, and the
 post-close snapshot contained zero positions/orders with clean sync.
 
-**Next action:** owner runs the new canonical Core4 v3 backtest and returns the
-artifact. Review dollars, drawdown, trailing exits, and liquidation count
-before restarting live. After that acceptance, start supervised live and
-verify the first completed trade. Drift remains alert-only under ADR-0054.
+**2026-07-02 v2 result:** owner artifact
+`results/core4_v3_recovery_conservative_intrabar_v2_20260702/20260702_052419/`
+is cash-consistent at `$32,956.20`, `+229.56%`, `-10.33%` drawdown, four
+`unsafe_liquidation_buffer` exits, and zero liquidations. It validates the
+conservative H1 model but is superseded as the final acceptance artifact by
+the owner's decision to add minute execution.
+
+**Minute data completed:** owner backfilled SOL last-trade and mark-price
+history for `2021-12-18` through `2026-06-30`. Both series contain 2,383,200
+continuous rows. All H1 high/low/close aggregates match. Eight OKX H1 opens
+differ from the first 1m open by at most `$0.06`; both opens remain inside the
+same exact hourly range, so H1 remains the modeled entry and 1m starts the
+subsequent path.
+
+**Canonical minute result:** owner artifact
+`results/core4_v3_minute_last_mark_20260702/20260702_102019/` is execution-
+reconciled at `$25,100.59`, `+151.01%`, `-9.20%` below-start drawdown,
+`-42.54%` peak-to-trough drawdown, 3,422 entries, eight mark-price
+liquidations, two liquidation-buffer fail-safe exits, and exact cash
+reconciliation. Signals and H1 OHLCV remain byte-identical to H1 v2.
+
+**Risk verdict:** the strategy fails the owner mandate. The 2025 slice is
+`discard`: five monthly drawdown breaches, worst monthly below-start drawdown
+`-19.68%`, and only five of twelve months pass the 15% floor. Across the full
+artifact the worst monthly below-start drawdown is `-49.53%`.
+
+**Next action:** owner decision is required: either knowingly continue a
+supervised small-balance live experiment despite the failed mandate and
+`-42.54%` historical peak loss, or keep live stopped and return to strategy
+risk reduction. Historical 1m data remains backtest/replay-only; live uses
+continuous native OKX protection and real-time mark-price liquidation.
 
 **Links:** ADR-0049, ADR-0050, ADR-0051,
-ADR-0052, ADR-0053, ADR-0055,
+ADR-0052, ADR-0053, ADR-0055, ADR-0056,
 `docs/execution/live_backtest_parity_audit_2026-06-30.md`,
 `docs/execution/liquidation_safe_leverage.md`,
 `docs/execution/native_okx_trailing.md`,

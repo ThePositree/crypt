@@ -80,6 +80,53 @@ def test_generate_counts_open_entries_but_excludes_them_from_realized_metrics():
     assert diag[("margin", "all", "peak_locked_margin")] == 350.0
 
 
+def test_generate_uses_declared_initial_capital_when_exit_rows_are_reordered():
+    df = _trades_df(
+        [
+            {
+                "execution_sequence": 1,
+                "account_initial_capital": 1000.0,
+                "account_capital_at_end": 1015.0,
+                "account_capital_at_end_time": "2026-01-01 04:00:00",
+                "entry_time": "2026-01-01 01:00:00",
+                "exit_time": "2026-01-01 04:00:00",
+                "entry_price": 100.0,
+                "exit_price": 101.0,
+                "pnl_abs": 5.0,
+                "pnl_rel": 0.05,
+                "exit_reason": "stop_loss",
+                "capital_before": 998.0,
+                "capital_after": 1015.0,
+                "holding_bars": 3,
+                "is_long": True,
+            },
+            {
+                "execution_sequence": 0,
+                "account_initial_capital": 1000.0,
+                "account_capital_at_end": 1015.0,
+                "account_capital_at_end_time": "2026-01-01 04:00:00",
+                "entry_time": "2026-01-01 00:00:00",
+                "exit_time": "2026-01-01 04:00:00",
+                "entry_price": 100.0,
+                "exit_price": 101.0,
+                "pnl_abs": 10.0,
+                "pnl_rel": 0.1,
+                "exit_reason": "take_profit",
+                "capital_before": 1000.0,
+                "capital_after": 1010.0,
+                "holding_bars": 4,
+                "is_long": True,
+            },
+        ]
+    )
+
+    metrics = ResultsAnalyzer(df).generate()
+
+    assert metrics["initial_capital"] == 1000.0
+    assert metrics["final_capital"] == 1015.0
+    assert metrics["total_return_pct"] == 1.5
+
+
 def test_export_no_trades_preserves_metrics_and_signal_diagnostics(tmp_path):
     signals = pd.DataFrame(
         {
@@ -274,6 +321,7 @@ def test_generate_profit_factor_inf_when_no_losses():
     assert m["win_rate"] == 100.0
     assert m["profit_factor"] == "inf"
     assert m["max_drawdown"] == 0.0
+    assert m["peak_to_trough_drawdown"] == 0.0
 
 
 def test_generate_long_short_metrics_have_expected_shape():

@@ -87,7 +87,18 @@ class ResultsAnalyzer:
         df = self.trades.copy()
         df["exit_time"] = pd.to_datetime(df["exit_time"], errors="coerce")
         df["entry_time"] = pd.to_datetime(df["entry_time"])
-        df.sort_values("exit_time", inplace=True)
+        if "execution_sequence" in df.columns:
+            sequence = pd.to_numeric(df["execution_sequence"], errors="coerce")
+        else:
+            sequence = pd.Series(range(len(df)), index=df.index, dtype=float)
+        df["_execution_sequence"] = sequence.fillna(
+            pd.Series(range(len(df)), index=df.index, dtype=float)
+        )
+        df.sort_values(
+            ["exit_time", "_execution_sequence"],
+            kind="mergesort",
+            inplace=True,
+        )
 
         # Period columns for aggregations
         df["date"] = df["exit_time"].dt.date
@@ -163,7 +174,12 @@ class ResultsAnalyzer:
         """Compute distribution of exit reasons."""
         return df["exit_reason"].value_counts().to_dict()
 
-    def _compute_equity_curve(self, df: pd.DataFrame) -> tuple[pd.Series, float, float, float]:
+    def _compute_equity_curve(
+        self,
+        df: pd.DataFrame,
+        *,
+        initial_capital: float | None = None,
+    ) -> tuple[pd.Series, float, float, float]:
         """Build equity curve and compute total return percentage."""
         equity = df[["exit_time", "capital_after"]].copy()
         equity.drop_duplicates(subset="exit_time", keep="last", inplace=True)
@@ -171,7 +187,8 @@ class ResultsAnalyzer:
         equity.sort_index(inplace=True)
         self.equity_curve = equity["capital_after"]
 
-        initial_capital: float = float(df.iloc[0]["capital_before"])
+        if initial_capital is None:
+            initial_capital = self._initial_capital_from_trades(df)
         final_capital = float(self.equity_curve.iloc[-1])
         total_return_pct = ((final_capital - initial_capital) / initial_capital) * 100
         return (
@@ -182,16 +199,43 @@ class ResultsAnalyzer:
         )
 
     @staticmethod
+    def _initial_capital_from_trades(df: pd.DataFrame) -> float:
+        declared = pd.to_numeric(
+            df.get("account_initial_capital", pd.Series(dtype=float)),
+            errors="coerce",
+        ).dropna()
+        if len(declared):
+            return float(declared.iloc[0])
+        earliest_entry = df["entry_time"].min()
+        earliest_capital = pd.to_numeric(
+            df.loc[df["entry_time"].eq(earliest_entry), "capital_before"],
+            errors="coerce",
+        ).dropna()
+        if len(earliest_capital):
+            return float(earliest_capital.max())
+        return float(pd.to_numeric(df["capital_before"], errors="coerce").dropna().iloc[0])
+
+    @staticmethod
     def _compute_drawdown_metrics(
         equity_curve: pd.Series, initial_capital: float
     ) -> dict[str, Any]:
-        """Worst drawdown from window-start capital at closed-trade exit points."""
+        """Compute below-start and peak-to-trough realized-equity drawdowns."""
         if equity_curve.empty or initial_capital <= 0:
-            return {"max_drawdown": 0.0}
+            return {
+                "max_drawdown": 0.0,
+                "peak_to_trough_drawdown": 0.0,
+            }
         min_equity = min(float(initial_capital), float(equity_curve.min()))
-        if min_equity >= initial_capital:
-            return {"max_drawdown": 0.0}
-        return {"max_drawdown": (min_equity - initial_capital) / initial_capital}
+        below_start = min(
+            0.0,
+            (min_equity - initial_capital) / initial_capital,
+        )
+        running_peak = equity_curve.cummax().clip(lower=initial_capital)
+        peak_to_trough = float((equity_curve / running_peak - 1.0).min())
+        return {
+            "max_drawdown": below_start,
+            "peak_to_trough_drawdown": min(0.0, peak_to_trough),
+        }
 
     @staticmethod
     def _compute_sharpe_ratio(
@@ -356,8 +400,10 @@ class ResultsAnalyzer:
             - daily_pnl_mean: float ($)
             - weekly_pnl_mean: float ($)
             - monthly_pnl_mean: float ($)
-            - max_drawdown: float (%) — worst drop below window-start capital at
-              closed-trade exits; 0 if equity never fell below start
+            - max_drawdown: float (%) — ADR-0030 worst drop below window-start
+              capital at closed-trade exits; 0 if equity never fell below start
+            - peak_to_trough_drawdown: float (%) — standard worst realized-equity
+              decline from a running peak
             - sharpe_ratio: float - annualized Sharpe (monthly returns, default RFR 2%)
             - avg_holding_bars: float - average number of bars
             - exit_distribution: dict - {reason: count}
@@ -393,11 +439,14 @@ class ResultsAnalyzer:
             basic["total_pnl_abs"] = float(basic["total_pnl_abs"]) - open_entry_fees
         period_means = self._compute_period_pnl_means(closed_df)
         exit_counts = self._compute_exit_distribution(df)
-        initial_capital = float(pd.to_numeric(df["capital_before"], errors="coerce").iloc[0])
+        initial_capital = self._initial_capital_from_trades(df)
         if closed_df.empty:
             final_capital = initial_capital
             total_return_pct = 0.0
-            drawdown_metrics = {"max_drawdown": 0.0}
+            drawdown_metrics = {
+                "max_drawdown": 0.0,
+                "peak_to_trough_drawdown": 0.0,
+            }
             sharpe_ratio = 0.0
             monthly_returns_pct = {}
         else:
@@ -406,7 +455,10 @@ class ResultsAnalyzer:
                 initial_capital,
                 final_capital,
                 total_return_pct,
-            ) = self._compute_equity_curve(closed_df)
+            ) = self._compute_equity_curve(
+                closed_df,
+                initial_capital=initial_capital,
+            )
             drawdown_metrics = self._compute_drawdown_metrics(equity_curve, initial_capital)
             sharpe_ratio = self._compute_sharpe_ratio(
                 equity_curve, initial_capital, risk_free_rate_annual
@@ -480,6 +532,10 @@ class ResultsAnalyzer:
             "weekly_pnl_mean": round(float(period_means["weekly_pnl_mean"]), 2),
             "monthly_pnl_mean": round(float(period_means["monthly_pnl_mean"]), 2),
             "max_drawdown": round(float(drawdown_metrics["max_drawdown"]) * 100, 2),
+            "peak_to_trough_drawdown": round(
+                float(drawdown_metrics["peak_to_trough_drawdown"]) * 100,
+                2,
+            ),
             "sharpe_ratio": sharpe_ratio,
             "avg_holding_bars": round(avg_holding_bars, 1),
             "exit_distribution": exit_counts,
@@ -530,7 +586,10 @@ class ResultsAnalyzer:
         sys.stdout.write(f"Total PnL:          ${m['total_pnl_abs']}\n")
         sys.stdout.write(f"Win Rate:           {m['win_rate']}%\n")
         sys.stdout.write(f"Profit Factor:      {m['profit_factor']}\n")
-        sys.stdout.write(f"Max Drawdown:       {m['max_drawdown']}%\n")
+        sys.stdout.write(f"Drawdown Below Start: {m['max_drawdown']}%\n")
+        sys.stdout.write(
+            f"Peak-to-Trough DD:    {m['peak_to_trough_drawdown']}%\n"
+        )
         sys.stdout.write(f"Avg. Trade:         ${m['avg_pnl_abs']}\n")
         sys.stdout.write(f"Avg. Win:           ${m['avg_win']}\n")
         sys.stdout.write(f"Avg. Loss:          ${m['avg_loss']}\n")

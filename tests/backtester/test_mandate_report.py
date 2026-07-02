@@ -154,3 +154,30 @@ def test_max_drawdown_from_window_start_capital_at_closed_exits_only():
     row = report.monthly.iloc[0]
     assert row["max_drawdown_pct"] == -1.0
     assert not bool(row["breaches_monthly_dd"])
+
+
+def test_monthly_drawdown_orders_overlapping_trades_by_exit_time():
+    trades = pd.DataFrame(
+        {
+            "execution_sequence": [1, 0],
+            "entry_time": [
+                "2025-01-01T00:00:00+00:00",
+                "2025-01-02T00:00:00+00:00",
+            ],
+            "exit_time": [
+                "2025-01-20T00:00:00+00:00",
+                "2025-01-10T00:00:00+00:00",
+            ],
+            "pnl_abs": [1000.0, -2000.0],
+            "exit_reason": ["take_profit", "stop_loss"],
+        }
+    )
+
+    report = build_mandate_report(
+        trades,
+        initial_capital=10000.0,
+        start="2025-01-01",
+        end="2025-02-01",
+    )
+
+    assert report.monthly.loc[0, "max_drawdown_pct"] == -20.0

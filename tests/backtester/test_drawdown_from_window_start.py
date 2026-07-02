@@ -30,6 +30,7 @@ def test_results_analyzer_drawdown_uses_window_start_not_rolling_peak():
 
     # Peak was 12000 then 11000, but never below window start 10000.
     assert metrics["max_drawdown"] == 0.0
+    assert metrics["peak_to_trough_drawdown"] == -8.33
 
 
 def test_results_analyzer_drawdown_when_realized_equity_dips_below_start():
@@ -50,3 +51,33 @@ def test_results_analyzer_drawdown_when_realized_equity_dips_below_start():
     metrics = analyzer.generate()
 
     assert metrics["max_drawdown"] == -1.0
+    assert metrics["peak_to_trough_drawdown"] == -1.0
+
+
+def test_results_report_labels_both_drawdown_definitions(capsys):
+    trades = pd.DataFrame(
+        {
+            "exit_time": pd.to_datetime(
+                ["2025-01-05", "2025-01-10"],
+                utc=True,
+            ),
+            "entry_time": pd.to_datetime(
+                ["2025-01-04", "2025-01-09"],
+                utc=True,
+            ),
+            "capital_before": [10000.0, 12000.0],
+            "capital_after": [12000.0, 11000.0],
+            "pnl_abs": [2000.0, -1000.0],
+            "exit_reason": ["take_profit", "stop_loss"],
+            "holding_bars": [1, 1],
+            "is_long": [True, True],
+        }
+    )
+    analyzer = ResultsAnalyzer(trades)
+    analyzer.generate()
+
+    analyzer.print_report()
+
+    output = capsys.readouterr().out
+    assert "Drawdown Below Start: 0.0%" in output
+    assert "Peak-to-Trough DD:    -8.33%" in output

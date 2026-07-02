@@ -6,6 +6,7 @@ from typing import Any, TypedDict
 import pandas as pd
 from tqdm.auto import tqdm
 
+from .data_contracts import IntrabarExecutionData
 from .exit_geometry import exit_geometry_config_from_args
 from .fee_model import ExitContext, FeeModel, StaticPercentFeeModel
 from .instrument_precision import instrument_precision_from_name
@@ -167,6 +168,7 @@ class ExitReason(StrEnum):
     STOP_LOSS = "stop_loss"
     TRAILING_STOP = "trailing_stop"
     LIQUIDATION = "liquidation"
+    UNSAFE_LIQUIDATION_BUFFER = "unsafe_liquidation_buffer"
     TTL_EXPIRED = "ttl_expired"
     OPEN = "open"
 
@@ -260,6 +262,7 @@ class ExecutionSim:
         liquidation_buffer_pct: float = DEFAULT_LIQUIDATION_BUFFER_PCT,
         maintenance_margin_tier_schedule: str | None = None,
         instrument_precision_policy: str | None = None,
+        intrabar_execution_timeframe: str | None = None,
         risk_model: RiskModel | None = None,
         fee_model: FeeModel | None = None,
     ):
@@ -422,6 +425,12 @@ class ExecutionSim:
         self.liquidation_buffer_pct = liquidation_buffer_pct
         self.maintenance_margin_tier_schedule = maintenance_margin_tier_schedule
         self.instrument_precision_policy = instrument_precision_policy
+        if intrabar_execution_timeframe not in {None, "1m"}:
+            raise ValueError(
+                "intrabar_execution_timeframe must be None or '1m', "
+                f"got {intrabar_execution_timeframe!r}"
+            )
+        self.intrabar_execution_timeframe = intrabar_execution_timeframe
         self._instrument_precision = instrument_precision_from_name(instrument_precision_policy)
         self._exit_geometry_config = exit_geometry_config_from_args(
             exit_geometry=exit_geometry,
@@ -611,6 +620,11 @@ class ExecutionSim:
         next_open: float,
         next_time: pd.Timestamp,
         trade_history: list[dict],
+        mark_open: float | None = None,
+        mark_high: float | None = None,
+        mark_low: float | None = None,
+        evaluate_ttl: bool = True,
+        evaluate_unsafe: bool = True,
     ) -> tuple[float, list[Position]]:
         """
         Update active positions for current bar, applying TP/SL/TTL logic.
@@ -635,10 +649,13 @@ class ExecutionSim:
                 current_high=current_high,
                 current_low=current_low,
                 trail_atr=trail_atr,
+                mark_open=mark_open,
+                mark_high=mark_high,
+                mark_low=mark_low,
             )
 
             # TTL
-            if not exit_reason and (
+            if evaluate_ttl and not exit_reason and (
                 pos.position_ttl_bars > 0 and (i + 1) - pos.bar_opened >= pos.position_ttl_bars
             ):
                 exit_price = next_open
@@ -646,80 +663,17 @@ class ExecutionSim:
 
             # If exit required
             if exit_reason:
-                exit_value = pos.size * exit_price
-                entry_value = pos.size * pos.entry_price
-                # An OKX triggered TP limit can execute immediately as taker.
-                # Use the conservative taker class; live stores the actual fee.
-                is_maker = False
-                exit_ctx = ExitContext(exit_reason=exit_reason.value)
-                fee_exit = self._fee_model.calculate_exit_fee(
-                    exit_value,
-                    is_maker=is_maker,
-                    ctx=exit_ctx,
+                if exit_price is None:
+                    raise RuntimeError("exit reason resolved without an exit price")
+                capital = self._record_position_exit(
+                    pos=pos,
+                    exit_reason=exit_reason,
+                    exit_price=exit_price,
+                    capital=capital,
+                    i=i,
+                    next_time=next_time,
+                    trade_history=trade_history,
                 )
-
-                fees = pos.fee_entry + fee_exit
-                if pos.is_long:
-                    pnl_abs = exit_value - entry_value - fees
-                    capital_delta = exit_value - entry_value - fee_exit
-                else:
-                    pnl_abs = entry_value - exit_value - fees
-                    capital_delta = entry_value - exit_value - fee_exit
-
-                pnl_rel = pnl_abs / entry_value if entry_value != 0 else 0.0
-                new_capital = capital + capital_delta
-
-                # Public API: expose string value of ExitReason in trade history.
-                reason_value = (
-                    exit_reason.value if isinstance(exit_reason, ExitReason) else exit_reason
-                )
-
-                trade_history.append(
-                    {
-                        "signal_time": pos.signal_time,
-                        "entry_time": pos.entry_time,
-                        "exit_time": next_time,
-                        "entry_price": pos.entry_price,
-                        "risk_base_capital": pos.risk_base_capital,
-                        "exit_price": exit_price,
-                        "size": pos.size,
-                        "pnl_abs": pnl_abs,
-                        "pnl_rel": pnl_rel,
-                        "fee_entry": pos.fee_entry,
-                        "fee_exit": fee_exit,
-                        "tp_price": pos.tp_price,
-                        "sl_price": pos.sl_price,
-                        "trail_activation_rrr": pos.trail_activation_rrr,
-                        "trail_distance_atr": pos.trail_distance_atr,
-                        "trail_activation_price": pos.trail_activation_price,
-                        "trail_callback_spread": pos.trail_callback_spread,
-                        "trail_stop_price": pos.trail_stop_price,
-                        "trail_active": pos.trail_active,
-                        "exit_reason": reason_value,
-                        "capital_before": pos.capital_before,
-                        "capital_after": new_capital,
-                        "holding_bars": (i + 1) - pos.bar_opened,
-                        "position_ttl_bars": pos.position_ttl_bars,
-                        "position_group": pos.position_group,
-                        "leverage": pos.leverage,
-                        "locked_margin": pos.locked_margin,
-                        "available_balance_before": pos.available_balance_before,
-                        "open_positions_before": pos.open_positions_before,
-                        "total_locked_margin_before": pos.total_locked_margin_before,
-                        "total_locked_margin_after_entry": pos.total_locked_margin_after_entry,
-                        "is_long": pos.is_long,
-                        "liquidation_price": pos.liquidation_price,
-                        "maintenance_margin_rate": pos.maintenance_margin_rate,
-                        "liquidation_fee_rate": pos.liquidation_fee_rate,
-                        "liquidation_buffer_pct": pos.liquidation_buffer_pct,
-                        "maintenance_margin_tier_schedule": pos.maintenance_margin_tier_schedule,
-                        "entry_bar_index": pos.bar_opened,
-                        "exit_bar_index": i,
-                        **pos.metadata,
-                    }
-                )
-
-                capital = new_capital
                 self._refresh_aggregate_liquidation(
                     [
                         *remaining_positions,
@@ -730,8 +684,160 @@ class ExecutionSim:
                 remaining_positions.append(pos)
 
         self._refresh_aggregate_liquidation(remaining_positions)
+        while evaluate_unsafe:
+            unsafe = next(
+                (
+                    position
+                    for position in sorted(
+                        remaining_positions,
+                        key=_adverse_exit_priority,
+                    )
+                    if not _liquidation_buffer_is_safe(position)
+                ),
+                None,
+            )
+            if unsafe is None:
+                break
+            remaining_positions.remove(unsafe)
+            capital = self._record_position_exit(
+                pos=unsafe,
+                exit_reason=ExitReason.UNSAFE_LIQUIDATION_BUFFER,
+                exit_price=next_open,
+                capital=capital,
+                i=i,
+                next_time=next_time,
+                trade_history=trade_history,
+            )
+            self._refresh_aggregate_liquidation(remaining_positions)
 
         return capital, remaining_positions
+
+    def _apply_h1_boundary_exits(
+        self,
+        *,
+        active_positions: list[Position],
+        capital: float,
+        i: int,
+        next_open: float,
+        next_time: pd.Timestamp,
+        trade_history: list[dict[str, Any]],
+    ) -> tuple[float, list[Position]]:
+        """Apply TTL and aggregate-buffer fail-safe only at an H1 boundary."""
+        remaining: list[Position] = []
+        for pos in sorted(active_positions, key=_adverse_exit_priority):
+            if pos.position_ttl_bars > 0 and (i + 1) - pos.bar_opened >= pos.position_ttl_bars:
+                capital = self._record_position_exit(
+                    pos=pos,
+                    exit_reason=ExitReason.TTL_EXPIRED,
+                    exit_price=next_open,
+                    capital=capital,
+                    i=i,
+                    next_time=next_time,
+                    trade_history=trade_history,
+                )
+            else:
+                remaining.append(pos)
+
+        self._refresh_aggregate_liquidation(remaining)
+        while True:
+            unsafe = next(
+                (
+                    pos
+                    for pos in sorted(remaining, key=_adverse_exit_priority)
+                    if not _liquidation_buffer_is_safe(pos)
+                ),
+                None,
+            )
+            if unsafe is None:
+                break
+            remaining.remove(unsafe)
+            capital = self._record_position_exit(
+                pos=unsafe,
+                exit_reason=ExitReason.UNSAFE_LIQUIDATION_BUFFER,
+                exit_price=next_open,
+                capital=capital,
+                i=i,
+                next_time=next_time,
+                trade_history=trade_history,
+            )
+            self._refresh_aggregate_liquidation(remaining)
+        return capital, remaining
+
+    def _record_position_exit(
+        self,
+        *,
+        pos: Position,
+        exit_reason: ExitReason,
+        exit_price: float,
+        capital: float,
+        i: int,
+        next_time: pd.Timestamp,
+        trade_history: list[dict[str, Any]],
+    ) -> float:
+        """Apply one exit cash flow and append its deterministic audit row."""
+        exit_value = pos.size * exit_price
+        entry_value = pos.size * pos.entry_price
+        exit_ctx = ExitContext(exit_reason=exit_reason.value)
+        fee_exit = self._fee_model.calculate_exit_fee(
+            exit_value,
+            is_maker=False,
+            ctx=exit_ctx,
+        )
+        fees = pos.fee_entry + fee_exit
+        if pos.is_long:
+            pnl_abs = exit_value - entry_value - fees
+            capital_delta = exit_value - entry_value - fee_exit
+        else:
+            pnl_abs = entry_value - exit_value - fees
+            capital_delta = entry_value - exit_value - fee_exit
+        pnl_rel = pnl_abs / entry_value if entry_value != 0 else 0.0
+        new_capital = capital + capital_delta
+        trade_history.append(
+            {
+                "execution_sequence": len(trade_history),
+                "signal_time": pos.signal_time,
+                "entry_time": pos.entry_time,
+                "exit_time": next_time,
+                "entry_price": pos.entry_price,
+                "risk_base_capital": pos.risk_base_capital,
+                "exit_price": exit_price,
+                "size": pos.size,
+                "pnl_abs": pnl_abs,
+                "pnl_rel": pnl_rel,
+                "fee_entry": pos.fee_entry,
+                "fee_exit": fee_exit,
+                "tp_price": pos.tp_price,
+                "sl_price": pos.sl_price,
+                "trail_activation_rrr": pos.trail_activation_rrr,
+                "trail_distance_atr": pos.trail_distance_atr,
+                "trail_activation_price": pos.trail_activation_price,
+                "trail_callback_spread": pos.trail_callback_spread,
+                "trail_stop_price": pos.trail_stop_price,
+                "trail_active": pos.trail_active,
+                "exit_reason": exit_reason.value,
+                "capital_before": pos.capital_before,
+                "capital_after": new_capital,
+                "holding_bars": (i + 1) - pos.bar_opened,
+                "position_ttl_bars": pos.position_ttl_bars,
+                "position_group": pos.position_group,
+                "leverage": pos.leverage,
+                "locked_margin": pos.locked_margin,
+                "available_balance_before": pos.available_balance_before,
+                "open_positions_before": pos.open_positions_before,
+                "total_locked_margin_before": pos.total_locked_margin_before,
+                "total_locked_margin_after_entry": pos.total_locked_margin_after_entry,
+                "is_long": pos.is_long,
+                "liquidation_price": pos.liquidation_price,
+                "maintenance_margin_rate": pos.maintenance_margin_rate,
+                "liquidation_fee_rate": pos.liquidation_fee_rate,
+                "liquidation_buffer_pct": pos.liquidation_buffer_pct,
+                "maintenance_margin_tier_schedule": pos.maintenance_margin_tier_schedule,
+                "entry_bar_index": pos.bar_opened,
+                "exit_bar_index": i,
+                **pos.metadata,
+            }
+        )
+        return new_capital
 
     @staticmethod
     def _refresh_aggregate_liquidation(positions: list[Position]) -> None:
@@ -764,6 +870,9 @@ class ExecutionSim:
         current_high: float,
         current_low: float,
         trail_atr: float | None,
+        mark_open: float | None = None,
+        mark_high: float | None = None,
+        mark_low: float | None = None,
     ) -> tuple[ExitReason | None, float | None]:
         """
         Resolve TP/SL exit for a single position within the current bar.
@@ -793,6 +902,27 @@ class ExecutionSim:
             Price at which the position is considered closed, or None if
             no TP/SL exit occurs in this bar.
         """
+        separate_mark_price = (
+            mark_high is not None and mark_low is not None and mark_open is not None
+        )
+        liquidation_high = current_high if mark_high is None else mark_high
+        liquidation_low = current_low if mark_low is None else mark_low
+        liquidation_open = current_open if mark_open is None else mark_open
+        liquidation_hit = (
+            liquidation_low <= pos.liquidation_price
+            if pos.is_long
+            else liquidation_high >= pos.liquidation_price
+        )
+        if separate_mark_price and liquidation_hit and self.bar_exit_policy == "worst_case":
+            return (
+                ExitReason.LIQUIDATION,
+                _adverse_trigger_fill(
+                    trigger=pos.liquidation_price,
+                    bar_open=liquidation_open,
+                    is_long=pos.is_long,
+                ),
+            )
+
         if pos.trail_activation_rrr > 0:
             trailing_reason, trailing_price = self._resolve_trailing_bar_exit(
                 pos=pos,
@@ -803,17 +933,12 @@ class ExecutionSim:
             )
             if trailing_reason is not None:
                 return trailing_reason, trailing_price
-            liquidation_hit = (
-                current_low <= pos.liquidation_price
-                if pos.is_long
-                else current_high >= pos.liquidation_price
-            )
             if liquidation_hit:
                 return (
                     ExitReason.LIQUIDATION,
                     _adverse_trigger_fill(
                         trigger=pos.liquidation_price,
-                        bar_open=current_open,
+                        bar_open=liquidation_open,
                         is_long=pos.is_long,
                     ),
                 )
@@ -826,17 +951,12 @@ class ExecutionSim:
             tp_hit = current_low <= pos.tp_price
             sl_hit = current_high >= pos.sl_price
 
-        liquidation_hit = (
-            current_low <= pos.liquidation_price
-            if pos.is_long
-            else current_high >= pos.liquidation_price
-        )
         if liquidation_hit and not sl_hit:
             return (
                 ExitReason.LIQUIDATION,
                 _adverse_trigger_fill(
                     trigger=pos.liquidation_price,
-                    bar_open=current_open,
+                    bar_open=liquidation_open,
                     is_long=pos.is_long,
                 ),
             )
@@ -1489,7 +1609,12 @@ class ExecutionSim:
 
         return capital - fee_entry, active_positions
 
-    def run(self, df: pd.DataFrame) -> pd.DataFrame:
+    def run(
+        self,
+        df: pd.DataFrame,
+        *,
+        intrabar_data: IntrabarExecutionData | None = None,
+    ) -> pd.DataFrame:
         """
         Run trading simulation based on signal data.
 
@@ -1580,6 +1705,15 @@ class ExecutionSim:
         except _NotEnoughBarsError:
             return pd.DataFrame()
 
+        last_1m: pd.DataFrame | None = None
+        mark_1m: pd.DataFrame | None = None
+        if self.intrabar_execution_timeframe == "1m":
+            if intrabar_data is None:
+                raise ValueError(
+                    "intrabar_execution_timeframe='1m' requires last and mark minute data"
+                )
+            last_1m, mark_1m = _validate_minute_execution_data(df, intrabar_data)
+
         capital = self.initial_capital
         active_positions: list[Position] = []
         trade_history: list[dict] = []
@@ -1616,20 +1750,65 @@ class ExecutionSim:
                 loss_num = 0
                 daily_trading_blocked = False
 
+            current_time = pd.Timestamp(df.index[i])
+
             # === 1. Check exit conditions (TP/SL/TTL) for all active positions ===
             prev_trades_len = len(trade_history)
-            capital, active_positions = self._update_active_positions(
-                active_positions=active_positions,
-                capital=capital,
-                i=i,
-                current_open=current_open,
-                current_high=current_high,
-                current_low=current_low,
-                trail_atr=trail_atr,
-                next_open=next_open,
-                next_time=next_time,
-                trade_history=trade_history,
-            )
+            if last_1m is not None and mark_1m is not None:
+                if active_positions:
+                    minute_start = i * 60
+                    minute_end = minute_start + 60
+                    hour_last = last_1m.iloc[minute_start:minute_end]
+                    hour_mark = mark_1m.iloc[minute_start:minute_end]
+                    for minute_offset in range(60):
+                        if not active_positions:
+                            break
+                        last_row = hour_last.iloc[minute_offset]
+                        mark_row = hour_mark.iloc[minute_offset]
+                        minute_time = pd.Timestamp(hour_last.index[minute_offset])
+                        minute_next_open = (
+                            float(hour_last.iloc[minute_offset + 1]["open"])
+                            if minute_offset < 59
+                            else float(next_open)
+                        )
+                        capital, active_positions = self._update_active_positions(
+                            active_positions=active_positions,
+                            capital=capital,
+                            i=i,
+                            current_open=float(last_row["open"]),
+                            current_high=float(last_row["high"]),
+                            current_low=float(last_row["low"]),
+                            trail_atr=trail_atr,
+                            next_open=minute_next_open,
+                            next_time=minute_time,
+                            trade_history=trade_history,
+                            mark_open=float(mark_row["open"]),
+                            mark_high=float(mark_row["high"]),
+                            mark_low=float(mark_row["low"]),
+                            evaluate_ttl=False,
+                            evaluate_unsafe=False,
+                        )
+                    capital, active_positions = self._apply_h1_boundary_exits(
+                        active_positions=active_positions,
+                        capital=capital,
+                        i=i,
+                        next_open=float(next_open),
+                        next_time=pd.Timestamp(next_time),
+                        trade_history=trade_history,
+                    )
+            else:
+                capital, active_positions = self._update_active_positions(
+                    active_positions=active_positions,
+                    capital=capital,
+                    i=i,
+                    current_open=current_open,
+                    current_high=current_high,
+                    current_low=current_low,
+                    trail_atr=trail_atr,
+                    next_open=next_open,
+                    next_time=next_time,
+                    trade_history=trade_history,
+                )
             newly_closed_trades = trade_history[prev_trades_len:]
 
             bar_month = (next_time.year, next_time.month)
@@ -1700,7 +1879,6 @@ class ExecutionSim:
                     can_open_in_session = False
 
             if not daily_trading_blocked and can_open_in_session:
-                current_time = df.index[i]
                 entry_contexts = self._entry_contexts_for_bar(
                     df=df,
                     i=i,
@@ -1728,6 +1906,7 @@ class ExecutionSim:
             last_bar_index = len(df) - 1
             for pos in active_positions:
                 snapshot = self._open_position_snapshot(pos=pos, last_bar_index=last_bar_index)
+                snapshot["execution_sequence"] = len(trade_history)
                 snapshot["capital_sweep_amount"] = pending_capital_sweep_amount
                 snapshot["capital_sweep_month"] = pending_capital_sweep_month
                 snapshot["banked_profit_after"] = banked_profit
@@ -1754,6 +1933,7 @@ class ExecutionSim:
             trade.setdefault("trading_capital_after_sweep", capital)
             trade["account_capital_at_end"] = capital
             trade["account_capital_at_end_time"] = df.index[-1]
+            trade["account_initial_capital"] = self.initial_capital
 
         return pd.DataFrame(trade_history) if trade_history else pd.DataFrame()
 
@@ -1840,6 +2020,102 @@ def _adverse_exit_priority(pos: Position) -> tuple[int, float]:
         else pos.sl_price
     )
     return (0, -protective) if pos.is_long else (1, protective)
+
+
+def _liquidation_buffer_is_safe(pos: Position) -> bool:
+    buffer_distance = pos.entry_price * pos.liquidation_buffer_pct
+    if pos.is_long:
+        return pos.liquidation_price <= pos.sl_price - buffer_distance + 1e-12
+    return pos.liquidation_price >= pos.sl_price + buffer_distance - 1e-12
+
+
+def _validate_minute_execution_data(
+    primary: pd.DataFrame,
+    data: IntrabarExecutionData,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Return complete aligned minute frames for every simulated H1 interval."""
+    primary_index = primary.index
+    if not isinstance(primary_index, pd.DatetimeIndex):
+        raise TypeError("minute execution requires a DatetimeIndex primary frame")
+    if len(primary_index) < 2:
+        raise ValueError("minute execution requires at least two H1 bars")
+    if not (primary_index[1:] - primary_index[:-1] == pd.Timedelta(hours=1)).all():
+        raise ValueError("minute execution requires a continuous 1h primary frame")
+
+    expected = pd.date_range(
+        start=primary_index[0],
+        end=primary_index[-1],
+        freq="1min",
+        inclusive="left",
+    )
+    required_columns = {"open", "high", "low", "close"}
+    validated: list[pd.DataFrame] = []
+    for name, source in (("last", data.last_1m), ("mark", data.mark_1m)):
+        if not isinstance(source.index, pd.DatetimeIndex):
+            raise TypeError(f"{name} 1m execution frame must use DatetimeIndex")
+        missing_columns = sorted(required_columns - set(source.columns))
+        if missing_columns:
+            raise ValueError(
+                f"{name} 1m execution frame is missing columns: {', '.join(missing_columns)}"
+            )
+        if source.index.has_duplicates:
+            duplicate = source.index[source.index.duplicated()][0]
+            raise ValueError(f"{name} 1m execution frame has duplicate timestamp {duplicate}")
+        if not source.index.is_monotonic_increasing:
+            raise ValueError(f"{name} 1m execution frame must be sorted ascending")
+        frame = source.loc[(source.index >= expected[0]) & (source.index <= expected[-1])]
+        if not frame.index.equals(expected):
+            missing = expected.difference(frame.index)
+            extra = frame.index.difference(expected)
+            detail = (
+                f"first missing={missing[0]}" if len(missing) else f"first extra={extra[0]}"
+            )
+            raise ValueError(
+                f"{name} 1m execution coverage is incomplete: "
+                f"expected={len(expected)} actual={len(frame)} {detail}"
+            )
+        if name == "last":
+            aggregated = frame.resample("1h").agg(
+                {
+                    "open": "first",
+                    "high": "max",
+                    "low": "min",
+                    "close": "last",
+                }
+            )
+            expected_h1 = primary.loc[
+                primary_index[:-1],
+                ["open", "high", "low", "close"],
+            ]
+            comparable_columns = ["high", "low", "close"]
+            delta = (
+                aggregated[comparable_columns] - expected_h1[comparable_columns]
+            ).abs()
+            tolerance = expected_h1[comparable_columns].abs() * 1e-10 + 1e-10
+            mismatch = delta > tolerance
+            if mismatch.any().any():
+                mismatch_time, mismatch_column = mismatch.stack().loc[lambda s: s].index[0]
+                raise ValueError(
+                    "last 1m candles do not aggregate to primary H1: "
+                    f"timestamp={mismatch_time} column={mismatch_column} "
+                    f"h1={expected_h1.at[mismatch_time, mismatch_column]} "
+                    f"m1={aggregated.at[mismatch_time, mismatch_column]}"
+                )
+            minute_open_outside_h1 = (aggregated["open"] < expected_h1["low"]) | (
+                aggregated["open"] > expected_h1["high"]
+            )
+            if minute_open_outside_h1.any():
+                mismatch_time = minute_open_outside_h1.loc[
+                    minute_open_outside_h1
+                ].index[0]
+                raise ValueError(
+                    "first last-price 1m open is outside primary H1 range: "
+                    f"timestamp={mismatch_time} open={aggregated.at[mismatch_time, 'open']} "
+                    f"low={expected_h1.at[mismatch_time, 'low']} "
+                    f"high={expected_h1.at[mismatch_time, 'high']}"
+                )
+        validated.append(frame)
+    return validated[0], validated[1]
 
 
 def _trade_metadata_from_event(event: dict[str, Any] | None) -> dict[str, Any]:

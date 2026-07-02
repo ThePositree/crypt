@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from backtester.execution_sim import ExecutionSim
+from backtester.execution_sim import ExecutionSim, Position
 from backtester.results_analyzer import ResultsAnalyzer
 
 
@@ -796,6 +796,78 @@ def test_nearer_structural_stop_precedes_liquidation_on_last_price_path() -> Non
     assert trade["exit_price"] == pytest.approx(trade["sl_price"])
 
 
+def test_remaining_position_closes_when_constituent_exit_breaks_liquidation_buffer() -> None:
+    timestamp = pd.Timestamp("2026-01-01", tz="UTC")
+
+    def position(
+        *,
+        entry: float,
+        stop: float,
+        size: float,
+        ttl: int,
+    ) -> Position:
+        return Position(
+            signal_time=timestamp,
+            entry_time=timestamp,
+            entry_price=entry,
+            risk_base_capital=10_000.0,
+            size=size,
+            tp_price=entry - 10.0,
+            sl_price=stop,
+            bar_opened=0,
+            fee_entry=0.0,
+            capital_before=10_000.0,
+            leverage=21.0,
+            locked_margin=entry * size / 21.0,
+            available_balance_before=10_000.0,
+            open_positions_before=0,
+            total_locked_margin_before=0.0,
+            total_locked_margin_after_entry=entry * size / 21.0,
+            is_long=False,
+            liquidation_price=134.27244187966195,
+            maintenance_margin_rate=0.004,
+            liquidation_fee_rate=0.0005,
+            liquidation_buffer_pct=0.005,
+            maintenance_margin_tier_schedule=None,
+            metadata={},
+            position_ttl_bars=ttl,
+        )
+
+    survivor = position(
+        entry=124.05470333604543,
+        stop=128.7803461450231,
+        size=30.342648885906524,
+        ttl=0,
+    )
+    expires = position(
+        entry=130.6547307237704,
+        stop=133.6157863235054,
+        size=74.57151938182729,
+        ttl=1,
+    )
+    sim = ExecutionSim(initial_capital=10_000.0, taker_fee=0.0)
+    history: list[dict] = []
+
+    _, remaining = sim._update_active_positions(
+        active_positions=[survivor, expires],
+        capital=10_000.0,
+        i=0,
+        current_open=125.0,
+        current_high=126.0,
+        current_low=124.0,
+        trail_atr=None,
+        next_open=125.0,
+        next_time=timestamp + pd.Timedelta(hours=1),
+        trade_history=history,
+    )
+
+    assert remaining == []
+    assert {trade["exit_reason"] for trade in history} == {
+        "ttl_expired",
+        "unsafe_liquidation_buffer",
+    }
+
+
 def test_closed_trade_exports_maintenance_margin_tier_schedule() -> None:
     df = _base_df(
         opens=[100.0, 100.0, 100.0],
@@ -1004,6 +1076,7 @@ def test_trades_dataframe_columns_and_types():
     # Columns are taken from trade_history dict keys in run()
     expected_columns = {
         "signal_time",
+        "execution_sequence",
         "entry_time",
         "exit_time",
         "entry_price",
@@ -1046,8 +1119,9 @@ def test_trades_dataframe_columns_and_types():
         "capital_sweep_month",
             "banked_profit_after",
             "trading_capital_after_sweep",
-            "account_capital_at_end",
-            "account_capital_at_end_time",
+        "account_capital_at_end",
+        "account_capital_at_end_time",
+        "account_initial_capital",
         }
 
     assert set(trades.columns) == expected_columns

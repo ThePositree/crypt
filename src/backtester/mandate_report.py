@@ -163,7 +163,19 @@ def _prepare_trades(trades: pd.DataFrame) -> pd.DataFrame:
     else:
         prepared["entry_time"] = prepared["exit_time"]
     prepared["pnl_abs"] = pd.to_numeric(prepared["pnl_abs"], errors="coerce").fillna(0.0)
-    prepared = prepared.dropna(subset=["entry_time"]).sort_values("entry_time")
+    prepared = prepared.dropna(subset=["entry_time"])
+    if "execution_sequence" in prepared.columns:
+        sequence = pd.to_numeric(prepared["execution_sequence"], errors="coerce")
+    else:
+        sequence = pd.Series(range(len(prepared)), index=prepared.index, dtype=float)
+    prepared["_execution_sequence"] = sequence.fillna(
+        pd.Series(range(len(prepared)), index=prepared.index, dtype=float)
+    )
+    prepared = prepared.sort_values(
+        ["exit_time", "_execution_sequence"],
+        kind="mergesort",
+        na_position="last",
+    )
     prepared["entry_month"] = prepared["entry_time"].dt.tz_convert(None).dt.to_period("M")
     prepared["is_closed"] = prepared["exit_time"].notna()
     if "exit_reason" in prepared.columns:

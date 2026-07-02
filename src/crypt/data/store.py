@@ -12,6 +12,7 @@ from loguru import logger
 
 from crypt.models import (
     Candle,
+    CandlePriceType,
     LongShortRatioSnapshot,
     OISnapshot,
     TakerVolumeSnapshot,
@@ -30,8 +31,24 @@ def _symbol_dir(base: Path, symbol: str) -> Path:
     return base / symbol
 
 
-def _ohlcv_path(base: Path, symbol: str, timeframe: Timeframe) -> Path:
-    return _symbol_dir(base, symbol) / f"ohlcv_{timeframe.value}.parquet"
+def _ohlcv_path(
+    base: Path,
+    symbol: str,
+    timeframe: Timeframe,
+    price_type: CandlePriceType = CandlePriceType.LAST,
+) -> Path:
+    prefix = "ohlcv" if price_type is CandlePriceType.LAST else "mark_ohlcv"
+    suffix = timeframe.value if timeframe is not Timeframe.M1 else "1m"
+    return _symbol_dir(base, symbol) / f"{prefix}_{suffix}.parquet"
+
+
+def _minute_ohlcv_dir(
+    base: Path,
+    symbol: str,
+    price_type: CandlePriceType,
+) -> Path:
+    prefix = "ohlcv" if price_type is CandlePriceType.LAST else "mark_ohlcv"
+    return _symbol_dir(base, symbol) / f"{prefix}_1m"
 
 
 def _oi_path(base: Path, symbol: str) -> Path:
@@ -113,7 +130,9 @@ class ParquetStore:
             )
         symbol = candles[0].symbol
         tf = candles[0].timeframe
-        path = _ohlcv_path(self._base, symbol, tf)
+        price_type = candles[0].price_type
+        if any(c.price_type is not price_type for c in candles):
+            raise ValueError("save_candles requires one price type per batch")
         new_df = pd.DataFrame(
             [
                 {
@@ -129,23 +148,49 @@ class ParquetStore:
             ]
         )
         new_df["open_time"] = pd.to_datetime(new_df["open_time"], utc=True)
-        existing = _read_parquet(path)
-        merged = _upsert(existing, new_df, "open_time")
-        _write_parquet(merged, path)
-        logger.debug("Saved {} {} candles for {}", len(candles), tf.value, symbol)
+        if tf is Timeframe.M1:
+            partition_dir = _minute_ohlcv_dir(self._base, symbol, price_type)
+            month_keys = new_df["open_time"].dt.strftime("%Y-%m")
+            for month, month_df in new_df.groupby(month_keys, sort=True):
+                path = partition_dir / f"{month}.parquet"
+                existing = _read_parquet(path)
+                merged = _upsert(existing, month_df, "open_time")
+                _write_parquet(merged, path)
+        else:
+            path = _ohlcv_path(self._base, symbol, tf, price_type)
+            existing = _read_parquet(path)
+            merged = _upsert(existing, new_df, "open_time")
+            _write_parquet(merged, path)
+        logger.debug(
+            "Saved {} {} {} candles for {}",
+            len(candles),
+            price_type.value,
+            tf.value,
+            symbol,
+        )
 
     def load_candles(
         self,
         symbol: str,
         timeframe: Timeframe,
         limit: int | None = None,
+        price_type: CandlePriceType = CandlePriceType.LAST,
     ) -> pd.DataFrame:
         """
         Returns a DataFrame of closed candles: columns open_time, o, h, l, c, volume.
         Sorted ascending by open_time. Returns empty DataFrame if nothing stored.
         """
-        path = _ohlcv_path(self._base, symbol, timeframe)
-        df = _read_parquet(path)
+        if timeframe is Timeframe.M1:
+            partition_dir = _minute_ohlcv_dir(self._base, symbol, price_type)
+            frames = [
+                frame
+                for path in sorted(partition_dir.glob("*.parquet"))
+                if (frame := _read_parquet(path)) is not None
+            ]
+            df = pd.concat(frames, ignore_index=True) if frames else None
+        else:
+            path = _ohlcv_path(self._base, symbol, timeframe, price_type)
+            df = _read_parquet(path)
         if df is None or df.empty:
             return pd.DataFrame(columns=_OHLCV_COLS)
         # Keep only closed candles.
@@ -155,6 +200,30 @@ class ParquetStore:
         if limit is not None:
             df = df.tail(limit).reset_index(drop=True)
         return df
+
+    def has_complete_minute_range(
+        self,
+        symbol: str,
+        *,
+        price_type: CandlePriceType,
+        start: datetime,
+        end: datetime,
+    ) -> bool:
+        """Return whether every UTC minute in ``[start, end)`` is persisted."""
+        if end <= start:
+            return True
+        partition_dir = _minute_ohlcv_dir(self._base, symbol, price_type)
+        expected = pd.date_range(start=start, end=end, freq="1min", inclusive="left")
+        frames: list[pd.DataFrame] = []
+        for month in expected.strftime("%Y-%m").unique():
+            frame = _read_parquet(partition_dir / f"{month}.parquet")
+            if frame is None:
+                return False
+            frames.append(frame)
+        actual = pd.concat(frames, ignore_index=True)
+        timestamps = pd.DatetimeIndex(pd.to_datetime(actual["open_time"], utc=True))
+        timestamps = timestamps[(timestamps >= expected[0]) & (timestamps <= expected[-1])]
+        return not timestamps.has_duplicates and timestamps.sort_values().equals(expected)
 
     # --- Open Interest ---
 

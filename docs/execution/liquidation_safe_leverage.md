@@ -86,6 +86,12 @@ constituent recomputes the remaining side liquidation price.
 The aggregate liquidation calculation resolves the tier from the total same-side
 size, not from each child entry independently.
 
+If a constituent close moves the remaining aggregate liquidation inside any
+remaining stop's required buffer, live execution sends an error and closes
+that logical position reduce-only at the next synchronization. The backtester
+does the same at the next H1 open with
+`exit_reason=unsafe_liquidation_buffer`.
+
 ## Outputs
 
 Every accepted risk result and backtester trade exports:

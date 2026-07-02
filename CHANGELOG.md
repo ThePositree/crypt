@@ -6,6 +6,64 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-07-02 — Minute last/mark execution replay
+
+- Verified the conservative v2 artifact at `$32,956.20` final account,
+  `-10.33%` drawdown, four liquidation-buffer fail-safe exits, and exact cash
+  reconciliation from `$10,000`.
+- Added resumable monthly-partitioned OKX 1m last-trade and mark-price
+  backfill, including safe parallel `last_1m` / `mark_1m` jobs.
+- Added a typed execution-only minute-data contract; H1/H4/D1 signals remain
+  unchanged and do not copy or consume minute frames.
+- Added sequential 1m stop/TP/native-trailing replay and mark-price
+  liquidation. Minute-enabled runs reject missing, duplicate, unsorted, or
+  misaligned coverage instead of falling back to H1.
+- Owner backfilled both SOL series through `2026-06-29 23:59 UTC`: each has
+  2,383,200 continuous rows. All H1 high/low/close aggregates match; eight
+  official OKX H1 opens differ from the first 1m open by at most `$0.06`, so
+  the validator retains H1 as entry and accepts the in-range minute open.
+- Owner canonical minute artifact `20260702_102019` produced 3,422 entries,
+  `$25,100.59` final account, `+151.01%`, `1.05` profit factor, and `-9.20%`
+  below-start drawdown. Cash and all eight mark-price liquidations reconcile;
+  signal and H1 OHLCV exports are byte-identical to H1 v2.
+- Exposed the artifact's standard peak-to-trough drawdown of `-42.54%`
+  separately instead of labeling the ADR-0030 below-start metric as generic
+  maximum drawdown. Corrected monthly mandate ordering for overlapping trades
+  from entry order to deterministic exit order.
+- The corrected 2025 mandate verdict is `discard`: five drawdown-breach months,
+  `-19.68%` worst monthly below-start drawdown, and only five months above the
+  15% return floor.
+- Kept live native exchange protection as the real-time source of truth; no
+  delayed closed-minute live control loop was added.
+- Validation: full non-hanging project suite and focused Ruff pass. Existing
+  legacy strict-mypy findings in `ExecutionSim`/CLI remain unchanged.
+- ADRs: added ADR-0056 and ADR-0057.
+- Files touched: `src/crypt/backfill/`, `src/crypt/data/`,
+  `src/crypt/exchange/`, `src/backtester/`, `tests/`, `strategies/`,
+  `docs/backfill.md`, `docs/execution/`, `docs/decisions/`, `docs/tasks/`,
+  `README.md`.
+
+## 2026-07-02 — Corrected backtest reporting and post-close liquidation safety
+
+- Fixed `Initial Capital` being inferred from an arbitrary first exit row when
+  multiple positions close on one H1 boundary; every trade now carries the
+  explicit account initial capital and execution sequence.
+- Preserved deterministic same-timestamp equity ordering in
+  `ResultsAnalyzer`.
+- Added fail-safe closure when a constituent exit moves the remaining
+  aggregate OKX side inside its required liquidation buffer; live closes on
+  synchronization and backtest closes at the next H1 open.
+- Verified artifact `20260701_141907` cash accounting independently:
+  `$10,000 + $22,450.407` closed PnL - `$11.403` open entry fees =
+  `$32,439.005`. Its signal and OHLCV files are byte-identical to the previous
+  baseline; the large performance reduction comes from conservative execution
+  and compounding, not lost signals.
+- Validation: full non-hanging project suite, focused Ruff, strict live mypy,
+  and diff checks pass.
+- ADRs: amended ADR-0055.
+- Files touched: `src/backtester/`, `src/crypt/execution/`, `tests/`,
+  `strategies/`, `docs/execution/`, `docs/decisions/`, `docs/tasks/`.
+
 ## 2026-07-01 — Durable recovery and conservative execution parity
 
 - Added durable entry lifecycle and restart adoption of actual OKX entry

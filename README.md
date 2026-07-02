@@ -120,6 +120,11 @@ uv run backtester run \
 
 Data lands in `data/<SYMBOL>/` (Parquet). Re-running is idempotent.
 
+Execution-grade H1 replay additionally uses monthly-partitioned OKX 1m
+last-trade and mark-price candles. The signal remains H1; minute data only
+orders stop, TP, native-trailing, and liquidation events inside each hour.
+Use the parallel `last_1m` / `mark_1m` commands in `docs/backfill.md`.
+
 ## Backtester (M2)
 
 ADR-0018 moves future M2 work toward the donor `backtester/` package.
@@ -904,7 +909,10 @@ newly tightened trailing stop consume the earlier adverse extreme of the same
 candle, applies adverse opening gaps, and treats a nearer structural stop as
 crossed before a deeper last-price liquidation.
 Missing protection or an unsafe exchange liquidation level blocks new entries
-and is reported to Telegram every H1 cycle.
+and is reported to Telegram every H1 cycle. If closing one same-side
+constituent removes the required liquidation buffer from a remaining logical
+position, live fail-safe closes it reduce-only on synchronization; the
+backtester mirrors that action at the next H1 open.
 
 ## Running as a service (local VPS / Linux)
 

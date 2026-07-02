@@ -41,6 +41,8 @@ evaluation window:
 - `max_drawdown_pct`: worst drop below window-start capital on the realized
   equity curve (closed exits only; open trades ignored). Example: start
   `$10 000`, lowest post-exit equity `$9 900` → `-1%`.
+  Overlapping trades are accumulated in deterministic exit-time order, with
+  `execution_sequence` breaking equal-timestamp ties.
 - `trade_count`: number of trades closed during the month.
 - `stop_loss_count`: number of trades with `exit_reason = stop_loss`.
 - `passes_return_floor`: whether raw monthly return is at least `15%`.
@@ -79,3 +81,7 @@ and the month fails the `15%` return floor.
 Large losing-day counting is currently conservative: it is `0` unless a caller
 supplies a daily equity source. The monthly return and drawdown gates remain
 the primary automated acceptance surface.
+
+`ResultsAnalyzer` additionally reports `peak_to_trough_drawdown` over the
+continuous realized-equity curve. It is an account-risk diagnostic, while the
+monthly mandate continues to use the below-window-start definition above.

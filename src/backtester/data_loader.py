@@ -9,7 +9,7 @@ from typing import Any
 import pandas as pd
 import requests
 
-from backtester.data_contracts import StrategyData, StrategyInput
+from backtester.data_contracts import IntrabarExecutionData, StrategyData, StrategyInput
 
 
 class BaseDataLoader(ABC):
@@ -343,6 +343,7 @@ class CryptParquetDataLoader(BaseDataLoader):
         primary_timeframe: str = "4h",
         start: str | datetime | pd.Timestamp | None = None,
         end: str | datetime | pd.Timestamp | None = None,
+        load_execution_1m: bool = False,
     ) -> None:
         super().__init__()
         self.data_dir = data_dir
@@ -350,6 +351,7 @@ class CryptParquetDataLoader(BaseDataLoader):
         self.primary_timeframe = primary_timeframe
         self.start = _parse_utc_bound(start, name="start")
         self.end = _parse_utc_bound(end, name="end")
+        self.load_execution_1m = load_execution_1m
         if self.start is not None and self.end is not None and self.start > self.end:
             raise ValueError("crypt-parquet start must be <= end")
 
@@ -359,6 +361,23 @@ class CryptParquetDataLoader(BaseDataLoader):
             return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
         frame = self._standardize_ohlcv_frame(raw, timestamp_col="open_time")
         return _filter_context_datetime_index(frame, end=self.end)
+
+    def _load_execution_candles(
+        self,
+        store: Any,
+        timeframe: Any,
+        *,
+        price_type: Any,
+    ) -> pd.DataFrame:
+        raw = store.load_candles(
+            self.symbol,
+            timeframe,
+            price_type=price_type,
+        )
+        if raw.empty:
+            return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+        frame = self._standardize_ohlcv_frame(raw, timestamp_col="open_time")
+        return _filter_datetime_index(frame, start=self.start, end=self.end)
 
     def load(self) -> StrategyData:
         try:
@@ -400,6 +419,35 @@ class CryptParquetDataLoader(BaseDataLoader):
             "ls_ratio": store.load_ls_ratio(self.symbol),
             "taker_volume": store.load_taker_volume(self.symbol),
         }
+        execution = None
+        if self.load_execution_1m:
+            from crypt.models import CandlePriceType
+
+            execution = IntrabarExecutionData(
+                last_1m=self._load_execution_candles(
+                    store,
+                    Timeframe.M1,
+                    price_type=CandlePriceType.LAST,
+                ),
+                mark_1m=self._load_execution_candles(
+                    store,
+                    Timeframe.M1,
+                    price_type=CandlePriceType.MARK,
+                ),
+            )
+            missing_execution = [
+                name
+                for name, frame in (
+                    ("last", execution.last_1m),
+                    ("mark", execution.mark_1m),
+                )
+                if frame.empty
+            ]
+            if missing_execution:
+                raise ValueError(
+                    "crypt-parquet minute execution requires non-empty "
+                    f"{', '.join(missing_execution)} 1m candles for {self.symbol!r}"
+                )
 
         return StrategyData(
             primary=primary,
@@ -410,6 +458,7 @@ class CryptParquetDataLoader(BaseDataLoader):
                 "exchange": "OKX",
                 "primary_timeframe": primary_key,
             },
+            execution=execution,
         )
 
 

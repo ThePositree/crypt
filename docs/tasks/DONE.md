@@ -4,6 +4,97 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-07-02 — Canonical Core4 v3 minute execution artifact
+
+**What:** validated Core4 v3 with complete OKX last-trade and mark-price
+one-minute execution history.
+
+**Result:** artifact
+`results/core4_v3_minute_last_mark_20260702/20260702_102019/` produced 3,422
+entries, `$25,100.59` final account, `+151.01%` total return, `1.05` profit
+factor, `-9.20%` drawdown below initial capital, and `-42.54%` standard
+peak-to-trough drawdown. Exit distribution includes eight mark-price
+liquidations, two liquidation-buffer fail-safe exits, 1,430 native trailing
+exits, and two open positions.
+
+**Acceptance:** cash reconciles exactly as `$10,000 + $15,109.405` closed PnL
+- `$8.812` open entry fees = `$25,100.592`. Signals, signal diagnostics, and
+H1 OHLCV are byte-identical to the H1 v2 artifact. Every liquidation candle
+touches its exported liquidation threshold in mark-price 1m data. The 22
+additional and two removed entries follow changed close/margin availability,
+not changed signals. This accepts execution reproducibility, not mandate
+qualification: the 2025 mandate verdict is `discard`, with five monthly
+drawdown breaches and a `-19.68%` worst 2025 month.
+
+**Links:** ADR-0056,
+`docs/execution/minute_intrabar_execution.md`,
+`results/core4_v3_minute_last_mark_20260702/20260702_102019/`.
+
+---
+
+## 2026-07-02 — Explicit peak-to-trough drawdown reporting
+
+**What:** separated the ADR-0030 below-window-start metric from standard
+peak-to-trough account drawdown and corrected overlapping monthly-trade
+ordering.
+
+**Why now:** the minute artifact printed `Max Drawdown: -9.20%` despite a
+`-42.54%` realized-equity fall from peak. The old label hid that it measured
+only whether the complete account fell below its original `$10,000`.
+
+**Result:** reports retain `max_drawdown` for mandate compatibility, add
+`peak_to_trough_drawdown`, and print both with explicit labels. Monthly
+mandate equity now accumulates overlapping trades by exit time and execution
+sequence rather than entry time.
+
+**Acceptance:** full non-hanging suite passes. The minute artifact recomputes
+to `-9.20%` below-start and `-42.54%` peak-to-trough; its 2025 mandate verdict
+is `discard`.
+
+**Links:** ADR-0030, ADR-0057, `docs/mandate_reporting.md`.
+
+---
+
+## 2026-07-02 — Owner-verified conservative H1 v2 artifact
+
+**What:** verified the owner rerun after explicit initial-capital reporting and
+post-close aggregate liquidation-buffer protection.
+
+**Result:** artifact
+`results/core4_v3_recovery_conservative_intrabar_v2_20260702/20260702_052419/`
+reconciles exactly: `$10,000 + $22,967.783` closed PnL - `$11.584` entry fees
+on two open positions = `$32,956.199`. It reports `-10.33%` maximum drawdown,
+four `unsafe_liquidation_buffer` exits, and zero liquidations. Signal and H1
+OHLCV files are byte-identical to the preceding conservative artifact.
+
+**Acceptance:** all 3,402 execution sequences are unique, explicit initial
+capital is `$10,000`, cash arithmetic matches the exported final account, and
+the safety exits are present.
+
+**Links:** ADR-0055, `docs/execution/live_backtest_parity_audit_2026-06-30.md`.
+
+---
+
+## 2026-07-02 — Backtest artifact incident verification
+
+**What:** investigated the suspicious `$9,998.07` initial capital and the drop
+from `$588,744` to `$32,439` in owner artifact `20260701_141907`.
+
+**Result:** fixed the report's row-order-dependent initial capital and added
+deterministic same-time exit sequencing. Cash accounting itself was exact.
+Signal and OHLCV exports are byte-identical to the previous artifact; the
+economic drop is driven by removal of optimistic H1 trailing plus compounding.
+The audit also found and fixed two genuine intervals where a constituent close
+left another position short of the required liquidation buffer.
+
+**Acceptance:** full non-hanging tests pass; focused Ruff and strict live mypy
+pass. The v2 owner rerun is recorded above.
+
+**Links:** ADR-0055,
+`results/core4_v3_recovery_conservative_intrabar_20260701/20260701_141907/`.
+
+---
+
 ## 2026-07-01 — Durable live recovery and conservative H1 execution
 
 **What:** completed restart recovery for entry/close state and replaced

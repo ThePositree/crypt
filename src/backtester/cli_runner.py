@@ -129,6 +129,7 @@ class BacktestArgs:
     liquidation_buffer_pct: float = 0.005
     maintenance_margin_tier_schedule: str | None = None
     instrument_precision_policy: str | None = None
+    intrabar_execution_timeframe: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "max_positions", 0)
@@ -244,6 +245,7 @@ _BACKTEST_ARG_KEYS = frozenset(
         "liquidation_buffer_pct",
         "maintenance_margin_tier_schedule",
         "instrument_precision_policy",
+        "intrabar_execution_timeframe",
     }
 )
 
@@ -370,6 +372,7 @@ def build_cli_data_loader(
     bingx_time_zone: int = 0,
     bingx_recv_window: int = 30_000,
     bingx_cache_dir: str | None = None,
+    load_execution_1m: bool = False,
 ) -> BaseDataLoader:
     """Build a data loader for CLI based on data source and kwargs.
 
@@ -446,6 +449,7 @@ def build_cli_data_loader(
             primary_timeframe=primary_timeframe,
             start=start,
             end=end,
+            load_execution_1m=load_execution_1m,
         )
     if source == "bingx":
         missing = []
@@ -534,6 +538,7 @@ def backtest_run_kwargs(args: BacktestArgs) -> dict[str, Any]:
         "liquidation_buffer_pct": args.liquidation_buffer_pct,
         "maintenance_margin_tier_schedule": args.maintenance_margin_tier_schedule,
         "instrument_precision_policy": args.instrument_precision_policy,
+        "intrabar_execution_timeframe": args.intrabar_execution_timeframe,
     }
 
 
