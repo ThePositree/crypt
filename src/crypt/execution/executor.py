@@ -344,6 +344,7 @@ class LiveExecutionManager:
         precision = await self._trading_client.get_instrument_precision(pos.symbol)
         pos.entry_order_id = result.order_id
         pos.entry_price = result.average_price
+        pos.aggregate_entry_price = result.average_price
         pos.contracts = result.filled_contracts
         pos.size = result.filled_contracts * precision.contract_size
         pos.locked_margin = pos.size * pos.entry_price / pos.leverage
@@ -413,11 +414,9 @@ class LiveExecutionManager:
                 continue
             buffer_distance = pos.entry_price * pos.liquidation_buffer_pct
             safe = (
-                exchange_pos.liquidation_price
-                <= pos.sl_price - buffer_distance
+                exchange_pos.liquidation_price <= pos.sl_price - buffer_distance
                 if pos.is_long
-                else exchange_pos.liquidation_price
-                >= pos.sl_price + buffer_distance
+                else exchange_pos.liquidation_price >= pos.sl_price + buffer_distance
             )
             if safe:
                 continue
@@ -539,9 +538,7 @@ class LiveExecutionManager:
         managed_positions = [
             pos
             for pos in self._state.positions
-            if pos.symbol == symbol
-            and pos.status == "open"
-            and pos.entry_state == "protected"
+            if pos.symbol == symbol and pos.status == "open" and pos.entry_state == "protected"
         ]
         fill_allocations = allocate_closed_position_fills(
             positions=managed_positions,
@@ -549,11 +546,7 @@ class LiveExecutionManager:
         )
 
         for pos in list(self._state.positions):
-            if (
-                pos.symbol != symbol
-                or pos.status != "open"
-                or pos.entry_state != "protected"
-            ):
+            if pos.symbol != symbol or pos.status != "open" or pos.entry_state != "protected":
                 continue
 
             close_fill = fill_allocations[pos.position_id]
@@ -772,9 +765,7 @@ class LiveExecutionManager:
                 entry_time=entry_time,
                 entry_price=entry_price,
                 capital=capital,
-                risk_base=(
-                    capital if self._settings.risk_base_period == "trade" else risk_base
-                ),
+                risk_base=(capital if self._settings.risk_base_period == "trade" else risk_base),
                 backtest_entry_price=signal_batch.next_open,
             )
             event_id = build_event_id(
@@ -787,8 +778,7 @@ class LiveExecutionManager:
                 (
                     item
                     for item in self._state.positions
-                    if item.event_id == event_id
-                    and item.position_id not in position_ids_before
+                    if item.event_id == event_id and item.position_id not in position_ids_before
                 ),
                 None,
             )
@@ -858,6 +848,12 @@ class LiveExecutionManager:
         same_side_positions = [
             position for position in open_positions if position.is_long is rr.is_long
         ]
+        existing_aggregate_size = sum(position.size for position in same_side_positions)
+        existing_aggregate_entry = (
+            same_side_positions[0].aggregate_entry_price or same_side_positions[0].entry_price
+            if same_side_positions
+            else None
+        )
         precision = await self._trading_client.get_instrument_precision(symbol)
         expected_precision = instrument_precision_from_name(
             self._settings.instrument_precision_policy
@@ -895,9 +891,7 @@ class LiveExecutionManager:
         sl_price = precision.round_price(rr.sl_price)
         tp_price = precision.round_price(rr.tp_price)
         valid_geometry = (
-            sl_price < entry_price < tp_price
-            if rr.is_long
-            else tp_price < entry_price < sl_price
+            sl_price < entry_price < tp_price if rr.is_long else tp_price < entry_price < sl_price
         )
         if not valid_geometry:
             await self._notify_entry_rejected(
@@ -946,7 +940,11 @@ class LiveExecutionManager:
             return
         aggregate_safe, aggregate_liquidation = aggregate_liquidation_is_beyond_stops(
             entries_and_stops=[
-                (position.entry_price, position.size, position.sl_price)
+                (
+                    position.aggregate_entry_price or position.entry_price,
+                    position.size,
+                    position.sl_price,
+                )
                 for position in same_side_positions
             ]
             + [(entry_price, planned_size, sl_price)],
@@ -1095,7 +1093,15 @@ class LiveExecutionManager:
             trail_distance_atr=event.trail_distance_atr or 0.0,
         )
         self._state.positions.append(new_pos)
+        planned_aggregate_entry = (
+            (existing_aggregate_size * existing_aggregate_entry + planned_size * entry_price)
+            / (existing_aggregate_size + planned_size)
+            if existing_aggregate_entry is not None
+            else entry_price
+        )
         for position in [*same_side_positions, new_pos]:
+            position.aggregate_entry_price = planned_aggregate_entry
+            position.locked_margin = position.size * planned_aggregate_entry / rr.required_leverage
             position.liquidation_price = aggregate_liquidation or planned_liquidation
         save_state(self._state, self._settings.state_path)
 
@@ -1129,9 +1135,7 @@ class LiveExecutionManager:
         order_id = order_result.order_id if order_result is not None else None
         actual_entry_price = order_result.average_price if order_result is not None else entry_price
         quote_fill_drift_pct = abs(actual_entry_price - entry_price) / entry_price
-        expected_h1_open = (
-            entry_price if backtest_entry_price is None else backtest_entry_price
-        )
+        expected_h1_open = entry_price if backtest_entry_price is None else backtest_entry_price
         h1_fill_drift_pct = abs(actual_entry_price - expected_h1_open) / expected_h1_open
         actual_contracts = order_result.filled_contracts if order_result is not None else contracts
         actual_size = actual_contracts * contract_size
@@ -1173,7 +1177,11 @@ class LiveExecutionManager:
             return
         actual_aggregate_safe, actual_aggregate_liquidation = aggregate_liquidation_is_beyond_stops(
             entries_and_stops=[
-                (position.entry_price, position.size, position.sl_price)
+                (
+                    existing_aggregate_entry or position.entry_price,
+                    position.size,
+                    position.sl_price,
+                )
                 for position in same_side_positions
             ]
             + [(actual_entry_price, actual_size, sl_price)],
@@ -1227,7 +1235,15 @@ class LiveExecutionManager:
         new_pos.fixed_take_profit_enabled = (
             trailing_geometry is None or trailing_geometry.fixed_take_profit_enabled
         )
+        actual_aggregate_entry = (
+            (existing_aggregate_size * existing_aggregate_entry + actual_size * actual_entry_price)
+            / (existing_aggregate_size + actual_size)
+            if existing_aggregate_entry is not None
+            else actual_entry_price
+        )
         for position in [*same_side_positions, new_pos]:
+            position.aggregate_entry_price = actual_aggregate_entry
+            position.locked_margin = position.size * actual_aggregate_entry / rr.required_leverage
             position.liquidation_price = actual_liquidation
         save_state(self._state, self._settings.state_path)
         if trailing_geometry is not None:
@@ -1404,10 +1420,11 @@ class LiveExecutionManager:
         pos.exit_reason = reason
         pos.exit_price = pos.close_fill_notional / pos.close_filled_contracts
         pos.exit_fee = pos.close_fee_accum
+        aggregate_entry_price = pos.aggregate_entry_price or pos.entry_price
         gross = (
-            (pos.exit_price - pos.entry_price) * pos.size
+            (pos.exit_price - aggregate_entry_price) * pos.size
             if pos.is_long
-            else (pos.entry_price - pos.exit_price) * pos.size
+            else (aggregate_entry_price - pos.exit_price) * pos.size
         )
         pos.realized_pnl = gross - pos.entry_fee - pos.exit_fee
         return True
@@ -1527,8 +1544,7 @@ class LiveExecutionManager:
         wait_for_delivery: bool = False,
     ) -> None:
         logger.info(
-            "ENTRY ATTEMPT: symbol=%s side=%s strategy=%s signal_time=%s "
-            "entry=%.4f sl=%.4f",
+            "ENTRY ATTEMPT: symbol=%s side=%s strategy=%s signal_time=%s entry=%.4f sl=%.4f",
             symbol,
             "LONG" if event.signal == 1 else "SHORT",
             event.selected_strategy,
@@ -1726,14 +1742,11 @@ def _missing_position_protection(
         else pos.algo_client_order_id in algo_client_ids
     )
     combined_tp_present = any(
-        order.client_order_id == pos.algo_client_order_id
-        and bool(order.raw.get("tpTriggerPx"))
+        order.client_order_id == pos.algo_client_order_id and bool(order.raw.get("tpTriggerPx"))
         for order in snapshot.algo_orders
     )
     tp_present = (
-        pos.take_profit_order_id in regular_ids
-        if pos.take_profit_order_id
-        else combined_tp_present
+        pos.take_profit_order_id in regular_ids if pos.take_profit_order_id else combined_tp_present
     )
     trailing_present = (
         pos.trailing_algo_order_id in algo_ids

@@ -1,10 +1,11 @@
 import math
+from dataclasses import replace
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from backtester.execution_sim import ExecutionSim, Position
+from backtester.execution_sim import ExecutionSim, ExitReason, Position
 from backtester.results_analyzer import ResultsAnalyzer
 
 
@@ -163,6 +164,118 @@ def test_signal_events_request_trailing_atr() -> None:
     assert len(trades) == 1
     assert trades.iloc[0]["exit_reason"] == "trailing_stop"
     assert trades.iloc[0]["trail_activation_rrr"] == 1.0
+
+
+def test_partial_same_side_close_uses_preserved_okx_average_entry() -> None:
+    timestamp = pd.Timestamp("2026-01-01", tz="UTC")
+    first = Position(
+        signal_time=timestamp,
+        entry_time=timestamp,
+        entry_price=100.0,
+        aggregate_entry_price=150.0,
+        risk_base_capital=1_000.0,
+        size=1.0,
+        tp_price=200.0,
+        sl_price=90.0,
+        bar_opened=0,
+        fee_entry=0.0,
+        capital_before=1_000.0,
+        leverage=2.0,
+        locked_margin=75.0,
+        available_balance_before=1_000.0,
+        open_positions_before=0,
+        total_locked_margin_before=0.0,
+        total_locked_margin_after_entry=150.0,
+        is_long=True,
+        liquidation_price=75.0,
+        maintenance_margin_rate=0.004,
+        liquidation_fee_rate=0.0005,
+        liquidation_buffer_pct=0.005,
+        maintenance_margin_tier_schedule=None,
+        metadata={},
+    )
+    remaining = replace(
+        first,
+        entry_price=200.0,
+        tp_price=300.0,
+        sl_price=190.0,
+        open_positions_before=1,
+    )
+    history: list[dict] = []
+    sim = ExecutionSim(initial_capital=1_000.0, taker_fee=0.0, maker_fee=0.0)
+
+    capital = sim._record_position_exit(
+        pos=first,
+        exit_reason=ExitReason.TTL_EXPIRED,
+        exit_price=150.0,
+        capital=1_000.0,
+        i=1,
+        next_time=timestamp + pd.Timedelta(hours=1),
+        trade_history=history,
+    )
+    sim._refresh_aggregate_liquidation([remaining])
+
+    assert history[0]["entry_price"] == pytest.approx(100.0)
+    assert history[0]["aggregate_entry_price"] == pytest.approx(150.0)
+    assert history[0]["pnl_abs"] == pytest.approx(0.0)
+    assert capital == pytest.approx(1_000.0)
+    assert remaining.entry_price == pytest.approx(200.0)
+    assert remaining.aggregate_entry_price == pytest.approx(150.0)
+    assert remaining.locked_margin == pytest.approx(75.0)
+
+
+def test_same_side_entry_updates_one_okx_average_and_margin_total() -> None:
+    idx = pd.date_range("2026-01-01", periods=4, freq="1h", tz="UTC")
+    frame = pd.DataFrame(
+        {
+            "open": [100.0, 100.0, 91.0, 91.0],
+            "high": [101.0, 101.0, 91.0, 91.0],
+            "low": [99.0, 95.0, 90.5, 90.5],
+            "close": [100.0, 100.0, 91.0, 91.0],
+            "volume": 1.0,
+            "signal_events": [
+                [
+                    {
+                        "signal": 1,
+                        "sl_price": 90.0,
+                        "rrr": 20.0,
+                        "risk_percent": 1.0,
+                    }
+                ],
+                [
+                    {
+                        "signal": 1,
+                        "sl_price": 90.0,
+                        "rrr": 20.0,
+                        "risk_percent": 0.1,
+                    }
+                ],
+                [],
+                [],
+            ],
+        },
+        index=idx,
+    )
+    sim = ExecutionSim(
+        initial_capital=1_000.0,
+        taker_fee=0.0,
+        maker_fee=0.0,
+        max_positions=0,
+        max_allowed_leverage=100.0,
+        min_net_exposure=0.0,
+    )
+
+    trades = sim.run(frame)
+
+    assert list(trades["exit_reason"]) == ["open", "open"]
+    assert list(trades["entry_price"]) == pytest.approx([100.0, 91.0])
+    aggregate_entry = (trades["entry_price"] * trades["size"]).sum() / trades["size"].sum()
+    assert list(trades["aggregate_entry_price"]) == pytest.approx(
+        [aggregate_entry, aggregate_entry]
+    )
+    assert trades["locked_margin"].sum() == pytest.approx(
+        trades["size"].sum() * aggregate_entry / trades["leverage"].iloc[0]
+    )
 
 
 def test_monthly_profit_capital_sweep_banks_profit_before_next_month_entries() -> None:
@@ -891,9 +1004,7 @@ def test_closed_trade_exports_maintenance_margin_tier_schedule() -> None:
     ).run(df)
 
     assert len(trades) == 1
-    assert trades.iloc[0]["maintenance_margin_tier_schedule"] == (
-        "okx_sol_usdt_swap_2026_06_29"
-    )
+    assert trades.iloc[0]["maintenance_margin_tier_schedule"] == ("okx_sol_usdt_swap_2026_06_29")
 
 
 def test_ttl_expiration_exit():
@@ -1080,6 +1191,7 @@ def test_trades_dataframe_columns_and_types():
         "entry_time",
         "exit_time",
         "entry_price",
+        "aggregate_entry_price",
         "risk_base_capital",
         "exit_price",
         "size",
@@ -1117,12 +1229,12 @@ def test_trades_dataframe_columns_and_types():
         "exit_bar_index",
         "capital_sweep_amount",
         "capital_sweep_month",
-            "banked_profit_after",
-            "trading_capital_after_sweep",
+        "banked_profit_after",
+        "trading_capital_after_sweep",
         "account_capital_at_end",
         "account_capital_at_end_time",
         "account_initial_capital",
-        }
+    }
 
     assert set(trades.columns) == expected_columns
 

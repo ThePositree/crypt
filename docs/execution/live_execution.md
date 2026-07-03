@@ -220,6 +220,13 @@ Steps:
    Backtests charge triggered TP limits as taker because OKX may execute them
    immediately; live reconciliation stores the actual exchange fee.
 
+All logical entries on one instrument side share the OKX position's aggregate
+average entry for realized PnL, margin, and liquidation accounting. Increasing
+the side updates that average; a partial close preserves it. Logical entry
+prices remain attached to their own protection geometry. Every successful
+exchange synchronization adopts OKX `avgPx` and `liqPx` for all local
+constituents on that side (ADR-0058).
+
 ### Durable order lifecycle
 
 Every entry persists an explicit lifecycle before the first exchange write:

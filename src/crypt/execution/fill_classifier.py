@@ -157,7 +157,7 @@ def _realized_pnl(
 ) -> float | None:
     if exit_price is None:
         return None
-    entry_value = pos.size * pos.entry_price
+    entry_value = pos.size * (pos.aggregate_entry_price or pos.entry_price)
     exit_value = pos.size * exit_price
     gross = exit_value - entry_value if pos.is_long else entry_value - exit_value
     return gross - pos.entry_fee - exit_fee
@@ -198,9 +198,7 @@ def _fill_matches_position(fill: dict[str, Any], pos: LivePosition) -> bool:
     }
     if expected_ids or expected_order_ids:
         observed_client_ids = {
-            str(identifier)
-            for identifier in (algo_client_id, close_client_id)
-            if identifier
+            str(identifier) for identifier in (algo_client_id, close_client_id) if identifier
         }
         observed_order_ids = {
             str(identifier)
@@ -211,10 +209,7 @@ def _fill_matches_position(fill: dict[str, Any], pos: LivePosition) -> bool:
             )
             if identifier
         }
-        return bool(
-            observed_client_ids & expected_ids
-            or observed_order_ids & expected_order_ids
-        )
+        return bool(observed_client_ids & expected_ids or observed_order_ids & expected_order_ids)
 
     subtype = str(raw.get("subType") or "")
     if subtype:

@@ -1,6 +1,6 @@
 {
   "name": "filtered_donor_portfolio",
-  "version": "filtered-donor-portfolio-causal-v3-core4-minute-last-mark-execution-2026-07-02",
+  "version": "filtered-donor-portfolio-causal-v3-core4-okx-aggregate-average-2026-07-03",
   "params": {
     "portfolio_id": "filtered_donor_portfolio_causal_v3_core4",
     "progress": true,

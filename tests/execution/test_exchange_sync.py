@@ -89,6 +89,84 @@ def test_reconcile_clean_snapshot() -> None:
     assert report.blocking_reasons == []
 
 
+def test_reconcile_adopts_exchange_average_for_all_same_side_positions() -> None:
+    first = LivePosition.create(
+        symbol="SOL-USDT-SWAP",
+        signal_time=datetime(2026, 6, 27, 10, tzinfo=UTC),
+        entry_time=datetime(2026, 6, 27, 11, tzinfo=UTC),
+        entry_price=100.0,
+        sl_price=90.0,
+        tp_price=200.0,
+        size=1.0,
+        contracts=1.0,
+        leverage=2.0,
+        locked_margin=50.0,
+        risk_base_capital=10_000.0,
+        is_long=True,
+        ttl_bars=24,
+        entry_order_id="entry-1",
+        selected_strategy="donor_a",
+    )
+    second = LivePosition.create(
+        symbol="SOL-USDT-SWAP",
+        signal_time=datetime(2026, 6, 27, 12, tzinfo=UTC),
+        entry_time=datetime(2026, 6, 27, 13, tzinfo=UTC),
+        entry_price=200.0,
+        sl_price=190.0,
+        tp_price=300.0,
+        size=1.0,
+        contracts=1.0,
+        leverage=2.0,
+        locked_margin=100.0,
+        risk_base_capital=10_000.0,
+        is_long=True,
+        ttl_bars=24,
+        entry_order_id="entry-2",
+        selected_strategy="donor_b",
+    )
+    first.stop_algo_order_id = "stop-1"
+    first.take_profit_order_id = "tp-1"
+    second.stop_algo_order_id = "stop-2"
+    second.take_profit_order_id = "tp-2"
+    state = ExecutionState(
+        schema_version=8,
+        risk_window_month=None,
+        monthly_risk_base=10_000.0,
+        positions=[first, second],
+    )
+
+    report = reconcile_exchange_snapshot(
+        state=state,
+        snapshot=_snapshot(
+            positions=[
+                ExchangePosition(
+                    symbol="SOL-USDT-SWAP",
+                    contracts=2.0,
+                    side="long",
+                    entry_price=150.0,
+                    liquidation_price=75.0,
+                    leverage=2.0,
+                    margin_mode="isolated",
+                )
+            ],
+            orders=[
+                ExchangeOrder(symbol="SOL-USDT-SWAP", order_id="tp-1", kind="regular"),
+                ExchangeOrder(symbol="SOL-USDT-SWAP", order_id="tp-2", kind="regular"),
+            ],
+            algo_orders=[
+                ExchangeOrder(symbol="SOL-USDT-SWAP", order_id="stop-1", kind="algo"),
+                ExchangeOrder(symbol="SOL-USDT-SWAP", order_id="stop-2", kind="algo"),
+            ],
+        ),
+        symbols=["SOL-USDT-SWAP"],
+    )
+
+    assert report.synced
+    assert [position.aggregate_entry_price for position in state.positions] == [150.0, 150.0]
+    assert [position.locked_margin for position in state.positions] == [75.0, 75.0]
+    assert [position.liquidation_price for position in state.positions] == [75.0, 75.0]
+
+
 def test_reconcile_blocks_orphan_exchange_position() -> None:
     state = ExecutionState(
         schema_version=2,

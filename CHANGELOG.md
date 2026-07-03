@@ -6,6 +6,34 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-07-03 — Correct OKX aggregate average-entry accounting
+
+- Fixed Core4 same-side accounting to match OKX: increasing exposure updates
+  one volume-weighted average entry, while partial closes preserve that
+  average.
+- Realized PnL now uses the exchange aggregate average instead of each logical
+  constituent's entry. Logical entries continue to own their independent
+  SL/TP/native-trailing/TTL geometry.
+- Aggregate margin is allocated pro rata and liquidation is recalculated from
+  the preserved average, remaining size, common leverage, and current size
+  tier.
+- Live synchronization adopts OKX `avgPx` and `liqPx` for every local
+  constituent on the side. Live close/recovery PnL and replay use the same
+  aggregate average.
+- Added `aggregate_entry_price` to backtest exports and live state schema 8,
+  with migration from earlier state files.
+- Added regressions for partial-close PnL, same-side entry averaging, exchange
+  synchronization, margin allocation, and fill classification.
+- Validation: complete project test suite passes excluding the known
+  assertion-passing pytest shutdown-hang test; focused Ruff and strict live
+  mypy pass.
+- The 2026-07-02 `$25,100.59` artifact is superseded; an owner-run canonical
+  minute rerun is required.
+- ADRs: added ADR-0058.
+- Files touched: `src/backtester/`, `src/crypt/execution/`, `tests/`,
+  `strategies/archive/`, `docs/execution/`, `docs/decisions/`, `docs/tasks/`,
+  `README.md`.
+
 ## 2026-07-02 — Minute last/mark execution replay
 
 - Verified the conservative v2 artifact at `$32,956.20` final account,

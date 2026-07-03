@@ -49,6 +49,7 @@ def replay_position(
         signal_time=pd.Timestamp(pos.signal_dt),
         entry_time=pd.Timestamp(entry_time),
         entry_price=pos.entry_price,
+        aggregate_entry_price=pos.aggregate_entry_price or pos.entry_price,
         risk_base_capital=pos.risk_base_capital,
         size=pos.size,
         tp_price=pos.tp_price,
@@ -108,10 +109,11 @@ def replay_position(
 
     reconstructed = None
     if pos.exit_price is not None:
+        aggregate_entry_price = pos.aggregate_entry_price or pos.entry_price
         gross = (
-            (pos.exit_price - pos.entry_price) * pos.size
+            (pos.exit_price - aggregate_entry_price) * pos.size
             if pos.is_long
-            else (pos.entry_price - pos.exit_price) * pos.size
+            else (aggregate_entry_price - pos.exit_price) * pos.size
         )
         reconstructed = gross - pos.entry_fee - (pos.exit_fee or 0.0)
     price_difference = (

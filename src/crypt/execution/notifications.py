@@ -203,6 +203,11 @@ class ExecutionTelegramNotifier:
             f"Reason: {_esc(pos.exit_reason or 'unknown')}",
             f"Entry: ${pos.entry_price:,.4f}",
         ]
+        if (
+            pos.aggregate_entry_price is not None
+            and abs(pos.aggregate_entry_price - pos.entry_price) > 1e-9
+        ):
+            lines.append(f"OKX side average: ${pos.aggregate_entry_price:,.4f}")
         if pos.exit_price is not None:
             lines.append(f"Exit: ${pos.exit_price:,.4f}")
         if pos.realized_pnl is not None:

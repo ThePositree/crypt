@@ -6,6 +6,11 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ## 2026-07-02 — Canonical Core4 v3 minute execution artifact
 
+**Status:** superseded by ADR-0058. The execution path remains reproducible,
+but its `$25,100.59` result used constituent-entry accounting instead of OKX's
+preserved same-side aggregate average. Do not use it as the current economic
+baseline.
+
 **What:** validated Core4 v3 with complete OKX last-trade and mark-price
 one-minute execution history.
 

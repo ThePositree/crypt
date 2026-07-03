@@ -18,6 +18,7 @@ from .margin_policy import (
     aggregate_linear_liquidation_price,
     aggregate_liquidation_is_beyond_stops,
     leverage_is_within_size_tier,
+    maintenance_margin_rate_for_size,
     per_entry_margin_cap,
 )
 from .risk_model import BasicRiskModel, EntryContext, RiskModel
@@ -133,6 +134,7 @@ class Position:
     liquidation_buffer_pct: float
     maintenance_margin_tier_schedule: str | None
     metadata: dict[str, Any]
+    aggregate_entry_price: float | None = None
     position_ttl_bars: int = 0
     position_group: str = ""
     trail_activation_rrr: float = 0.0
@@ -145,6 +147,8 @@ class Position:
 
     def __post_init__(self):
         """Validation of input data."""
+        if self.aggregate_entry_price is None:
+            self.aggregate_entry_price = self.entry_price
         if self.size <= 0:
             raise ValueError("Position size must be positive")
         if self.is_long:
@@ -655,8 +659,12 @@ class ExecutionSim:
             )
 
             # TTL
-            if evaluate_ttl and not exit_reason and (
-                pos.position_ttl_bars > 0 and (i + 1) - pos.bar_opened >= pos.position_ttl_bars
+            if (
+                evaluate_ttl
+                and not exit_reason
+                and (
+                    pos.position_ttl_bars > 0 and (i + 1) - pos.bar_opened >= pos.position_ttl_bars
+                )
             ):
                 exit_price = next_open
                 exit_reason = ExitReason.TTL_EXPIRED
@@ -776,7 +784,8 @@ class ExecutionSim:
     ) -> float:
         """Apply one exit cash flow and append its deterministic audit row."""
         exit_value = pos.size * exit_price
-        entry_value = pos.size * pos.entry_price
+        aggregate_entry_price = pos.aggregate_entry_price or pos.entry_price
+        entry_value = pos.size * aggregate_entry_price
         exit_ctx = ExitContext(exit_reason=exit_reason.value)
         fee_exit = self._fee_model.calculate_exit_fee(
             exit_value,
@@ -799,6 +808,7 @@ class ExecutionSim:
                 "entry_time": pos.entry_time,
                 "exit_time": next_time,
                 "entry_price": pos.entry_price,
+                "aggregate_entry_price": aggregate_entry_price,
                 "risk_base_capital": pos.risk_base_capital,
                 "exit_price": exit_price,
                 "size": pos.size,
@@ -841,25 +851,43 @@ class ExecutionSim:
 
     @staticmethod
     def _refresh_aggregate_liquidation(positions: list[Position]) -> None:
-        """Refresh side liquidation after every constituent close."""
+        """Refresh exchange-side margin and liquidation without changing its average entry."""
         for is_long in (True, False):
-            side_positions = [
-                position for position in positions if position.is_long is is_long
-            ]
+            side_positions = [position for position in positions if position.is_long is is_long]
             if not side_positions:
                 continue
+            aggregate_entry_price = (
+                side_positions[0].aggregate_entry_price or side_positions[0].entry_price
+            )
+            if any(
+                abs(
+                    (position.aggregate_entry_price or position.entry_price) - aggregate_entry_price
+                )
+                > 1e-9
+                for position in side_positions
+            ):
+                raise RuntimeError("same-side positions disagree on OKX aggregate entry price")
+            aggregate_size = sum(position.size for position in side_positions)
+            maintenance_margin_rate = maintenance_margin_rate_for_size(
+                position_size=aggregate_size,
+                default_rate=side_positions[0].maintenance_margin_rate,
+                tier_schedule=side_positions[0].maintenance_margin_tier_schedule,
+            )
             liquidation = aggregate_linear_liquidation_price(
-                entries=[(position.entry_price, position.size) for position in side_positions],
+                entries=[(aggregate_entry_price, aggregate_size)],
                 is_long=is_long,
                 leverage=side_positions[0].leverage,
-                maintenance_margin_rate=side_positions[0].maintenance_margin_rate,
+                maintenance_margin_rate=maintenance_margin_rate,
                 liquidation_fee_rate=side_positions[0].liquidation_fee_rate,
-                maintenance_margin_tier_schedule=side_positions[
-                    0
-                ].maintenance_margin_tier_schedule,
+                maintenance_margin_tier_schedule=side_positions[0].maintenance_margin_tier_schedule,
             )
             if liquidation is not None:
                 for position in side_positions:
+                    position.aggregate_entry_price = aggregate_entry_price
+                    position.maintenance_margin_rate = maintenance_margin_rate
+                    position.locked_margin = (
+                        position.size * aggregate_entry_price / side_positions[0].leverage
+                    )
                     position.liquidation_price = liquidation
 
     def _resolve_bar_exit(
@@ -1048,10 +1076,7 @@ class ExecutionSim:
                     pos.sl_price,
                     (pos.best_favorable_price or pos.entry_price) - callback_spread,
                 )
-                if (
-                    self.bar_exit_policy == "worst_case"
-                    and current_low <= previous_stop
-                ):
+                if self.bar_exit_policy == "worst_case" and current_low <= previous_stop:
                     return (
                         ExitReason.TRAILING_STOP,
                         _adverse_trigger_fill(
@@ -1504,7 +1529,12 @@ class ExecutionSim:
             return capital, active_positions
         aggregate_safe, aggregate_liquidation = aggregate_liquidation_is_beyond_stops(
             entries_and_stops=[
-                (pos.entry_price, pos.size, pos.sl_price) for pos in same_side_positions
+                (
+                    pos.aggregate_entry_price or pos.entry_price,
+                    pos.size,
+                    pos.sl_price,
+                )
+                for pos in same_side_positions
             ]
             + [(entry_price, position_size, sl_price_rounded)],
             is_long=risk_result.is_long,
@@ -1596,6 +1626,7 @@ class ExecutionSim:
             liquidation_buffer_pct=risk_result.liquidation_buffer_pct,
             maintenance_margin_tier_schedule=risk_result.maintenance_margin_tier_schedule,
             metadata=entry_ctx["metadata"],
+            aggregate_entry_price=entry_price,
             position_ttl_bars=entry_ctx["position_ttl_bars"],
             position_group=position_group,
             trail_activation_rrr=trail_activation_rrr,
@@ -1603,9 +1634,23 @@ class ExecutionSim:
             trail_activation_price=trail_activation_price,
             trail_callback_spread=trail_callback_spread,
         )
-        active_positions.append(new_position)
+        existing_size = sum(position.size for position in same_side_positions)
+        existing_notional = (
+            existing_size
+            * (same_side_positions[0].aggregate_entry_price or same_side_positions[0].entry_price)
+            if same_side_positions
+            else 0.0
+        )
+        aggregate_entry_price = (existing_notional + position_size * entry_price) / (
+            existing_size + position_size
+        )
         for position in [*same_side_positions, new_position]:
-            position.liquidation_price = aggregate_liquidation
+            position.aggregate_entry_price = aggregate_entry_price
+        active_positions.append(new_position)
+        self._refresh_aggregate_liquidation(active_positions)
+        new_position.total_locked_margin_after_entry = sum(
+            position.locked_margin for position in active_positions
+        )
 
         return capital - fee_entry, active_positions
 
@@ -1945,6 +1990,7 @@ class ExecutionSim:
             "entry_time": pos.entry_time,
             "exit_time": pd.NaT,
             "entry_price": pos.entry_price,
+            "aggregate_entry_price": pos.aggregate_entry_price or pos.entry_price,
             "risk_base_capital": pos.risk_base_capital,
             "exit_price": pd.NA,
             "size": pos.size,
@@ -2067,9 +2113,7 @@ def _validate_minute_execution_data(
         if not frame.index.equals(expected):
             missing = expected.difference(frame.index)
             extra = frame.index.difference(expected)
-            detail = (
-                f"first missing={missing[0]}" if len(missing) else f"first extra={extra[0]}"
-            )
+            detail = f"first missing={missing[0]}" if len(missing) else f"first extra={extra[0]}"
             raise ValueError(
                 f"{name} 1m execution coverage is incomplete: "
                 f"expected={len(expected)} actual={len(frame)} {detail}"
@@ -2088,9 +2132,7 @@ def _validate_minute_execution_data(
                 ["open", "high", "low", "close"],
             ]
             comparable_columns = ["high", "low", "close"]
-            delta = (
-                aggregated[comparable_columns] - expected_h1[comparable_columns]
-            ).abs()
+            delta = (aggregated[comparable_columns] - expected_h1[comparable_columns]).abs()
             tolerance = expected_h1[comparable_columns].abs() * 1e-10 + 1e-10
             mismatch = delta > tolerance
             if mismatch.any().any():
@@ -2105,9 +2147,7 @@ def _validate_minute_execution_data(
                 aggregated["open"] > expected_h1["high"]
             )
             if minute_open_outside_h1.any():
-                mismatch_time = minute_open_outside_h1.loc[
-                    minute_open_outside_h1
-                ].index[0]
+                mismatch_time = minute_open_outside_h1.loc[minute_open_outside_h1].index[0]
                 raise ValueError(
                     "first last-price 1m open is outside primary H1 range: "
                     f"timestamp={mismatch_time} open={aggregated.at[mismatch_time, 'open']} "

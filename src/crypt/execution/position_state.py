@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-_SCHEMA_VERSION = 7
+_SCHEMA_VERSION = 8
 
 
 @dataclass
@@ -48,6 +48,7 @@ class LivePosition:
         "protected",
         "entry_aborted",
     ] = "protected"
+    aggregate_entry_price: float | None = None
     event_id: str = ""
     client_order_id: str = ""
     algo_client_order_id: str = ""
@@ -149,6 +150,7 @@ class LivePosition:
             entry_order_id=entry_order_id,
             status="open",
             entry_state="entry_intent" if entry_order_id is None else "protected",
+            aggregate_entry_price=entry_price,
             event_id=event_id
             or build_event_id(
                 symbol=symbol,
@@ -298,6 +300,7 @@ def _migrate_state(raw: dict) -> dict:  # type: ignore[type-arg]
             pos.setdefault("trailing_algo_client_order_id", "")
             pos.setdefault("trailing_algo_order_id", "")
             pos.setdefault("entry_fee", 0.0)
+            pos.setdefault("aggregate_entry_price", pos.get("entry_price"))
             pos.setdefault("trail_activation_price", None)
             pos.setdefault("trail_callback_spread", None)
             pos.setdefault("fixed_take_profit_enabled", True)

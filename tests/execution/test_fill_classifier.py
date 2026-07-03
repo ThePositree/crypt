@@ -50,6 +50,25 @@ def test_classifies_long_take_profit_fill() -> None:
     assert result.exit_fee == pytest.approx(0.52)
 
 
+def test_realized_pnl_uses_exchange_aggregate_entry() -> None:
+    pos = _position(is_long=True)
+    pos.aggregate_entry_price = 150.0
+    result = classify_closed_position_from_fills(
+        pos=pos,
+        fills=[
+            {
+                "side": "sell",
+                "timestamp": 1_782_561_600_000,
+                "price": 150.0,
+                "amount": 10.0,
+                "fee": {"cost": 0.75},
+            }
+        ],
+    )
+
+    assert result.realized_pnl == pytest.approx(-0.75)
+
+
 def test_classifies_short_stop_loss_fill() -> None:
     result = classify_closed_position_from_fills(
         pos=_position(is_long=False),

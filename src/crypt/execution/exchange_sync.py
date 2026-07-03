@@ -126,6 +126,18 @@ def reconcile_exchange_snapshot(
                 continue
             if not local_side:
                 continue
+            exchange_average_entries = [
+                pos.entry_price for pos in exchange_side if pos.entry_price is not None
+            ]
+            if exchange_average_entries:
+                aggregate_entry_price = exchange_average_entries[0]
+                aggregate_size = sum(pos.size for pos in local_side)
+                leverage = local_side[0].leverage
+                for local in local_side:
+                    local.aggregate_entry_price = aggregate_entry_price
+                    local.locked_margin = (
+                        local.size * aggregate_entry_price / leverage if aggregate_size > 0 else 0.0
+                    )
             local_contracts = sum(pos.contracts for pos in local_side)
             exchange_contracts = sum(pos.contracts for pos in exchange_side)
             if abs(local_contracts - exchange_contracts) > 1e-8:
@@ -133,12 +145,9 @@ def reconcile_exchange_snapshot(
                     f"position_size_mismatch:{symbol}:{side_name}:"
                     f"local={local_contracts:.8g}:exchange={exchange_contracts:.8g}"
                 )
-            exchange_leverages = {
-                pos.leverage for pos in exchange_side if pos.leverage is not None
-            }
+            exchange_leverages = {pos.leverage for pos in exchange_side if pos.leverage is not None}
             if exchange_leverages and any(
-                abs(value - local_side[0].leverage) > 1e-8
-                for value in exchange_leverages
+                abs(value - local_side[0].leverage) > 1e-8 for value in exchange_leverages
             ):
                 blocking.append(
                     f"position_leverage_mismatch:{symbol}:{side_name}:"
@@ -169,6 +178,7 @@ def reconcile_exchange_snapshot(
             if liquidation_prices:
                 liquidation_price = liquidation_prices[0]
                 for local in local_side:
+                    local.liquidation_price = liquidation_price
                     buffer_distance = local.entry_price * local.liquidation_buffer_pct
                     unsafe = (
                         liquidation_price > local.sl_price - buffer_distance

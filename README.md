@@ -908,6 +908,10 @@ activation price and callback spread. The conservative H1 model does not let a
 newly tightened trailing stop consume the earlier adverse extreme of the same
 candle, applies adverse opening gaps, and treats a nearer structural stop as
 crossed before a deeper last-price liquidation.
+Same-side logical entries share one OKX aggregate average entry for realized
+PnL, margin, and liquidation. Adding exposure updates that average; partial
+closes preserve it. Trade exports retain both the logical `entry_price` and
+`aggregate_entry_price` used for cash accounting.
 Missing protection or an unsafe exchange liquidation level blocks new entries
 and is reported to Telegram every H1 cycle. If closing one same-side
 constituent removes the required liquidation buffer from a remaining logical

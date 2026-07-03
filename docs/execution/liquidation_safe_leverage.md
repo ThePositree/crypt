@@ -80,8 +80,16 @@ long/short mode and does not force its leverage onto the new side.
 OKX aggregates all positions for one instrument and position side. Before an
 overlapping entry, both live and backtester calculate the size-weighted average
 entry for that side, derive one aggregate liquidation price, and require it to
-remain beyond every constituent structural stop plus its buffer. Closing one
-constituent recomputes the remaining side liquidation price.
+remain beyond every constituent structural stop plus its buffer.
+
+Partially closing the side does **not** rebuild the average from the logical
+constituents that remain. OKX keeps the exchange position's average entry
+unchanged on a reducing fill. Realized price PnL for the closed quantity is
+therefore calculated from the aggregate average, while the logical entry stays
+attached only to that constituent's protection geometry and audit metadata.
+The remaining liquidation price is recalculated from the preserved aggregate
+average, reduced size, common leverage, and newly applicable size tier
+(ADR-0058).
 
 The aggregate liquidation calculation resolves the tier from the total same-side
 size, not from each child entry independently.

@@ -1,5 +1,62 @@
 # In progress
 
+## Core4 v3 OKX aggregate-average rerun (2026-07-03)
+
+**What:** rerun the canonical minute last/mark backtest after ADR-0058 corrected
+same-side OKX position accounting. Logical entries still own their SL, TP,
+native trailing, and TTL, but realized PnL, locked margin, and liquidation now
+use the exchange side's aggregate average entry. Partial closes preserve that
+average.
+
+**Why now:** the 2026-07-02 `$25,100.59` artifact used constituent entry prices
+for realized PnL and rebuilt the remaining average after partial closes. OKX
+does neither. In the artifact, 1,918 of 3,422 entries added to an existing side
+and 1,916 closes occurred with multiple same-side constituents, so the defect
+is material.
+
+**Expected gain:** obtain the first cash path that combines minute last/mark
+execution with actual OKX same-side average-price semantics. This determines
+whether the strategy remains near `$25k`, improves materially, or fails for a
+different reason.
+
+**Acceptance:**
+
+1. `trades.csv` exports both logical `entry_price` and
+   `aggregate_entry_price`.
+2. Cash reconciles from `$10,000` through closed PnL and open entry fees.
+3. Signal, signal-diagnostic, and H1 OHLCV hashes match artifact
+   `20260702_102019`.
+4. Report final account dollars, both drawdowns, 2025 mandate months,
+   liquidation count, and exit distribution.
+
+**Owner-run command:**
+
+```bash
+MPLCONFIGDIR=/tmp/matplotlib \
+UV_CACHE_DIR=/tmp/uv-cache \
+uv run backtester run \
+  --data-source crypt-parquet \
+  --data-dir data \
+  --primary-timeframe 1h \
+  --symbol SOL-USDT-SWAP \
+  --from 2021-12-18T00:00:00Z \
+  --to 2026-06-29T14:00:00Z \
+  --strategy strategies/archive/filtered_donor_portfolio_causal_v3_core4.json \
+  --capital 10000 \
+  --output results/core4_v3_okx_aggregate_average_20260703
+```
+
+Expected artifact:
+`results/core4_v3_okx_aggregate_average_20260703/<timestamp>/` with
+`metrics.csv`, `trades.csv`, `equity_curve.csv`, `signals.csv`,
+`signal_diagnostics.csv`, `trade_diagnostics.csv`, `ohlcv.csv`, and
+`trade_chart.html`.
+
+**Links:** ADR-0058, `docs/execution/liquidation_safe_leverage.md`,
+`docs/execution/minute_intrabar_execution.md`.
+
+---
+
 ## Core4 v3 live takeover and exact trade verification (2026-06-29)
 
 **What:** start the liquidation-safe/native-trailing v3 executor and verify the
