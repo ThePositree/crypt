@@ -4,6 +4,30 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-07-19 — Railway preflight logging and strategy default fixed
+
+**What:** made deploy preflight and standalone backfill use the same runtime
+logging setup as the live process, moved backfill progress to stdout, and gave
+the Railway entrypoint the archived live strategy as a default.
+
+**Why now:** Railway showed normal backfill output as stderr logs and the live
+process failed after backfill with `Invalid strategy config:
+strategies/live/active.json` when `EXECUTION_STRATEGY_CONFIG` was absent.
+
+**Result:** `LOG_LEVEL=INFO` now suppresses debug logs during preflight/backfill,
+normal backfill INFO/progress output is informational stdout, and the Railway
+service starts with the archived post-ADR-0058 strategy unless explicitly
+overridden.
+
+**Acceptance:** full CI command set passes locally: ruff check, ruff format
+check, strict mypy, `pytest -q`, and `uv lock --check`.
+
+**Links:** `src/crypt/runtime/logging.py`, `src/crypt/runtime/deploy_preflight.py`,
+`src/crypt/backfill/__main__.py`, `scripts/railway_live_start.sh`,
+`docs/deploy/railway.md`.
+
+---
+
 ## 2026-07-19 — Local CI failures fixed
 
 **What:** repaired the local CI command set by fixing a test fake signature,

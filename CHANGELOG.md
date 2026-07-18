@@ -6,6 +6,23 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-07-19 — Fixed Railway preflight logging and strategy default
+
+- Moved runtime logging setup into a shared helper used by `python -m crypt`,
+  deploy preflight, and standalone backfill.
+- Preflight/backfill now respect `LOG_LEVEL`; normal INFO logs go to stdout,
+  warnings/errors go to stderr, and backfill progress bars write to stdout.
+- Added a Railway entrypoint default for the archived live strategy config so
+  a missing `EXECUTION_STRATEGY_CONFIG` env var no longer falls back to
+  nonexistent `strategies/live/active.json` after a long backfill.
+- Added a regression for stdout/stderr log routing.
+- Verified the full CI command set locally.
+- ADRs: none.
+- Files touched: `src/crypt/`, `scripts/`, `tests/runtime/`, `docs/deploy/`,
+  `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
 ## 2026-07-19 — Fixed local CI failures
 
 - Fixed the execution 1m backfill test fake so it matches the production

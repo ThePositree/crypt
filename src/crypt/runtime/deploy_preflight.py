@@ -15,6 +15,7 @@ from crypt.config import Settings
 from crypt.data.store import ParquetStore
 from crypt.execution.settings import ExecutionSettings
 from crypt.models import Timeframe
+from crypt.runtime.logging import configure_runtime_logging
 
 _VALID_BOOTSTRAP_DATA_TYPES = {
     "ohlcv",
@@ -248,6 +249,8 @@ async def run_preflight(now: datetime | None = None) -> None:
 
 
 def main() -> None:
+    settings = Settings()
+    configure_runtime_logging(settings.log_level, settings.log_dir)
     asyncio.run(run_preflight())
 
 

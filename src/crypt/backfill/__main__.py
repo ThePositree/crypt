@@ -28,6 +28,7 @@ from crypt.config import Settings
 from crypt.data.store import ParquetStore
 from crypt.exchange.okx import OKXClient
 from crypt.models import Candle, CandlePriceType, Timeframe
+from crypt.runtime.logging import configure_runtime_logging
 
 # Milliseconds per bar for each timeframe.
 _MS_PER_BAR: dict[Timeframe, int] = {
@@ -88,7 +89,7 @@ async def _backfill_ohlcv(
         total_bars = max(1, (end_ms - start_ms) // ms_per_bar)
         desc = f"{symbol} OHLCV/{tf.value}"
 
-        with tqdm(total=total_bars, desc=desc, unit="bar", leave=False) as pbar:
+        with tqdm(total=total_bars, desc=desc, unit="bar", leave=False, file=sys.stdout) as pbar:
             cursor = start_ms
             while cursor < end_ms:
                 candles = await client.fetch_ohlcv_page(symbol, tf, cursor, limit=page_size)
@@ -138,7 +139,7 @@ async def _backfill_execution_1m_series(
     desc = f"{symbol} execution/{price_name}/1m"
     price_type = CandlePriceType.MARK if mark_price else CandlePriceType.LAST
 
-    with tqdm(total=total_bars, desc=desc, unit="bar", leave=False) as pbar:
+    with tqdm(total=total_bars, desc=desc, unit="bar", leave=False, file=sys.stdout) as pbar:
         cursor = start_ms
         while cursor < end_ms:
             cursor_dt = datetime.fromtimestamp(cursor / 1000, tz=UTC)
@@ -263,7 +264,9 @@ async def _backfill_oi(
     end_ms = _dt_to_ms(to_dt)
     total_est = max(1, (end_ms - start_ms) // _MS_PER_HOUR)
 
-    with tqdm(total=total_est, desc=f"{symbol} OI", unit="bar", leave=False) as pbar:
+    with tqdm(
+        total=total_est, desc=f"{symbol} OI", unit="bar", leave=False, file=sys.stdout
+    ) as pbar:
         cursor = start_ms
         consecutive_empty = 0
         while cursor < end_ms:
@@ -323,7 +326,13 @@ async def _backfill_rubik(
     window_ms = page_size * _MS_PER_HOUR
     total_est = max(1, (end_ms - start_ms) // _MS_PER_HOUR)
 
-    with tqdm(total=total_est, desc=f"{symbol} {data_type}", unit="bar", leave=False) as pbar:
+    with tqdm(
+        total=total_est,
+        desc=f"{symbol} {data_type}",
+        unit="bar",
+        leave=False,
+        file=sys.stdout,
+    ) as pbar:
         cursor = start_ms
         consecutive_empty = 0
         while cursor < end_ms:
@@ -449,6 +458,9 @@ async def _run_backfill(
 
 
 def main() -> None:
+    settings = Settings()
+    configure_runtime_logging(settings.log_level, settings.log_dir)
+
     parser = argparse.ArgumentParser(
         prog="python -m crypt.backfill",
         description="Backfill historical OKX data into the Parquet store.",
@@ -494,11 +506,7 @@ def main() -> None:
         logger.error("Unknown data types: {}. Valid: {}", unknown, valid_types)
         sys.exit(1)
 
-    if args.data_dir:
-        data_dir = Path(args.data_dir)
-    else:
-        settings = Settings()
-        data_dir = settings.data_dir
+    data_dir = Path(args.data_dir) if args.data_dir else settings.data_dir
 
     asyncio.run(
         _run_backfill(

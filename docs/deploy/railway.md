@@ -22,6 +22,7 @@ container defaults:
 - `EXECUTION_DATA_DIR=/app/data`
 - `EXECUTION_STATE_PATH=/app/data/live_positions.json`
 - `LOG_DIR=/app/data/logs`
+- `EXECUTION_STRATEGY_CONFIG=strategies/archive/filtered_donor_portfolio_post_adr0058_tail_control_v6_drop_negative_v5.json`
 - `PYTHONPATH=/app/src`
 - `NUMBA_DISABLE_JIT=1`
 
@@ -46,7 +47,6 @@ Set these in **Service -> Variables**:
 | `OKX_API_PASSPHRASE` | OKX API passphrase |
 | `EXECUTION_ENABLED` | `true` |
 | `EXECUTION_DRY_RUN` | `false` for live money, `true` for paper validation |
-| `EXECUTION_STRATEGY_CONFIG` | `strategies/archive/filtered_donor_portfolio_post_adr0058_tail_control_v6_drop_negative_v5.json` |
 | `EXECUTION_SYMBOLS` | `SOL-USDT-SWAP` |
 | `EXECUTION_REQUIRE_EXCHANGE_SYNC` | `true` |
 
@@ -60,6 +60,7 @@ Recommended explicit values:
 | `EXECUTION_DATA_DIR` | `/app/data` |
 | `EXECUTION_STATE_PATH` | `/app/data/live_positions.json` |
 | `LOG_DIR` | `/app/data/logs` |
+| `EXECUTION_STRATEGY_CONFIG` | Override only when deploying a different archived strategy JSON |
 
 ## Bootstrap variables
 
@@ -116,6 +117,12 @@ Starting crypt [execution-only] ...
 
 Railway dashboard logs are short-lived. Persistent logs are written to
 `/app/data/logs/crypt.log` and rotated daily.
+
+Runtime logging is shared by the preflight, backfill, and live process:
+`DEBUG` is suppressed when `LOG_LEVEL=INFO`, normal `INFO` backfill progress
+goes to stdout, and only `WARNING`/`ERROR` lines go to stderr. Railway should
+therefore tag normal preflight/backfill output as informational logs, not
+errors.
 
 Useful commands after `railway link`:
 

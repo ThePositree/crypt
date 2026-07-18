@@ -3,11 +3,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
-import logging
 import signal
-import sys
 from datetime import UTC, datetime
-from pathlib import Path
 
 from loguru import logger
 
@@ -16,51 +13,12 @@ from crypt.execution.executor import LiveExecutionManager
 from crypt.execution.settings import ExecutionSettings
 from crypt.runtime.h1_websocket import H1Boundary, H1WebSocketScheduler
 from crypt.runtime.health import run_health_check
+from crypt.runtime.logging import configure_runtime_logging
 from crypt.runtime.orchestrator import Orchestrator
 from crypt.runtime.scheduler import H4Scheduler
 
 _HEARTBEAT_INTERVAL_S = 30 * 60  # 30 minutes
 _OKX_HEALTH_INTERVAL_S = 6 * 60 * 60  # 6 hours
-
-
-class _InterceptStdlibLogging(logging.Handler):
-    """Forward standard-library logging records into loguru sinks."""
-
-    def emit(self, record: logging.LogRecord) -> None:
-        try:
-            level: str | int = logger.level(record.levelname).name
-        except ValueError:
-            level = record.levelno
-        logger.opt(depth=6, exception=record.exc_info).log(level, record.getMessage())
-
-
-def _configure_logging(level: str, log_dir: Path) -> None:
-    log_dir.mkdir(parents=True, exist_ok=True)
-    logger.remove()
-    tty = sys.stderr.isatty()
-    # INFO and below → stdout so Railway tags them [inf] instead of [err].
-    logger.add(
-        sys.stdout,
-        level=level,
-        filter=lambda r: r["level"].no < 30,  # no=30 is WARNING
-        colorize=tty,
-        enqueue=tty,
-    )
-    # WARNING and above → stderr (Railway [err] is appropriate here).
-    logger.add(sys.stderr, level="WARNING", colorize=tty, enqueue=tty)
-    logger.add(
-        log_dir / "crypt.log",
-        level=level,
-        # Rotate at midnight UTC so each day gets its own file.
-        rotation="00:00",
-        retention="30 days",
-        compression="gz",
-        serialize=True,
-        enqueue=True,
-    )
-    logging.basicConfig(handlers=[_InterceptStdlibLogging()], level=level, force=True)
-    logging.getLogger("apscheduler").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -169,7 +127,7 @@ async def _main() -> None:
             update={"symbols": [s.strip() for s in args.symbols.split(",") if s.strip()]}
         )
 
-    _configure_logging(settings.log_level, settings.log_dir)
+    configure_runtime_logging(settings.log_level, settings.log_dir)
 
     exec_bundle = _maybe_build_execution_manager(settings)
     execution_only = bool(args.execution_only)

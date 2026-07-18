@@ -848,6 +848,10 @@ The Railway entrypoint always runs `crypt.runtime.deploy_preflight` before the
 live process. It removes zero-byte parquet files, checks H1/H4/D1 live OHLCV
 coverage, and runs OKX backfill when data is missing, stale, or gapped. A fresh
 volume can therefore spend a long time backfilling before any order logic starts.
+The entrypoint defaults to the archived post-ADR-0058 live strategy unless
+`EXECUTION_STRATEGY_CONFIG` is explicitly overridden. Preflight and backfill use
+the same `LOG_LEVEL` and stdout/stderr routing as the live process: INFO and
+progress output go to stdout, while only WARNING/ERROR go to stderr.
 
 ## Live Execution
 
