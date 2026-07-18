@@ -1,0 +1,12 @@
+{
+  "name": "meta",
+  "description": "Meta SBS",
+  "version": "1.0",
+  "params": {
+    "strategy": "sbs",
+    "study_log": "sbs.log",
+    "study_name": "sbs",
+    "enough_max_min_per_month_return": -5,
+    "enough_min_total_return": 50
+  }
+}

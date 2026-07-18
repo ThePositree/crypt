@@ -9,12 +9,13 @@ authors = [{ name = "n-tretyakov" }]
 
 # Runtime dependencies. Concrete versions are resolved and locked by `uv lock`.
 # Minimums are set to the latest majors known to work as of project start.
-# Next session: run `uv sync` and commit `uv.lock`.
 dependencies = [
+    "aiohttp>=3.13",
     "ccxt>=4.4",
     "pandas>=2.2",
     "numpy>=1.26",
     "pyarrow>=17",
+    "requests>=2.32",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
     "apscheduler>=3.10",
@@ -22,17 +23,18 @@ dependencies = [
     "loguru>=0.7",
     "httpx>=0.27",
     "PyYAML>=6.0",
+    "tqdm>=4.66",
+    "matplotlib>=3.8",
+    "pandas-ta>=0.3.14b",
+    "optuna>=4.0",
+    "click>=8.1",
+    "scikit-learn>=1.5",
+    "scipy>=1.14",
+    "seaborn>=0.13",
 ]
 
-[project.optional-dependencies]
-# Technical-analysis stack. pandas-ta is the first choice; if pandas
-# compatibility bites, swap to `ta` and write an ADR.
-ta = [
-    # pandas-ta 0.4.x (only version available for Python 3.12+) pulls in
-    # numba/llvmlite. In Railway containers set NUMBA_DISABLE_JIT=1 to
-    # prevent LLVM initialisation from hanging on startup.
-    "pandas-ta>=0.3.14b",
-]
+[project.scripts]
+backtester = "backtester.__main__:cli"
 
 [dependency-groups]
 dev = [
@@ -49,7 +51,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/crypt"]
+packages = ["src/crypt", "src/backtester"]
 
 # ---------------------------------------------------------------------------
 # Tooling
@@ -78,7 +80,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["crypt"]
+known-first-party = ["crypt", "backtester"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -98,7 +100,9 @@ module = [
     "pandas.*",
     "pandas_ta.*",
     "pyarrow.*",
+    "sklearn.*",
     "apscheduler.*",
+    "tqdm.*",
 ]
 ignore_missing_imports = true
 
@@ -106,3 +110,7 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "-ra -q"
+# Prepend src/ so our `crypt` package is found before the deprecated stdlib
+# `crypt` module (Python 3.12). Without this, `import crypt.models` resolves
+# to the stdlib file and raises ModuleNotFoundError. See ADR-0013.
+pythonpath = ["src"]

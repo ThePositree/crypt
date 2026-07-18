@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 import numpy.typing as npt
@@ -38,6 +38,8 @@ class VolatilityEngine(BaseEngine):
     Sets ``meta["vol_regime"]`` which the orchestrator copies to
     EvaluationContext.vol_regime before the regime engine runs.
     """
+
+    critical_inputs: ClassVar[list[str]] = ["candles[H4]"]
 
     @property
     def name(self) -> str:

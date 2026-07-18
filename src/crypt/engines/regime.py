@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from typing import ClassVar
 
 import pandas_ta as ta
 
@@ -24,6 +25,8 @@ class RegimeEngine(BaseEngine):
 
     Requires ctx.vol_regime to be set (by VolatilityEngine) before running.
     """
+
+    critical_inputs: ClassVar[list[str]] = ["candles[H4]"]
 
     @property
     def name(self) -> str:

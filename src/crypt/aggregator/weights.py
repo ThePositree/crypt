@@ -8,13 +8,43 @@ import yaml
 from crypt.models import Regime, VolRegime
 
 # Engines whose strength contributes to the weighted-sum score.
-SCORING_ENGINES = frozenset({"trend", "meanrev", "derivatives"})
+SCORING_ENGINES = frozenset(
+    {
+        "trend",
+        "meanrev",
+        "derivatives",
+        "smc_structure",
+        "smc_order_blocks",
+        "smc_liquidity",
+    }
+)
 
 # Default weights (used when config file is missing or malformed).
 _DEFAULTS: dict[str, Any] = {
-    "TRENDING": {"trend": 0.55, "meanrev": 0.05, "derivatives": 0.40},
-    "RANGING": {"trend": 0.15, "meanrev": 0.60, "derivatives": 0.25},
-    "HIGH_VOL": {"trend": 0.20, "meanrev": 0.20, "derivatives": 0.60},
+    "TRENDING": {
+        "trend": 0.55,
+        "meanrev": 0.05,
+        "derivatives": 0.40,
+        "smc_structure": 0.0,
+        "smc_order_blocks": 0.0,
+        "smc_liquidity": 0.0,
+    },
+    "RANGING": {
+        "trend": 0.15,
+        "meanrev": 0.60,
+        "derivatives": 0.25,
+        "smc_structure": 0.0,
+        "smc_order_blocks": 0.0,
+        "smc_liquidity": 0.0,
+    },
+    "HIGH_VOL": {
+        "trend": 0.20,
+        "meanrev": 0.20,
+        "derivatives": 0.60,
+        "smc_structure": 0.0,
+        "smc_order_blocks": 0.0,
+        "smc_liquidity": 0.0,
+    },
     "thresholds": {"TRENDING": 0.25, "RANGING": 0.30, "HIGH_VOL": 0.45},
     "vol_confidence_multiplier": {"low": 0.95, "normal": 1.00, "high": 0.85},
 }

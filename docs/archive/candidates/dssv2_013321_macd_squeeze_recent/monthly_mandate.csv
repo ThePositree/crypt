@@ -1,0 +1,13 @@
+symbol,month,raw_monthly_return_pct,capped_monthly_return_pct,excess_return_pct,max_drawdown_pct,trade_count,stop_loss_count,passes_return_floor,breaches_monthly_dd,is_losing_month
+SOL-USDT-SWAP,2023-01,11.96,11.96,0.0,-2.67,21,12,False,False,False
+SOL-USDT-SWAP,2023-02,17.65,17.65,0.0,0.0,17,8,True,False,False
+SOL-USDT-SWAP,2023-03,19.45,19.45,0.0,0.0,23,11,True,False,False
+SOL-USDT-SWAP,2023-04,16.37,16.37,0.0,-2.21,29,17,True,False,False
+SOL-USDT-SWAP,2023-05,37.69,20.0,17.69,0.0,17,7,True,False,False
+SOL-USDT-SWAP,2023-06,38.98,20.0,18.98,-3.26,22,12,True,False,False
+SOL-USDT-SWAP,2023-07,48.72,20.0,28.72,0.0,21,9,True,False,False
+SOL-USDT-SWAP,2023-08,13.18,13.18,0.0,0.0,21,12,False,False,False
+SOL-USDT-SWAP,2023-09,-1.27,-1.27,0.0,-6.93,25,17,False,False,True
+SOL-USDT-SWAP,2023-10,-1.99,-1.99,0.0,-14.23,21,13,False,True,True
+SOL-USDT-SWAP,2023-11,5.74,5.74,0.0,-15.24,26,17,False,True,False
+SOL-USDT-SWAP,2023-12,28.12,20.0,8.12,-8.29,11,7,True,False,False

@@ -1,0 +1,40 @@
+{
+    "name": "fractal_rejection",
+    "version": "1.0",
+    "params": {
+        "fractal_period": 3,
+        "rejection_block_bars": 2,
+        "min_body_overlap": 0.01,
+        "trading_start_hour": 6,
+        "trading_end_hour": 21,
+        "structure_timeframe": 5,
+        "fractal_lookup": 40,
+        "body_level_tolerance": 0.1
+    },
+    "description": "Стратегия на основе снятия фракталов и rejection blocks. Комбинация Liquidity Hunt, Rejection Block и ICT подходов. Мультитаймфрейм анализ - структура на HTF, сигналы на LTF.",
+    "logic": {
+        "entry_conditions": [
+            "Снятие фрактала фитилем на высоком таймфрейме (HTF)",
+            "Образование rejection block на высоком таймфрейме (HTF)",
+            "Правильное направление свечи, снявшей фрактал на HTF"
+        ],
+        "long_conditions": [
+            "Снятие нижнего фрактала на HTF",
+            "Свеча, снявшая фрактал на HTF, была бычьей (close > open)"
+        ],
+        "short_conditions": [
+            "Снятие верхнего фрактала на HTF", 
+            "Свеча, снявшая фрактал на HTF, была медвежьей (close < open)"
+        ],
+        "filters": [
+            "Торговля только в определенные часы (6:00-21:00)",
+            "Обязательное наличие rejection block на HTF",
+            "Структура анализируется на HTF (15 минут по умолчанию)",
+            "Тела свечей в rejection block должны быть на одном уровне (tolerance: 0.1)"
+        ]
+    },
+    "backtest_args": {
+        "risk_percent": 1,
+        "rrr": 3
+    }
+}

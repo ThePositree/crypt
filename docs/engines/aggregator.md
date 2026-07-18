@@ -15,20 +15,23 @@ given the same Signals and weights, the same Verdict comes out.
 
   ```yaml
   TRENDING:
-    trend:       0.55
-    meanrev:     0.05
-    derivatives: 0.30
-    volatility:  0.10
+    trend:         0.50
+    meanrev:       0.05
+    derivatives:   0.00
+    smc_structure: 0.35
+    smc_order_blocks: 0.10
   RANGING:
-    trend:       0.15
-    meanrev:     0.50
-    derivatives: 0.25
-    volatility:  0.10
+    trend:         0.15
+    meanrev:       0.45
+    derivatives:   0.00
+    smc_structure: 0.30
+    smc_order_blocks: 0.10
   HIGH_VOL:
-    trend:       0.20
-    meanrev:     0.20
-    derivatives: 0.30
-    volatility:  0.30
+    trend:         0.20
+    meanrev:       0.25
+    derivatives:   0.00
+    smc_structure: 0.45
+    smc_order_blocks: 0.10
 
   # Per-regime decision thresholds on |score|.
   thresholds:
@@ -43,7 +46,8 @@ given the same Signals and weights, the same Verdict comes out.
     high:   0.85
   ```
 
-  Initial values are placeholders. M2 calibrates them on history.
+  Initial values are placeholders. ADR-0017 sets `derivatives: 0.00` for
+  primary M2 calibration so the first report depends only on free OHLCV data.
 
 ## Output
 

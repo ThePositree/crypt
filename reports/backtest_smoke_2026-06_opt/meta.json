@@ -1,0 +1,16 @@
+{
+  "generated_at": "2026-06-01T13:44:43.734957",
+  "git_sha": "43e4cd6",
+  "weights_sha": "0b53a20f2b4b",
+  "from_dt": "2026-05-15",
+  "to_dt": "2026-06-01",
+  "symbols": "SOL-USDT-SWAP, TON-USDT-SWAP",
+  "n_folds": 1,
+  "seed": 42,
+  "slippage_bps": 5.0,
+  "no_fees": false,
+  "initial_capital": 10000.0,
+  "position_ttl_bars": 6,
+  "total_verdicts": 204,
+  "total_test_trades": 26
+}

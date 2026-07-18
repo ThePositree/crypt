@@ -102,5 +102,5 @@ class DecisionFilter:
 
     @staticmethod
     def _has_critical_missing(verdict: Verdict) -> bool:
-        """Critical = H4 candle data absent on any contributing engine."""
-        return any("candles[H4]" in sig.inputs_missing for sig in verdict.breakdown)
+        """True when any engine reports a critical input as missing."""
+        return any(sig.critical_missing for sig in verdict.breakdown)

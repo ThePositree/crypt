@@ -14,6 +14,7 @@ def _verdict(
     confidence: int = 80,
     produced_at: datetime | None = None,
     inputs_missing: list[str] | None = None,
+    critical_missing: list[str] | None = None,
 ) -> Verdict:
     sig = Signal(
         engine="trend",
@@ -22,6 +23,7 @@ def _verdict(
         strength=0.5,
         confidence=0.8,
         inputs_missing=inputs_missing or [],
+        critical_missing=critical_missing or [],
         produced_at=produced_at or _NOW,
     )
     return Verdict(
@@ -82,7 +84,7 @@ def test_after_cooldown_passes() -> None:
 
 def test_critical_missing_input_downgrade() -> None:
     f = DecisionFilter()
-    v = _verdict(inputs_missing=["candles[H4]"])
+    v = _verdict(inputs_missing=["candles[H4]"], critical_missing=["candles[H4]"])
     guarded = f.apply_guard(v)
     assert guarded.decision == "HOLD"
     assert f.should_alert(guarded) is False
@@ -93,3 +95,57 @@ def test_no_missing_input_not_downgraded() -> None:
     v = _verdict()
     guarded = f.apply_guard(v)
     assert guarded.decision == "BUY"
+
+
+def test_non_critical_missing_does_not_downgrade() -> None:
+    """
+    An engine that loses a non-critical input (e.g. oi) should NOT trigger
+    the guard. Only critical_missing matters.
+    """
+    f = DecisionFilter()
+    v = _verdict(inputs_missing=["oi"], critical_missing=[])
+    guarded = f.apply_guard(v)
+    assert guarded.decision == "BUY"
+
+
+def test_critical_missing_via_engine_classvar() -> None:
+    """
+    Verify that BaseEngine._signal populates critical_missing automatically
+    from the engine's critical_inputs ClassVar.
+    """
+    from crypt.engines.trend import TrendEngine
+    from crypt.models import EvaluationContext
+
+    engine = TrendEngine()
+    ctx = EvaluationContext(
+        symbol="TEST",
+        tick_time=_NOW,
+        candles={},  # no H4 — should trigger critical_missing
+        oi=None,
+        ls_ratio=None,
+        taker_volume=None,
+    )
+    sig = engine.evaluate(ctx)
+    assert "candles[H4]" in sig.inputs_missing
+    assert "candles[H4]" in sig.critical_missing
+
+
+def test_non_critical_engine_has_empty_critical_missing() -> None:
+    """
+    DerivativesEngine has no critical_inputs → critical_missing stays empty
+    even when derivative data is absent.
+    """
+    from crypt.engines.derivatives import DerivativesEngine
+    from crypt.models import EvaluationContext
+
+    engine = DerivativesEngine()
+    ctx = EvaluationContext(
+        symbol="TEST",
+        tick_time=_NOW,
+        candles={},
+        oi=None,
+        ls_ratio=None,
+        taker_volume=None,
+    )
+    sig = engine.evaluate(ctx)
+    assert sig.critical_missing == []

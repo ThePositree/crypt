@@ -7,7 +7,6 @@ import pandas as pd
 from crypt.data.store import ParquetStore
 from crypt.models import (
     EvaluationContext,
-    FundingSnapshot,
     LongShortRatioSnapshot,
     OISnapshot,
     TakerVolumeSnapshot,
@@ -16,26 +15,9 @@ from crypt.models import (
 
 # How many rows to load for each data type when building a context.
 _CANDLE_LIMIT = 250
-_FUNDING_LIMIT = 200  # ~7-8 days of 8h funding snapshots
-_OI_LIMIT = 200       # ~8 days of hourly
-_LS_LIMIT = 100       # ~4 days of hourly
+_OI_LIMIT = 200  # ~8 days of hourly
+_LS_LIMIT = 100  # ~4 days of hourly
 _TAKER_LIMIT = 100
-
-
-def _df_to_funding(df: pd.DataFrame, symbol: str) -> list[FundingSnapshot] | None:
-    if df.empty:
-        return None
-    result = []
-    for _, row in df.iterrows():
-        from decimal import Decimal
-        result.append(
-            FundingSnapshot(
-                symbol=symbol,
-                ts=row["ts"].to_pydatetime() if hasattr(row["ts"], "to_pydatetime") else row["ts"],
-                rate=Decimal(str(row["rate"])),
-            )
-        )
-    return result or None
 
 
 def _df_to_oi(df: pd.DataFrame, symbol: str) -> list[OISnapshot] | None:
@@ -107,7 +89,6 @@ class ContextBuilder:
             if not df.empty:
                 candles[tf] = df
 
-        funding_df = self._store.load_funding(symbol, limit=_FUNDING_LIMIT)
         oi_df = self._store.load_oi(symbol, limit=_OI_LIMIT)
         ls_df = self._store.load_ls_ratio(symbol, limit=_LS_LIMIT)
         taker_df = self._store.load_taker_volume(symbol, limit=_TAKER_LIMIT)
@@ -116,7 +97,6 @@ class ContextBuilder:
             symbol=symbol,
             tick_time=tick_time,
             candles=candles,
-            funding=_df_to_funding(funding_df, symbol),
             oi=_df_to_oi(oi_df, symbol),
             ls_ratio=_df_to_ls_ratio(ls_df, symbol),
             taker_volume=_df_to_taker_volume(taker_df, symbol),

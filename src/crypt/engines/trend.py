@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from typing import ClassVar
 
 import numpy as np
 import pandas_ta as ta
@@ -25,6 +26,8 @@ class TrendEngine(BaseEngine):
     Strength: sign(EMA50 - EMA200) * |gap / (3 * ATR14)| * clip(ADX/30, 0, 1).
     Confidence: base 0.5 ± adjustments for D1 confluence, ADX strength, regime.
     """
+
+    critical_inputs: ClassVar[list[str]] = ["candles[H4]"]
 
     @property
     def name(self) -> str:

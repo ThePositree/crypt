@@ -1,0 +1,12 @@
+{
+  "archive_reason": "research_seed",
+  "archived_at": "2026-06-22",
+  "candidate_id": "island_2023_021396_engulfing_bb_trend",
+  "discovery_artifact": "results/dss_stage1_matrix_all_2022_2025_smc_wr45_threshold_only/island_qd_seed2026/",
+  "git_commit": "1f927d4fcf1d6d2341811e297d59b5d2a0b03d8a",
+  "mandate_artifact": "results/optuna_island_2023_021396_engulfing_bb_trend_big/20260622_094851/best_run/",
+  "optuna_artifact": "results/optuna_island_2023_021396_engulfing_bb_trend_big/20260622_094851/",
+  "strategy_path": "strategies/archive/island_2023_021396_engulfing_bb_trend.json",
+  "strategy_source": "results/dss_stage1_matrix_all_2022_2025_smc_wr45_threshold_only/manual_candidates/island_2023_021396_engulfing_bb_trend_wr45_research.json",
+  "superseded_by": null
+}

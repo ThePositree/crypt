@@ -1,0 +1,51 @@
+HIGH_VOL:
+  derivatives: 0.0
+  meanrev: 0.2
+  smc_liquidity: 0.2
+  smc_order_blocks: 0.2
+  smc_structure: 0.2
+  trend: 0.2
+RANGING:
+  derivatives: 0.0
+  meanrev: 0.0
+  smc_liquidity: 0.5
+  smc_order_blocks: 0.0
+  smc_structure: 0.5
+  trend: 0.0
+TRENDING:
+  derivatives: 0.0
+  meanrev: 0.0
+  smc_liquidity: !!python/object/apply:numpy._core.multiarray.scalar
+  - &id001 !!python/object/apply:numpy.dtype
+    args:
+    - f8
+    - false
+    - true
+    state: !!python/tuple
+    - 3
+    - <
+    - null
+    - null
+    - null
+    - -1
+    - -1
+    - 0
+  - !!binary |
+    MzMzMzMz6T8=
+  smc_order_blocks: 0.0
+  smc_structure: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    zczMzMzMvD8=
+  trend: !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    mpmZmZmZuT8=
+thresholds:
+  HIGH_VOL: 0.3
+  RANGING: 0.3
+  TRENDING: 0.2
+vol_confidence_multiplier:
+  high: 0.85
+  low: 0.95
+  normal: 1.0

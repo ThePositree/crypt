@@ -1,0 +1,30 @@
+{
+  "name": "crypt_ensemble",
+  "version": "0.3.0-mtf-h1-structural-trigger-filter-max-anchor-age-72h",
+  "params": {
+    "sl_atr_mult": 2.0,
+    "sl_atr_buffer_mult": 0.1,
+    "max_sl_distance_atr": 4.0,
+    "allow_atr_sl_fallback": false,
+    "optimized_windows": true,
+    "progress": true,
+    "timeframes": {
+      "context": ["1d"],
+      "setup": ["4h"],
+      "trigger": "1h",
+      "execution": "1h"
+    },
+    "trigger_rules": [
+      "h1_sweep_reversal",
+      "h1_structure_break",
+      "h1_order_block_retest"
+    ],
+    "max_anchor_age_hours": 72
+  },
+  "backtest_args": {
+    "ttl": 36,
+    "rrr": 1.25,
+    "risk_percent": 1.0,
+    "risk_base_period": "monthly"
+  }
+}

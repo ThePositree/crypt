@@ -1,0 +1,13 @@
+{
+  "archive_reason": "research_seed",
+  "archived_at": "2026-06-24",
+  "git_commit": "aef9374c8aa5d5b87ce5963bd6d3142a60fe8ebe",
+  "labels_artifact": "results/regime_matrix_archive_sol_2022_2025_trades/rolling_labels_day_30d_router_ps/rolling_labels.csv",
+  "router_config_path": "routers/archive/pinescript_median_dd_momentum_structure_180d_similarity65_hold60_margin1p5.json",
+  "router_id": "pinescript_median_dd_momentum_structure_180d_similarity65_hold60_margin1p5",
+  "search_algorithm": "random",
+  "search_artifact": "results/router_search_matrix_v2_25k/random_seed1101/",
+  "search_row": "router_v2_3216811",
+  "search_seed": 1101,
+  "superseded_by": null
+}

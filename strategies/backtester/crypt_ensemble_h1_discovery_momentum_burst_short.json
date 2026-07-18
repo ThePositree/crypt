@@ -1,0 +1,44 @@
+{
+  "name": "crypt_ensemble",
+  "version": "discovery-h1-momentum-burst-avoid-low-volume-block-context-reversal-side-short-only-trend-strength-min",
+  "params": {
+    "setup_source": "h1_raw",
+    "sl_atr_mult": 2.0,
+    "sl_atr_buffer_mult": 0.1,
+    "max_sl_distance_atr": 8.0,
+    "allow_atr_sl_fallback": true,
+    "optimized_windows": true,
+    "progress": true,
+    "timeframes": {
+      "context": ["1d"],
+      "setup": ["4h"],
+      "trigger": "1h",
+      "execution": "1h"
+    },
+    "trigger_rules": [
+      "h1_momentum_burst"
+    ],
+    "allowed_sides": ["short"],
+    "block_d1_h4_context_reversal": true,
+    "min_trend_strength_atr": 0.5,
+    "min_volume_median_ratio": 0.5
+  },
+  "backtest_args": {
+    "ttl": 36,
+    "rrr": 1.25,
+    "risk_percent": 1.0,
+    "risk_base_period": "monthly"
+  },
+  "discovery_source": {
+    "candidate_id": "h1_momentum_burst__avoid_low_volume__block_context_reversal__side_short_only__trend_strength_min",
+    "trigger": "h1_momentum_burst",
+    "filters": [
+      "avoid_low_volume",
+      "block_context_reversal",
+      "side_short_only",
+      "trend_strength_min"
+    ],
+    "discovery_schema_version": 1,
+    "artifact": "results/discovery_sol_h1_2025_monthly/20260608_113331/"
+  }
+}

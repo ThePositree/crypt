@@ -1,0 +1,81 @@
+{
+  "backtest_args": {
+    "exit_geometry": "sl_rrr",
+    "instrument_precision_policy": "okx_sol_usdt_swap_2026_07_01",
+    "intrabar_execution_timeframe": "1m",
+    "liquidation_buffer_pct": 0.005,
+    "liquidation_fee_rate": 0.0005,
+    "maintenance_margin_rate": 0.004,
+    "maintenance_margin_tier_schedule": "okx_sol_usdt_swap_2026_06_29",
+    "maker_fee": 0.0002,
+    "max_allowed_leverage": 25.0,
+    "max_allowed_margin": 1.0,
+    "max_positions": 0,
+    "risk_base_period": "monthly",
+    "risk_percent": 1.0,
+    "rrr": 2.0,
+    "structural_sl_mode": "cap",
+    "taker_fee": 0.0005,
+    "trail_activation_rrr": 0.0,
+    "trail_distance_atr": 0.0,
+    "ttl": 0
+  },
+  "name": "filtered_donor_portfolio",
+  "params": {
+    "filters": {},
+    "nested_backtest_args": {
+      "instrument_precision_policy": "okx_sol_usdt_swap_2026_07_01",
+      "liquidation_buffer_pct": 0.005,
+      "liquidation_fee_rate": 0.0005,
+      "maintenance_margin_rate": 0.004,
+      "maintenance_margin_tier_schedule": "okx_sol_usdt_swap_2026_06_29",
+      "max_allowed_leverage": 25.0
+    },
+    "portfolio_id": "post_adr0058_reduced_v2_risk1_archive",
+    "progress": true,
+    "research_notes": {
+      "kept_strategy_ids": [
+        "freq_4pw_r03_catcma_011465",
+        "freq_4pw_r02_hyperband_004678",
+        "freq_4pw_r09_hyperband_010009",
+        "sparse_0pw_r06_hyperband_001552",
+        "sparse_0pw_r11_island_2024_021423",
+        "sparse_0pw_r07_hyperband_019621",
+        "sparse_0pw_r09_catcma_013114"
+      ],
+      "removed_strategy_ids": [
+        "freq_4pw_r01_catcma_010978",
+        "freq_4pw_r04_catcma_013241",
+        "freq_4pw_r05_island_2023_001587",
+        "freq_4pw_r06_hyperband_015967",
+        "freq_4pw_r07_smac_003335",
+        "freq_4pw_r08_catcma_008884",
+        "freq_4pw_r10_hyperband_019141",
+        "freq_4pw_r11_island_2024_002436",
+        "freq_4pw_r12_island_2022_020583",
+        "sparse_0pw_r01_smac_018790",
+        "sparse_0pw_r02_hyperband_028062",
+        "sparse_0pw_r03_island_2022_002323",
+        "sparse_0pw_r04_hyperband_020661",
+        "sparse_0pw_r05_hyperband_026425",
+        "sparse_0pw_r08_dssv2_027026",
+        "sparse_0pw_r10_island_2022_000031",
+        "sparse_0pw_r12_hyperband_017877"
+      ],
+      "risk_cap": "all kept donor risk_percent capped at 1.0 for first DD-control test",
+      "source": "v2 reduced from all-24 v1 after full-period strategy attribution",
+      "v1_full_backtest": "docs/archive/candidates/post_adr0058_tail_control_portfolio/backtest_snapshots/v1_all24",
+      "v1_portfolio": "strategies/archive/filtered_donor_portfolio_post_adr0058_all24_v1.json"
+    },
+    "strategy_paths": {
+      "freq_4pw_r02_hyperband_004678": "strategies/archive/post_adr0058_reduced_v2/09_freq_4pw_r02_hyperband_004678.json",
+      "freq_4pw_r03_catcma_011465": "strategies/archive/post_adr0058_reduced_v2/23_freq_4pw_r03_catcma_011465.json",
+      "freq_4pw_r09_hyperband_010009": "strategies/archive/post_adr0058_reduced_v2/03_freq_4pw_r09_hyperband_010009.json",
+      "sparse_0pw_r06_hyperband_001552": "strategies/archive/post_adr0058_reduced_v2/01_sparse_0pw_r06_hyperband_001552.json",
+      "sparse_0pw_r07_hyperband_019621": "strategies/archive/post_adr0058_reduced_v2/12_sparse_0pw_r07_hyperband_019621.json",
+      "sparse_0pw_r09_catcma_013114": "strategies/archive/post_adr0058_reduced_v2/07_sparse_0pw_r09_catcma_013114.json",
+      "sparse_0pw_r11_island_2024_021423": "strategies/archive/post_adr0058_reduced_v2/19_sparse_0pw_r11_island_2024_021423.json"
+    }
+  },
+  "version": "post-adr0058-reduced-v2-risk1-archive-2026-07-13"
+}

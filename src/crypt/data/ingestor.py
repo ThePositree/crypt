@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import ClassVar
 
 from loguru import logger
 
+from crypt.data.store import ParquetStore
 from crypt.exchange.base import ExchangeClient
 from crypt.models import Timeframe
-
-if TYPE_CHECKING:
-    from crypt.data.store import ParquetStore
 
 
 class Ingestor:
@@ -22,7 +20,7 @@ class Ingestor:
 
     # Candle limits per timeframe — enough warm-up for the slowest indicator
     # (EMA200 on H4 needs 200 bars; D1 needs 60).
-    _OHLCV_LIMITS: dict[Timeframe, int] = {
+    _OHLCV_LIMITS: ClassVar[dict[Timeframe, int]] = {
         Timeframe.H4: 250,
         Timeframe.H1: 250,
         Timeframe.D1: 100,
@@ -31,7 +29,7 @@ class Ingestor:
     def __init__(
         self,
         exchange: ExchangeClient,
-        store: "ParquetStore",
+        store: ParquetStore,
         symbols: list[str],
     ) -> None:
         self._exchange = exchange
@@ -48,10 +46,9 @@ class Ingestor:
 
     async def _ingest_symbol(self, symbol: str) -> None:
         logger.info("Ingesting {}", symbol)
-        labels = ["ohlcv", "funding", "oi", "ls_ratio", "taker_volume"]
+        labels = ["ohlcv", "oi", "ls_ratio", "taker_volume"]
         results = await asyncio.gather(
             self._ingest_ohlcv(symbol),
-            self._ingest_funding(symbol),
             self._ingest_oi(symbol),
             self._ingest_ls_ratio(symbol),
             self._ingest_taker_volume(symbol),
@@ -65,22 +62,15 @@ class Ingestor:
         for tf, limit in self._OHLCV_LIMITS.items():
             try:
                 candles = await self._exchange.fetch_ohlcv(symbol, tf, limit=limit)
-                if candles:
-                    self._store.save_candles(candles)
+                closed = [c for c in candles if c.closed]
+                if closed:
+                    self._store.save_candles(closed)
             except Exception as exc:
                 logger.error("OHLCV {}/{} error: {}", symbol, tf.value, exc)
 
-    async def _ingest_funding(self, symbol: str) -> None:
-        try:
-            snapshots = await self._exchange.fetch_funding_history(symbol, limit=200)
-            if snapshots:
-                self._store.save_funding(snapshots)
-        except Exception as exc:
-            logger.error("Funding {} error: {}", symbol, exc)
-
     async def _ingest_oi(self, symbol: str) -> None:
         try:
-            snapshots = await self._exchange.fetch_oi_history(symbol, timeframe="1h", limit=200)
+            snapshots = await self._exchange.fetch_oi_history(symbol, limit=200)
             if snapshots:
                 self._store.save_oi(snapshots)
         except Exception as exc:

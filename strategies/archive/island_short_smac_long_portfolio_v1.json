@@ -1,0 +1,26 @@
+{
+  "name": "filtered_donor_portfolio",
+  "version": "island-short-smac-long-portfolio-v1-2026-06-26",
+  "params": {
+    "portfolio_id": "island_short_smac_long_portfolio_v1",
+    "progress": true,
+    "strategy_paths": {
+      "island_short_r1p42_rrr0p75_ttl32_weekend_stop_filter_v1": "strategies/archive/island_short_r1p42_rrr0p75_ttl32_weekend_stop_filter_v1.json",
+      "smac_long_r0p95_rrr1p25_ttl64_v1": "strategies/archive/smac_long_r0p95_rrr1p25_ttl64_v1.json"
+    },
+    "filters": {}
+  },
+  "backtest_args": {
+    "exit_geometry": "sl_rrr",
+    "risk_base_period": "monthly",
+    "structural_sl_mode": "cap",
+    "ttl": 0,
+    "rrr": 2.0,
+    "risk_percent": 1.0,
+    "trail_activation_rrr": 0.0,
+    "trail_distance_atr": 0.0,
+    "max_positions": 0,
+    "max_allowed_margin": 1.0,
+    "max_allowed_leverage": 25.0
+  }
+}

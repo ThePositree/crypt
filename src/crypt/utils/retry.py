@@ -18,12 +18,17 @@ async def retry_with_backoff(
     max_delay: float = 60.0,
     jitter: bool = True,
     label: str = "",
+    no_retry_on: Callable[[Exception], bool] | None = None,
 ) -> _T:
     """
     Retry an async callable with full-jitter exponential backoff.
 
     Sleep formula (full jitter): uniform(0, min(max_delay, base_delay * 2**attempt))
     This avoids thundering-herd when several coroutines fail simultaneously.
+
+    no_retry_on: optional predicate; when it returns True the exception is
+    re-raised immediately without sleeping (use for permanent errors where
+    retrying is guaranteed to fail, e.g. OKX 50030 "Illegal time range").
 
     Raises the last exception if all attempts are exhausted.
     """
@@ -34,6 +39,15 @@ async def retry_with_backoff(
             return await coro_fn()
         except Exception as exc:
             last_exc = exc
+
+            if no_retry_on is not None and no_retry_on(exc):
+                logger.debug(
+                    "retry_with_backoff{}: non-retryable error, aborting immediately: {}",
+                    f" [{label}]" if label else "",
+                    exc,
+                )
+                raise
+
             if attempt == max_attempts - 1:
                 logger.error(
                     "retry_with_backoff{}: all {} attempts exhausted: {}",

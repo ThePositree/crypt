@@ -12,14 +12,23 @@ in chat and you propagate the change).
 
 ## At session start
 
-Read in order: `README.md`, `AGENTS.md`, `docs/tasks/ROADMAP.md`,
-`docs/tasks/IN_PROGRESS.md`, `docs/tasks/BACKLOG.md`, last 2 entries in
-`CHANGELOG.md`, any ADR relevant to your task.
+Read in order: `README.md`, `AGENTS.md`, `docs/investment_mandate.md`,
+`docs/tasks/ROADMAP.md`, `docs/tasks/IN_PROGRESS.md`, `docs/tasks/BACKLOG.md`,
+last 2 entries in `CHANGELOG.md`, any ADR relevant to your task (including
+ADR-0025 for candidate work).
 
 ## Planning
 
 Build your local task plan yourself. The owner sets global direction only.
 For non-trivial tasks use the todo tool and keep it current.
+
+## Backtests
+
+Backtests and optimizer runs are owner-run by default. If the next step needs
+`backtester run`, `compare-fixed`, `compare-grid`, `signal-quality`, or an
+optimizer command, give the owner the exact command and expected artifacts,
+then wait for the owner to return with the result. Do not run those commands
+yourself unless the owner explicitly asks you to run that specific command.
 
 ## Errors / "fix this"
 

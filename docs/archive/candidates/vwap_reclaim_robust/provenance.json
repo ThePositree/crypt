@@ -1,0 +1,12 @@
+{
+  "candidate_id": "h1_vwap_reclaim__avoid_low_volume__bb_width_rank_min_low__session_off_hours",
+  "archived_at": "2026-06-09",
+  "archive_reason": "superseded",
+  "superseded_by": "h1_nr4_breakout__avoid_doji__vwap_dist_max_1pct__vwap_dist_min_0_2pct",
+  "strategy_path": "strategies/archive/crypt_ensemble_h1_discovery_vwap_reclaim_robust.json",
+  "discovery_artifact": "results/discovery_sol_h1_deep_20260608/20260608_193549/best_candidates/robust_min_window_win_rate_50/",
+  "overnight_root": "results/v3_robust_overnight_20260609/vwap_reclaim/",
+  "optuna_artifact": "results/v3_robust_overnight_20260609/vwap_reclaim/02_optuna_full_year/20260609_083127/",
+  "mandate_artifact": "results/v3_robust_overnight_20260609/vwap_reclaim/03_optuna_best_compare/20260609_092232/",
+  "git_commit": "24c73a0c2c01b6d2915dacb726319ad5a56cfcd8"
+}

@@ -1,0 +1,3 @@
+router_id,search_row,utility_score,median_total_return_pct,min_total_return_pct,max_total_return_pct,return_iqr_pct,worst_max_drawdown_pct,median_max_drawdown_pct,median_negative_periods,median_switches,offsets,periods_median
+rolling_median_120d_switch_margin_3,router_001190,202.11659015519064,258.1282865992339,186.3743275235296,365.2361356849595,63.29310454727164,-17.344210153612682,-10.021179324667562,5.0,2.0,30,23.0
+

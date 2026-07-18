@@ -1,0 +1,16 @@
+{
+  "name": "crypt_ensemble",
+  "version": "0.1.0",
+  "params": {
+    "sl_atr_mult": 2.0,
+    "sl_atr_buffer_mult": 0.1,
+    "allow_atr_sl_fallback": false,
+    "progress": true
+  },
+  "backtest_args": {
+    "ttl": 6,
+    "rrr": 2.0,
+    "risk_percent": 1.0,
+    "risk_base_period": "monthly"
+  }
+}

@@ -15,10 +15,16 @@ from pydantic import BaseModel, Field
 
 
 class Timeframe(StrEnum):
+    M1 = "1m"
     M15 = "15m"
     H1 = "1h"
     H4 = "4h"
     D1 = "1d"
+
+
+class CandlePriceType(StrEnum):
+    LAST = "last"
+    MARK = "mark"
 
 
 class Regime(StrEnum):
@@ -47,6 +53,7 @@ class Candle(BaseModel):
     c: Decimal
     volume: Decimal
     closed: bool = True
+    price_type: CandlePriceType = CandlePriceType.LAST
 
 
 class FundingSnapshot(BaseModel):
@@ -89,6 +96,11 @@ class Signal(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     rationale: list[str] = Field(default_factory=list)
     inputs_missing: list[str] = Field(default_factory=list)
+    # Subset of inputs_missing that are critical for this engine's output.
+    # Populated by BaseEngine._signal / _neutral from each engine's
+    # critical_inputs ClassVar. Used by DecisionFilter to downgrade verdicts
+    # whose primary data dependency is absent.
+    critical_missing: list[str] = Field(default_factory=list)
     meta: dict[str, object] = Field(default_factory=dict)
     produced_at: datetime
 
@@ -129,9 +141,6 @@ class EvaluationContext:
 
     # Keyed by Timeframe; may be empty/missing for a given timeframe.
     candles: dict[Timeframe, pd.DataFrame]
-
-    # Funding: ordered list, oldest first, newest last. None if fetch failed.
-    funding: list[FundingSnapshot] | None
 
     # Open interest: 1h bars, oldest first. None if fetch failed.
     oi: list[OISnapshot] | None

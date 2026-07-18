@@ -1,0 +1,14 @@
+{
+    "name": "rejection",
+    "version": "1.0",
+    "params": {
+        "rejection_block_bars": 2,
+        "min_body_overlap": 0.01,
+        "structure_timeframe": 15,
+        "body_level_tolerance": 0.1
+    },
+    "backtest_args": {
+        "risk_percent": 1,
+        "rrr": 5
+    }
+}

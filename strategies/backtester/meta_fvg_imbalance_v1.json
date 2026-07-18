@@ -1,0 +1,12 @@
+{
+  "name": "meta",
+  "description": "Meta FVG",
+  "version": "1.0",
+  "params": {
+    "strategy": "fvg_imbalance",
+    "study_log": "fvg_imb.log",
+    "study_name": "fvg_imb",
+    "enough_max_min_per_month_return": -15,
+    "enough_min_total_return": 5
+  }
+}

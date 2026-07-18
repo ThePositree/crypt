@@ -1,0 +1,21 @@
+{
+  "name": "liq_hunter",
+  "description": "Liquidity Hunter",
+  "version": "1.0",
+  "params": {
+    "volume_sma_window": 11,
+    "volume_ratio_threshold": 4.871814158212786,
+    "min_volume_zscore": 2.3971182220290213,
+    "atr_window": 13,
+    "sl_atr_multiplier": 0.593715775435696,
+    "wick_ratio_threshold": 6.357209354470087,
+    "ema_period": 64,
+    "adx_window": 15,
+    "adx_threshold": 24.183264426258116,
+    "mss_window": 4
+  },
+  "backtest_args": {
+    "risk_percent": 1.0893876377247151,
+    "rrr": 2.9329623083898846
+  }
+}

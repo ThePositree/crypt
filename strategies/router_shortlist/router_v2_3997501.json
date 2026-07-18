@@ -1,0 +1,45 @@
+{
+  "name": "promoted_router",
+  "version": "router-v2-3997501-exact-shortlist-2026-06-25",
+  "params": {
+    "router_id": "router_v2_3997501",
+    "progress": true,
+    "labels_path": "results/regime_matrix_archive_sol_2022_2025_trades/rolling_labels_day_30d_router_ps/rolling_labels.csv",
+    "fallback_strategy": "crypt_ensemble_h1_discovery_nr4_vwap_robust",
+    "min_available_strategies": 6,
+    "router": {
+      "validation_start": "2024-01-01",
+      "scoring_method": "same_state_median_minus_dd",
+      "lookback_days": 120,
+      "feature_set": "pinescript",
+      "knn_k": 0,
+      "state_subset": "trend_momentum_structure",
+      "state_match_mode": "exact",
+      "state_similarity_threshold": 1.0,
+      "state_weight_profile": "equal",
+      "ewm_halflife_days": 0,
+      "min_samples": 3,
+      "min_hold_days": 45,
+      "switch_margin_threshold": 5.0
+    },
+    "strategy_paths": {
+      "crypt_ensemble_h1_discovery_nr4_vwap_robust": "strategies/archive/crypt_ensemble_h1_discovery_nr4_vwap_robust.json",
+      "crypt_ensemble_h1_discovery_nr7_bb_squeeze_h4": "strategies/archive/crypt_ensemble_h1_discovery_nr7_bb_squeeze_h4.json",
+      "crypt_ensemble_h1_discovery_vwap_reclaim_robust": "strategies/archive/crypt_ensemble_h1_discovery_vwap_reclaim_robust.json",
+      "dssv2_013321_ps_macd_squeeze_recent": "strategies/archive/dssv2_013321_ps_macd_squeeze_recent.json",
+      "island_2023_021396_engulfing_bb_trend": "strategies/archive/island_2023_021396_engulfing_bb_trend.json",
+      "smac_003335_double_bottom_body_to_range": "strategies/archive/smac_003335_double_bottom_body_to_range.json"
+    }
+  },
+  "backtest_args": {
+    "risk_base_period": "monthly",
+    "max_positions": 0,
+    "max_allowed_leverage": 25.0,
+    "max_allowed_margin": 1.0,
+    "risk_percent": 1.0,
+    "rrr": 2.0,
+    "ttl": 0,
+    "exit_geometry": "sl_rrr",
+    "structural_sl_mode": "cap"
+  }
+}

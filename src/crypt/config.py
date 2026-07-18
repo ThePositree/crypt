@@ -7,7 +7,6 @@ import yaml
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 _DEFAULT_SYMBOLS = ["SOL-USDT-SWAP", "TON-USDT-SWAP", "XPL-USDT-SWAP"]
 
 
@@ -49,6 +48,11 @@ class Settings(BaseSettings):
 
     # Weights config — YAML file with per-regime engine weights.
     weights_path: Path = Field(default=Path("config/weights.yaml"))
+
+    # Whether engine weights are uncalibrated placeholders (pre-M2).
+    # Set to False only after M2 produces a calibrated weights.yaml and
+    # ADR-0013 ratifies it. See ADR-0011.
+    uncalibrated: bool = Field(default=True)
 
     # OKX fetch retry / backoff — tunable without code changes.
     okx_max_retries: int = Field(default=5, ge=1)

@@ -1,0 +1,10 @@
+{
+  "name": "ml_strategy",
+  "description": "Dual MA Strategy",
+  "version": "1.0",
+  "params": {},
+  "backtest_args": {
+    "risk_percent": 1,
+    "rrr": 3
+  }
+}

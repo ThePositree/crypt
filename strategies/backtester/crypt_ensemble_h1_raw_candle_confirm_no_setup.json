@@ -1,0 +1,28 @@
+{
+  "name": "crypt_ensemble",
+  "version": "0.4.0-h1-raw-candle-confirm-no-setup",
+  "params": {
+    "setup_source": "h1_raw",
+    "sl_atr_mult": 2.0,
+    "sl_atr_buffer_mult": 0.1,
+    "max_sl_distance_atr": 8.0,
+    "allow_atr_sl_fallback": true,
+    "optimized_windows": true,
+    "progress": true,
+    "timeframes": {
+      "context": ["1d"],
+      "setup": ["4h"],
+      "trigger": "1h",
+      "execution": "1h"
+    },
+    "trigger_rules": [
+      "h1_candle_confirm"
+    ]
+  },
+  "backtest_args": {
+    "ttl": 0,
+    "rrr": 1.0,
+    "risk_percent": 1.0,
+    "risk_base_period": "monthly"
+  }
+}
