@@ -135,6 +135,18 @@ def _assert_no_conflicting_ohlc_update(
                 )
 
 
+def _warn_conflicting_ohlc_update(
+    *,
+    existing: pd.DataFrame | None,
+    new: pd.DataFrame,
+    path: Path,
+) -> None:
+    try:
+        _assert_no_conflicting_ohlc_update(existing=existing, new=new, path=path)
+    except ValueError as exc:
+        logger.warning("Repairing stored candle with explicit OHLC rewrite: {}", exc)
+
+
 def _assert_h1_matches_complete_minutes(
     *,
     base: Path,
@@ -222,6 +234,14 @@ class ParquetStore:
     # --- OHLCV ---
 
     def save_candles(self, candles: list[Candle]) -> None:
+        self.save_candles_with_policy(candles)
+
+    def save_candles_with_policy(
+        self,
+        candles: list[Candle],
+        *,
+        allow_ohlc_rewrite: bool = False,
+    ) -> None:
         if not candles:
             return
         open_candles = [c for c in candles if not c.closed]
@@ -262,21 +282,27 @@ class ParquetStore:
             for month, month_df in new_df.groupby(month_keys, sort=True):
                 path = partition_dir / f"{month}.parquet"
                 existing = _read_parquet(path)
-                _assert_no_conflicting_ohlc_update(
-                    existing=existing,
-                    new=month_df,
-                    path=path,
-                )
+                if allow_ohlc_rewrite:
+                    _warn_conflicting_ohlc_update(existing=existing, new=month_df, path=path)
+                else:
+                    _assert_no_conflicting_ohlc_update(
+                        existing=existing,
+                        new=month_df,
+                        path=path,
+                    )
                 merged = _upsert(existing, month_df, "open_time")
                 _write_parquet(merged, path)
         else:
             path = _ohlcv_path(self._base, symbol, tf, price_type)
             existing = _read_parquet(path)
-            _assert_no_conflicting_ohlc_update(
-                existing=existing,
-                new=new_df,
-                path=path,
-            )
+            if allow_ohlc_rewrite:
+                _warn_conflicting_ohlc_update(existing=existing, new=new_df, path=path)
+            else:
+                _assert_no_conflicting_ohlc_update(
+                    existing=existing,
+                    new=new_df,
+                    path=path,
+                )
             if tf is Timeframe.H1:
                 _assert_h1_matches_complete_minutes(
                     base=self._base,

@@ -58,6 +58,21 @@ class _MutableFakeStore:
             self._frames[timeframe] = merged
 
 
+class _ConflictingFakeStore(_MutableFakeStore):
+    def __init__(self, frames: dict[Timeframe, pd.DataFrame]) -> None:
+        super().__init__(frames)
+        self.conflicts = 0
+
+    def save_candles(self, candles: list[Candle]) -> None:
+        del candles
+        self.conflicts += 1
+        raise ValueError(
+            "conflicting closed candle update refused: "
+            "path=/tmp/ohlcv_1h.parquet open_time=2026-07-18T21:00:00+00:00 "
+            "column=l existing=75.39 new=75.3"
+        )
+
+
 class _EmptyOkx:
     async def fetch_ohlcv(
         self,
@@ -280,6 +295,55 @@ async def test_websocket_boundary_next_open_survives_rest_repair() -> None:
         datetime(2026, 7, 15, 11, tzinfo=UTC),
         77.33,
     )
+
+
+@pytest.mark.asyncio
+async def test_websocket_conflict_is_repaired_from_rest() -> None:
+    runner = LiveSignalRunner.__new__(LiveSignalRunner)
+    store = _ConflictingFakeStore(
+        {
+            Timeframe.H1: pd.DataFrame(
+                {"open_time": pd.to_datetime(["2026-07-18T21:00:00Z"], utc=True)}
+            ),
+            Timeframe.H4: pd.DataFrame(
+                {"open_time": pd.to_datetime(["2026-07-18T20:00:00Z"], utc=True)}
+            ),
+            Timeframe.D1: pd.DataFrame(
+                {"open_time": pd.to_datetime(["2026-07-18T00:00:00Z"], utc=True)}
+            ),
+        }
+    )
+    runner._store = store
+    runner._next_open_by_symbol = {}
+    repaired: list[Timeframe] = []
+
+    async def repair(_symbol: str, timeframe: Timeframe) -> None:
+        repaired.append(timeframe)
+
+    runner._refresh_timeframe = repair
+    boundary = H1Boundary(
+        symbol="SOL-USDT-SWAP",
+        boundary_time=datetime(2026, 7, 18, 22, tzinfo=UTC),
+        closed_candles=[
+            Candle(
+                symbol="SOL-USDT-SWAP",
+                timeframe=Timeframe.H1,
+                open_time=datetime(2026, 7, 18, 21, tzinfo=UTC),
+                o=Decimal("75.5"),
+                h=Decimal("75.8"),
+                low=Decimal("75.3"),
+                c=Decimal("75.4"),
+                volume=Decimal("1"),
+                closed=True,
+            )
+        ],
+        next_open=75.4,
+    )
+
+    await runner.refresh_candles("SOL-USDT-SWAP", boundary)
+
+    assert repaired == [Timeframe.H1]
+    assert store.conflicts == 1
 
 
 @pytest.mark.asyncio

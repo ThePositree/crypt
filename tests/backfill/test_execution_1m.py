@@ -28,6 +28,15 @@ class _Store:
     def save_candles(self, candles: list[Candle]) -> None:
         self.saved.extend(candles)
 
+    def save_candles_with_policy(
+        self,
+        candles: list[Candle],
+        *,
+        allow_ohlc_rewrite: bool,
+    ) -> None:
+        assert allow_ohlc_rewrite is True
+        self.save_candles(candles)
+
 
 class _Client:
     async def fetch_ohlcv_page(

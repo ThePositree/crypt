@@ -4,6 +4,30 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-07-19 — REST is authoritative for closed-candle repair
+
+**What:** added an explicit store policy that lets REST refresh/backfill repair
+conflicting closed OHLC candles while keeping normal `save_candles()` writes
+strict.
+
+**Why now:** Railway live startup failed on a stored H1 low mismatch:
+`existing=75.39 new=75.3` for `2026-07-18T21:00:00Z`. The stored parquet and
+fresh OKX REST data disagreed, and the old invariant correctly refused a silent
+rewrite but incorrectly killed the live process.
+
+**Result:** WebSocket conflicts trigger REST repair, REST refresh/backfill can
+rewrite conflicting stored OHLC with a warning, and ordinary callers still
+cannot silently mutate closed candles.
+
+**Acceptance:** full CI command set passes locally: ruff check, ruff format
+check, strict mypy, `pytest -q`, and `uv lock --check`.
+
+**Links:** `src/crypt/data/store.py`, `src/crypt/execution/signal_runner.py`,
+`src/crypt/backfill/__main__.py`, `tests/data/test_store_closed_invariant.py`,
+`tests/execution/test_signal_runner_events.py`.
+
+---
+
 ## 2026-07-19 — Railway preflight logging and strategy default fixed
 
 **What:** made deploy preflight and standalone backfill use the same runtime

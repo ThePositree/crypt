@@ -99,7 +99,7 @@ async def _backfill_ohlcv(
 
                 closed = [c for c in candles if c.closed]
                 if closed:
-                    store.save_candles(closed)
+                    store.save_candles_with_policy(closed, allow_ohlc_rewrite=True)
 
                 last_ts_ms = _dt_to_ms(candles[-1].open_time)
                 logger.debug(
@@ -214,7 +214,7 @@ async def _backfill_execution_1m_series(
                 cursor = min(new_cursor, segment_end_ms)
                 if delay_s > 0:
                     await asyncio.sleep(delay_s)
-            store.save_candles(buffered)
+            store.save_candles_with_policy(buffered, allow_ohlc_rewrite=True)
 
 
 async def _backfill_execution_1m(

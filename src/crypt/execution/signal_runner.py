@@ -118,8 +118,20 @@ class LiveSignalRunner:
             closed_by_timeframe: dict[Timeframe, list[Any]] = {}
             for candle in websocket_boundary.closed_candles:
                 closed_by_timeframe.setdefault(candle.timeframe, []).append(candle)
-            for candles in closed_by_timeframe.values():
-                self._store.save_candles(candles)
+            for tf, candles in closed_by_timeframe.items():
+                try:
+                    self._store.save_candles(candles)
+                except ValueError as exc:
+                    if "conflicting closed candle update refused" not in str(exc):
+                        raise
+                    logger.warning(
+                        "OKX WebSocket candle conflicted with stored %s history for %s; "
+                        "repairing from REST because REST is authoritative: %s",
+                        tf.value,
+                        symbol,
+                        exc,
+                    )
+                    await self._refresh_timeframe(symbol, tf)
             self._next_open_by_symbol[symbol] = (
                 websocket_boundary.boundary_time,
                 websocket_boundary.next_open,
@@ -168,7 +180,10 @@ class LiveSignalRunner:
             forming = [c for c in candles if not c.closed]
             if closed:
                 try:
-                    self._store.save_candles(closed)
+                    self._store.save_candles_with_policy(
+                        closed,
+                        allow_ohlc_rewrite=True,
+                    )
                 except Exception as exc:
                     logger.exception("Failed to save candles for %s %s", symbol, tf.value)
                     raise RuntimeError(

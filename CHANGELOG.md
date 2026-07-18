@@ -6,6 +6,25 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-07-19 — Made REST authoritative for stored candle repair
+
+- Added an explicit OHLC rewrite policy to `ParquetStore`: normal callers still
+  reject conflicting closed-candle rewrites, while REST repair paths may replace
+  stored OHLC with a warning.
+- Live REST refresh and backfill now repair stored closed-candle conflicts
+  instead of failing the H1 execution cycle.
+- WebSocket candle conflicts no longer overwrite stored history; they trigger
+  REST repair because REST is authoritative when the two disagree.
+- Added regressions for explicit store repair and WebSocket-to-REST conflict
+  repair.
+- Verified the full CI command set locally.
+- ADRs: none.
+- Files touched: `src/crypt/data/`, `src/crypt/backfill/`,
+  `src/crypt/execution/`, `tests/data/`, `tests/execution/`,
+  `tests/backfill/`, `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
 ## 2026-07-19 — Fixed Railway preflight logging and strategy default
 
 - Moved runtime logging setup into a shared helper used by `python -m crypt`,

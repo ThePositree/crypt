@@ -84,6 +84,28 @@ class TestSaveCandlesClosedInvariant:
             with pytest.raises(ValueError, match="conflicting closed candle update refused"):
                 store.save_candles([changed])
 
+    def test_explicit_ohlc_rewrite_repairs_conflicting_closed_candle(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ParquetStore(Path(tmp))
+            store.save_candles([_make_candle(closed=True)])
+            changed = Candle(
+                symbol="SOL-USDT-SWAP",
+                timeframe=Timeframe.H4,
+                open_time=datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC),
+                o=Decimal("100"),
+                h=Decimal("102"),
+                low=Decimal("99"),
+                c=Decimal("100.5"),
+                volume=Decimal("1000"),
+                closed=True,
+            )
+
+            store.save_candles_with_policy([changed], allow_ohlc_rewrite=True)
+
+            df = store.load_candles("SOL-USDT-SWAP", Timeframe.H4)
+            assert len(df) == 1
+            assert df.iloc[0]["h"] == 102.0
+
     def test_mixed_timeframes_raise(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             store = ParquetStore(Path(tmp))
