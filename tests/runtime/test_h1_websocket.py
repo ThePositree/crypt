@@ -11,6 +11,7 @@ from crypt.runtime.h1_websocket import (
     H1Boundary,
     H1WebSocketScheduler,
     _expected_closed_opens,
+    _okx_request_id,
     _parse_candle_row,
 )
 
@@ -23,6 +24,14 @@ def test_expected_boundary_requires_higher_timeframes_only_when_they_close() -> 
     assert set(ordinary) == {Timeframe.H1}
     assert set(four_hour) == {Timeframe.H1, Timeframe.H4}
     assert set(midnight) == {Timeframe.H1, Timeframe.H4, Timeframe.D1}
+
+
+def test_okx_request_id_is_accepted_websocket_format() -> None:
+    request_id = _okx_request_id(datetime(2026, 7, 13, 12, tzinfo=UTC))
+
+    assert request_id == "h11783944000"
+    assert request_id.isalnum()
+    assert len(request_id) <= 32
 
 
 def test_parse_okx_candle_uses_confirm_as_closed_flag() -> None:
@@ -136,6 +145,35 @@ async def test_failed_websocket_callback_can_be_retried_by_rest_fallback() -> No
 
 
 @pytest.mark.asyncio
+async def test_rest_fallback_cancellation_during_shutdown_is_not_reported_as_failure() -> None:
+    errors: list[str] = []
+
+    async def callback(
+        _symbol: str,
+        _websocket_boundary: H1Boundary | None,
+        _source: str,
+    ) -> None:
+        await asyncio.sleep(1)
+
+    async def report_error(context: str, _error: BaseException | str) -> None:
+        errors.append(context)
+
+    scheduler = H1WebSocketScheduler(
+        callback,
+        ["SOL-USDT-SWAP"],
+        error_callback=report_error,
+    )
+    task = asyncio.create_task(scheduler._run_rest_fallback())
+    await asyncio.sleep(0)
+    scheduler.stop()
+    task.cancel()
+
+    await task
+
+    assert errors == []
+
+
+@pytest.mark.asyncio
 async def test_timed_out_callback_releases_boundary_for_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -157,3 +195,72 @@ async def test_timed_out_callback_releases_boundary_for_fallback(
     await scheduler._dispatch("SOL-USDT-SWAP", boundary_time, None, "rest_fallback")
 
     assert calls == ["websocket", "rest_fallback"]
+
+
+@pytest.mark.asyncio
+async def test_timed_out_callback_releases_boundary_before_slow_error_report(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("crypt.runtime.h1_websocket._EXECUTION_CALLBACK_TIMEOUT_S", 0.01)
+    calls: list[str] = []
+    report_started = asyncio.Event()
+    release_report = asyncio.Event()
+    boundary_time = datetime(2026, 6, 30, 14, tzinfo=UTC)
+
+    async def callback(
+        _symbol: str,
+        _websocket_boundary: H1Boundary | None,
+        source: str,
+    ) -> None:
+        calls.append(source)
+        if source == "websocket":
+            await asyncio.sleep(1)
+
+    async def report_error(_context: str, _error: BaseException | str) -> None:
+        report_started.set()
+        await release_report.wait()
+
+    scheduler = H1WebSocketScheduler(
+        callback,
+        ["SOL-USDT-SWAP"],
+        error_callback=report_error,
+    )
+    websocket_task = asyncio.create_task(
+        scheduler._dispatch("SOL-USDT-SWAP", boundary_time, None, "websocket")
+    )
+    await asyncio.wait_for(report_started.wait(), timeout=1)
+
+    await scheduler._dispatch("SOL-USDT-SWAP", boundary_time, None, "rest_fallback")
+
+    release_report.set()
+    await websocket_task
+
+    assert calls == ["websocket", "rest_fallback"]
+
+
+@pytest.mark.asyncio
+async def test_rest_fallback_uses_longer_callback_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("crypt.runtime.h1_websocket._EXECUTION_CALLBACK_TIMEOUT_S", 0.01)
+    monkeypatch.setattr(
+        "crypt.runtime.h1_websocket._REST_FALLBACK_CALLBACK_TIMEOUT_S",
+        0.05,
+    )
+    calls: list[str] = []
+    boundary_time = datetime(2026, 6, 30, 14, tzinfo=UTC)
+
+    async def callback(
+        _symbol: str,
+        _websocket_boundary: H1Boundary | None,
+        source: str,
+    ) -> None:
+        calls.append(source)
+        await asyncio.sleep(0.02)
+
+    scheduler = H1WebSocketScheduler(callback, ["SOL-USDT-SWAP"])
+
+    await scheduler._dispatch("SOL-USDT-SWAP", boundary_time, None, "rest_fallback")
+
+    assert calls == ["rest_fallback"]
+    assert ("SOL-USDT-SWAP", boundary_time) in scheduler._completed

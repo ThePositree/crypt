@@ -4,11 +4,6 @@ builder = "RAILPACK"
 buildCommand = "uv sync --all-extras --no-dev"
 
 [deploy]
-# uv includes the `dev` dependency group by default on `uv run` — skip it so
-# the container does not reinstall mypy/ruff on every cold start.
-# This Railway service is currently used as a long-running DSS search worker,
-# not the live alerting process. Keep output under /app/data (the mounted
-# volume) so results survive restarts and can be inspected with railway ssh.
-startCommand = "PYTHONPATH=/app/src uv run --no-dev backtester search-signals --algorithm island_qd --seed 2026 --data-dir data --symbol SOL-USDT-SWAP --windows 2022,2023,2024,2025H1 --n-trials 120000 --output data/results/dss_sol_island_qd_railway_seed2026"
+startCommand = "sh scripts/railway_live_start.sh"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10

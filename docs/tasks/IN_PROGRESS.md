@@ -1,6 +1,349 @@
 # In progress
 
-## Core4 v3 OKX aggregate-average rerun (2026-07-03)
+## Fresh post-ADR-0058 strategy search and portfolio rebuild (2026-07-08)
+
+**What:** restart strategy discovery under the corrected minute execution and
+OKX aggregate-average accounting stack, then optimize only the strongest fresh
+families and assemble a new shared-capital portfolio from the survivors.
+
+**Why now:** the corrected Core4 v3 rerun is economically weaker than the prior
+canonical artifact and still fails the owner mandate. Old strategy and
+portfolio artifacts were produced under execution/accounting assumptions that
+are now known to be materially wrong, so they are research seeds, not promotion
+evidence.
+
+**Expected gain:** find candidates whose edge survives the current execution
+model before spending time on live execution or polishing a failed portfolio.
+The target remains the owner mandate: at least nine 2025 months above `$1,500`
+on `$10,000`, no monthly drawdown breach above 10%, and no three consecutive
+losing months.
+
+**Acceptance:**
+
+1. A fresh DSS/search artifact exists under the corrected code/data stack and
+   exports a shortlist with trigger/filter/execution params.
+2. Shortlist candidates pass a quick exact replay screen before any expensive
+   Optuna budget is spent.
+3. Big Optuna is run only for candidates that are not immediate discards on the
+   quick exact screen.
+4. Optimized winners are frozen as archive strategy JSONs with artifact links.
+5. A new `filtered_donor_portfolio` config combines the top non-duplicative
+   winners through the normal multi-signal shared-capital execution path.
+6. Final portfolio backtest reports dollars, 2025 mandate rows, both drawdown
+   metrics, liquidation count, exit mix, per-strategy PnL, and a promote /
+   archive / discard verdict.
+
+**Owner-run phase 1 command (fresh broad search):**
+
+```bash
+MPLCONFIGDIR=/tmp/matplotlib \
+UV_CACHE_DIR=/tmp/uv-cache \
+uv run backtester search-signals-matrix \
+  --data-dir data \
+  --symbol SOL-USDT-SWAP \
+  --windows 2022,2023,2024,2025H1 \
+  --catalog all \
+  --stage-mode full \
+  --min-trades 15 \
+  --min-signals-per-week 0 \
+  --stage1-min-wr 0.55 \
+  --n-trials 50000 \
+  --n-jobs-per-algorithm 1 \
+  --output-root results/post_adr0058_dss_matrix_sol_20260708
+```
+
+Use higher `--n-trials` only after the first matrix shows exported candidates
+or useful near-miss families. Inspect `summary.md`, `stage1_ranked.csv`,
+`stage2_proxy.csv`, `stage3_full_scores.csv`, `candidate_manifest.md`, and
+`candidates/*.json` before launching Optuna.
+
+**2026-07-10 result:** owner completed
+`results/post_adr0058_dss_matrix_sol_20260708/`. All five algorithms finished
+cleanly with 50,000 generated candidates each, but exported zero candidates:
+Stage 1 survivors `0`, Stage 2 survivors `0`, Stage 3 evaluations `0`, archive
+cells `0`. This does not support launching big Optuna yet. The run was an
+all-window robust search, so it rejected nearly everything on the first failing
+window. Rejection shape was dominated by 2022: roughly 27k-31k candidates per
+algorithm had too few 2022 signals, 18k-22k had weak 2022 barrier WR, and about
+0.6k-0.7k overtraded 2022.
+
+**Interesting near-miss families:** the best traces were not portfolio-ready,
+but they show useful seed families for specialist search:
+
+- `pt_ps_macd_signal_cross + pf_ps_smc_bias + pf_session`: 18 signals in 2022
+  with 66.7% WR, 24 in 2023 with 62.5% WR, then failed 2024 badly at 28.6%.
+- `pt_double_bottom_sweep + anchor_age/rsi/short_only/trend_strength`: 55.2%
+  in 2022 and 68.2% in 2023, then failed 2024 at 30.4%.
+- `pt_ps_ut_trail_cross + pf_ps_macd_hist_state + pf_ps_pivot_volume`: passed
+  2022/2023 style checks but had only 12 signals in 2024.
+- `pt_momentum_burst` with session/trend filters and
+  `pt_ps_wavetrend_cross` with trendline/MACD-state filters repeatedly appear
+  near the top but do not survive all years.
+
+**Next owner-run phase:** switch from robust all-window search to
+single-window specialist discovery so the project can build a basket of many
+strategies. Run Stage 1-only matrices per target window; these should export
+`stage1_candidates/*.json` for exact replay screening before Optuna:
+
+```bash
+MPLCONFIGDIR=/tmp/matplotlib UV_CACHE_DIR=/tmp/uv-cache \
+uv run backtester search-signals-matrix \
+  --data-dir data --symbol SOL-USDT-SWAP \
+  --windows 2022 \
+  --catalog all --stage-mode stage1 \
+  --min-trades 15 --min-signals-per-week 0 --stage1-min-wr 0.55 \
+  --n-trials 30000 --n-jobs-per-algorithm 1 \
+  --output-root results/post_adr0058_specialists_sol_2022_20260710
+```
+
+Repeat the same command with `--windows 2023`, `--windows 2024`, and
+`--windows 2025H1`, changing only `--output-root`. If CPU/RAM is available,
+these four independent matrices can run in parallel; otherwise run them one at
+a time. After they finish, exact-test the exported `stage1_candidates/*.json`
+before any big Optuna.
+
+**Links:** ADR-0058, ADR-0056, ADR-0057, ADR-0047,
+`docs/discovery/direct_signal_search_v2.md`,
+`docs/multi_signal_execution.md`.
+
+**2026-07-12 Optuna seed prep:** exported the current Stage 1 near-miss tops
+from the owner's WR45 sparse and 4-per-week frequent searches as replayable
+`dss_strategy` JSONs under
+`results/post_adr0058_top_for_optuna_20260712/`.
+
+- `sparse_0pw/strategies/`: 12 stronger sparse seeds; these are the preferred
+  first Optuna budget because they show multi-year shape despite failing one
+  barrier.
+- `freq_4pw/strategies/`: 12 frequent seeds; treat as a separate, lower-trust
+  batch because several rows scored well on only 4-7 trades before failing the
+  4-per-week gate.
+- `manifest.csv`: combined rank/source/trigger/filter/window metrics for both
+  batches.
+
+Next owner-run step: run execution-parameter Optuna on these exported JSONs,
+preferably training on 2022-2024 and validating winners out of sample on 2025
+before any portfolio assembly. Keep sparse and frequent outputs separate.
+Use
+`results/post_adr0058_top_for_optuna_20260712/run_split_rrr_optuna_progress.py`
+for the owner-run Optuna batch; it shows total trial progress, active jobs,
+ETA, output paths, and per-job log links while keeping parallel Optuna logs
+separate.
+
+**2026-07-12 Optuna result:** owner completed the split-RRR Optuna batch at
+`results/post_adr0058_optuna_top_train_big_split_rrr_20260712/`. A summary was
+written to `summary.md` and `optuna_summary.csv`. All best trials still have
+mandate verdict `discard` on the 2022-2024 train window. Best train shapes:
+
+- `sparse_0pw/rank_06_hyperband_001552`: `+374.37%`, 79 trades, 16 passing
+  months, 20 below-floor months, six DD breach months, worst monthly DD
+  `-26.56%`.
+- `sparse_0pw/rank_12_hyperband_017877`: `+247.77%`, 102 trades, 11 passing
+  months, 25 below-floor months, five DD breach months, worst monthly DD
+  `-22.98%`.
+- `freq_4pw/rank_09_hyperband_010009`: `+112.66%`, only 15 trades, seven
+  passing months, 29 below-floor months, one DD breach month.
+
+Next useful step: do not promote a single strategy from this batch. Either add
+stronger post-entry/month-regime filters to the top sparse winners, or assemble
+a low-risk exploratory portfolio from non-overlapping top sparse components
+and validate on 2025 before any promotion decision.
+
+**2026-07-13 all-24 portfolio prep:** built an exploratory shared-capital
+portfolio combining all 24 split-RRR Optuna best trials:
+`results/post_adr0058_portfolio_all24_split_rrr_20260713/filtered_donor_portfolio_all24_split_rrr.json`.
+Each donor was frozen with its best-trial execution parameters under
+`frozen_strategies/`, and `portfolio_manifest.csv` links each donor to its
+source Optuna trial. Config load validation passed with 24 nested strategies,
+`intrabar_execution_timeframe=1m`, and `risk_base_period=monthly`. Owner-run
+full-period backtest is required next.
+
+**2026-07-13 all-24 full backtest result:** owner ran the full-period v1 source
+artifact at
+`results/post_adr0058_portfolio_all24_split_rrr_20260713/backtest_full/20260712_223913/`.
+It made `$10,000 -> $172,325.77` (`+1623.26%`) but is not promotable: profit
+factor `1.01`, peak-to-trough DD `-90.72%`, 27 liquidations plus one unsafe
+liquidation-buffer exit, and severe bad months including `2025-12 -55.72%`,
+`2026-04 -48.06%`, and `2026-05 -41.32%`. Strategy attribution files were
+written into that artifact:
+`strategy_contribution.csv`, `strategy_monthly_pnl.csv`,
+`worst_month_strategy_contributors.csv`, and `bad_month_strategy_score.csv`.
+
+Archived:
+
+- v1 exact all-24:
+  `strategies/archive/filtered_donor_portfolio_post_adr0058_all24_v1.json`
+- v2 reduced risk-capped first cut:
+  `strategies/archive/filtered_donor_portfolio_post_adr0058_reduced_v2_risk1.json`
+
+v2 keeps seven donors (`freq_4pw_r03_catcma_011465`,
+`freq_4pw_r02_hyperband_004678`, `freq_4pw_r09_hyperband_010009`,
+`sparse_0pw_r06_hyperband_001552`, `sparse_0pw_r11_island_2024_021423`,
+`sparse_0pw_r07_hyperband_019621`, `sparse_0pw_r09_catcma_013114`) and caps
+their risk to at most `1.0` for the first DD-control test. Config validation
+passed: v1 has 24 donors; v2 has 7 donors with risk `0.5-1.0`.
+
+**2026-07-13 v2 result and v3 return-first prep:** owner ran v2 at
+`results/post_adr0058_portfolio_reduced_v2_risk1_full_20260713/20260712_225328/`.
+It reduced the outcome to `$10,000 -> $62,074.13` (`+520.74%`), PF `1.10`,
+drawdown below start `-2.49%`, peak-to-trough DD `-39.28%`, 19 liquidations
+plus four unsafe liquidation-buffer exits. Owner redirected the research order:
+first maximize peak/final return, then reduce drawdowns. Created v3 as a
+return-first archive:
+`strategies/archive/filtered_donor_portfolio_post_adr0058_return_first_v3.json`.
+v3 keeps the 12 v1 donors with positive all-period PnL, preserves original
+Optuna risk (`0.5-3.0`), and removes only net-negative v1 donors. Manifest:
+`strategies/archive/post_adr0058_return_first_v3_manifest.csv`.
+
+**2026-07-13 v3 result and v4 prep:** owner ran v3 at
+`results/post_adr0058_portfolio_return_first_v3_full_20260713/20260712_230512/`.
+It reached `$10,000 -> $883,881.46` (`+8738.81%`), PF `1.09`, drawdown below
+start `-1.36%`, peak-to-trough DD `-62.81%`, 19 liquidations plus three unsafe
+liquidation-buffer exits. Strategy attribution files were written into the v3
+artifact. Created v4 as a minimal return-preserving cleanup:
+`strategies/archive/filtered_donor_portfolio_post_adr0058_return_first_v4_positive_v3.json`.
+v4 removes only the four v3 net-negative donors
+(`sparse_0pw_r09_catcma_013114`, `sparse_0pw_r06_hyperband_001552`,
+`freq_4pw_r05_island_2023_001587`, `sparse_0pw_r10_island_2022_000031`) and
+keeps original Optuna risk for the remaining eight donors. Manifest:
+`strategies/archive/post_adr0058_return_first_v4_manifest.csv`.
+
+**2026-07-13 v4 result and v5 tail-control prep:** owner ran v4 at
+`results/post_adr0058_portfolio_return_first_v4_positive_v3_full_20260713/20260712_231303/`.
+v4 made `$10,000 -> $340,047.49` (`+3300.47%`), PF `1.09`, drawdown below
+start `-1.36%`, peak-to-trough DD `-58.44%`, 18 liquidations plus four unsafe
+liquidation-buffer exits. This was a poor trade-off versus v3 because final
+capital fell by roughly `$543k` while peak-to-trough DD improved only about
+4.37 percentage points. Owner chose to continue from v3 and reduce drawdowns
+with minimal return loss. Created v5:
+`strategies/archive/filtered_donor_portfolio_post_adr0058_tail_control_v5_filtered_v3.json`.
+v5 keeps all 12 v3 donors and original Optuna risk, but adds one entry-known
+`catalog_*` filter per donor based on v3 bad-month attribution. This is a
+research artifact; filters are derived from the full-period v3 run and require
+validation after the full-period check.
+
+**2026-07-13 v5 result:** owner ran v5 at
+`results/post_adr0058_portfolio_tail_control_v5_filtered_v3_full_20260713/20260712_232331/`.
+This is the best research artifact so far: `$10,000 -> $1,360,197.25`
+(`+13501.97%`), PF `1.39`, drawdown below start `-6.79%`,
+peak-to-trough DD `-39.14%`, nine liquidations, and no unsafe
+liquidation-buffer exits. This improves both v3 return (`+8738.81%`) and v3
+peak-to-trough DD (`-62.81%`). Remaining weak spots are still `2026-04
+-17.33%`, `2025-12 -8.03%`, and early 2022 drawdowns. v5 attribution files
+were written in the artifact; current net-negative donors after filtering are
+`sparse_0pw_r01_smac_018790` (`-$101,229.69`) and
+`freq_4pw_r05_island_2023_001587` (`-$55,313.64`).
+
+**2026-07-13 v6 prep:** created
+`strategies/archive/filtered_donor_portfolio_post_adr0058_tail_control_v6_drop_negative_v5.json`.
+v6 removes only the two v5 net-negative donors
+(`sparse_0pw_r01_smac_018790`, `freq_4pw_r05_island_2023_001587`) and keeps
+the other ten v5 donors with their filters and original Optuna risk. Expected
+trade density from v5 trades remains acceptable: 1494 trades over 237 weeks,
+6.3/week average, seven weeks below two trades, and 50 weeks below four trades;
+for `2025+`, 550 trades, 7.05/week average, zero weeks below two trades, six
+weeks below four trades. Manifest:
+`strategies/archive/post_adr0058_tail_control_v6_manifest.csv`.
+
+**2026-07-13 v6 result:** owner ran v6 at
+`results/post_adr0058_portfolio_tail_control_v6_drop_negative_v5_full_20260713/20260713_100653/`.
+Result: `$10,000 -> $1,098,402.88` (`+10884.03%`), PF `1.48`, drawdown below
+start `-17.75%`, peak-to-trough DD `-39.23%`, nine liquidations, zero unsafe
+liquidation-buffer exits, 1515 trades. Weekly density remains acceptable: 6.39
+trades/week average, median six, seven weeks below two trades, 48 weeks below
+four trades. All ten remaining donors are net-positive after attribution.
+Worst residual trade-PnL months are `2026-04 -$156,980`, `2025-12 -$35,037`,
+and `2024-11 -$12,272`; next improvement should focus on `2026-04` without
+damaging the high-return donors.
+
+**2026-07-13 v7 prep:** created
+`strategies/archive/filtered_donor_portfolio_post_adr0058_tail_control_v7_apr2026.json`.
+v7 starts from v6 and adds one extra AND filter to the four main `2026-04`
+loss contributors while preserving all ten donors and original Optuna risk:
+`sparse_0pw_r07_hyperband_019621` requires `catalog_bb_width_pct <=
+0.03957995`; `sparse_0pw_r11_island_2024_021423` requires
+`catalog_trend_strength_atr >= 0.22770487`; `freq_4pw_r03_catcma_011465`
+requires `catalog_rsi14 <= 52.60144416`; `freq_4pw_r02_hyperband_004678`
+requires `catalog_trend_strength_atr >= 0.72252106`. Manifest:
+`strategies/archive/post_adr0058_tail_control_v7_manifest.csv`. Config load
+validation passed with 10 donors and 14 total filter rules.
+
+**2026-07-13 v7 result:** owner ran v7 at
+`results/post_adr0058_portfolio_tail_control_v7_apr2026_full_20260713/20260713_102023/`.
+Result: `$10,000 -> $866,481.95` (`+8564.82%`), PF `1.90`, drawdown below
+start `-6.85%`, peak-to-trough DD `-32.33%`, five liquidations, zero unsafe
+liquidation-buffer exits, 935 trades. It strongly improves v6 risk quality and
+nearly fixes `2026-04` (`-2.41%` monthly return), but trade density is now near
+the lower operator bound: 3.95 trades/week average, median four, 31 weeks below
+two trades, and 114 weeks below four trades. For `2025+`, 359 trades over 78
+weeks, 4.6/week average, five weeks below two trades, 28 below four. All donors
+except `sparse_0pw_r06_hyperband_001552` are net-positive after attribution.
+Current branch decision: v6 is the higher-return/high-density base; v7 is the
+lower-DD/cleaner base. A likely v8 should relax only the harshest v7 filters
+that caused the trade-density drop, not revert all v7 changes.
+
+**2026-07-13 archive package:** preserved the full v1-v7 research lineage at
+`docs/archive/candidates/post_adr0058_tail_control_portfolio/`. The archive
+contains version summaries, donor composition and filters, exact owner-run
+commands, portfolio JSON snapshots, compact backtest snapshots, complete
+copied full backtests, source Optuna research artifacts, strategy attribution,
+and monthly strategy PnL. Use this package before rerunning any v1-v7
+full-period backtest.
+
+---
+
+## Core4 v3 OKX aggregate-average rerun review (2026-07-08)
+
+**What:** owner completed the canonical minute last/mark rerun after ADR-0058.
+The accepted artifact for this local session is
+`results/core4_v3_okx_aggregate_average_2026070/20260708_054313/` (note the
+output directory typo: `2026070`, not `20260703`). The earlier failed empty
+artifact `20260708_050411/` is invalid and must not be used.
+
+**Why now:** this replaces the superseded 2026-07-02 `$25,100.59` minute
+artifact, which still used constituent entry prices instead of OKX aggregate
+average-entry accounting.
+
+**Result:** `$10,000` became `$24,195.85` (`+141.96%`) with 3,425 entries,
+3,423 closed trades, two open trades, profit factor `1.05`, drawdown below
+start `-9.20%`, peak-to-trough drawdown `-42.84%`, and nine liquidations.
+Cash reconciles exactly:
+`$10,000 + $14,204.343855912753 closed PnL - $8.4947749 open entry fees =
+$24,195.849081012755`.
+
+**2025 mandate verdict:** `discard`. Only four months pass the `$1,500` / 15%
+floor: April, May, July, and September. Eight months are below the floor;
+five months breach the 10% monthly below-start drawdown limit. Worst monthly
+drawdown is `-19.42%` in March. Sum capped monthly return is `+77.97%`.
+
+**Validation completed locally:**
+
+1. `trades.csv` exports `aggregate_entry_price`.
+2. H1 OHLCV export has 39,711 rows, spans `2021-12-18 00:00 UTC` →
+   `2026-06-29 14:00 UTC`, has zero duplicates, and zero hourly gaps.
+3. Artifact includes `metrics.csv`, `trades.csv`, `equity_curve.csv`,
+   `signals.csv`, `signal_diagnostics.csv`, `trade_diagnostics.csv`,
+   `ohlcv.csv`, and `trade_chart.html`.
+4. Hashes for the new artifact:
+   - `signals.csv`:
+     `9afa6db1fcd013edec80dd20a389fc9e4c0f004dda8f28589a77f7a0f1072041`
+   - `signal_diagnostics.csv`:
+     `57a618f70ce6ae970a2036c50e1f04b2f823ac6a4a988c55e9f1a07dfb1c8716`
+   - `ohlcv.csv`:
+     `493dd2adf167268a08b6572c7d5cab699dfe3e9d1841e949d9d6d9eeaed157e6`
+
+**Remaining next step:** compare those hashes to the superseded local/owner
+artifact `results/core4_v3_minute_last_mark_20260702/20260702_102019/` if it
+is available on another machine. That artifact is not present in this local
+workspace, so byte-identical signal/OHLCV parity against the previous canon
+could not be verified here. The money verdict does not depend on that compare:
+the aggregate-average rerun still fails the owner mandate.
+
+**Links:** ADR-0058, `docs/execution/liquidation_safe_leverage.md`,
+`docs/execution/minute_intrabar_execution.md`.
+
+---
+
+## Core4 v3 OKX aggregate-average rerun command (2026-07-03)
 
 **What:** rerun the canonical minute last/mark backtest after ADR-0058 corrected
 same-side OKX position accounting. Logical entries still own their SL, TP,

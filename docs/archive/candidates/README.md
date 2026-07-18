@@ -10,6 +10,7 @@ full production mandate.
 
 | candidate_id | Archived | Reason | Best evidence | Superseded by |
 | ------------ | -------- | ------ | ------------- | ------------- |
+| [post_adr0058_tail_control_portfolio](post_adr0058_tail_control_portfolio/) | 2026-07-13 | research_lineage | v5: $10,000 -> $1,360,197.25 (+13,501.97%); v7: PF 1.90, peak DD -32.33% | — |
 | [nr4_vwap_robust](nr4_vwap_robust/) | 2026-06-22 | research_seed | +148.71% (SOL 2022-2024 Optuna best-run, discard) | — |
 | [island_2023_021396_engulfing_bb_trend](island_2023_021396_engulfing_bb_trend/) | 2026-06-22 | research_seed | +375.80% (SOL 2022-2024 Optuna best-run, discard) | — |
 | [smac_003335_double_bottom_body_to_range](smac_003335_double_bottom_body_to_range/) | 2026-06-22 | research_seed | +258.21% (SOL 2022-2024 Optuna best-run, discard) | — |

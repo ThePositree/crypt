@@ -237,11 +237,12 @@ def cli() -> None:
 )
 @click.option(
     "--capital-sweep",
-    type=click.Choice(["none", "monthly_profit"], case_sensitive=False),
+    type=click.Choice(["none", "monthly_profit", "trade_profit"], case_sensitive=False),
     default="none",
     help=(
         "Capital withdrawal mode. monthly_profit banks realized profit "
-        "above initial capital at month boundaries."
+        "above initial capital at month boundaries; trade_profit banks it "
+        "after each profitable closed trade."
     ),
 )
 @click.option(

@@ -270,11 +270,13 @@ class _BatchSignalRunner:
     def __init__(self, batch: SignalBatch) -> None:
         self.batch = batch
         self.refreshed: list[str] = []
+        self.latest_calls: list[str] = []
 
     async def refresh_candles(self, symbol: str) -> None:
         self.refreshed.append(symbol)
 
-    def get_latest_signal_batch(self, symbol: str) -> SignalBatch:  # noqa: ARG002
+    def get_latest_signal_batch(self, symbol: str) -> SignalBatch:
+        self.latest_calls.append(symbol)
         return self.batch
 
 
@@ -518,9 +520,18 @@ async def test_entry_drift_warns_but_does_not_reject_trade(
 
     assert len(manager._trading_client.opened) == 1
     assert len(manager._state.all_open_positions()) == 1
+    opened = manager._trading_client.opened[0]
+    assert opened["size"] == pytest.approx(50.0)
+    assert opened["sl_price"] == pytest.approx(98.0)
+    assert opened["tp_price"] == pytest.approx(104.0)
+    pos = manager._state.all_open_positions()[0]
+    assert pos.entry_price == pytest.approx(101.0)
+    assert pos.size == pytest.approx(50.0)
+    assert pos.trail_activation_price is None
     assert notifier.rejections == []
     assert "proceeding with entry" in caplog.text
-    assert notifier.errors == []
+    assert len(notifier.errors) == 1
+    assert "actual fill risk" in notifier.errors[0][0]
     assert notifier.drift_alerts == [
         {
             "symbol": "SOL-USDT-SWAP",
@@ -1010,6 +1021,103 @@ async def test_restart_adopts_filled_entry_and_actual_protection(tmp_path: Path)
 
 
 @pytest.mark.asyncio
+async def test_restart_adopts_entry_without_repricing_trailing_geometry(
+    tmp_path: Path,
+) -> None:
+    settings = _settings(tmp_path)
+    pos = LivePosition.create(
+        symbol="SOL-USDT-SWAP",
+        signal_time=datetime(2026, 6, 29, 10, tzinfo=UTC),
+        entry_time=datetime(2026, 6, 29, 11, tzinfo=UTC),
+        entry_price=100.0,
+        sl_price=98.0,
+        tp_price=104.0,
+        size=10.0,
+        contracts=10.0,
+        leverage=25.0,
+        locked_margin=40.0,
+        risk_base_capital=10_000.0,
+        is_long=True,
+        ttl_bars=24,
+        entry_order_id=None,
+        selected_strategy="restart-trailing",
+        client_order_id="ce-restart-trailing",
+        algo_client_order_id="ca-restart-trailing",
+        trailing_algo_client_order_id="ct-restart-trailing",
+        trail_activation_rrr=1.0,
+        trail_distance_atr=0.25,
+        trail_activation_price=102.0,
+        trail_callback_spread=1.0,
+        fixed_take_profit_enabled=False,
+    )
+    pos.entry_state = "entry_submitted"
+    snapshot = ExchangeSnapshot(
+        fetched_at=datetime(2026, 6, 29, 11, 0, 5, tzinfo=UTC),
+        balance=ExchangeBalance(total=10_000.0, free=9_950.0, used=50.0),
+        positions=[
+            ExchangePosition(
+                symbol=pos.symbol,
+                contracts=9.5,
+                side="long",
+                leverage=25.0,
+                margin_mode="isolated",
+            )
+        ],
+        open_orders=[],
+        algo_orders=[
+            ExchangeOrder(
+                symbol=pos.symbol,
+                order_id="sl-restart-trailing",
+                kind="algo",
+                client_order_id="ca-restart-trailing",
+                side="sell",
+                amount=9.5,
+                price=98.0,
+            ),
+            ExchangeOrder(
+                symbol=pos.symbol,
+                order_id="trail-restart-trailing",
+                kind="algo",
+                client_order_id="ct-restart-trailing",
+                side="sell",
+                amount=9.5,
+                raw={"ordType": "move_order_stop"},
+            ),
+        ],
+        recent_fills=[],
+    )
+    client = _RestartRecoveryTradingClient(
+        snapshot,
+        entry_fill=EntryOrderResult(
+            order_id="entry-restart-trailing",
+            average_price=101.0,
+            filled_contracts=9.5,
+            fee=0.48,
+        ),
+    )
+    manager = LiveExecutionManager.__new__(LiveExecutionManager)
+    manager._settings = settings
+    manager._app_settings = _FakeAuthenticatedAppSettings()
+    manager._trading_client = client
+    manager._notifier = _FakeNotifier()
+    manager._state = ExecutionState(
+        schema_version=7,
+        risk_window_month=None,
+        monthly_risk_base=10_000.0,
+        positions=[pos],
+    )
+
+    await manager._recover_transitional_positions(snapshot)
+
+    assert pos.status == "open"
+    assert pos.entry_state == "protected"
+    assert pos.entry_price == pytest.approx(101.0)
+    assert pos.trail_activation_price == pytest.approx(102.0)
+    assert pos.trail_callback_spread == pytest.approx(1.0)
+    assert pos.trailing_algo_order_id == "trail-restart-trailing"
+
+
+@pytest.mark.asyncio
 async def test_restart_adopts_close_fill_from_closing_state(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
     pos = LivePosition.create(
@@ -1344,6 +1452,59 @@ async def test_on_h1_close_rechecks_sync_after_marking_missing_position_closed(
 
 
 @pytest.mark.asyncio
+async def test_startup_tick_syncs_but_does_not_open_past_signal(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    batch = SignalBatch(
+        bar_time=datetime(2026, 6, 27, 10, tzinfo=UTC),
+        next_time=datetime(2026, 6, 27, 11, tzinfo=UTC),
+        next_open=100.0,
+        events=[
+            SignalEvent(
+                bar_time=datetime(2026, 6, 27, 10, tzinfo=UTC),
+                signal=1,
+                sl_price=98.0,
+                next_open=100.0,
+                rrr=2.0,
+                risk_percent=1.0,
+                position_ttl_bars=24,
+                trail_activation_rrr=0.0,
+                trail_distance_atr=0.0,
+                exit_geometry="sl_rrr",
+                tp_move_pct=None,
+                structural_sl_mode="cap",
+                min_tp_move_pct=0.004,
+                selected_strategy="startup_donor",
+                position_group="startup_donor",
+                raw_event={"selected_strategy": "startup_donor", "signal": 1},
+            )
+        ],
+    )
+    signal_runner = _BatchSignalRunner(batch)
+    trading_client = _SyncingTradingClient()
+
+    manager = LiveExecutionManager.__new__(LiveExecutionManager)
+    manager._settings = settings
+    manager._app_settings = _FakeAuthenticatedAppSettings()
+    manager._trading_client = trading_client
+    manager._risk_calc = LiveRiskCalculator(settings)
+    manager._state = ExecutionState(
+        schema_version=2,
+        risk_window_month=None,
+        monthly_risk_base=10_000.0,
+        positions=[],
+    )
+    manager._signal_runner = signal_runner
+
+    await manager.on_h1_close("SOL-USDT-SWAP", trigger_source="startup")
+
+    assert signal_runner.refreshed == ["SOL-USDT-SWAP"]
+    assert signal_runner.latest_calls == []
+    assert trading_client.opened == []
+    assert manager._state.all_open_positions() == []
+    assert manager._state.last_exchange_sync_ok
+
+
+@pytest.mark.asyncio
 async def test_manage_open_positions_ttl_zero_does_not_expire(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
     pos = LivePosition.create(
@@ -1510,7 +1671,65 @@ async def test_manage_open_positions_records_exchange_close_fill(tmp_path: Path)
     assert pos.exit_reason == "take_profit"
     assert pos.exit_price == pytest.approx(104.0)
     assert pos.realized_pnl == pytest.approx(39.48)
+    assert pos.constituent_realized_pnl == pytest.approx(39.48)
     assert pos.exit_fee == pytest.approx(0.52)
+
+
+@pytest.mark.asyncio
+async def test_manage_open_positions_records_constituent_pnl_when_aggregate_differs(
+    tmp_path: Path,
+) -> None:
+    settings = _settings(tmp_path)
+    pos = LivePosition.create(
+        symbol="SOL-USDT-SWAP",
+        signal_time=datetime(2026, 6, 27, 10, tzinfo=UTC),
+        entry_time=datetime(2026, 6, 27, 11, tzinfo=UTC),
+        entry_price=100.0,
+        sl_price=98.0,
+        tp_price=150.0,
+        size=10.0,
+        contracts=10,
+        leverage=25.0,
+        locked_margin=60.0,
+        risk_base_capital=10_000.0,
+        is_long=True,
+        ttl_bars=0,
+        entry_order_id="entry-1",
+        selected_strategy="donor",
+    )
+    pos.aggregate_entry_price = 150.0
+    manager = LiveExecutionManager.__new__(LiveExecutionManager)
+    manager._settings = settings
+    manager._app_settings = _FakeAuthenticatedAppSettings()
+    manager._trading_client = _FakeTradingClient()
+    manager._state = ExecutionState(
+        schema_version=2,
+        risk_window_month=None,
+        monthly_risk_base=10_000.0,
+        positions=[pos],
+    )
+    snapshot = ExchangeSnapshot(
+        fetched_at=datetime(2026, 6, 27, 12, tzinfo=UTC),
+        balance=ExchangeBalance(total=10_000.0, free=10_000.0, used=0.0),
+        positions=[],
+        open_orders=[],
+        algo_orders=[],
+        recent_fills=[
+            {
+                "side": "sell",
+                "timestamp": 1_782_561_600_000,
+                "price": 150.0,
+                "amount": 10.0,
+                "fee": {"cost": 0.75},
+            }
+        ],
+    )
+
+    await manager._manage_open_positions("SOL-USDT-SWAP", snapshot)
+
+    assert pos.status == "closed"
+    assert pos.realized_pnl == pytest.approx(-0.75)
+    assert pos.constituent_realized_pnl == pytest.approx(499.25)
 
 
 @pytest.mark.asyncio
@@ -1565,6 +1784,107 @@ async def test_manage_open_positions_notifies_exchange_close_fill(tmp_path: Path
     await manager._manage_open_positions("SOL-USDT-SWAP", snapshot)
 
     assert notifier.exits == [pos]
+
+
+@pytest.mark.asyncio
+async def test_manage_open_positions_closes_reduced_same_side_constituent_with_missing_protection(
+    tmp_path: Path,
+) -> None:
+    settings = _settings(tmp_path)
+    notifier = _FakeNotifier()
+    first = LivePosition.create(
+        symbol="SOL-USDT-SWAP",
+        signal_time=datetime(2026, 7, 13, 12, tzinfo=UTC),
+        entry_time=datetime(2026, 7, 13, 13, tzinfo=UTC),
+        entry_price=75.84,
+        sl_price=76.62,
+        tp_price=73.46,
+        size=0.66,
+        contracts=0.66,
+        leverage=25.0,
+        locked_margin=2.0,
+        risk_base_capital=104.77,
+        is_long=False,
+        ttl_bars=10000,
+        entry_order_id="entry-first",
+        selected_strategy="freq_4pw_r02_hyperband_004678",
+    )
+    first.stop_algo_order_id = "stop-first"
+    first.take_profit_order_id = "tp-first"
+    second = LivePosition.create(
+        symbol="SOL-USDT-SWAP",
+        signal_time=datetime(2026, 7, 13, 17, tzinfo=UTC),
+        entry_time=datetime(2026, 7, 13, 18, tzinfo=UTC),
+        entry_price=74.60,
+        sl_price=75.34,
+        tp_price=72.13,
+        size=0.63,
+        contracts=0.63,
+        leverage=25.0,
+        locked_margin=1.88,
+        risk_base_capital=104.77,
+        is_long=False,
+        ttl_bars=10000,
+        entry_order_id="entry-second",
+        selected_strategy="freq_4pw_r02_hyperband_004678",
+    )
+    second.stop_algo_order_id = "stop-second"
+    second.take_profit_order_id = "tp-second"
+    manager = LiveExecutionManager.__new__(LiveExecutionManager)
+    manager._settings = settings
+    manager._app_settings = _FakeAuthenticatedAppSettings()
+    manager._trading_client = _FakeTradingClient()
+    manager._notifier = notifier
+    manager._state = ExecutionState(
+        schema_version=8,
+        risk_window_month=(2026, 7),
+        monthly_risk_base=104.77,
+        positions=[first, second],
+    )
+    snapshot = ExchangeSnapshot(
+        fetched_at=datetime(2026, 7, 14, 1, 32, tzinfo=UTC),
+        balance=ExchangeBalance(total=102.64, free=102.64, used=0.0),
+        positions=[
+            ExchangePosition(
+                symbol="SOL-USDT-SWAP",
+                contracts=0.66,
+                side="short",
+                entry_price=75.84,
+                leverage=25.0,
+                margin_mode="isolated",
+                liquidation_price=78.5,
+            )
+        ],
+        open_orders=[
+            ExchangeOrder(
+                symbol="SOL-USDT-SWAP",
+                order_id="tp-first",
+                kind="regular",
+                side="buy",
+                amount=0.66,
+                price=73.46,
+            )
+        ],
+        algo_orders=[
+            ExchangeOrder(
+                symbol="SOL-USDT-SWAP",
+                order_id="stop-first",
+                kind="algo",
+                side="buy",
+                amount=0.66,
+                price=76.62,
+            )
+        ],
+        recent_fills=[],
+    )
+
+    await manager._manage_open_positions("SOL-USDT-SWAP", snapshot)
+
+    assert first.status == "open"
+    assert second.status == "closed"
+    assert second.exit_reason == "exchange_reduced_unknown"
+    assert second.exit_time == snapshot.fetched_at.isoformat()
+    assert notifier.exits == [second]
 
 
 @pytest.mark.asyncio

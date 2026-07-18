@@ -48,7 +48,7 @@ class ExecutionSettings(BaseSettings):
 
     # ── strategy ───────────────────────────────────────────────────────────
     strategy_config: Path = Field(
-        default=Path("strategies/archive/filtered_donor_portfolio_causal_v3_core4.json"),
+        default=Path("strategies/live/active.json"),
         description="Path to the backtester strategy JSON config.",
     )
     data_dir: Path = Field(default=Path("data"))

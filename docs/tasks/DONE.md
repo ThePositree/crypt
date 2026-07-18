@@ -4,6 +4,463 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-07-19 — Trimmed post-ADR-0058 portfolio archive for git
+
+**What:** removed heavy reproducible CSV/HTML/run-output artifacts from
+`docs/archive/candidates/post_adr0058_tail_control_portfolio` and rewrote the
+archive metadata so it no longer depends on `results/` paths.
+
+**Why now:** the owner originally asked to archive CSV data with the candidate,
+but full copied backtests and source research outputs made the git archive too
+large. The archive must keep the decision-critical evidence without storing
+reproducible run output.
+
+**Result:** the candidate archive keeps README/provenance, reproduction
+commands, version summary, donor composition, strategy configs, and compact
+metrics/monthly/attribution snapshots. Heavy `signals.csv`, `ohlcv.csv`,
+`trades.csv`, `equity_curve.csv`, `trade_chart.html`, `trade_candles/`,
+full-run directories, and source-run directories were removed.
+
+**Acceptance:** archive size is now `384K`; no remaining references to
+`results/`, `full_backtests`, `source_research`, or `full_artifact_paths`; all
+post-ADR-0058 strategy JSON snapshots validate with `python -m json.tool`.
+
+**Links:** `docs/archive/candidates/post_adr0058_tail_control_portfolio/`,
+`strategies/archive/filtered_donor_portfolio_post_adr0058_*.json`.
+
+---
+
+## 2026-07-19 — Railway live deployment now preflights persistent data
+
+**What:** changed Railway from a DSS search worker to a live execution service
+and added a startup preflight that repairs zero-byte parquet files, checks
+H1/H4/D1 live OHLCV coverage, and runs OKX backfill before `--execution-only`
+starts.
+
+**Why now:** the owner wants the live process to run on Railway for one to two
+weeks and later compare live trades with the backtester. A fresh deploy or
+volume damage can leave missing or empty parquet files, which would make live
+signal generation fail or start from incomplete data.
+
+**Result:** first deploys can be slow, but live order logic does not start
+until the persistent volume has usable closed-candle history. Logs, parquet
+data, and live position state default to `/app/data` on Railway.
+
+**Acceptance:** focused runtime/execution tests passed (`44 passed`) and ruff
+is clean on touched Python files.
+
+**Links:** `src/crypt/runtime/deploy_preflight.py`,
+`scripts/railway_live_start.sh`, `railway.toml`, `docs/deploy/railway.md`,
+`tests/runtime/test_deploy_preflight.py`.
+
+---
+
+## 2026-07-16 — H1 live restart no longer opens catch-up entries
+
+**What:** gave H1 REST fallback callbacks their own 180-second execution
+timeout while keeping WebSocket callbacks at 90 seconds, and changed startup
+H1 reconciliation so it cannot open new entries from the latest already-closed
+bar.
+
+**Why now:** the 2026-07-16 live logs showed two restart/outage hazards. During
+the network outage, REST fallback was accepted but could be cancelled by the
+generic 90-second callback timeout while OKX candle retries were still running.
+After connectivity returned, a manual restart at `2026-07-16T18:06Z` executed a
+`2026-07-16T17:00Z` signal as a catch-up entry, even though the owner expects
+new entries only on a live H1 close.
+
+**Result:** REST fallback now has enough time to complete or exhaust the OKX
+retry budget cleanly, reducing false scheduler timeout traces during degraded
+connectivity. This does not mask a real network outage; if the host cannot
+reach OKX, the fallback still fails and no H1 signal can be evaluated. Startup
+still refreshes candles, syncs OKX, and manages existing positions, but it skips
+new signal generation until the next WebSocket or REST fallback H1 close.
+
+**Acceptance:** focused execution/runtime tests passed (`38 passed`) and ruff
+is clean on touched files.
+
+**Links:** `src/crypt/runtime/h1_websocket.py`,
+`src/crypt/execution/executor.py`, `tests/runtime/test_h1_websocket.py`,
+`tests/execution/test_executor_multi_event.py`.
+
+---
+
+## 2026-07-15 — H1 REST fallback no longer skips after callback timeout
+
+**What:** changed the H1 WebSocket scheduler so a failed or timed-out execution
+callback releases its boundary for retry before slow error reporting runs.
+
+**Why now:** at `2026-07-15T18:00:00Z`, the WebSocket path ingested the closed
+H1 candle but the execution callback timed out while fetching OKX pending algo
+orders. Telegram error reporting then kept the boundary `in_flight`, so the
+`*:02` REST fallback skipped it as if WebSocket had handled it cleanly.
+
+**Result:** if the execution callback times out or fails, the same H1 boundary
+can be retried by REST fallback even while notification retries are still
+running. Successful callbacks remain de-duplicated as before.
+
+**Acceptance:** focused H1 scheduler tests passed (`8 passed`) and ruff is
+clean on touched runtime files.
+
+**Links:** `src/crypt/runtime/h1_websocket.py`,
+`tests/runtime/test_h1_websocket.py`.
+
+---
+
+## 2026-07-15 — Live H1 outage recovery preserves boundary open
+
+**What:** fixed live WebSocket candle ingestion so, after REST repair fills a
+gap caused by a network outage, the WebSocket boundary `next_open` is restored
+as the current forming H1 open.
+
+**Why now:** during the 2026-07-15 DNS outage, the process stayed alive and
+later repaired the missing SOL H1 candles, but the repair path could leave a
+stale REST-derived forming open and raise `forming H1 time is not after the
+signal bar`.
+
+**Result:** after connectivity returns, the runner can repair the gap and
+continue evaluating the latest closed H1 bar without a false callback error.
+No new entries are created unless the repaired latest bar has a valid signal.
+
+**Acceptance:** focused signal-runner/runtime tests passed (`16 passed`) and
+ruff is clean on touched files.
+
+**Links:** `src/crypt/execution/signal_runner.py`,
+`tests/execution/test_signal_runner_events.py`.
+
+---
+
+## 2026-07-14 — Per-trade profit sweep added to backtester
+
+**What:** added `--capital-sweep trade_profit`, a withdrawal-style mode that
+banks realized trading capital above the initial capital immediately after each
+profitable closed trade.
+
+**Why now:** the owner wanted the existing monthly profit sweep behavior, but
+with money removed to the bank on every profitable trade instead of only at
+month boundaries.
+
+**Result:** `monthly_profit` remains unchanged. `trade_profit` uses the same
+rule: if trading capital is still below the initial capital, recovery profit is
+not withdrawn; once a profitable close puts the account above the initial
+capital, only the excess is banked.
+
+**Acceptance:** focused backtester tests passed (`64 passed`) and ruff is
+clean on touched backtester files.
+
+**Links:** `src/backtester/execution_sim.py`, `src/backtester/__main__.py`,
+`tests/backtester/test_execution_sim_run.py`, `README.md`.
+
+---
+
+## 2026-07-14 — Silent H1 candle corruption blocked at store level
+
+**What:** hardened candle persistence so closed candles cannot silently
+overwrite an existing row with different OHLC values, and H1 writes are checked
+against complete 1m data when that minute data is already present.
+
+**Why now:** the first v6 live replay found two SOL H1 rows whose low/close did
+not aggregate from 1m candles. The local rows were repairable, but the real
+bug was that `ParquetStore` used last-write-wins upsert semantics for closed
+candles.
+
+**Result:** future WebSocket, REST refresh, or backfill writes will fail fast
+instead of mutating a closed H1 bar into values that disagree with stored
+minutes.
+
+**Acceptance:** current SOL complete 1m-backed H1 rows match on high/low/close;
+regressions cover conflicting closed-candle updates and H1/1m mismatch
+rejection. Focused tests passed (`39 passed`) and ruff is clean on touched
+files.
+
+**Links:** `src/crypt/data/store.py`,
+`tests/data/test_store_closed_invariant.py`,
+`tests/data/test_store_minute_partitions.py`.
+
+---
+
+## 2026-07-14 — First v6 live trades replayed and classified
+
+**What:** backfilled the missing SOL minute candles, repaired the two H1 rows
+that did not aggregate from 1m data, fetched OKX stop fills, and replayed the
+first three v6 live entries against the backtester.
+
+**Why now:** the owner stopped the live run after three real stop exits and
+asked to verify that the same three signals and exits are represented by the
+backtester, not just by Telegram/live logs.
+
+**Result:** the saved live signal events replay as exactly three backtester
+trades, all `stop_loss`, with stop minutes matching OKX. The local live state
+was reclassified from `exchange_closed_unknown`/`exchange_reduced_unknown` to
+`stop_loss` using OKX fills and the fixed fill classifier.
+
+**Acceptance:** focused execution tests passed (`13 passed`) and the replay
+report is archived at
+`docs/archive/candidates/post_adr0058_tail_control_portfolio/live_replay_20260714.md`.
+
+**Links:** `src/crypt/execution/fill_classifier.py`,
+`tests/execution/test_fill_classifier.py`,
+`data/live_positions.json`.
+
+---
+
+## 2026-07-14 — Mixed-timeframe WebSocket candles no longer corrupt D1 store
+
+**What:** changed WebSocket boundary ingestion to save H1, H4, and D1 candles
+as separate batches, and hardened `ParquetStore.save_candles()` so mixed
+timeframes cannot be written into one parquet file.
+
+**Why now:** during the v6 live run, the owner asked why REST returned no new
+D1 candle. Inspection showed a worse local issue: `ohlcv_1d.parquet` contained
+intraday `20:00` and `23:00` rows because a mixed WebSocket boundary batch had
+been written using the first candle's timeframe.
+
+**Result:** D1 storage now contains only UTC-midnight daily rows. The polluted
+SOL D1 parquet was repaired locally by deleting the two intraday rows. Future
+mixed-timeframe writes fail fast instead of corrupting data.
+
+**Acceptance:** added a store regression for mixed timeframe rejection and
+verified store/signal-runner/runtime tests: `26 passed`.
+
+**Links:** `src/crypt/data/store.py`, `src/crypt/execution/signal_runner.py`,
+`tests/data/test_store_closed_invariant.py`.
+
+---
+
+## 2026-07-14 — Same-side aggregate reduction closes local live constituent
+
+**What:** updated live reconciliation so a reduced same-side OKX aggregate
+position closes the local constituent whose SL/TP protection disappeared.
+
+**Why now:** the v6 live run had two local short constituents totaling `1.29`
+contracts, while OKX later showed one aggregate short of `0.66` contracts and
+only the first constituent's protection. The second constituent had clearly
+closed on exchange, but live kept it open and blocked sync with
+`position_size_mismatch` plus missing protection errors.
+
+**Result:** startup reconcile and normal H1 management now detect this
+reduced-away case. If OKX fills are still available, live records price/PnL; if
+fills are already unavailable, it marks the constituent closed as
+`exchange_reduced_unknown` so the state file no longer contains a phantom open
+position.
+
+**Acceptance:** added a regression matching the live shape
+`local=0.66+0.63`, `exchange=0.66`, missing second SL/TP. Focused live
+reconciliation tests passed: `48 passed`.
+
+**Links:** `src/crypt/execution/executor.py`,
+`tests/execution/test_executor_multi_event.py`.
+
+---
+
+## 2026-07-14 — Live candle continuity repair at UTC midnight
+
+**What:** made live signal refresh repair candle continuity gaps after
+WebSocket boundary ingestion by falling back to REST for the affected timeframe.
+Also made empty REST responses for non-H1 timeframes keep existing stored
+history instead of aborting the H1 execution cycle.
+
+**Why now:** the v6 live run opened real SOL short positions, then the
+`2026-07-14T01:00:00Z` cycle failed because local H1 history had a
+`2026-07-13T22:00:00Z -> 2026-07-14T00:00:00Z` gap. The REST fallback then
+failed because OKX returned no fresh `1d` candles.
+
+**Result:** future WebSocket cycles repair missing bars before signal
+generation, and a temporarily empty D1 REST page does not block management of
+open positions or new H1 checks when prior D1 history exists.
+
+**Acceptance:** added regression coverage for post-WebSocket gap repair and
+empty higher-timeframe REST refresh. Focused runtime/live execution tests
+passed: `44 passed`.
+
+**Links:** `src/crypt/execution/signal_runner.py`,
+`tests/execution/test_signal_runner_events.py`.
+
+---
+
+## 2026-07-13 — OKX H1 WebSocket subscription id fixed for live execution
+
+**What:** changed H1 WebSocket subscribe request IDs from `h1-<timestamp>` to
+alphanumeric `h1<timestamp>` and made shutdown cancellation during REST fallback
+quiet.
+
+**Why now:** the first v6 live run reached the H1 boundary and OKX repeatedly
+rejected the candle subscription with `60033 Parameter id error`. The REST
+fallback still ran at `*:02`, but live trading should not depend on the slower
+fallback when the WebSocket path is available.
+
+**Result:** the subscription request now matches the OKX V5 rule: client `id`
+must be alphanumeric and no longer than 32 characters. Pressing `Ctrl+C` during
+a fallback tick no longer logs an APScheduler exception as if live execution
+crashed.
+
+**Acceptance:** added a regression for OKX request ID format and shutdown
+cancellation. Runtime/live execution focused tests passed: `40 passed`.
+
+**Links:** `src/crypt/runtime/h1_websocket.py`,
+`tests/runtime/test_h1_websocket.py`,
+`docs/execution/h1_websocket_trigger.md`.
+
+---
+
+## 2026-07-13 — Live execution no longer advertises stale Core4 portfolio
+
+**What:** removed stale Core4 wording from active live execution help/logs and
+changed the code default strategy path to neutral `strategies/live/active.json`.
+
+**Why now:** the owner started the new v6 live portfolio and the process
+correctly loaded v6, but the no-signal log still said `No Core4 entry events`.
+That is unsafe operator feedback because it makes the trader doubt which
+portfolio is live.
+
+**Result:** live execution now reports generic entry events and relies on
+`EXECUTION_STRATEGY_CONFIG` / the loaded JSON version for portfolio identity.
+The README, `.env.example`, and live execution spec now show the v6 portfolio
+for current operator examples.
+
+**Acceptance:** `python -m crypt --help` shows `Run only the live execution
+path`, `rg` finds no Core4 wording in active `src/crypt`, `.env.example`,
+README live section, or `docs/execution/live_execution.md`, and focused live
+execution tests passed: `33 passed`.
+
+**Links:** `src/crypt/__main__.py`, `src/crypt/execution/settings.py`,
+`src/crypt/execution/executor.py`, `README.md`,
+`docs/execution/live_execution.md`.
+
+---
+
+## 2026-07-13 — Live signal timestamp parsing fails closed
+
+**What:** changed live signal timestamp parsing so malformed timestamps raise a
+hard error instead of silently falling back to `datetime.now(UTC)`.
+
+**Why now:** the additional live/backtest audit found that a corrupted signal
+index or stored candle timestamp could otherwise be treated as "now", which is
+unsafe for real-money entry timing.
+
+**Result:** bad timestamps now stop signal generation and block entries. Valid
+string, pandas, and Python datetimes still normalize to UTC.
+
+**Acceptance:** added live signal-runner regressions for valid string timestamp
+parsing and invalid timestamp rejection. Data loader/store/signal runner slice
+passed: `29 passed`.
+
+**Links:** `src/crypt/execution/signal_runner.py`,
+`tests/execution/test_signal_runner_events.py`.
+
+---
+
+## 2026-07-13 — Legacy feature lookahead removed from strategy research
+
+**What:** fixed two research/backtester feature leaks: legacy `som`/`forest`
+order-block labels no longer backfill a future-confirmed impulse onto the
+candidate candle, and `TradeAnalyzer` no longer exports future `close.shift(-26)`
+as `chikou_span`.
+
+**Why now:** the extended audit found active registry strategies and
+research-predictor code that could make old strategy results or filter
+selection look better than executable reality, even though the current
+post-ADR-0058 filtered donor portfolio does not use those ML strategies.
+
+**Result:** confirmed OB features now appear only after the lookback window has
+closed, and Chikou-based predictor research uses a lagged close known at entry
+time. Any old `som`/`forest` result produced before this fix should be treated
+as invalid unless rerun under the corrected code.
+
+**Acceptance:** added regression coverage for OB prefix stability, confirmed
+zone sizing, and causal Chikou extraction. Focused backtester slice passed:
+`62 passed`.
+
+**Links:** `src/backtester/strategies/som.py`,
+`src/backtester/strategies/forest.py`, `src/backtester/trade_analyzer.py`,
+`tests/backtester/test_som_features.py`,
+`tests/backtester/test_trade_analyzer.py`.
+
+---
+
+## 2026-07-13 — Restart recovery preserves H1-open trailing geometry
+
+**What:** fixed live restart recovery so an entry recovered after process
+failure adopts actual fill price/contracts/fee but does not recalculate native
+trailing activation from that fill.
+
+**Why now:** the continued live/backtest audit found that normal authenticated
+entries already plan trailing from the H1 next-open, but `_adopt_recovered_entry`
+could silently reprice trailing after a restart between entry submit and
+protection confirmation.
+
+**Result:** recovered trailing entries keep the same pre-submit H1-open
+activation/callback geometry as the original live path and `ExecutionSim`.
+Corrupt legacy state without persisted trailing geometry still fails closed
+through the existing missing-protection recovery path instead of installing a
+different order.
+
+**Acceptance:** added a restart regression where the recovered fill is `101`
+while the planned H1 open is `100`; the trailing activation remains `102`.
+Focused execution/backtester slice passed.
+
+**Links:** `src/crypt/execution/executor.py`,
+`tests/execution/test_executor_multi_event.py`,
+`docs/execution/live_execution.md`.
+
+---
+
+## 2026-07-13 — Donor-level PnL attribution made explicit
+
+**What:** kept `pnl_abs` / `realized_pnl` as OKX side-aggregate account PnL, and
+added donor-level diagnostics based on each logical entry's own price:
+`constituent_pnl_abs`, `constituent_pnl_rel`, and
+`constituent_realized_pnl`.
+
+**Why now:** the live/backtest audit found that account-level PnL is correct for
+cash reconciliation, but it can distort per-donor kill/keep attribution when
+several same-side entries share one OKX aggregate average entry.
+
+**Result:** backtest exports and live state now show both views. Account equity
+still reconciles through aggregate PnL, while donor attribution can inspect the
+constituent fields.
+
+**Acceptance:** synthetic same-side tests verify an exit where account PnL is
+flat but donor-level PnL is positive. Focused execution/backtester slice passed:
+`139 passed`.
+
+**Links:** `src/backtester/execution_sim.py`,
+`src/crypt/execution/fill_classifier.py`, `src/crypt/execution/executor.py`,
+`src/crypt/execution/position_state.py`.
+
+---
+
+## 2026-07-13 — Authenticated live H1-open sizing parity restored
+
+**What:** changed authenticated live execution so risk sizing, SL/TP, and native
+trailing geometry are planned from the H1 next-open price used by
+`ExecutionSim`. The current OKX quote is now retained only as pre-submit drift
+observability.
+
+**Why now:** the 2026-07-13 live/backtest audit found that real authenticated
+execution replaced the H1 next open with `get_last_price()` before sizing. That
+could make a `$10,000` live account trade a different size and exit geometry
+than the researched backtest.
+
+**Result:** live planned orders now keep the same intended position as the
+backtester. H1-to-fill and quote-to-fill drift are still reported, and actual
+fill stop-risk alerts remain alert-only under ADR-0054.
+
+**Acceptance:** focused unit slice passed:
+`tests/execution/test_executor_multi_event.py`,
+`tests/execution/test_signal_runner_events.py`,
+`tests/execution/test_risk_calculator.py`,
+`tests/execution/test_okx_order_client.py`,
+`tests/execution/test_exchange_sync.py`,
+`tests/execution/test_fill_classifier.py`,
+`tests/backtester/test_execution_sim_run.py`,
+`tests/backtester/test_margin_policy.py` — `137 passed`.
+
+**Links:** `src/crypt/execution/executor.py`,
+`tests/execution/test_executor_multi_event.py`, ADR-0054.
+
+---
+
 ## 2026-07-02 — Canonical Core4 v3 minute execution artifact
 
 **Status:** superseded by ADR-0058. The execution path remains reproducible,

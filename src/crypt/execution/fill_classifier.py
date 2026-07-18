@@ -19,6 +19,7 @@ class ClosedPositionFill:
     exit_price: float | None
     exit_reason: str
     realized_pnl: float | None
+    constituent_realized_pnl: float | None
     exit_fee: float | None
     filled_contracts: float = 0.0
 
@@ -75,6 +76,7 @@ def classify_closed_position_from_fills(
             exit_price=None,
             exit_reason="exchange_closed_unknown",
             realized_pnl=None,
+            constituent_realized_pnl=None,
             exit_fee=None,
             filled_contracts=0.0,
         )
@@ -100,12 +102,24 @@ def classify_closed_position_from_fills(
         if weighted_price_numerator > 0 and amount_sum > 0
         else None
     )
-    realized_pnl = _realized_pnl(pos=pos, exit_price=exit_price, exit_fee=fee_sum)
+    realized_pnl = _realized_pnl(
+        pos=pos,
+        exit_price=exit_price,
+        exit_fee=fee_sum,
+        use_aggregate_entry=True,
+    )
+    constituent_realized_pnl = _realized_pnl(
+        pos=pos,
+        exit_price=exit_price,
+        exit_fee=fee_sum,
+        use_aggregate_entry=False,
+    )
     return ClosedPositionFill(
         exit_time=latest_time,
         exit_price=exit_price,
         exit_reason=_exit_reason(pos, exit_price),
         realized_pnl=realized_pnl,
+        constituent_realized_pnl=constituent_realized_pnl,
         exit_fee=fee_sum,
         filled_contracts=amount_sum,
     )
@@ -118,6 +132,7 @@ def apply_closed_position_fill(pos: LivePosition, fill: ClosedPositionFill) -> N
     pos.exit_price = fill.exit_price
     pos.exit_reason = fill.exit_reason
     pos.realized_pnl = fill.realized_pnl
+    pos.constituent_realized_pnl = fill.constituent_realized_pnl
     pos.exit_fee = fill.exit_fee
 
 
@@ -154,10 +169,12 @@ def _realized_pnl(
     pos: LivePosition,
     exit_price: float | None,
     exit_fee: float,
+    use_aggregate_entry: bool,
 ) -> float | None:
     if exit_price is None:
         return None
-    entry_value = pos.size * (pos.aggregate_entry_price or pos.entry_price)
+    entry_price = (pos.aggregate_entry_price or pos.entry_price) if use_aggregate_entry else pos.entry_price
+    entry_value = pos.size * entry_price
     exit_value = pos.size * exit_price
     gross = exit_value - entry_value if pos.is_long else entry_value - exit_value
     return gross - pos.entry_fee - exit_fee
@@ -203,6 +220,7 @@ def _fill_matches_position(fill: dict[str, Any], pos: LivePosition) -> bool:
         observed_order_ids = {
             str(identifier)
             for identifier in (
+                close_client_id,
                 raw.get("ordId"),
                 raw.get("algoId"),
                 fill.get("order"),

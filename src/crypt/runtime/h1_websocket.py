@@ -17,6 +17,7 @@ from crypt.models import Candle, Timeframe
 
 _OKX_BUSINESS_WS_URL = "wss://ws.okx.com:8443/ws/v5/business"
 _EXECUTION_CALLBACK_TIMEOUT_S = 90.0
+_REST_FALLBACK_CALLBACK_TIMEOUT_S = 180.0
 _CHANNEL_TO_TIMEFRAME = {
     "candle1H": Timeframe.H1,
     "candle4H": Timeframe.H4,
@@ -63,8 +64,10 @@ class H1WebSocketScheduler:
         self._listener_tasks: set[asyncio.Task[None]] = set()
         self._in_flight: set[tuple[str, datetime]] = set()
         self._completed: set[tuple[str, datetime]] = set()
+        self._stopping = False
 
     def start(self) -> None:
+        self._stopping = False
         self._scheduler.add_job(
             self._start_listener,
             trigger=CronTrigger(minute=59, second=30, timezone="UTC"),
@@ -86,6 +89,7 @@ class H1WebSocketScheduler:
         )
 
     def stop(self) -> None:
+        self._stopping = True
         if self._scheduler.running:
             self._scheduler.shutdown(wait=False)
         for task in tuple(self._listener_tasks):
@@ -118,6 +122,12 @@ class H1WebSocketScheduler:
                 )
             )
         except asyncio.CancelledError:
+            if self._stopping:
+                logger.info(
+                    "OKX H1 WebSocket listener cancelled during shutdown for boundary={}",
+                    boundary.isoformat(),
+                )
+                return
             raise
         except Exception as exc:
             logger.exception(
@@ -145,7 +155,17 @@ class H1WebSocketScheduler:
                 symbol,
                 boundary.isoformat(),
             )
-            await self._dispatch(symbol, boundary, None, "rest_fallback")
+            try:
+                await self._dispatch(symbol, boundary, None, "rest_fallback")
+            except asyncio.CancelledError:
+                if self._stopping:
+                    logger.info(
+                        "REST fallback cancelled during shutdown for {} boundary={}",
+                        symbol,
+                        boundary.isoformat(),
+                    )
+                    return
+                raise
 
     async def _dispatch(
         self,
@@ -171,9 +191,24 @@ class H1WebSocketScheduler:
             boundary.isoformat(),
             source,
         )
+        timeout_s = (
+            _REST_FALLBACK_CALLBACK_TIMEOUT_S
+            if source == "rest_fallback"
+            else _EXECUTION_CALLBACK_TIMEOUT_S
+        )
         try:
-            async with asyncio.timeout(_EXECUTION_CALLBACK_TIMEOUT_S):
+            async with asyncio.timeout(timeout_s):
                 await self._callback(symbol, payload, source)
+        except asyncio.CancelledError:
+            if self._stopping:
+                logger.info(
+                    "H1 execution callback cancelled during shutdown for {} boundary={} source={}",
+                    symbol,
+                    boundary.isoformat(),
+                    source,
+                )
+                return
+            raise
         except Exception as exc:
             logger.exception(
                 "H1 execution callback failed for {} boundary={} source={}",
@@ -181,6 +216,7 @@ class H1WebSocketScheduler:
                 boundary.isoformat(),
                 source,
             )
+            self._in_flight.discard(key)
             await self._report_error(
                 f"H1 execution callback for {symbol} via {source}",
                 exc,
@@ -226,7 +262,7 @@ class H1WebSocketScheduler:
                     ) as websocket:
                         await websocket.send_json(
                             {
-                                "id": f"h1-{int(boundary.timestamp())}",
+                                "id": _okx_request_id(boundary),
                                 "op": "subscribe",
                                 "args": subscribe_args,
                             }
@@ -364,6 +400,11 @@ def _expected_closed_opens(boundary: datetime) -> dict[Timeframe, datetime]:
     if boundary.hour == 0:
         expected[Timeframe.D1] = boundary - _TIMEFRAME_DELTA[Timeframe.D1]
     return expected
+
+
+def _okx_request_id(boundary: datetime) -> str:
+    """OKX WebSocket request IDs must be alphanumeric and no longer than 32 chars."""
+    return f"h1{int(boundary.timestamp())}"
 
 
 def _parse_candle_row(

@@ -1,0 +1,28 @@
+{
+  "archive_reason": "research_branch_lineage",
+  "archived_at": "2026-07-13",
+  "candidate_id": "post_adr0058_tail_control_portfolio",
+  "commands": "docs/archive/candidates/post_adr0058_tail_control_portfolio/commands.sh",
+  "data_source": "crypt-parquet",
+  "date_range": {
+    "from": "2021-12-18T00:00:00Z",
+    "to": "2026-06-29T14:00:00Z"
+  },
+  "donors_by_version": "docs/archive/candidates/post_adr0058_tail_control_portfolio/donors_by_version.csv",
+  "git_commit": "02dd2cb80a5a7d30c4d695ba73a478a845661477",
+  "intrabar_execution_timeframe": "1m",
+  "primary_timeframe": "1h",
+  "omitted_from_git": [
+    "full backtest output trees",
+    "source research run directories",
+    "signals.csv",
+    "ohlcv.csv",
+    "trades.csv",
+    "equity_curve.csv",
+    "trade_chart.html",
+    "trade_candles/"
+  ],
+  "source_run_summary": "The branch came from sparse/frequent Stage 1 DSS matrices and split-RRR Optuna outputs. Heavy source run artifacts are intentionally omitted from git; donor lineage is preserved in donors_by_version.csv and strategy_configs/.",
+  "symbol": "SOL-USDT-SWAP",
+  "versions_summary": "docs/archive/candidates/post_adr0058_tail_control_portfolio/versions_summary.csv"
+}

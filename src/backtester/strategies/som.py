@@ -169,38 +169,58 @@ class SOMStrategy(BaseStrategy):
 
         atr = SOMStrategy.calculate_atr(df, period=14)
 
-        # Импульс: сильное движение после свечи
-        impulse_down = (
-            df["low"].rolling(window=lookback).min().shift(-2) < df["low"] - atr * 1.5
-        )
-        impulse_up = (
-            df["high"].rolling(window=lookback).max().shift(-2) > df["high"] + atr * 1.5
-        )
-
-        # Бычий OB: бычья свеча -> затем медвежий импульс
-        bullish_ob = is_bullish & impulse_down.shift(1)
-        # Медвежий OB: медвежья свеча -> затем бычий импульс
-        bearish_ob = is_bearish & impulse_up.shift(1)
-
         ob = pd.Series(np.zeros(len(df)), dtype=int, name="ob", index=df.index)
-        ob.loc[bullish_ob] = 1
-        ob.loc[bearish_ob] = -1
-
-        # Дополнительно: зона OB — это high/low самой свечи OB
         ob_zone_high = pd.Series(
             np.full(len(df), np.nan), dtype=float, name="ob_zone_high", index=df.index
         )
         ob_zone_low = pd.Series(
             np.full(len(df), np.nan), dtype=float, name="ob_zone_low", index=df.index
         )
-        ob_zone_high.loc[ob != 0] = df["high"]
-        ob_zone_low.loc[ob != 0] = df["low"]
+
+        # Confirm the OB only after the full lookback window has closed. The
+        # previous implementation wrote the OB back onto the candidate candle
+        # with shift(-2), which let backtests trade on a future-confirmed label.
+        for confirm_pos in range(lookback, len(df)):
+            candidate_pos = confirm_pos - lookback
+            candidate_idx = df.index[candidate_pos]
+            confirm_idx = df.index[confirm_pos]
+            atr_at_candidate = atr.iloc[candidate_pos]
+            if not pd.notna(atr_at_candidate) or atr_at_candidate <= 0:
+                continue
+
+            future_lows = df["low"].iloc[candidate_pos + 1 : confirm_pos + 1]
+            future_highs = df["high"].iloc[candidate_pos + 1 : confirm_pos + 1]
+            impulse_down = (
+                is_bullish.iloc[candidate_pos]
+                and not future_lows.empty
+                and future_lows.min()
+                < df.at[candidate_idx, "low"] - atr_at_candidate * 1.5
+            )
+            impulse_up = (
+                is_bearish.iloc[candidate_pos]
+                and not future_highs.empty
+                and future_highs.max()
+                > df.at[candidate_idx, "high"] + atr_at_candidate * 1.5
+            )
+
+            if impulse_down:
+                ob.at[confirm_idx] = 1
+                ob_zone_high.at[confirm_idx] = df.at[candidate_idx, "high"]
+                ob_zone_low.at[confirm_idx] = df.at[candidate_idx, "low"]
+            elif impulse_up:
+                ob.at[confirm_idx] = -1
+                ob_zone_high.at[confirm_idx] = df.at[candidate_idx, "high"]
+                ob_zone_low.at[confirm_idx] = df.at[candidate_idx, "low"]
 
         return ob, ob_zone_high, ob_zone_low
 
     @staticmethod
     def calculate_ob_size_ratio_to_atr(
-        df: pd.DataFrame, order_blocks: pd.Series, atr_period=14
+        df: pd.DataFrame,
+        order_blocks: pd.Series,
+        atr_period=14,
+        ob_zone_high: pd.Series | None = None,
+        ob_zone_low: pd.Series | None = None,
     ):
         """
         Рассчитывает отношение размера OB-свечи к ATR на момент её формирования.
@@ -210,15 +230,19 @@ class SOMStrategy(BaseStrategy):
         """
         atr = SOMStrategy.calculate_atr(df, period=atr_period)
 
-        # Размер OB-свечи
-        df["ob_range"] = df["high"] - df["low"]
+        if ob_zone_high is not None and ob_zone_low is not None:
+            ob_range = ob_zone_high - ob_zone_low
+        else:
+            ob_range = df["high"] - df["low"]
 
         # Отношение к ATR
-        df["ob_size_ratio_to_atr"] = np.where(
-            (order_blocks != 0) & (atr > 0), df["ob_range"] / atr, 0.0
+        ob_size_ratio_to_atr = pd.Series(
+            np.where((order_blocks != 0) & (atr > 0), ob_range / atr, 0.0),
+            index=df.index,
+            name="ob_size_ratio_to_atr",
         )
 
-        return df["ob_size_ratio_to_atr"]
+        return ob_size_ratio_to_atr
 
     def detect_ob_retest(
         df: pd.DataFrame,
@@ -661,7 +685,11 @@ class SOMStrategy(BaseStrategy):
         ob, ob_zone_high, ob_zone_low = SOMStrategy.detect_order_blocks(df, lookback=3)
 
         feat["ob_size_ratio_to_atr"] = SOMStrategy.calculate_ob_size_ratio_to_atr(
-            df, ob, atr_period=14
+            df,
+            ob,
+            atr_period=14,
+            ob_zone_high=ob_zone_high,
+            ob_zone_low=ob_zone_low,
         )
         feat["ob_retests"] = SOMStrategy.detect_ob_retest(
             df, ob, ob_zone_high, ob_zone_low

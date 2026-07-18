@@ -115,13 +115,21 @@ class LiveSignalRunner:
                 raise ValueError(
                     f"WebSocket boundary symbol {websocket_boundary.symbol} does not match {symbol}"
                 )
-            self._store.save_candles(list(websocket_boundary.closed_candles))
+            closed_by_timeframe: dict[Timeframe, list[Any]] = {}
+            for candle in websocket_boundary.closed_candles:
+                closed_by_timeframe.setdefault(candle.timeframe, []).append(candle)
+            for candles in closed_by_timeframe.values():
+                self._store.save_candles(candles)
             self._next_open_by_symbol[symbol] = (
                 websocket_boundary.boundary_time,
                 websocket_boundary.next_open,
             )
             for tf in _REFRESH_TIMEFRAMES:
-                self._validate_continuity(symbol, tf)
+                await self._validate_or_repair_continuity(symbol, tf)
+            self._next_open_by_symbol[symbol] = (
+                websocket_boundary.boundary_time,
+                websocket_boundary.next_open,
+            )
             logger.info(
                 "Ingested OKX WebSocket boundary for %s at %s: closed=%s next_open=%.4f",
                 symbol,
@@ -147,6 +155,13 @@ class LiveSignalRunner:
                 since_ms=since_ms,
             )
             if not candles:
+                if not stored.empty and tf is not Timeframe.H1:
+                    logger.warning(
+                        "OKX returned no %s candles for %s; keeping existing stored history",
+                        tf.value,
+                        symbol,
+                    )
+                    break
                 raise RuntimeError(f"OKX returned no {tf.value} candles for {symbol}")
 
             closed = [c for c in candles if c.closed]
@@ -182,6 +197,19 @@ class LiveSignalRunner:
             tf.value,
             symbol,
         )
+
+    async def _validate_or_repair_continuity(self, symbol: str, tf: Timeframe) -> None:
+        try:
+            self._validate_continuity(symbol, tf)
+        except RuntimeError as exc:
+            logger.warning(
+                "%s continuity check failed for %s after WebSocket ingest; repairing via REST: %s",
+                tf.value,
+                symbol,
+                exc,
+            )
+            await self._refresh_timeframe(symbol, tf)
+            self._validate_continuity(symbol, tf)
 
     def _validate_continuity(self, symbol: str, tf: Timeframe) -> None:
         frame = self._store.load_candles(symbol, tf)
@@ -337,7 +365,15 @@ def _timestamp_to_utc(raw: Any) -> datetime:
         return dt.astimezone(UTC)
     if isinstance(raw, datetime):
         return raw.replace(tzinfo=UTC) if raw.tzinfo is None else raw.astimezone(UTC)
-    return datetime.now(UTC)
+    try:
+        ts = pd.Timestamp(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"cannot parse timestamp as UTC datetime: {raw!r}") from exc
+    if pd.isna(ts):
+        raise ValueError(f"cannot parse timestamp as UTC datetime: {raw!r}")
+    ts = ts.tz_localize(UTC) if ts.tzinfo is None else ts
+    dt: datetime = ts.to_pydatetime(warn=False)
+    return dt.astimezone(UTC)
 
 
 def _refresh_since_ms(stored: pd.DataFrame, tf: Timeframe) -> int | None:

@@ -50,7 +50,7 @@ def test_classifies_long_take_profit_fill() -> None:
     assert result.exit_fee == pytest.approx(0.52)
 
 
-def test_realized_pnl_uses_exchange_aggregate_entry() -> None:
+def test_realized_pnl_keeps_account_and_constituent_views() -> None:
     pos = _position(is_long=True)
     pos.aggregate_entry_price = 150.0
     result = classify_closed_position_from_fills(
@@ -67,6 +67,7 @@ def test_realized_pnl_uses_exchange_aggregate_entry() -> None:
     )
 
     assert result.realized_pnl == pytest.approx(-0.75)
+    assert result.constituent_realized_pnl == pytest.approx(499.25)
 
 
 def test_classifies_short_stop_loss_fill() -> None:
@@ -257,6 +258,37 @@ def test_fill_matches_stored_exchange_algo_order_id_without_client_id() -> None:
     )
 
     assert result.exit_price == pytest.approx(98.0)
+    assert result.filled_contracts == pytest.approx(10.0)
+
+
+def test_fill_matches_okx_triggered_algo_id_reported_as_client_order_id() -> None:
+    pos = _position(is_long=False)
+    pos.algo_client_order_id = "ca-local-stop-client-id"
+    pos.stop_algo_order_id = "3739481296226607107"
+
+    result = classify_closed_position_from_fills(
+        pos=pos,
+        fills=[
+            {
+                "id": "trade-1",
+                "order": "3742361023178203137",
+                "side": "buy",
+                "timestamp": 1_782_561_600_000,
+                "price": 102.0,
+                "amount": 10.0,
+                "clientOrderId": "3739481296226607107",
+                "info": {
+                    "instId": "SOL-USDT-SWAP",
+                    "posSide": "short",
+                    "clOrdId": "3739481296226607107",
+                    "ordId": "3742361023178203137",
+                },
+            }
+        ],
+    )
+
+    assert result.exit_reason == "stop_loss"
+    assert result.exit_price == pytest.approx(102.0)
     assert result.filled_contracts == pytest.approx(10.0)
 
 

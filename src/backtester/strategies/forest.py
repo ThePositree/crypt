@@ -339,7 +339,11 @@ class ForestStrategy(BaseStrategy):
 
         logger.debug("OB size ratio to ATR features...")
         feat["ob_size_ratio_to_atr"] = SOMStrategy.calculate_ob_size_ratio_to_atr(
-            df, ob, atr_period=14
+            df,
+            ob,
+            atr_period=14,
+            ob_zone_high=ob_zone_high,
+            ob_zone_low=ob_zone_low,
         )
 
         logger.debug("OB retests features...")

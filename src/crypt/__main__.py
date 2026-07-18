@@ -88,7 +88,7 @@ def _parse_args() -> argparse.Namespace:
         "--execution-only",
         action="store_true",
         help=(
-            "Run only the Core4 live execution path. This skips the legacy H4 "
+            "Run only the live execution path. This skips the legacy H4 "
             "monitoring/alert pipeline and uses EXECUTION_SYMBOLS for health checks."
         ),
     )

@@ -162,20 +162,22 @@ SOL smoke backtests are currently slow because each bar replays the whole
 ensemble; H1 MTF runs are especially expensive until the donor route gets a
 range limiter or parity-safe cache.
 
-`backtester run` supports an optional monthly profit sweep mode for
+`backtester run` supports optional profit sweep modes for
 withdrawal-style diagnostics:
 
 ```bash
 uv run backtester run ... --capital 10000 --capital-sweep monthly_profit
+uv run backtester run ... --capital 10000 --capital-sweep trade_profit
 ```
 
-At each month boundary, realized trading capital above the initial capital is
-removed from the trading account and counted as banked profit. If the trading
+`monthly_profit` removes realized trading capital above the initial capital at
+month boundaries and counts it as banked profit. `trade_profit` applies the
+same rule immediately after each profitable closed trade. If the trading
 account is below the initial capital, nothing is added and the reduced account
-continues into the next month. Reports keep `Final Capital` as the remaining
-trading account and add `Banked Profit` plus `Total Account` when money was
-swept. The monthly console table also includes `Withdrawn ($)`, the amount
-withdrawn for that specific month; months without a withdrawal show `0`.
+continues. Reports keep `Final Capital` as the remaining trading account and
+add `Banked Profit` plus `Total Account` when money was swept. The monthly
+console table also includes `Withdrawn ($)`, the amount withdrawn for that
+specific month; months without a withdrawal show `0`.
 
 ```bash
 uv run backtester run \
@@ -646,10 +648,6 @@ uv run backtester run \
 This strategy uses `signal_events` so several filtered donor signals can be
 processed on the same OHLCV bar through the same shared capital/margin engine.
 
-`railway.toml` currently starts the `island_qd` search worker, not the live
-alerting process. Revert its `deploy.startCommand` before using the Railway
-service for live alerts again.
-
 ```bash
 uv run backtester discover-strategies \
     --data-dir data \
@@ -835,17 +833,23 @@ mise run backtester-help
 Pre-commit runs `ruff` (with auto-fix) and `mypy --strict` on every commit.
 CI runs the same checks plus `pytest` and `uv lock --check` on every push.
 
-## Deploying to Railway (recommended for 14-day run)
+## Deploying Live Execution to Railway
 
 Follow the step-by-step checklist in `docs/deploy/railway.md`.
 
 Short version:
 1. Connect GitHub repo to Railway → branch `master`.
 2. Add environment variables (see checklist for full list).
-3. Attach a persistent volume at `/app/data`; set `LOG_DIR=data/logs`.
-4. Confirm build succeeds and Telegram alert arrives.
+3. Attach a persistent volume at `/app/data`.
+4. Keep `railway.toml` start command as `sh scripts/railway_live_start.sh`.
+5. Confirm preflight completes, then `Starting crypt [execution-only]` appears.
 
-## Core4 v3 Live Execution
+The Railway entrypoint always runs `crypt.runtime.deploy_preflight` before the
+live process. It removes zero-byte parquet files, checks H1/H4/D1 live OHLCV
+coverage, and runs OKX backfill when data is missing, stale, or gapped. A fresh
+volume can therefore spend a long time backfilling before any order logic starts.
+
+## Live Execution
 
 Live execution is off by default. Start with dry-run only:
 
@@ -855,16 +859,16 @@ MPLCONFIGDIR=/tmp/matplotlib \
 EXECUTION_ENABLED=true \
 EXECUTION_DRY_RUN=true \
 EXECUTION_DRY_RUN_CAPITAL=10000 \
-EXECUTION_STRATEGY_CONFIG=strategies/archive/filtered_donor_portfolio_causal_v3_core4.json \
+EXECUTION_STRATEGY_CONFIG=strategies/archive/filtered_donor_portfolio_post_adr0058_tail_control_v6_drop_negative_v5.json \
 EXECUTION_SYMBOLS=SOL-USDT-SWAP \
 uv run python -m crypt --once --execution-only
 ```
 
 The live runner loads the strategy through the same backtester registry as
-`backtester run`, processes Core4 v3 `signal_events` in order, and blocks new
+`backtester run`, processes portfolio `signal_events` in order, and blocks new
 entries unless OKX balance/positions/orders are synced with
 `data/live_positions.json`. OKX must be in long/short position mode; net/one-way
-mode is blocked because Core4 v3 can hold independent long and short entries.
+mode is blocked because the portfolio can hold independent long and short entries.
 Entry/close lifecycle is persisted before exchange writes. After restart the
 runner adopts actual fills and protection by deterministic client ID; partial
 reduce-only closes retain `closing` state and retry only the remaining
@@ -885,13 +889,13 @@ and starts processing as soon as OKX confirms the closing H1 candle and
 publishes the new hour's open. H4 and UTC-day confirmations are also required
 at their boundaries. The former `*:02 UTC` REST cycle remains only as a
 duplicate-guarded fallback if WebSocket confirmation fails.
-The filtered Core4 live runner then uses a validated donor-frame cache: exact
+The filtered donor portfolio live runner then uses a validated donor-frame cache: exact
 full-history features are retained, while only the latest donor tail is
 replayed and checked against cached overlap. Current measured hourly signal
 latency is about 6.8 seconds instead of 31.8 seconds; any mismatch forces a
 complete rebuild.
 Keep
-`EXECUTION_MAX_POSITIONS=0` for Core4 v3. On startup, live execution refuses to
+`EXECUTION_MAX_POSITIONS=0` for the current portfolio. On startup, live execution refuses to
 run if the money-impacting `EXECUTION_*` defaults diverge from the strategy
 JSON `backtest_args`, including maker/taker fees and
 `EXECUTION_INSTRUMENT_PRECISION_POLICY`. `EXECUTION_DRY_RUN_CAPITAL` lets a dry-run size entries
@@ -899,7 +903,7 @@ as if the account had `$10k` while still syncing the real OKX account; it is
 ignored for live money. Switch `EXECUTION_DRY_RUN=false` only after real H1
 dry-run logs show clean sync and sane SL/TP/size output.
 
-Core4 v3 selects liquidation-safe leverage with a buffer beyond every
+The live executor selects liquidation-safe leverage with a buffer beyond every
 structural stop. For SOL live execution, `maintenance_margin_tier_schedule`
 tracks OKX isolated SWAP position tiers so larger aggregate same-side positions
 use the higher MMR and lower maximum leverage tier. Trailing donors use native
@@ -911,7 +915,9 @@ crossed before a deeper last-price liquidation.
 Same-side logical entries share one OKX aggregate average entry for realized
 PnL, margin, and liquidation. Adding exposure updates that average; partial
 closes preserve it. Trade exports retain both the logical `entry_price` and
-`aggregate_entry_price` used for cash accounting.
+`aggregate_entry_price` used for cash accounting. `pnl_abs` remains account PnL
+from the aggregate entry; `constituent_pnl_abs` and `constituent_pnl_rel` are
+diagnostic donor-level PnL from the logical entry's own price.
 Missing protection or an unsafe exchange liquidation level blocks new entries
 and is reported to Telegram every H1 cycle. If closing one same-side
 constituent removes the required liquidation buffer from a remaining logical

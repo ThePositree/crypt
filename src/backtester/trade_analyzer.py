@@ -272,8 +272,10 @@ class TradeAnalyzer:
         df["senkou_span_b"] = (
             (df["high"].rolling(52).max() + df["low"].rolling(52).min()) / 2
         ).shift(26)
-        # Chikou Span (lagging span)
-        df["chikou_span"] = df["close"].shift(-26)
+        # Chikou Span is visually plotted 26 periods back, but at decision
+        # time only the lagged close is known. Keep the exported predictor
+        # causal so filter research cannot rank a future close.
+        df["chikou_span"] = df["close"].shift(26)
 
         # Ichimoku signals
         df["price_above_cloud"] = (df["close"] > df["senkou_span_a"]) & (

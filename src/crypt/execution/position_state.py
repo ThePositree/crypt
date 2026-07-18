@@ -80,6 +80,7 @@ class LivePosition:
     exit_price: float | None = None
     exit_reason: str | None = None
     realized_pnl: float | None = None
+    constituent_realized_pnl: float | None = None
     exit_fee: float | None = None
     close_filled_contracts: float = 0.0
     close_fill_notional: float = 0.0
@@ -281,6 +282,7 @@ def _migrate_state(raw: dict) -> dict:  # type: ignore[type-arg]
             pos.setdefault("exit_price", None)
             pos.setdefault("exit_reason", None)
             pos.setdefault("realized_pnl", None)
+            pos.setdefault("constituent_realized_pnl", None)
             pos.setdefault("exit_fee", None)
             signal_time = datetime.fromisoformat(str(pos["signal_time"]))
             pos.setdefault(

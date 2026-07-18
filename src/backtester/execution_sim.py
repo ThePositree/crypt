@@ -371,7 +371,7 @@ class ExecutionSim:
         del is_perpetual  # Retained for backward-compatible public construction.
         allowed_policies = {"best_case", "worst_case"}
         allowed_risk_base_periods = {"trade", "weekly", "monthly", "backtest"}
-        allowed_capital_sweeps = {"none", "monthly_profit"}
+        allowed_capital_sweeps = {"none", "monthly_profit", "trade_profit"}
 
         bar_exit_policy_normalized = bar_exit_policy.strip().lower()
         if bar_exit_policy_normalized not in allowed_policies:
@@ -786,6 +786,7 @@ class ExecutionSim:
         exit_value = pos.size * exit_price
         aggregate_entry_price = pos.aggregate_entry_price or pos.entry_price
         entry_value = pos.size * aggregate_entry_price
+        constituent_entry_value = pos.size * pos.entry_price
         exit_ctx = ExitContext(exit_reason=exit_reason.value)
         fee_exit = self._fee_model.calculate_exit_fee(
             exit_value,
@@ -795,11 +796,18 @@ class ExecutionSim:
         fees = pos.fee_entry + fee_exit
         if pos.is_long:
             pnl_abs = exit_value - entry_value - fees
+            constituent_pnl_abs = exit_value - constituent_entry_value - fees
             capital_delta = exit_value - entry_value - fee_exit
         else:
             pnl_abs = entry_value - exit_value - fees
+            constituent_pnl_abs = constituent_entry_value - exit_value - fees
             capital_delta = entry_value - exit_value - fee_exit
         pnl_rel = pnl_abs / entry_value if entry_value != 0 else 0.0
+        constituent_pnl_rel = (
+            constituent_pnl_abs / constituent_entry_value
+            if constituent_entry_value != 0
+            else 0.0
+        )
         new_capital = capital + capital_delta
         trade_history.append(
             {
@@ -814,6 +822,8 @@ class ExecutionSim:
                 "size": pos.size,
                 "pnl_abs": pnl_abs,
                 "pnl_rel": pnl_rel,
+                "constituent_pnl_abs": constituent_pnl_abs,
+                "constituent_pnl_rel": constituent_pnl_rel,
                 "fee_entry": pos.fee_entry,
                 "fee_exit": fee_exit,
                 "tp_price": pos.tp_price,
@@ -848,6 +858,38 @@ class ExecutionSim:
             }
         )
         return new_capital
+
+    def _apply_trade_profit_capital_sweep(
+        self,
+        *,
+        closed_trades: list[dict[str, Any]],
+        capital_before_exits: float,
+        banked_profit: float,
+    ) -> tuple[float, float]:
+        capital_without_sweeps = capital_before_exits
+        trading_capital = capital_before_exits
+
+        for trade in closed_trades:
+            capital_after_exit_without_sweeps = float(trade["capital_after"])
+            capital_delta = capital_after_exit_without_sweeps - capital_without_sweeps
+            capital_without_sweeps = capital_after_exit_without_sweeps
+            trading_capital += capital_delta
+            trade["capital_after"] = trading_capital
+
+            sweep_amount = 0.0
+            sweep_month: str | object = pd.NA
+            if float(trade["pnl_abs"]) > 0 and trading_capital > self.initial_capital:
+                sweep_amount = trading_capital - self.initial_capital
+                banked_profit += sweep_amount
+                trading_capital = self.initial_capital
+                sweep_month = pd.Timestamp(trade["exit_time"]).strftime("%Y-%m")
+
+            trade["capital_sweep_amount"] = sweep_amount
+            trade["capital_sweep_month"] = sweep_month
+            trade["banked_profit_after"] = banked_profit
+            trade["trading_capital_after_sweep"] = trading_capital
+
+        return trading_capital, banked_profit
 
     @staticmethod
     def _refresh_aggregate_liquidation(positions: list[Position]) -> None:
@@ -1808,6 +1850,8 @@ class ExecutionSim:
                     for minute_offset in range(60):
                         if not active_positions:
                             break
+                        capital_before_exits = capital
+                        minute_prev_trades_len = len(trade_history)
                         last_row = hour_last.iloc[minute_offset]
                         mark_row = hour_mark.iloc[minute_offset]
                         minute_time = pd.Timestamp(hour_last.index[minute_offset])
@@ -1833,6 +1877,14 @@ class ExecutionSim:
                             evaluate_ttl=False,
                             evaluate_unsafe=False,
                         )
+                        if self.capital_sweep == "trade_profit":
+                            capital, banked_profit = self._apply_trade_profit_capital_sweep(
+                                closed_trades=trade_history[minute_prev_trades_len:],
+                                capital_before_exits=capital_before_exits,
+                                banked_profit=banked_profit,
+                            )
+                    capital_before_exits = capital
+                    boundary_prev_trades_len = len(trade_history)
                     capital, active_positions = self._apply_h1_boundary_exits(
                         active_positions=active_positions,
                         capital=capital,
@@ -1841,7 +1893,14 @@ class ExecutionSim:
                         next_time=pd.Timestamp(next_time),
                         trade_history=trade_history,
                     )
+                    if self.capital_sweep == "trade_profit":
+                        capital, banked_profit = self._apply_trade_profit_capital_sweep(
+                            closed_trades=trade_history[boundary_prev_trades_len:],
+                            capital_before_exits=capital_before_exits,
+                            banked_profit=banked_profit,
+                        )
             else:
+                capital_before_exits = capital
                 capital, active_positions = self._update_active_positions(
                     active_positions=active_positions,
                     capital=capital,
@@ -1854,6 +1913,12 @@ class ExecutionSim:
                     next_time=next_time,
                     trade_history=trade_history,
                 )
+                if self.capital_sweep == "trade_profit":
+                    capital, banked_profit = self._apply_trade_profit_capital_sweep(
+                        closed_trades=trade_history[prev_trades_len:],
+                        capital_before_exits=capital_before_exits,
+                        banked_profit=banked_profit,
+                    )
             newly_closed_trades = trade_history[prev_trades_len:]
 
             bar_month = (next_time.year, next_time.month)
@@ -1872,11 +1937,15 @@ class ExecutionSim:
                     pending_capital_sweep_month = capital_sweep_month
 
             for trade in newly_closed_trades:
-                trade["capital_sweep_amount"] = 0.0
-                trade["capital_sweep_month"] = pd.NA
-                trade["banked_profit_after"] = banked_profit
-                trade["trading_capital_after_sweep"] = capital
-            if newly_closed_trades and pending_capital_sweep_amount:
+                trade.setdefault("capital_sweep_amount", 0.0)
+                trade.setdefault("capital_sweep_month", pd.NA)
+                trade.setdefault("banked_profit_after", banked_profit)
+                trade.setdefault("trading_capital_after_sweep", capital)
+            if (
+                self.capital_sweep != "trade_profit"
+                and newly_closed_trades
+                and pending_capital_sweep_amount
+            ):
                 newly_closed_trades[-1]["capital_sweep_amount"] = pending_capital_sweep_amount
                 newly_closed_trades[-1]["capital_sweep_month"] = pending_capital_sweep_month
                 pending_capital_sweep_amount = 0.0
@@ -1996,6 +2065,8 @@ class ExecutionSim:
             "size": pos.size,
             "pnl_abs": pd.NA,
             "pnl_rel": pd.NA,
+            "constituent_pnl_abs": pd.NA,
+            "constituent_pnl_rel": pd.NA,
             "fee_entry": pos.fee_entry,
             "fee_exit": pd.NA,
             "tp_price": pos.tp_price,

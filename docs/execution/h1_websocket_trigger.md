@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Start Core4 processing as soon as OKX confirms the candle required by the
+Start live portfolio execution as soon as OKX confirms the candle required by the
 strategy, while retaining a safe REST fallback.
 
 ## Inputs

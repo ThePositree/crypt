@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -100,7 +99,8 @@ class BacktestArgs:
         Optional end hour (0-24) for trading window; entries only when hour < this.
     capital_sweep:
         Capital withdrawal mode. ``monthly_profit`` withdraws realized capital
-        above the initial capital at month boundaries.
+        above the initial capital at month boundaries. ``trade_profit`` applies
+        the same withdrawal rule after each profitable closed trade.
     """
 
     capital: float
@@ -175,12 +175,12 @@ def load_strategy_config(path: str, logger: logging.Logger) -> StrategyConfig | 
         Parsed config or ``None`` if validation failed (error already logged).
     """
 
-    if not os.path.exists(path):
+    if not Path(path).exists():
         logger.error("❌ File not found: %s", path)
         return None
 
     try:
-        with open(path, "r") as f:
+        with Path(path).open() as f:
             raw = json.load(f)
     except Exception:
         logger.exception("❌ Failed to load strategy params JSON: %s", path)
@@ -484,7 +484,7 @@ def build_cli_data_loader(
 
 def load_ohlcv_csv(path: str, *, ts_col: str, logger: logging.Logger) -> pd.DataFrame | None:
     """Load OHLCV data from a CSV file (thin wrapper over CsvDataLoader)."""
-    if not os.path.exists(path):
+    if not Path(path).exists():
         logger.error("❌ File not found: %s", path)
         return None
     loader = CsvDataLoader(
@@ -730,7 +730,7 @@ def make_output_folder(base: str) -> str:
     """Create timestamped output folder path."""
 
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-    return os.path.join(base, timestamp)
+    return str(Path(base) / timestamp)
 
 
 def export_and_optional_analysis(
@@ -780,7 +780,7 @@ def export_and_optional_analysis(
 
         results.export_results(output_folder, ohlcv_df=primary_df)
 
-        conditions_file = os.path.join(output_folder, "trade_conditions_analysis.csv")
+        conditions_file = str(Path(output_folder) / "trade_conditions_analysis.csv")
         best_predictors.to_csv(conditions_file, index=False)
         logger.info("📊 Trade conditions analysis saved to: %s", conditions_file)
 

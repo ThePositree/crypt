@@ -1,0 +1,70 @@
+{
+  "backtest_args": {
+    "exit_geometry": "sl_rrr",
+    "instrument_precision_policy": "okx_sol_usdt_swap_2026_07_01",
+    "intrabar_execution_timeframe": "1m",
+    "liquidation_buffer_pct": 0.005,
+    "liquidation_fee_rate": 0.0005,
+    "maintenance_margin_rate": 0.004,
+    "maintenance_margin_tier_schedule": "okx_sol_usdt_swap_2026_06_29",
+    "maker_fee": 0.0002,
+    "max_allowed_leverage": 25.0,
+    "max_allowed_margin": 1.0,
+    "max_positions": 0,
+    "risk_base_period": "monthly",
+    "risk_percent": 1.0,
+    "rrr": 2.0,
+    "structural_sl_mode": "cap",
+    "taker_fee": 0.0005,
+    "trail_activation_rrr": 0.0,
+    "trail_distance_atr": 0.0,
+    "ttl": 0
+  },
+  "name": "filtered_donor_portfolio",
+  "params": {
+    "filters": {},
+    "nested_backtest_args": {
+      "instrument_precision_policy": "okx_sol_usdt_swap_2026_07_01",
+      "liquidation_buffer_pct": 0.005,
+      "liquidation_fee_rate": 0.0005,
+      "maintenance_margin_rate": 0.004,
+      "maintenance_margin_tier_schedule": "okx_sol_usdt_swap_2026_06_29",
+      "max_allowed_leverage": 25.0
+    },
+    "portfolio_id": "post_adr0058_all24_v1_archive",
+    "progress": true,
+    "research_notes": {
+      "archive_note": "v1 exact all-24 exploratory portfolio archived after full-period run 20260712_223913.",
+      "source": "all 24 split-RRR Optuna best trials; exploratory portfolio, not promoted",
+      "summary_csv": "docs/archive/candidates/post_adr0058_tail_control_portfolio/donors_by_version.csv",
+      "train_window": "2022-01-01T00:00:00Z..2025-01-01T00:00:00Z"
+    },
+    "strategy_paths": {
+      "freq_4pw_r01_catcma_010978": "strategies/archive/post_adr0058_all24_v1/22_freq_4pw_r01_catcma_010978.json",
+      "freq_4pw_r02_hyperband_004678": "strategies/archive/post_adr0058_all24_v1/09_freq_4pw_r02_hyperband_004678.json",
+      "freq_4pw_r03_catcma_011465": "strategies/archive/post_adr0058_all24_v1/23_freq_4pw_r03_catcma_011465.json",
+      "freq_4pw_r04_catcma_013241": "strategies/archive/post_adr0058_all24_v1/18_freq_4pw_r04_catcma_013241.json",
+      "freq_4pw_r05_island_2023_001587": "strategies/archive/post_adr0058_all24_v1/16_freq_4pw_r05_island_2023_001587.json",
+      "freq_4pw_r06_hyperband_015967": "strategies/archive/post_adr0058_all24_v1/15_freq_4pw_r06_hyperband_015967.json",
+      "freq_4pw_r07_smac_003335": "strategies/archive/post_adr0058_all24_v1/17_freq_4pw_r07_smac_003335.json",
+      "freq_4pw_r08_catcma_008884": "strategies/archive/post_adr0058_all24_v1/06_freq_4pw_r08_catcma_008884.json",
+      "freq_4pw_r09_hyperband_010009": "strategies/archive/post_adr0058_all24_v1/03_freq_4pw_r09_hyperband_010009.json",
+      "freq_4pw_r10_hyperband_019141": "strategies/archive/post_adr0058_all24_v1/24_freq_4pw_r10_hyperband_019141.json",
+      "freq_4pw_r11_island_2024_002436": "strategies/archive/post_adr0058_all24_v1/10_freq_4pw_r11_island_2024_002436.json",
+      "freq_4pw_r12_island_2022_020583": "strategies/archive/post_adr0058_all24_v1/11_freq_4pw_r12_island_2022_020583.json",
+      "sparse_0pw_r01_smac_018790": "strategies/archive/post_adr0058_all24_v1/08_sparse_0pw_r01_smac_018790.json",
+      "sparse_0pw_r02_hyperband_028062": "strategies/archive/post_adr0058_all24_v1/20_sparse_0pw_r02_hyperband_028062.json",
+      "sparse_0pw_r03_island_2022_002323": "strategies/archive/post_adr0058_all24_v1/13_sparse_0pw_r03_island_2022_002323.json",
+      "sparse_0pw_r04_hyperband_020661": "strategies/archive/post_adr0058_all24_v1/21_sparse_0pw_r04_hyperband_020661.json",
+      "sparse_0pw_r05_hyperband_026425": "strategies/archive/post_adr0058_all24_v1/14_sparse_0pw_r05_hyperband_026425.json",
+      "sparse_0pw_r06_hyperband_001552": "strategies/archive/post_adr0058_all24_v1/01_sparse_0pw_r06_hyperband_001552.json",
+      "sparse_0pw_r07_hyperband_019621": "strategies/archive/post_adr0058_all24_v1/12_sparse_0pw_r07_hyperband_019621.json",
+      "sparse_0pw_r08_dssv2_027026": "strategies/archive/post_adr0058_all24_v1/05_sparse_0pw_r08_dssv2_027026.json",
+      "sparse_0pw_r09_catcma_013114": "strategies/archive/post_adr0058_all24_v1/07_sparse_0pw_r09_catcma_013114.json",
+      "sparse_0pw_r10_island_2022_000031": "strategies/archive/post_adr0058_all24_v1/04_sparse_0pw_r10_island_2022_000031.json",
+      "sparse_0pw_r11_island_2024_021423": "strategies/archive/post_adr0058_all24_v1/19_sparse_0pw_r11_island_2024_021423.json",
+      "sparse_0pw_r12_hyperband_017877": "strategies/archive/post_adr0058_all24_v1/02_sparse_0pw_r12_hyperband_017877.json"
+    }
+  },
+  "version": "post-adr0058-all24-v1-archive-2026-07-13"
+}

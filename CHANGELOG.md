@@ -6,6 +6,444 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-07-19 — Trimmed post-ADR-0058 portfolio archive
+
+- Removed heavy reproducible run artifacts from
+  `docs/archive/candidates/post_adr0058_tail_control_portfolio`, including full
+  backtest trees, source-run directories, full signal/OHLCV/trade CSVs, charts,
+  and per-trade candle reports.
+- Kept decision-critical archive evidence: version summary, donor composition,
+  strategy configs, reproduction commands, provenance, compact metrics/monthly
+  snapshots, diagnostics, strategy attribution, and live replay note.
+- Rewrote archive metadata and post-ADR-0058 strategy JSON research notes so
+  they no longer point at deleted run-output directories.
+- Verified archive size is `384K`; no remaining references to `results/`,
+  `full_backtests`, `source_research`, or `full_artifact_paths`; JSON snapshots
+  validate with `python -m json.tool`.
+- ADRs: none.
+- Files touched: `docs/archive/candidates/`, `strategies/archive/`,
+  `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
+## 2026-07-19 — Prepared Railway live execution deploy
+
+- Switched Railway startup from the DSS search worker to a live execution
+  entrypoint.
+- Added `crypt.runtime.deploy_preflight`, which removes zero-byte parquet
+  files, checks H1/H4/D1 live OHLCV coverage, and runs OKX backfill before
+  `python -m crypt --execution-only` starts.
+- Added Railway bootstrap environment variables and rewrote the Railway deploy
+  guide for `/app/data` volume-backed data, logs, and live state.
+- Made a date-sensitive execution test independent of the current wall clock.
+- Verified focused runtime/execution slice: `44 passed`; ruff clean on touched
+  Python files.
+- ADRs: none.
+- Files touched: `src/crypt/runtime/`, `scripts/`, `tests/runtime/`,
+  `tests/execution/`, `docs/deploy/`, `docs/tasks/`, `railway.toml`,
+  `.env.example`, `README.md`, `CHANGELOG.md`.
+
+---
+
+## 2026-07-16 — Extended REST fallback callback timeout
+
+- Diagnosed a live OKX/Telegram connectivity outage where WebSocket triggers
+  correctly fell back to REST, but the REST execution callback could be
+  cancelled by the same 90s timeout used for WebSocket callbacks while OKX
+  candle retries were still in progress.
+- Added a separate 180s timeout for `rest_fallback` callbacks so degraded OKX
+  REST retries can exhaust cleanly before the scheduler reports the boundary
+  as failed.
+- Added a regression proving REST fallback can outlive the shorter WebSocket
+  callback timeout.
+- Disabled new entries during `startup` H1 reconciliation. Startup still
+  refreshes candles, syncs OKX, and manages existing positions, but it no
+  longer opens a catch-up trade from the previous closed H1 bar.
+- Added a regression matching a restart at `2026-07-16T18:06Z` after a
+  `2026-07-16T17:00Z` signal.
+- Verified focused execution/runtime slice: `38 passed`; ruff clean on touched
+  files.
+- ADRs: none.
+- Files touched: `src/crypt/execution/`, `src/crypt/runtime/`,
+  `tests/execution/`, `tests/runtime/`, `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
+## 2026-07-15 — Released H1 fallback after callback timeout
+
+- Fixed an H1 scheduler edge case where a timed-out WebSocket execution callback
+  could keep the boundary marked `in_flight` while Telegram error reporting
+  retried, causing the `*:02` REST fallback to skip the same boundary.
+- The boundary is now released for retry before slow error reporting runs; only
+  fully successful callbacks are marked completed.
+- Added a regression matching the live `orders-algo-pending` timeout followed by
+  slow notification reporting.
+- Verified focused runtime scheduler slice: `8 passed`; ruff clean on touched
+  runtime files.
+- ADRs: none.
+- Files touched: `src/crypt/runtime/`, `tests/runtime/`, `docs/tasks/`,
+  `CHANGELOG.md`.
+
+---
+
+## 2026-07-15 — Preserved WebSocket next open after outage repair
+
+- Fixed live H1 recovery after an OKX/Telegram DNS outage: when WebSocket
+  ingestion repairs missing candles through REST, the WebSocket boundary
+  `next_open` now remains authoritative after the repair.
+- This prevents the catch-up path from raising `forming H1 time is not after
+  the signal bar` after REST repair temporarily records a stale forming H1
+  open.
+- Added a regression that reproduces the `2026-07-15T04:00Z -> 10:00Z` style
+  gap repair and verifies the boundary open survives.
+- Verified focused live signal/runtime slice: `16 passed`; ruff clean on
+  touched files.
+- ADRs: none.
+- Files touched: `src/crypt/execution/`, `tests/execution/`, `docs/tasks/`,
+  `CHANGELOG.md`.
+
+---
+
+## 2026-07-14 — Added per-trade profit sweep
+
+- Added `--capital-sweep trade_profit` to bank trading capital above the
+  initial capital immediately after each profitable closed trade.
+- Kept `monthly_profit` behavior unchanged; both sweep modes use the same rule
+  that recovery below initial capital is not withdrawn.
+- Added focused execution-simulator regressions for repeated winning-trade
+  sweeps and below-initial recovery.
+- Verified focused backtester slice: `64 passed`; ruff clean on touched
+  backtester files.
+- ADRs: none.
+- Files touched: `src/backtester/`, `tests/backtester/`, `docs/tasks/`,
+  `README.md`, `CHANGELOG.md`.
+
+---
+
+## 2026-07-14 — Blocked silent H1 candle corruption
+
+- Hardened `ParquetStore.save_candles()` so an already stored closed candle can
+  no longer be silently overwritten with different OHLC values for the same
+  `open_time`.
+- Added H1-vs-1m validation: when complete last-price 1m data already exists
+  for an H1 interval, the incoming H1 candle must aggregate from those minutes
+  or the write is rejected.
+- Verified current SOL data after repair: all complete 1m-backed H1 bars now
+  match on high/low/close; only small historical first-minute open differences
+  remain in older 2022-2023 data.
+- Added regression tests for conflicting closed-candle updates and H1/1m
+  mismatch rejection.
+- Verified data/live focused slice: `39 passed`; ruff clean on touched files.
+- ADRs: none.
+- Files touched: `src/crypt/data/`, `tests/data/`, `docs/tasks/`,
+  `CHANGELOG.md`.
+
+---
+
+## 2026-07-14 — Replayed first v6 live trades against backtester
+
+- Backfilled and validated SOL 1m last/mark candles for the live replay
+  window; both stores have complete 1m coverage through
+  `2026-07-14T12:59:00Z`.
+- Repaired two local SOL H1 rows from minute aggregation after replay
+  validation caught H1-vs-1m mismatches.
+- Fixed live fill classification for OKX triggered stop fills where the stop
+  algo id is reported in `clOrdId`.
+- Reclassified the three first real v6 SOL live exits in
+  `data/live_positions.json` as `stop_loss` with OKX exit price, fee, account
+  PnL, and constituent PnL.
+- Added a live replay archive note showing that the three saved live signal
+  events replay as three backtester stop losses at the same stop minutes.
+- Verified focused execution tests: `13 passed`.
+- ADRs: none.
+- Files touched: `src/crypt/execution/`, `tests/execution/`,
+  `docs/archive/candidates/`, `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
+## 2026-07-14 — Prevented mixed-timeframe candle writes
+
+- Fixed WebSocket boundary ingestion to persist closed H1/H4/D1 candles in
+  separate `ParquetStore.save_candles()` calls.
+- Hardened `ParquetStore.save_candles()` so one write batch may contain only
+  one symbol, timeframe, and price type.
+- Repaired the live SOL D1 parquet file by removing two intraday rows that had
+  been written into `ohlcv_1d.parquet` during the mixed-timeframe ingest.
+- Verified store/signal-runner/runtime slice: `26 passed`.
+- ADRs: none.
+- Files touched: `src/crypt/data/`, `src/crypt/execution/`,
+  `tests/data/`, `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
+## 2026-07-14 — Reconciled reduced same-side live constituents
+
+- Fixed live reconciliation for same-side aggregate OKX positions: when the
+  exchange size decreases and one local constituent's protection orders are
+  gone, that constituent is now closed locally instead of blocking sync with a
+  `position_size_mismatch`.
+- Applied the same reduced-away detection during startup reconcile and normal
+  H1 position management.
+- Added a regression for the live v6 case where two local shorts (`0.66+0.63`)
+  become one exchange short (`0.66`) after the second constituent closes.
+- Verified focused live reconciliation slice: `48 passed`.
+- ADRs: none.
+- Files touched: `src/crypt/execution/`, `tests/execution/`,
+  `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
+## 2026-07-14 — Repaired live candle gaps around UTC midnight
+
+- Fixed live WebSocket candle ingestion so continuity gaps detected after a
+  boundary ingest are repaired through REST before signal generation.
+- Kept existing higher-timeframe history when OKX temporarily returns no
+  non-H1 candles, instead of failing the entire H1 execution cycle.
+- Added regressions for WebSocket gap repair and empty D1 refresh handling.
+- Verified focused runtime/live execution slice: `44 passed`.
+- ADRs: none.
+- Files touched: `src/crypt/execution/`, `tests/execution/`,
+  `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
+## 2026-07-13 — Fixed OKX H1 WebSocket subscription id
+
+- Fixed OKX H1 WebSocket subscribe requests to use alphanumeric request IDs
+  without hyphens, matching the OKX V5 WebSocket contract and avoiding live
+  `60033 Parameter id error` rejects.
+- Made scheduler shutdown treat cancellation during REST fallback as normal
+  operator stop instead of a noisy job exception.
+- Updated H1 trigger docs to use portfolio-neutral wording.
+- Verified runtime/live execution slice: `40 passed`.
+- ADRs: none.
+- Files touched: `src/crypt/runtime/`, `tests/runtime/`,
+  `docs/execution/`, `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
+## 2026-07-13 — Removed stale Core4 wording from live execution
+
+- Removed Core4-specific wording from live CLI help and neutral no-signal logs
+  so operator output reflects the selected strategy JSON instead of an old
+  portfolio branch.
+- Changed the live execution default strategy path to neutral
+  `strategies/live/active.json`; production runs should pass
+  `EXECUTION_STRATEGY_CONFIG` explicitly.
+- Updated live execution examples to the current post-ADR-0058 v6 portfolio.
+- Verified runtime help and focused live execution slice: `33 passed`.
+- ADRs: none.
+- Files touched: `src/crypt/`, `README.md`, `.env.example`,
+  `docs/execution/`, `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
+## 2026-07-13 — Made live signal timestamps fail closed
+
+- Fixed live signal timestamp parsing so malformed signal/store timestamps raise
+  instead of silently becoming `datetime.now(UTC)`.
+- Added regression coverage for valid string timestamps and invalid timestamp
+  rejection in the live signal runner.
+- Verified data-loader/store/signal-runner slice: `29 passed`.
+- ADRs: none.
+- Files touched: `src/crypt/execution/`, `tests/execution/`,
+  `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
+## 2026-07-13 — Removed legacy feature lookahead in strategy research
+
+- Fixed legacy `som`/`forest` order-block features so confirmed OB labels are
+  emitted only after the confirmation window closes, instead of backfilling the
+  candidate candle with future impulse data.
+- Kept OB size diagnostics tied to the confirmed OB zone, not the confirmation
+  candle range.
+- Fixed `TradeAnalyzer` Ichimoku `chikou_span` so predictor research uses the
+  lagged close known at entry time instead of `close.shift(-26)`.
+- Added regression tests for OB prefix stability and causal Chikou extraction.
+- Verified focused backtester slice: `62 passed`.
+- ADRs: none.
+- Files touched: `src/backtester/strategies/`, `src/backtester/trade_analyzer.py`,
+  `tests/backtester/`, `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
+## 2026-07-13 — Preserved trailing geometry during live restart recovery
+
+- Fixed live restart recovery so recovered filled entries no longer recompute
+  native trailing activation from the actual fill price. They keep the
+  pre-submit H1 next-open geometry used by the normal live path and
+  `ExecutionSim`.
+- Added a regression where an H1-open planned trailing entry at `100` recovers
+  an actual fill at `101` and still keeps activation at `102`.
+- Verified focused execution/backtester slice covering live multi-event
+  execution, signal runner timing, risk, OKX order client, exchange sync, fill
+  classification, trade replay, minute execution, and trailing policy.
+- ADRs: none.
+- Files touched: `src/crypt/execution/`, `tests/execution/`,
+  `docs/execution/`, `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
+## 2026-07-13 — Added donor-level PnL diagnostics
+
+- Kept `pnl_abs` / live `realized_pnl` as account-level PnL from OKX
+  same-side `aggregate_entry_price` for cash reconciliation.
+- Added `constituent_pnl_abs` and `constituent_pnl_rel` to backtester trade
+  exports, plus `constituent_realized_pnl` to live closed-position state and
+  fill classification.
+- Documented the accounting split so strategy attribution can use donor-level
+  diagnostics without breaking account equity math.
+- Verified focused execution/backtester slice: `139 passed`.
+- ADRs: none.
+- Files touched: `src/backtester/`, `src/crypt/execution/`, `tests/`,
+  `docs/execution/`, `docs/tasks/`, `README.md`, `CHANGELOG.md`.
+
+---
+
+## 2026-07-13 — Restored authenticated live H1-open sizing parity
+
+- Fixed authenticated live execution so the current OKX quote no longer replaces
+  the H1 next-open price before risk sizing, SL/TP placement, or native trailing
+  geometry.
+- Kept quote/fill drift as alert-only observability under ADR-0054, with actual
+  fill stop-risk alerts still emitted when slippage increases planned risk.
+- Added authenticated drift coverage proving a quote different from H1 open does
+  not mutate the planned order size or protection geometry.
+- Verified focused execution/backtester slice: `137 passed`.
+- ADRs: none.
+- Files touched: `src/crypt/execution/`, `tests/execution/`, `docs/execution/`,
+  `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
+## 2026-07-13 — Live/backtest audit follow-ups
+
+- Audited the current backtester/live execution path after the post-ADR-0058
+  portfolio archive. Found one P0 parity risk: authenticated live execution
+  sizes and resolves exits from the current quote instead of the H1 next-open
+  price used by `ExecutionSim`.
+- Added follow-up backlog items for authenticated H1-open sizing parity and
+  per-donor PnL attribution under OKX side aggregation.
+- Verified the focused unit-test slice covering execution parity, signal
+  events, risk, OKX order params, exchange sync, fill classification, and
+  margin policy: `137 passed`.
+- ADRs: none.
+- Files touched: `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
+## 2026-07-13 — Archived post-ADR-0058 portfolio lineage
+
+- Created a complete candidate archive for the v1-v7 post-ADR-0058 portfolio
+  branch at `docs/archive/candidates/post_adr0058_tail_control_portfolio/`.
+- Preserved portfolio config snapshots, donor composition by version,
+  owner-run reproduction commands, complete copied full backtests, source
+  Optuna research artifacts, compact backtest snapshots, strategy attribution,
+  and monthly strategy PnL for all seven versions.
+- Recorded the current branch interpretation: v5 maximizes final account value
+  (`$10,000` to `$1,360,197.25`), while v7 is the cleaner lower-DD branch
+  (`$10,000` to `$866,481.95`, PF `1.90`, peak-to-trough DD `-32.33%`).
+- ADRs: none.
+- Files touched: `docs/archive/candidates/`, `docs/tasks/`, `CHANGELOG.md`.
+
+## 2026-07-12 — Prepared sparse and frequent DSS seeds for Optuna
+
+- Exported 24 current Stage 1 near-miss DSS strategies for owner-run Optuna:
+  12 sparse seeds and 12 frequent 4-per-week seeds.
+- Artifact root:
+  `results/post_adr0058_top_for_optuna_20260712/`, with a combined
+  `manifest.csv` and per-batch strategy JSONs.
+- Added a progress-aware owner-run Optuna launcher for the split-RRR batch;
+  it keeps per-strategy logs separate and shows active jobs, total trials,
+  elapsed time, and ETA in one terminal view.
+- Recorded the completed split-RRR Optuna result at
+  `results/post_adr0058_optuna_top_train_big_split_rrr_20260712/`: all best
+  trials remain mandate `discard` on 2022-2024 train, with the best sparse seed
+  at `+374.37%` but 20 below-floor months, six DD breach months, and worst
+  monthly DD `-26.56%`.
+- Built an exploratory all-24 shared-capital portfolio at
+  `results/post_adr0058_portfolio_all24_split_rrr_20260713/`, freezing each
+  donor with its split-RRR Optuna best-trial execution parameters.
+- Archived the all-24 portfolio as
+  `strategies/archive/filtered_donor_portfolio_post_adr0058_all24_v1.json` and
+  created the first reduced risk-capped cut as
+  `strategies/archive/filtered_donor_portfolio_post_adr0058_reduced_v2_risk1.json`.
+- Recorded owner-run v2 result: `$10,000` to `$62,074.13`, PF `1.10`,
+  drawdown below start `-2.49%`, peak-to-trough DD `-39.28%`, 19 liquidations,
+  and four unsafe liquidation-buffer exits.
+- Created return-first v3 at
+  `strategies/archive/filtered_donor_portfolio_post_adr0058_return_first_v3.json`,
+  keeping all 12 v1 donors with positive all-period PnL and preserving original
+  Optuna risk.
+- Recorded owner-run v3 result: `$10,000` to `$883,881.46`, PF `1.09`,
+  drawdown below start `-1.36%`, peak-to-trough DD `-62.81%`, 19 liquidations,
+  and three unsafe liquidation-buffer exits.
+- Created return-first v4 at
+  `strategies/archive/filtered_donor_portfolio_post_adr0058_return_first_v4_positive_v3.json`,
+  removing only the four donors that were net-negative in the v3 full-period
+  run while preserving original Optuna risk for the remaining eight donors.
+- Recorded owner-run v4 result: `$10,000` to `$340,047.49`, PF `1.09`,
+  drawdown below start `-1.36%`, peak-to-trough DD `-58.44%`, 18 liquidations,
+  and four unsafe liquidation-buffer exits.
+- Created tail-control v5 at
+  `strategies/archive/filtered_donor_portfolio_post_adr0058_tail_control_v5_filtered_v3.json`,
+  keeping all 12 v3 donors and original Optuna risk while adding one
+  entry-known catalog filter per donor.
+- Recorded owner-run v5 result: `$10,000` to `$1,360,197.25`, PF `1.39`,
+  drawdown below start `-6.79%`, peak-to-trough DD `-39.14%`, nine
+  liquidations, and no unsafe liquidation-buffer exits.
+- Created tail-control v6 at
+  `strategies/archive/filtered_donor_portfolio_post_adr0058_tail_control_v6_drop_negative_v5.json`,
+  removing only the two v5 net-negative donors while preserving the remaining
+  filters and original Optuna risk.
+- Recorded owner-run v6 result: `$10,000` to `$1,098,402.88`, PF `1.48`,
+  drawdown below start `-17.75%`, peak-to-trough DD `-39.23%`, nine
+  liquidations, zero unsafe liquidation-buffer exits, and 1515 trades.
+- Created tail-control v7 at
+  `strategies/archive/filtered_donor_portfolio_post_adr0058_tail_control_v7_apr2026.json`,
+  adding four extra entry-known filters to the main `2026-04` loss contributors
+  while preserving v6 donors and original Optuna risk.
+- Recorded owner-run v7 result: `$10,000` to `$866,481.95`, PF `1.90`,
+  drawdown below start `-6.85%`, peak-to-trough DD `-32.33%`, five
+  liquidations, zero unsafe liquidation-buffer exits, and 935 trades.
+- Recorded owner-run all-24 full-period attribution: `$10,000` to
+  `$172,325.77` but with profit factor `1.01`, peak-to-trough DD `-90.72%`,
+  27 liquidations, and one unsafe liquidation-buffer exit.
+- Marked frequent seeds as lower-trust research material because several top
+  rows rely on tiny 2022 sample counts before failing the 4-per-week screen.
+- ADRs: none.
+- Files touched: `results/post_adr0058_top_for_optuna_20260712/`,
+  `docs/tasks/`, `CHANGELOG.md`.
+
+## 2026-07-08 — Core4 v3 aggregate-average rerun result
+
+- Recorded owner-run aggregate-average minute artifact
+  `results/core4_v3_okx_aggregate_average_2026070/20260708_054313/`.
+- Result: `$10,000` → `$24,195.85`, `+141.96%`, profit factor `1.05`,
+  drawdown below start `-9.20%`, peak-to-trough drawdown `-42.84%`,
+  3,425 entries, nine liquidations, and two open trades.
+- Cash reconciles from `$10,000 + $14,204.343855912753 closed PnL -
+  $8.4947749 open entry fees = $24,195.849081012755`.
+- 2025 mandate remains `discard`: four of twelve months pass the 15% floor,
+  eight are below floor, five breach monthly DD, and worst monthly drawdown is
+  `-19.42%`.
+- Verified the new artifact exports `aggregate_entry_price`; H1 OHLCV has
+  39,711 continuous rows with zero gaps/duplicates.
+- Could not locally compare signal/OHLCV hashes against
+  `results/core4_v3_minute_last_mark_20260702/20260702_102019/` because that
+  superseded artifact is absent in this workspace.
+- Owner redirected the next research loop toward fresh post-ADR-0058 strategy
+  discovery, candidate Optuna only after quick exact replay screens, and a new
+  shared-capital portfolio from non-duplicative winners.
+- Owner completed the first post-ADR-0058 all-window DSS matrix at
+  `results/post_adr0058_dss_matrix_sol_20260708/`: 250,000 candidates across
+  five algorithms, zero Stage 1 survivors, zero exported candidates. Next
+  search should be single-window specialist discovery for a multi-strategy
+  portfolio basket, not big Optuna.
+- ADRs: none.
+- Files touched: `docs/tasks/`, `CHANGELOG.md`.
+
 ## 2026-07-03 — Correct OKX aggregate average-entry accounting
 
 - Fixed Core4 same-side accounting to match OKX: increasing exposure updates

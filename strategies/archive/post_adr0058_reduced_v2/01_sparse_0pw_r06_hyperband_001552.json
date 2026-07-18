@@ -1,0 +1,139 @@
+{
+  "archive_notes": {
+    "risk_cap_applied": {
+      "new_risk_percent": 1.0,
+      "old_backtest_args_risk_percent": 2.75,
+      "old_params_risk_percent": 2.75,
+      "risk_cap": 1.0
+    }
+  },
+  "backtest_args": {
+    "exit_geometry": "sl_rrr",
+    "instrument_precision_policy": "okx_sol_usdt_swap_2026_07_01",
+    "liquidation_buffer_pct": 0.005,
+    "liquidation_fee_rate": 0.0005,
+    "maintenance_margin_rate": 0.004,
+    "maintenance_margin_tier_schedule": "okx_sol_usdt_swap_2026_06_29",
+    "max_allowed_leverage": 25.0,
+    "max_allowed_margin": 1.0,
+    "position_ttl_bars": 120,
+    "risk_base_period": "monthly",
+    "risk_percent": 1.0,
+    "rrr": 4.0,
+    "trail_activation_rrr": 0.0,
+    "trail_distance_atr": 0.0,
+    "ttl": 120
+  },
+  "candidate_id": "hyperband_001552",
+  "name": "dss_strategy",
+  "optuna_source": {
+    "best_trial": "results/post_adr0058_optuna_top_train_big_split_rrr_20260712/sparse_0pw/rank_06_hyperband_001552/20260712_153816/best_trial.json",
+    "mandate_score": -15042.92,
+    "summary_csv": "results/post_adr0058_optuna_top_train_big_split_rrr_20260712/optuna_summary.csv",
+    "train_below_months": 20,
+    "train_dd_breach_months": 6,
+    "train_pass_months": 16,
+    "train_return_pct": 374.37,
+    "train_trades": 79,
+    "train_window": {
+      "from": "2022-01-01T00:00:00Z",
+      "to": "2025-01-01T00:00:00Z"
+    },
+    "train_worst_monthly_dd_pct": -26.56,
+    "trials_csv": "results/post_adr0058_optuna_top_train_big_split_rrr_20260712/sparse_0pw/rank_06_hyperband_001552/20260712_153816/trials.csv"
+  },
+  "params": {
+    "atr_sl_mult": 2.25,
+    "filter_names": [
+      "pf_bb_width",
+      "pf_rsi_zone"
+    ],
+    "filter_params": {
+      "pf_bb_width": {
+        "max_width_pct": 0.045
+      },
+      "pf_rsi_zone": {
+        "high": 60,
+        "low": 55
+      }
+    },
+    "position_ttl_bars": 120,
+    "risk_percent": 1.0,
+    "rrr": 4.0,
+    "trigger_name": "pt_momentum_burst",
+    "trigger_params": {
+      "threshold": 2.5
+    }
+  },
+  "source_algorithm": "hyperband_qd_seed4242",
+  "source_run": "results/post_adr0058_dss_matrix_sol_wr45_stage1_20260710",
+  "stage1_metrics": {
+    "barrier_median_bars_to_tp_2022": 1.0,
+    "barrier_median_bars_to_tp_2023": 1.0,
+    "barrier_median_bars_to_tp_2024": 1.0,
+    "barrier_median_bars_to_tp_2025H1": 1.0,
+    "barrier_median_mae_atr_2022": 0.0065359477124182,
+    "barrier_median_mae_atr_2023": 0.0059824551199768,
+    "barrier_median_mae_atr_2024": 0.0061715553706399,
+    "barrier_median_mae_atr_2025H1": 0.0090267271810387,
+    "barrier_median_mae_pct_2022": 0.0065359477124182,
+    "barrier_median_mae_pct_2023": 0.0059824551199768,
+    "barrier_median_mae_pct_2024": 0.0061715553706399,
+    "barrier_median_mae_pct_2025H1": 0.0090267271810387,
+    "barrier_median_mfe_atr_2022": 0.0105379922351634,
+    "barrier_median_mfe_atr_2023": 0.0113129281015273,
+    "barrier_median_mfe_atr_2024": 0.0094410403901462,
+    "barrier_median_mfe_atr_2025H1": 0.004920690054417,
+    "barrier_median_mfe_pct_2022": 0.0105379922351634,
+    "barrier_median_mfe_pct_2023": 0.0113129281015273,
+    "barrier_median_mfe_pct_2024": 0.0094410403901462,
+    "barrier_median_mfe_pct_2025H1": 0.004920690054417,
+    "barrier_sl_first_rate_2022": 0.48,
+    "barrier_sl_first_rate_2023": 0.4583333333333333,
+    "barrier_sl_first_rate_2024": 0.5454545454545454,
+    "barrier_sl_first_rate_2025H1": 0.6923076923076923,
+    "barrier_timeout_rate_2022": 0.0,
+    "barrier_timeout_rate_2023": 0.0,
+    "barrier_timeout_rate_2024": 0.0,
+    "barrier_timeout_rate_2025H1": 0.0,
+    "barrier_total_2022": 25.0,
+    "barrier_total_2023": 24.0,
+    "barrier_total_2024": 33.0,
+    "barrier_total_2025H1": 13.0,
+    "barrier_tp_first_rate_2022": 0.52,
+    "barrier_tp_first_rate_2023": 0.5416666666666666,
+    "barrier_tp_first_rate_2024": 0.4545454545454545,
+    "barrier_tp_first_rate_2025H1": 0.3076923076923077,
+    "barrier_unresolved_tail_rate_2022": 0.0,
+    "barrier_unresolved_tail_rate_2023": 0.0,
+    "barrier_unresolved_tail_rate_2024": 0.0,
+    "barrier_unresolved_tail_rate_2025H1": 0.0,
+    "barrier_win_rate_2022": 0.52,
+    "barrier_win_rate_2023": 0.5416666666666666,
+    "barrier_win_rate_2024": 0.4545454545454545,
+    "barrier_win_rate_2025H1": 0.3076923076923077,
+    "candidate_class": "rejected",
+    "candidate_id": "hyperband_001552",
+    "filter_names": "pf_bb_width+pf_rsi_zone",
+    "long_ratio_2022": 0.76,
+    "long_ratio_2023": 0.7916666666666666,
+    "long_ratio_2024": 0.6363636363636364,
+    "long_ratio_2025H1": 0.6153846153846154,
+    "median_stop_atr_2022": 0.0,
+    "median_stop_atr_2023": 0.0,
+    "median_stop_atr_2024": 0.0,
+    "median_stop_atr_2025H1": 0.0,
+    "passed": false,
+    "rejection_reason": "too_few_signals:2025H1",
+    "should_promote": false,
+    "signals_2022": 25,
+    "signals_2023": 24.0,
+    "signals_2024": 33.0,
+    "signals_2025H1": 13.0,
+    "stage1_score": -10000.0,
+    "target_window": "",
+    "trigger_name": "pt_momentum_burst"
+  },
+  "stage1_score": 70.59880653597014,
+  "version": "post-adr0058-all24-split-rrr-optuna-frozen-2026-07-13"
+}

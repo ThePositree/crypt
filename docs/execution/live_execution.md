@@ -55,7 +55,7 @@ Loaded from `.env` via `pydantic-settings`. All keys prefixed `EXECUTION_`.
 | `EXECUTION_ENABLED` | `false` | Must be set to `true` to activate |
 | `EXECUTION_DRY_RUN` | `true` | Log orders without placing them |
 | `EXECUTION_DRY_RUN_CAPITAL` | `0.0` | Optional dry-run-only sizing capital; `0` uses real OKX balance |
-| `EXECUTION_STRATEGY_CONFIG` | `strategies/archive/filtered_donor_portfolio_causal_v3_core4.json` | Path to strategy JSON |
+| `EXECUTION_STRATEGY_CONFIG` | `strategies/live/active.json` | Path to the selected strategy JSON |
 | `EXECUTION_DATA_DIR` | `data` | Root Parquet directory |
 | `EXECUTION_STATE_PATH` | `data/live_positions.json` | State file |
 | `EXECUTION_EXIT_GEOMETRY` | `sl_rrr` | Fallback exit geometry for legacy/sparse events |
@@ -165,7 +165,7 @@ Steps:
        {'marginMode': 'isolated', 'posSide': 'long'},
    )
    ```
-   OKX isolated leverage is side-specific in long/short position mode. Core4
+   OKX isolated leverage is side-specific in long/short position mode. Portfolio
    must never rewrite the opposite side because it may contain an open
    position or pending order.
 2. Convert `risk_result.size` (asset units) to `contracts`:
@@ -174,7 +174,7 @@ Steps:
    contracts = math.floor(risk_result.size / market['contractSize'])
    ```
    Round down to the market amount step and reject below the market minimum.
-   For the dated `SOL-USDT-SWAP` metadata snapshot used by Core4 v3
+   For the dated `SOL-USDT-SWAP` metadata snapshot used by live execution
    (`okx_sol_usdt_swap_2026_07_01`), contract size is `1 SOL`, amount step and
    minimum are `0.01 contracts`, and price tick is `0.01 USDT`. The backtester
    applies the same policy before tier, liquidation, margin, fee, and PnL
@@ -204,14 +204,15 @@ Steps:
    )
    ```
    `signal_executor` uses OKX's direct `attachAlgoOrds` payload for the same
-   structure (`tdMode=isolated`, `posSide`, market SL, optional limit TP). Live Core4
+   structure (`tdMode=isolated`, `posSide`, market SL, optional limit TP). Live execution
    keeps `last` trigger prices because the backtester uses last-trade OHLCV;
    switching the stop to mark price would make live stop behavior diverge from
    the historical candles.
 5. Confirm the average fill and filled contracts from OKX. For a
    trailing-enabled event, place a separate reduce-only `move_order_stop`
-   using the actual fill:
-   - `activePx = entry +/- stop_distance * trail_activation_rrr`;
+   using the geometry planned before submit from the H1 next-open, not the
+   later actual fill:
+   - `activePx = H1_open +/- stop_distance * trail_activation_rrr`;
    - `callbackSpread = closed_entry_ATR14 * trail_distance_atr`.
 6. Persist the entry, fixed protection IDs, native trailing client/algo IDs,
    actual fees, liquidation geometry, and maintenance-margin tier schedule.
@@ -246,8 +247,9 @@ On startup, deterministic client IDs are queried before side-level inference:
 - an unsubmitted/not-found intent with no matching exchange position is
   cancelled locally;
 - a filled entry adopts actual order ID, average price, contracts, and fee;
-- a filled trailing entry must confirm all required protection, repair it
-  idempotently, or close reduce-only;
+- a filled trailing entry keeps the pre-submit H1-open trailing geometry,
+  then confirms all required protection, repairs it idempotently with that same
+  geometry, or closes reduce-only;
 - a `closing` record adopts its close fill, or retries the same deterministic
   reduce-only close while the exchange side remains open;
 - lifecycle records are never excluded merely because their status is not
@@ -340,7 +342,10 @@ sent to Telegram after submission; it must not reject the entry. The alert
 contains the H1 open, pre-submit quote, actual fill, H1-to-fill drift, and
 quote-to-fill drift. Telegram labels it `ENTRY DRIFT [OK]` and explicitly says
 the entry executed; it is not an `EXECUTION ERROR`. Liquidation and leverage
-safety remain independent blocking checks.
+safety remain independent blocking checks. Risk sizing, SL/TP placement, and
+native trailing geometry are planned from the H1 next-open price used by the
+backtester; the pre-submit quote is observability only and must not mutate the
+planned trade.
 
 At each H1 tick, for each open position:
 
@@ -349,6 +354,9 @@ At each H1 tick, for each open position:
 Query OKX positions: `await exchange.fetch_positions([ccxt_symbol])`.
 If the position for this `position_id` is no longer open (size = 0), it was
 closed by SL or TP. Update state file with realized PnL from OKX trade history.
+`realized_pnl` is account-level PnL using the OKX side `aggregate_entry_price`
+so it reconciles to equity. `constituent_realized_pnl` is diagnostic PnL from
+that logical donor's own `entry_price` and is used for per-strategy attribution.
 
 ### 7c. TTL expiry
 
@@ -498,11 +506,11 @@ MPLCONFIGDIR=/tmp/matplotlib \
 EXECUTION_ENABLED=true \
 EXECUTION_DRY_RUN=true \
 EXECUTION_DRY_RUN_CAPITAL=10000 \
-EXECUTION_STRATEGY_CONFIG=strategies/archive/filtered_donor_portfolio_causal_v3_core4.json \
+EXECUTION_STRATEGY_CONFIG=strategies/archive/filtered_donor_portfolio_post_adr0058_tail_control_v6_drop_negative_v5.json \
 EXECUTION_SYMBOLS=SOL-USDT-SWAP \
 uv run python -m crypt --once --execution-only
 
-# Long-running trading service, H1 Core4 execution only.
+# Long-running trading service, H1 execution only.
 PYTHONPATH=src EXECUTION_ENABLED=true uv run python -m crypt --execution-only
 
 # Combined legacy H4 monitor plus H1 execution. Use only when both are wanted.
@@ -511,5 +519,5 @@ PYTHONPATH=src EXECUTION_ENABLED=true uv run python -m crypt
 
 `--execution-only` skips the legacy H4 signal monitor and uses
 `EXECUTION_SYMBOLS` for startup OKX symbol health checks. Operator dry-runs for
-Core4 must use this mode; otherwise console output can include unrelated
+portfolio execution must use this mode; otherwise console output can include unrelated
 `HOLD/conf/regime` verdicts from the older alerting pipeline.

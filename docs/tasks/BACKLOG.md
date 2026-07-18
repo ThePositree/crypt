@@ -14,6 +14,53 @@ when finished.
 > **+15%/month** on **$10k** SOL **2025** continuous backtest after fees;
 > max **10% intra-month DD**; auto-trading only after **promote** verdict.
 
+## P0 — Archive exact live entry snapshots for replay
+
+**What:** persist an immutable per-entry live replay packet containing the
+emitted `signal_event`, the closed H1 bar, required warmup/data hashes, next
+open used for entry, live order request, actual fill, and protection ids.
+
+**Why now:** the first v6 live replay proved that saved `signal_event` payloads
+replay correctly, but a fresh recomputation on repaired parquet changed
+ATR-derived stop prices for two of the three signals. The backtester can only
+be compared cleanly to live if the exact live-time inputs are archived.
+
+**Expected gain:** future live/backtest parity checks become deterministic and
+do not depend on whether local candle history was later repaired or backfilled.
+
+**Acceptance:** every live entry writes a compact replay artifact under a
+durable, git-trackable archive or a documented state subfolder; a short replay
+utility can load that packet and reproduce the planned entry, SL/TP, and
+backtester stop/TP minute.
+
+**Links:** `docs/archive/candidates/post_adr0058_tail_control_portfolio/live_replay_20260714.md`,
+`src/crypt/execution/executor.py`, `src/crypt/execution/signal_runner.py`.
+
+---
+
+## P1 — Revalidate or retire legacy SOM/Forest strategy families
+
+**What:** decide whether the legacy `som` and `forest` ML strategies should be
+rerun, retrained, or retired after the 2026-07-13 causal OB feature fix.
+
+**Why now:** the audit found that their historical OB feature pipeline
+backfilled future-confirmed order-block labels. The code is now causal, but old
+model artifacts and old backtests were trained/evaluated under different
+feature semantics.
+
+**Expected gain:** prevent inflated legacy ML results from contaminating future
+portfolio selection or filter research.
+
+**Acceptance:** either archived notes mark old SOM/Forest artifacts invalid and
+remove them from candidate consideration, or a corrected rerun/retrain report
+shows honest post-fix dollars, drawdown, liquidation count, and mandate verdict.
+
+**Links:** `src/backtester/strategies/som.py`,
+`src/backtester/strategies/forest.py`,
+`tests/backtester/test_som_features.py`.
+
+---
+
 ## P1 — Calibrate H1 execution and mark-price liquidation
 
 **What:** ingest mark-price candles for liquidation, measure live H1-open

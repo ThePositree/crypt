@@ -503,18 +503,25 @@ class OKXTradingClient:
             "attachAlgoOrds": [attached_protection],
         }
 
+        if self._dry_run:
+            _logger.info(
+                "[DRY RUN] Would open %s %s contracts of %s @ market | SL=%.4f TP=%.4f",
+                "LONG" if is_long else "SHORT",
+                _format_contracts(contracts),
+                okx_symbol,
+                sl_precision,
+                tp_precision,
+            )
+            return None
+
         _logger.info(
-            "%s Would open %s %s contracts of %s @ market | SL=%.4f TP=%.4f",
-            "[DRY RUN]" if self._dry_run else "[LIVE]",
+            "[LIVE] Placing %s %s contracts of %s @ market | SL=%.4f TP=%.4f",
             "LONG" if is_long else "SHORT",
             _format_contracts(contracts),
             okx_symbol,
             sl_precision,
             tp_precision,
         )
-
-        if self._dry_run:
-            return None
 
         async def _call() -> dict[str, Any]:
             return await self._exchange.create_order(  # type: ignore[no-any-return]

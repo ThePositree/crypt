@@ -218,6 +218,7 @@ def test_partial_same_side_close_uses_preserved_okx_average_entry() -> None:
     assert history[0]["entry_price"] == pytest.approx(100.0)
     assert history[0]["aggregate_entry_price"] == pytest.approx(150.0)
     assert history[0]["pnl_abs"] == pytest.approx(0.0)
+    assert history[0]["constituent_pnl_abs"] == pytest.approx(50.0)
     assert capital == pytest.approx(1_000.0)
     assert remaining.entry_price == pytest.approx(200.0)
     assert remaining.aggregate_entry_price == pytest.approx(150.0)
@@ -360,6 +361,69 @@ def test_monthly_profit_capital_sweep_is_recorded_without_later_trades() -> None
     assert trades.iloc[0]["capital_sweep_month"] == "2026-01"
     assert trades.iloc[0]["banked_profit_after"] == 100.0
     assert trades.iloc[0]["trading_capital_after_sweep"] == 1000.0
+
+
+def test_trade_profit_capital_sweep_banks_profit_after_each_winning_trade() -> None:
+    df = _base_df(
+        opens=[100.0, 100.0, 100.0, 100.0, 100.0],
+        highs=[100.0, 101.0, 100.0, 101.0, 100.0],
+        lows=[99.5, 100.0, 99.5, 100.0, 99.5],
+        closes=[100.0, 100.5, 100.0, 100.5, 100.0],
+        signals=[1, 0, 1, 0, 0],
+        sl_prices=[99.0, 99.0, 99.0, 99.0, 99.0],
+    )
+
+    trades = ExecutionSim(
+        initial_capital=1000.0,
+        risk_percent=10.0,
+        rrr=1.0,
+        taker_fee=0.0,
+        maker_fee=0.0,
+        max_allowed_margin=100.0,
+        max_allowed_leverage=100.0,
+        capital_sweep="trade_profit",
+    ).run(df)
+
+    assert len(trades) == 2
+    assert trades["pnl_abs"].tolist() == [100.0, 100.0]
+    assert trades["capital_after"].tolist() == [1100.0, 1100.0]
+    assert trades["capital_sweep_amount"].tolist() == [100.0, 100.0]
+    assert trades["capital_sweep_month"].tolist() == ["2026-01", "2026-01"]
+    assert trades["banked_profit_after"].tolist() == [100.0, 200.0]
+    assert trades["trading_capital_after_sweep"].tolist() == [1000.0, 1000.0]
+    assert trades["capital_before"].tolist() == [1000.0, 1000.0]
+    assert trades["risk_base_capital"].tolist() == [1000.0, 1000.0]
+
+
+def test_trade_profit_capital_sweep_does_not_bank_recovery_below_initial_capital() -> None:
+    df = _base_df(
+        opens=[100.0, 100.0, 100.0, 100.0, 100.0],
+        highs=[100.0, 100.5, 100.0, 101.0, 100.0],
+        lows=[99.5, 99.0, 99.5, 100.0, 99.5],
+        closes=[100.0, 99.5, 100.0, 100.5, 100.0],
+        signals=[1, 0, 1, 0, 0],
+        sl_prices=[99.0, 99.0, 99.0, 99.0, 99.0],
+    )
+
+    trades = ExecutionSim(
+        initial_capital=1000.0,
+        risk_percent=10.0,
+        rrr=1.0,
+        taker_fee=0.0,
+        maker_fee=0.0,
+        max_allowed_margin=100.0,
+        max_allowed_leverage=100.0,
+        capital_sweep="trade_profit",
+    ).run(df)
+
+    assert len(trades) == 2
+    assert trades["pnl_abs"].tolist() == [-100.0, 90.0]
+    assert trades["capital_after"].tolist() == [900.0, 990.0]
+    assert trades["capital_sweep_amount"].tolist() == [0.0, 0.0]
+    assert pd.isna(trades.iloc[0]["capital_sweep_month"])
+    assert pd.isna(trades.iloc[1]["capital_sweep_month"])
+    assert trades["banked_profit_after"].tolist() == [0.0, 0.0]
+    assert trades["trading_capital_after_sweep"].tolist() == [900.0, 990.0]
 
 
 def test_position_group_drains_before_new_group_entry() -> None:
@@ -1197,6 +1261,8 @@ def test_trades_dataframe_columns_and_types():
         "size",
         "pnl_abs",
         "pnl_rel",
+        "constituent_pnl_abs",
+        "constituent_pnl_rel",
         "fee_entry",
         "fee_exit",
         "tp_price",
@@ -1424,10 +1490,10 @@ def test_intrabar_policy_worst_case_prefers_stop_loss():
 
 
 def test_max_daily_profit_blocks_new_entries_after_limit():
-    # rrr = 3, max_daily_profit = 4 -> достаточно двух профитных сделок (2 * 3 = 6 > 4)
+    # rrr = 3 and max_daily_profit = 4, so two winning trades are enough.
     df = _base_df(
         opens=[100.0, 101.0, 102.0, 103.0, 104.0],
-        # Высокие значения high и low, чтобы всегда срабатывать TP, а SL не задевался
+        # Wide favorable bars always hit TP without touching SL.
         highs=[200.0, 210.0, 220.0, 230.0, 240.0],
         lows=[96.0, 97.0, 98.0, 99.0, 100.0],
         closes=[150.0, 160.0, 170.0, 180.0, 190.0],
@@ -1450,20 +1516,19 @@ def test_max_daily_profit_blocks_new_entries_after_limit():
 
     trades = sim.run(df)
 
-    # Должно быть ровно две профитные сделки, после чего новые не открываются
+    # Exactly two winners close before new entries are blocked.
     assert len(trades) == 2
     assert all(trades["pnl_abs"] > 0)
-    # Обе сделки относятся к одному и тому же дню
+    # Both trades belong to the same trading day.
     assert trades["entry_time"].dt.normalize().nunique() == 1
 
 
 def test_max_daily_loss_blocks_new_entries_after_limit():
-    # rrr = 3, max_daily_loss = 2 -> достаточно одной убыточной сделки (daily_rrr = -1)
-    # После второй убыточной сделки daily_rrr = -2, лимит по модулю достигнут.
+    # rrr = 3 and max_daily_loss = 2, so the second loser reaches the limit.
     df = _base_df(
         opens=[100.0, 101.0, 102.0, 103.0],
         highs=[101.0, 102.0, 103.0, 104.0],
-        lows=[50.0, 51.0, 52.0, 53.0],  # всегда бьём SL
+        lows=[50.0, 51.0, 52.0, 53.0],  # Always hit SL.
         closes=[55.0, 56.0, 57.0, 58.0],
         signals=[1, 1, 1, 1],
         sl_prices=[95.0, 96.0, 97.0, 98.0],
@@ -1484,15 +1549,15 @@ def test_max_daily_loss_blocks_new_entries_after_limit():
 
     trades = sim.run(df)
 
-    # После достижения лимита по loss новые сделки не открываются
+    # New entries stop after the loss limit is reached.
     assert len(trades) >= 1
     assert all(trades["pnl_abs"] < 0)
-    # Все сделки в одном дне, и их количество ограничено
+    # Trades stay within one day and are limited by the stop rule.
     assert trades["entry_time"].dt.normalize().nunique() == 1
 
 
 def test_trading_hours_blocks_entries_outside_session():
-    # Сигналы на каждом баре в течение суток, но торгуем только с 10 до 15 часов
+    # Signals on every hourly bar, but entries are allowed only from 10 to 15.
     df = _base_df(
         opens=[100.0] * 24,
         highs=[120.0] * 24,
@@ -1518,7 +1583,7 @@ def test_trading_hours_blocks_entries_outside_session():
 
     trades = sim.run(df)
 
-    # Все входы должны происходить только в допустимые часы
+    # All entries must happen only inside the allowed session.
     assert not trades.empty
     entry_hours = trades["entry_time"].dt.hour.unique()
     assert all(10 <= h < 15 for h in entry_hours)
