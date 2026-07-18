@@ -200,14 +200,11 @@ async def _backfill_execution_1m_series(
                 buffered.extend(
                     candle
                     for candle in candles
-                    if candle.closed
-                    and start_ms <= _dt_to_ms(candle.open_time) < segment_end_ms
+                    if candle.closed and start_ms <= _dt_to_ms(candle.open_time) < segment_end_ms
                 )
                 last_ts_ms = _dt_to_ms(candles[-1].open_time)
                 new_cursor = last_ts_ms + ms_per_bar
-                pbar.update(
-                    max(0, min(new_cursor, segment_end_ms) - cursor) // ms_per_bar
-                )
+                pbar.update(max(0, min(new_cursor, segment_end_ms) - cursor) // ms_per_bar)
                 if new_cursor <= cursor:
                     raise RuntimeError(
                         f"OKX {price_name} 1m pagination did not advance for {symbol}: "
@@ -464,10 +461,7 @@ def main() -> None:
     parser.add_argument(
         "--data-types",
         default="ohlcv,oi,ls_ratio",
-        help=(
-            "Comma-separated list: ohlcv,execution_1m,last_1m,mark_1m,"
-            "oi,ls_ratio,taker_vol"
-        ),
+        help=("Comma-separated list: ohlcv,execution_1m,last_1m,mark_1m,oi,ls_ratio,taker_vol"),
     )
     parser.add_argument("--page-size", type=int, default=100, help="Records per API call (max 100)")
     parser.add_argument("--max-rps", type=float, default=5.0, help="Max API requests per second")

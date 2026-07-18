@@ -6,6 +6,20 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-07-19 — Fixed local CI failures
+
+- Fixed the execution 1m backfill test fake so it matches the production
+  `has_complete_minute_range` keyword contract without ruff argument warnings.
+- Applied ruff formatting to files that failed `ruff format --check`.
+- Fixed strict mypy typing in deploy preflight timestamp helpers and live signal
+  timestamp parsing.
+- Verified the full CI command set locally: ruff check, ruff format check,
+  mypy strict, pytest, and `uv lock --check`.
+- ADRs: none.
+- Files touched: `src/crypt/`, `tests/`, `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
 ## 2026-07-19 — Trimmed post-ADR-0058 portfolio archive
 
 - Removed heavy reproducible run artifacts from

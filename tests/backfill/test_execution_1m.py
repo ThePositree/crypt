@@ -12,8 +12,17 @@ from crypt.models import Candle, CandlePriceType, Timeframe
 class _Store:
     def __init__(self) -> None:
         self.saved: list[Candle] = []
+        self.complete_checks: list[tuple[str, CandlePriceType, datetime, datetime]] = []
 
-    def has_complete_minute_range(self, *args: object, **kwargs: object) -> bool:
+    def has_complete_minute_range(
+        self,
+        symbol: str,
+        *,
+        price_type: CandlePriceType,
+        start: datetime,
+        end: datetime,
+    ) -> bool:
+        self.complete_checks.append((symbol, price_type, start, end))
         return False
 
     def save_candles(self, candles: list[Candle]) -> None:

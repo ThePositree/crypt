@@ -52,7 +52,8 @@ class _FakeTradingClient:
         return 1.0
 
     async def get_instrument_precision(
-        self, symbol: str  # noqa: ARG002
+        self,
+        symbol: str,  # noqa: ARG002
     ) -> InstrumentPrecision:
         return InstrumentPrecision(
             contract_size=1.0,

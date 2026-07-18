@@ -5,6 +5,7 @@ import os
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import cast
 
 import pandas as pd
 from loguru import logger
@@ -119,12 +120,12 @@ def _has_gap(frame: pd.DataFrame, timeframe: Timeframe) -> bool:
 
 def _latest_timestamp(frame: pd.DataFrame) -> datetime:
     latest = pd.to_datetime(frame["open_time"], utc=True).max()
-    return latest.to_pydatetime()
+    return cast(datetime, latest.to_pydatetime())
 
 
 def _earliest_timestamp(frame: pd.DataFrame) -> datetime:
     earliest = pd.to_datetime(frame["open_time"], utc=True).min()
-    return earliest.to_pydatetime()
+    return cast(datetime, earliest.to_pydatetime())
 
 
 def _ohlcv_coverage_issues(

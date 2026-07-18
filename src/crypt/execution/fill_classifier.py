@@ -173,7 +173,9 @@ def _realized_pnl(
 ) -> float | None:
     if exit_price is None:
         return None
-    entry_price = (pos.aggregate_entry_price or pos.entry_price) if use_aggregate_entry else pos.entry_price
+    entry_price = (
+        (pos.aggregate_entry_price or pos.entry_price) if use_aggregate_entry else pos.entry_price
+    )
     entry_value = pos.size * entry_price
     exit_value = pos.size * exit_price
     gross = exit_value - entry_value if pos.is_long else entry_value - exit_value

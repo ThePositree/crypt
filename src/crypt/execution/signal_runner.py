@@ -361,8 +361,8 @@ class LiveSignalRunner:
 def _timestamp_to_utc(raw: Any) -> datetime:
     if isinstance(raw, pd.Timestamp):
         ts = raw.tz_localize(UTC) if raw.tzinfo is None else raw
-        dt: datetime = ts.to_pydatetime(warn=False)
-        return dt.astimezone(UTC)
+        parsed_dt: datetime = ts.to_pydatetime(warn=False)
+        return parsed_dt.astimezone(UTC)
     if isinstance(raw, datetime):
         return raw.replace(tzinfo=UTC) if raw.tzinfo is None else raw.astimezone(UTC)
     try:
@@ -372,8 +372,8 @@ def _timestamp_to_utc(raw: Any) -> datetime:
     if pd.isna(ts):
         raise ValueError(f"cannot parse timestamp as UTC datetime: {raw!r}")
     ts = ts.tz_localize(UTC) if ts.tzinfo is None else ts
-    dt: datetime = ts.to_pydatetime(warn=False)
-    return dt.astimezone(UTC)
+    parsed_fallback_dt: datetime = ts.to_pydatetime(warn=False)
+    return parsed_fallback_dt.astimezone(UTC)
 
 
 def _refresh_since_ms(stored: pd.DataFrame, tf: Timeframe) -> int | None:

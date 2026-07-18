@@ -83,8 +83,7 @@ def test_h1_save_rejects_mismatch_when_complete_last_minutes_exist(tmp_path) -> 
     store = ParquetStore(tmp_path)
     start = datetime(2026, 7, 14, 12, tzinfo=UTC)
     minutes = [
-        _candle(start + timedelta(minutes=offset), CandlePriceType.LAST)
-        for offset in range(60)
+        _candle(start + timedelta(minutes=offset), CandlePriceType.LAST) for offset in range(60)
     ]
     store.save_candles(minutes)
 
@@ -96,8 +95,7 @@ def test_h1_save_accepts_match_when_complete_last_minutes_exist(tmp_path) -> Non
     store = ParquetStore(tmp_path)
     start = datetime(2026, 7, 14, 12, tzinfo=UTC)
     minutes = [
-        _candle(start + timedelta(minutes=offset), CandlePriceType.LAST)
-        for offset in range(60)
+        _candle(start + timedelta(minutes=offset), CandlePriceType.LAST) for offset in range(60)
     ]
     store.save_candles(minutes)
     store.save_candles([_h1_candle(start)])

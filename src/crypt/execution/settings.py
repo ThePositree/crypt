@@ -69,12 +69,8 @@ class ExecutionSettings(BaseSettings):
     maintenance_margin_rate: float = Field(default=0.004, ge=0.0, lt=1.0)
     liquidation_fee_rate: float = Field(default=0.0005, ge=0.0, lt=1.0)
     liquidation_buffer_pct: float = Field(default=0.005, ge=0.0, lt=1.0)
-    maintenance_margin_tier_schedule: str | None = Field(
-        default=OKX_SOL_USDT_SWAP_TIER_SCHEDULE
-    )
-    instrument_precision_policy: str | None = Field(
-        default="okx_sol_usdt_swap_2026_07_01"
-    )
+    maintenance_margin_tier_schedule: str | None = Field(default=OKX_SOL_USDT_SWAP_TIER_SCHEDULE)
+    instrument_precision_policy: str | None = Field(default="okx_sol_usdt_swap_2026_07_01")
     risk_base_period: str = Field(default="monthly")
 
     # ── fee model (mirrors StaticPercentFeeModel defaults) ────────────────

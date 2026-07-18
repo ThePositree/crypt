@@ -20,7 +20,9 @@ class _FakeStore:
     def __init__(self, frame: pd.DataFrame) -> None:
         self._frame = frame
 
-    def load_candles(self, symbol: str, timeframe: Timeframe, limit: int | None = None) -> pd.DataFrame:
+    def load_candles(
+        self, symbol: str, timeframe: Timeframe, limit: int | None = None
+    ) -> pd.DataFrame:
         assert symbol == "SOL-USDT-SWAP"
         assert timeframe == Timeframe.H1
         return self._frame.tail(limit) if limit is not None else self._frame
@@ -143,9 +145,7 @@ def test_signal_event_from_raw_carries_execution_overrides() -> None:
 
 def test_check_data_freshness_accepts_timezone_aware_open_time() -> None:
     runner = LiveSignalRunner.__new__(LiveSignalRunner)
-    runner._store = _FakeStore(
-        pd.DataFrame({"open_time": [pd.Timestamp(datetime.now(tz=UTC))]})
-    )
+    runner._store = _FakeStore(pd.DataFrame({"open_time": [pd.Timestamp(datetime.now(tz=UTC))]}))
 
     assert runner._check_data_freshness("SOL-USDT-SWAP")
 

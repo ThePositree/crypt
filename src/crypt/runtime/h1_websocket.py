@@ -84,8 +84,7 @@ class H1WebSocketScheduler:
         )
         self._scheduler.start()
         logger.info(
-            "H1 WebSocket scheduler started — prepares at *:59:30 UTC; "
-            "REST fallback at *:02:00 UTC"
+            "H1 WebSocket scheduler started — prepares at *:59:30 UTC; REST fallback at *:02:00 UTC"
         )
 
     def stop(self) -> None:
@@ -233,13 +232,8 @@ class H1WebSocketScheduler:
             await self._error_callback(context, error)
 
     async def _receive_boundaries(self, boundary: datetime) -> dict[str, H1Boundary]:
-        expected = {
-            symbol: _expected_closed_opens(boundary)
-            for symbol in self._symbols
-        }
-        closed: dict[str, dict[Timeframe, Candle]] = {
-            symbol: {} for symbol in self._symbols
-        }
+        expected = {symbol: _expected_closed_opens(boundary) for symbol in self._symbols}
+        closed: dict[str, dict[Timeframe, Candle]] = {symbol: {} for symbol in self._symbols}
         next_opens: dict[str, float] = {}
         deadline = boundary + timedelta(seconds=90)
         subscribe_args = [
@@ -330,8 +324,7 @@ class H1WebSocketScheduler:
             payload = json.loads(message.data)
             if payload.get("event") == "error":
                 raise RuntimeError(
-                    f"OKX candle subscription rejected: "
-                    f"{payload.get('code')} {payload.get('msg')}"
+                    f"OKX candle subscription rejected: {payload.get('code')} {payload.get('msg')}"
                 )
             if payload.get("event") == "subscribe":
                 logger.debug("OKX candle WebSocket subscribed: {}", payload.get("arg"))
@@ -351,11 +344,7 @@ class H1WebSocketScheduler:
                 candle = _parse_candle_row(symbol, timeframe, raw_row)
                 if candle.open_time == expected[symbol].get(timeframe) and candle.closed:
                     closed[symbol][timeframe] = candle
-                if (
-                    timeframe == Timeframe.H1
-                    and candle.open_time == boundary
-                    and not candle.closed
-                ):
+                if timeframe == Timeframe.H1 and candle.open_time == boundary and not candle.closed:
                     next_opens[symbol] = float(candle.o)
 
             ready = {
@@ -428,6 +417,4 @@ def _parse_candle_row(
             closed=str(raw_row[8]) == "1",
         )
     except (IndexError, TypeError, ValueError) as exc:
-        raise ValueError(
-            f"invalid OKX {timeframe.value} candle payload: {raw_row!r}"
-        ) from exc
+        raise ValueError(f"invalid OKX {timeframe.value} candle payload: {raw_row!r}") from exc

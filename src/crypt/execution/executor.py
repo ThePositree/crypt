@@ -1836,10 +1836,7 @@ def _exchange_side_reductions(
     snapshot: ExchangeSnapshot,
 ) -> dict[tuple[str, str], float]:
     reductions: dict[tuple[str, str], float] = {}
-    keys = {
-        (pos.symbol, "long" if pos.is_long else "short")
-        for pos in positions
-    }
+    keys = {(pos.symbol, "long" if pos.is_long else "short") for pos in positions}
     for symbol, side in keys:
         local_contracts = sum(
             pos.contracts
@@ -1847,9 +1844,7 @@ def _exchange_side_reductions(
             if pos.symbol == symbol and ("long" if pos.is_long else "short") == side
         )
         exchange_contracts = sum(
-            pos.contracts
-            for pos in snapshot.positions
-            if pos.symbol == symbol and pos.side == side
+            pos.contracts for pos in snapshot.positions if pos.symbol == symbol and pos.side == side
         )
         reductions[(symbol, side)] = max(local_contracts - exchange_contracts, 0.0)
     return reductions
@@ -1861,9 +1856,7 @@ def _all_position_protection_missing(
     regular_order_ids: set[str],
     algo_order_ids: set[str],
 ) -> bool:
-    expected_regular = {
-        order_id for order_id in (pos.take_profit_order_id,) if order_id
-    }
+    expected_regular = {order_id for order_id in (pos.take_profit_order_id,) if order_id}
     expected_algo = {
         order_id
         for order_id in (

@@ -4,6 +4,26 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-07-19 — Local CI failures fixed
+
+**What:** repaired the local CI command set by fixing a test fake signature,
+applying ruff formatting, and tightening two strict-mypy timestamp helpers.
+
+**Why now:** the owner reported that CI was failing. Local reproduction showed
+ruff argument warnings, ruff format drift, strict mypy errors, and then one
+pytest failure caused by the test fake accepting the wrong keyword names.
+
+**Result:** the checked code now matches the production call contract and the
+source tree passes the same commands used by GitHub Actions.
+
+**Acceptance:** `ruff check`, `ruff format --check`, `mypy --strict`,
+`pytest -q`, and `uv lock --check` all pass locally.
+
+**Links:** `.github/workflows/ci.yml`, `tests/backfill/test_execution_1m.py`,
+`src/crypt/runtime/deploy_preflight.py`, `src/crypt/execution/signal_runner.py`.
+
+---
+
 ## 2026-07-19 — Trimmed post-ADR-0058 portfolio archive for git
 
 **What:** removed heavy reproducible CSV/HTML/run-output artifacts from
