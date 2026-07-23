@@ -4,6 +4,36 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-07-24 — Repaired partial live-close recovery and missed-signal audit
+
+**What:** fixed live reconciliation when one logical constituent of an
+aggregate OKX side closes but a sibling TP/trailing order remains, and added a
+persistent audit count plus one `MISSED SIGNAL` log for every strategy event
+blocked by dirty exchange synchronization.
+
+**Why now:** production logs from 2026-07-23 showed OKX reduce a `1.04 SOL`
+aggregate long to `0.50 SOL` after the `0.54 SOL` constituent stopped out.
+Local state retained both constituents because the closed one still had a
+sibling protection order, blocking new entries for eight H1 boundaries.
+
+**Result:** exact reduction-size attribution closes the correct constituent
+even when another expected exit is still pending. Dirty sync remains
+fail-closed, but the strategy still runs read-only and logs signal time, side,
+donor, expected entry, SL, blocking reasons, and the cumulative
+`blocked_signal_events_total`.
+
+**Acceptance:** focused reconciliation, fill classification, persistence, and
+missed-signal tests pass (`24 passed`); ruff format/check pass on touched Python
+files. Strict mypy was stopped after two silent minutes under the repository's
+long-command visibility policy.
+
+**Links:** `logs.1784843212674.csv`,
+`docs/execution/live_execution.md`, `src/crypt/execution/executor.py`,
+`src/crypt/execution/position_state.py`,
+`tests/execution/test_executor_multi_event.py`.
+
+---
+
 ## 2026-07-19 — REST is authoritative for closed-candle repair
 
 **What:** added an explicit store policy that lets REST refresh/backfill repair

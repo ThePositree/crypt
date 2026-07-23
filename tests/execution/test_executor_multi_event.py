@@ -1857,16 +1857,21 @@ async def test_manage_open_positions_closes_reduced_same_side_constituent_with_m
             )
         ],
         open_orders=[
+            # OKX may leave a sibling TP pending briefly after its stop reduced
+            # this logical constituent. The missing stop plus the exact side
+            # reduction must still close the constituent locally.
             ExchangeOrder(
                 symbol="SOL-USDT-SWAP",
-                order_id="tp-first",
+                order_id="tp-second",
                 kind="regular",
                 side="buy",
-                amount=0.66,
-                price=73.46,
-            )
+                amount=0.63,
+                price=72.13,
+            ),
         ],
         algo_orders=[
+            # The first constituent is also missing one expected protection.
+            # Exact reduction size 0.63 must select the second, not first-in-list.
             ExchangeOrder(
                 symbol="SOL-USDT-SWAP",
                 order_id="stop-first",
@@ -1886,6 +1891,49 @@ async def test_manage_open_positions_closes_reduced_same_side_constituent_with_m
     assert second.exit_reason == "exchange_reduced_unknown"
     assert second.exit_time == snapshot.fetched_at.isoformat()
     assert notifier.exits == [second]
+
+
+def test_audit_blocked_signal_batch_logs_each_missed_event_and_counts_them(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    manager = LiveExecutionManager.__new__(LiveExecutionManager)
+    manager._state = ExecutionState(
+        schema_version=9,
+        risk_window_month=(2026, 7),
+        monthly_risk_base=100.0,
+        positions=[],
+        blocked_signal_events_total=4,
+    )
+    batch = SignalBatch(
+        bar_time=datetime(2026, 7, 23, 12, tzinfo=UTC),
+        next_time=datetime(2026, 7, 23, 13, tzinfo=UTC),
+        next_open=76.9,
+        events=[
+            _long_event(
+                bar_time=datetime(2026, 7, 23, 12, tzinfo=UTC),
+                strategy="first_donor",
+            ),
+            _long_event(
+                bar_time=datetime(2026, 7, 23, 12, tzinfo=UTC),
+                strategy="second_donor",
+            ),
+        ],
+    )
+
+    with caplog.at_level(logging.ERROR, logger="crypt.execution.executor"):
+        manager._audit_blocked_signal_batch(
+            symbol="SOL-USDT-SWAP",
+            signal_batch=batch,
+            blocking_reasons=["position_size_mismatch:SOL-USDT-SWAP:long:local=1.04:exchange=0.5"],
+        )
+
+    assert manager._state.blocked_signal_events_total == 6
+    assert caplog.text.count("MISSED SIGNAL:") == 2
+    assert "strategy=first_donor" in caplog.text
+    assert "strategy=second_donor" in caplog.text
+    assert "signal_time=2026-07-23T12:00:00+00:00" in caplog.text
+    assert "blocked_signal_events_total=6" in caplog.text
+    assert "position_size_mismatch" in caplog.text
 
 
 @pytest.mark.asyncio

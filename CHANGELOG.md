@@ -6,6 +6,25 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-07-24 — Fixed partial live-close recovery and audited missed signals
+
+- Fixed same-side reduction attribution when an executed constituent stop
+  disappears but its sibling TP or trailing order remains pending.
+- Prefer an exact constituent-size match before consuming smaller candidates,
+  preventing a `1.04 -> 0.50 SOL` reduction from closing the wrong local lot.
+- Dirty exchange sync still blocks orders, but now runs the latest strategy
+  read-only and logs one `MISSED SIGNAL` record per actionable event.
+- Persisted `blocked_signal_events_total` in execution state schema v9.
+- Added regressions for sibling-protection residue, exact-size attribution,
+  missed-signal details/counting, and state persistence.
+- Verified focused execution tests (`24 passed`) and ruff; strict mypy was
+  stopped after two silent minutes under the progress policy.
+- ADRs: none.
+- Files touched: `src/crypt/execution/`, `tests/execution/`,
+  `docs/execution/`, `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
 ## 2026-07-19 — Made REST authoritative for stored candle repair
 
 - Added an explicit OHLC rewrite policy to `ParquetStore`: normal callers still

@@ -162,9 +162,14 @@ class LiveExecutionManager:
             positions=open_positions,
             fills=snapshot.recent_fills,
         )
-        reduction_remaining = _exchange_side_reductions(open_positions, snapshot)
         live_regular_ids = {order.order_id for order in snapshot.open_orders}
         live_algo_ids = {order.order_id for order in snapshot.algo_orders}
+        reduced_position_ids = _attributed_reduced_position_ids(
+            positions=open_positions,
+            snapshot=snapshot,
+            regular_order_ids=live_regular_ids,
+            algo_order_ids=live_algo_ids,
+        )
         for pos in self._state.positions:
             if pos.status != "open" or pos.entry_state != "protected":
                 remaining.append(pos)
@@ -181,16 +186,7 @@ class LiveExecutionManager:
                 and exchange_pos.side == ("long" if pos.is_long else "short")
                 for exchange_pos in snapshot.positions
             )
-            side_key = (pos.symbol, "long" if pos.is_long else "short")
-            protection_missing = _all_position_protection_missing(
-                pos,
-                regular_order_ids=live_regular_ids,
-                algo_order_ids=live_algo_ids,
-            )
-            reduced_away = (
-                protection_missing
-                and reduction_remaining.get(side_key, 0.0) + 1e-8 >= pos.contracts
-            )
+            reduced_away = pos.position_id in reduced_position_ids
             if exchange_side_open and not exact_close_detected and not reduced_away:
                 remaining.append(pos)
                 logger.info(
@@ -216,11 +212,6 @@ class LiveExecutionManager:
                     "was reduced away on OKX" if reduced_away else "not found on OKX",
                 )
                 apply_closed_position_fill(pos, close_fill)
-                if reduced_away:
-                    reduction_remaining[side_key] = max(
-                        reduction_remaining.get(side_key, 0.0) - pos.contracts,
-                        0.0,
-                    )
                 await self._cancel_remaining_protection(pos, snapshot)
                 remaining.append(pos)
                 await self._notify_position_closed(pos)
@@ -511,6 +502,13 @@ class LiveExecutionManager:
                 symbol,
                 self._state.last_exchange_sync_errors,
             )
+            if trigger_source != "startup":
+                signal_batch = await self._get_latest_signal_batch(symbol)
+                self._audit_blocked_signal_batch(
+                    symbol=symbol,
+                    signal_batch=signal_batch,
+                    blocking_reasons=self._state.last_exchange_sync_errors,
+                )
             save_state(self._state, self._settings.state_path)
             return
 
@@ -537,13 +535,7 @@ class LiveExecutionManager:
             save_state(self._state, self._settings.state_path)
             return
 
-        # `get_latest_signal_batch` runs strategy.generate() which is CPU-bound
-        # and may take several minutes for a full year of H1 data.
-        # Run in a thread pool to avoid blocking the asyncio event loop.
-        loop = asyncio.get_event_loop()
-        signal_batch = await loop.run_in_executor(
-            None, self._signal_runner.get_latest_signal_batch, symbol
-        )
+        signal_batch = await self._get_latest_signal_batch(symbol)
         if signal_batch is not None:
             await self._try_open_signal_batch(symbol, signal_batch, snapshot)
         else:
@@ -558,6 +550,46 @@ class LiveExecutionManager:
             len(self._state.all_open_positions()),
             self._state.last_exchange_sync_ok,
         )
+
+    async def _get_latest_signal_batch(self, symbol: str) -> SignalBatch | None:
+        """Run the CPU-bound strategy path without blocking the event loop."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            self._signal_runner.get_latest_signal_batch,
+            symbol,
+        )
+
+    def _audit_blocked_signal_batch(
+        self,
+        *,
+        symbol: str,
+        signal_batch: SignalBatch | None,
+        blocking_reasons: list[str],
+    ) -> None:
+        """Record actionable strategy events that safety gates prevented."""
+        if signal_batch is None or not signal_batch.events:
+            logger.info(
+                "No actionable events for %s while entries are blocked: reasons=%s",
+                symbol,
+                blocking_reasons,
+            )
+            return
+        for event in signal_batch.events:
+            self._state.blocked_signal_events_total += 1
+            logger.error(
+                "MISSED SIGNAL: symbol=%s signal_time=%s side=%s strategy=%s "
+                "expected_entry=%.4f sl=%.4f blocked_reasons=%s "
+                "blocked_signal_events_total=%d",
+                symbol,
+                event.bar_time.isoformat(),
+                "LONG" if event.signal == 1 else "SHORT",
+                event.selected_strategy or "unknown",
+                event.next_open,
+                event.sl_price,
+                blocking_reasons,
+                self._state.blocked_signal_events_total,
+            )
 
     # ------------------------------------------------------------------
     # Position management
@@ -575,9 +607,14 @@ class LiveExecutionManager:
             positions=managed_positions,
             fills=snapshot.recent_fills,
         )
-        reduction_remaining = _exchange_side_reductions(managed_positions, snapshot)
         live_regular_ids = {order.order_id for order in snapshot.open_orders}
         live_algo_ids = {order.order_id for order in snapshot.algo_orders}
+        reduced_position_ids = _attributed_reduced_position_ids(
+            positions=managed_positions,
+            snapshot=snapshot,
+            regular_order_ids=live_regular_ids,
+            algo_order_ids=live_algo_ids,
+        )
 
         for pos in list(self._state.positions):
             if pos.symbol != symbol or pos.status != "open" or pos.entry_state != "protected":
@@ -610,17 +647,7 @@ class LiveExecutionManager:
                 await self._notify_position_closed(pos)
                 continue
 
-            side_key = (pos.symbol, "long" if pos.is_long else "short")
-            protection_missing = _all_position_protection_missing(
-                pos,
-                regular_order_ids=live_regular_ids,
-                algo_order_ids=live_algo_ids,
-            )
-            if (
-                self._app_settings.okx_is_authenticated
-                and protection_missing
-                and reduction_remaining.get(side_key, 0.0) + 1e-8 >= pos.contracts
-            ):
+            if self._app_settings.okx_is_authenticated and pos.position_id in reduced_position_ids:
                 logger.info(
                     "Position %s for %s was reduced away on OKX: contracts=%.8g "
                     "reason=%s exit_price=%s pnl=%s",
@@ -642,10 +669,6 @@ class LiveExecutionManager:
                         filled_contracts=pos.contracts,
                     )
                 apply_closed_position_fill(pos, close_fill)
-                reduction_remaining[side_key] = max(
-                    reduction_remaining.get(side_key, 0.0) - pos.contracts,
-                    0.0,
-                )
                 await self._cancel_remaining_protection(pos, snapshot)
                 await self._notify_position_closed(pos)
                 continue
@@ -1850,7 +1873,48 @@ def _exchange_side_reductions(
     return reductions
 
 
-def _all_position_protection_missing(
+def _attributed_reduced_position_ids(
+    *,
+    positions: list[LivePosition],
+    snapshot: ExchangeSnapshot,
+    regular_order_ids: set[str],
+    algo_order_ids: set[str],
+) -> set[str]:
+    """Attribute exchange-side reductions to constituents with vanished exits."""
+    reductions = _exchange_side_reductions(positions, snapshot)
+    attributed: set[str] = set()
+    for side_key, reduction in reductions.items():
+        if reduction <= 1e-8:
+            continue
+        symbol, side = side_key
+        candidates = [
+            pos
+            for pos in positions
+            if pos.symbol == symbol
+            and ("long" if pos.is_long else "short") == side
+            and _position_exit_protection_missing(
+                pos,
+                regular_order_ids=regular_order_ids,
+                algo_order_ids=algo_order_ids,
+            )
+        ]
+        remaining = reduction
+        while candidates and remaining > 1e-8:
+            exact = [pos for pos in candidates if abs(pos.contracts - remaining) <= 1e-8]
+            eligible = [pos for pos in candidates if pos.contracts <= remaining + 1e-8]
+            if exact:
+                selected = max(exact, key=lambda pos: pos.entry_dt)
+            elif eligible:
+                selected = max(eligible, key=lambda pos: (pos.contracts, pos.entry_dt))
+            else:
+                break
+            attributed.add(selected.position_id)
+            remaining = max(remaining - selected.contracts, 0.0)
+            candidates.remove(selected)
+    return attributed
+
+
+def _position_exit_protection_missing(
     pos: LivePosition,
     *,
     regular_order_ids: set[str],
@@ -1867,7 +1931,7 @@ def _all_position_protection_missing(
     }
     if not expected_regular and not expected_algo:
         return False
-    return not (expected_regular & regular_order_ids or expected_algo & algo_order_ids)
+    return bool(expected_regular - regular_order_ids or expected_algo - algo_order_ids)
 
 
 def _validate_execution_settings_match_strategy(settings: ExecutionSettings) -> None:

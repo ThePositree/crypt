@@ -94,6 +94,7 @@ class TestStatePersistence:
             risk_window_month=(2026, 6),
             monthly_risk_base=10_000.0,
             positions=[pos],
+            blocked_signal_events_total=7,
         )
         path = tmp_path / "state.json"
         save_state(state, path)
@@ -101,6 +102,7 @@ class TestStatePersistence:
         loaded = load_state(path)
         assert loaded.monthly_risk_base == pytest.approx(10_000.0)
         assert loaded.risk_window_month == (2026, 6)
+        assert loaded.blocked_signal_events_total == 7
         assert len(loaded.positions) == 1
         assert loaded.positions[0].symbol == "SOL-USDT-SWAP"
         assert loaded.positions[0].entry_price == pytest.approx(145.30)

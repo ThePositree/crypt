@@ -44,6 +44,15 @@ src/crypt/execution/
     executor.py          # LiveExecutionManager — H1 tick orchestrator
 ```
 
+When several logical positions share one OKX side, a partial exchange-side
+reduction must be attributed before reconciliation. A logical constituent is
+eligible for reduction attribution when the exchange-side size fell by at
+least that constituent's size and at least one of its own expected exit
+protections disappeared. Remaining sibling protection does not keep an already
+closed constituent locally open. When several constituents qualify, an exact
+size match to the exchange reduction wins before smaller constituents are
+consumed. Exact fill identifiers remain preferred when OKX supplies them.
+
 ---
 
 ## 3. Settings (`ExecutionSettings`)
@@ -116,6 +125,24 @@ REST refresh at `*:02 UTC` is a fallback, not the primary clock.
 path remains unchanged. On the current 39,734-bar SOL dataset, measured runtime
 was 31.8 seconds for a full rebuild, 13.2 seconds for a cold live cache, and
 6.8 seconds for the next validated hourly append.
+
+### 4.1 Blocked-signal audit
+
+An exchange reconciliation failure must continue to block all new orders, but
+it must not hide strategy opportunities from the operator. On every non-startup
+H1 tick where `EXECUTION_REQUIRE_EXCHANGE_SYNC=true` blocks entry:
+
+1. Run the normal latest-bar signal path without placing orders.
+2. Emit one `MISSED SIGNAL` error log per actionable event with symbol, closed
+   signal time, side, donor strategy, expected next open, SL, blocking reasons,
+   and a persistent cumulative missed-event count.
+3. When the bar has no actionable event, log that explicitly without
+   incrementing the count.
+4. Persist `blocked_signal_events_total` in `live_positions.json` so restarts
+   do not reset the audit count.
+
+Startup reconciliation is excluded because the previous closed bar is
+deliberately not eligible for a catch-up entry.
 
 ---
 

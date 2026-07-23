@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-_SCHEMA_VERSION = 8
+_SCHEMA_VERSION = 9
 
 
 @dataclass
@@ -191,6 +191,7 @@ class ExecutionState:
     last_exchange_sync_ok: bool = False
     last_exchange_sync_errors: list[str] = field(default_factory=list)
     last_daily_sync_report_date: str | None = None
+    blocked_signal_events_total: int = 0
 
     def open_positions_for(self, symbol: str) -> list[LivePosition]:
         return [p for p in self.positions if p.symbol == symbol and p.status != "closed"]
@@ -211,6 +212,7 @@ def load_state(path: Path) -> ExecutionState:
             last_exchange_sync_ok=False,
             last_exchange_sync_errors=[],
             last_daily_sync_report_date=None,
+            blocked_signal_events_total=0,
         )
 
     raw = json.loads(path.read_text(encoding="utf-8"))
@@ -228,6 +230,7 @@ def load_state(path: Path) -> ExecutionState:
         last_exchange_sync_ok=bool(raw.get("last_exchange_sync_ok", False)),
         last_exchange_sync_errors=[str(item) for item in raw.get("last_exchange_sync_errors", [])],
         last_daily_sync_report_date=raw.get("last_daily_sync_report_date"),
+        blocked_signal_events_total=int(raw.get("blocked_signal_events_total", 0)),
     )
 
 
@@ -244,6 +247,7 @@ def save_state(state: ExecutionState, path: Path) -> None:
         "last_exchange_sync_ok": state.last_exchange_sync_ok,
         "last_exchange_sync_errors": state.last_exchange_sync_errors,
         "last_daily_sync_report_date": state.last_daily_sync_report_date,
+        "blocked_signal_events_total": state.blocked_signal_events_total,
         "saved_at": datetime.now(UTC).isoformat(),
         "positions": [asdict(p) for p in state.positions],
     }
@@ -262,6 +266,7 @@ def _migrate_state(raw: dict) -> dict:  # type: ignore[type-arg]
         raw.setdefault("last_exchange_sync_ok", False)
         raw.setdefault("last_exchange_sync_errors", [])
         raw.setdefault("last_daily_sync_report_date", None)
+        raw.setdefault("blocked_signal_events_total", 0)
         for pos in raw.get("positions", []):
             pos.setdefault("selected_strategy", "")
             pos.setdefault("position_group", "")
