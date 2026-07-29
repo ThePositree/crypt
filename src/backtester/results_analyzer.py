@@ -12,6 +12,13 @@ from .trade_chart_report import TradeChartReportConfig, build_trade_chart_report
 from .visualizer import TradeConditionsVisualizer
 
 
+def _signal_event_count(value: Any) -> int:
+    """Return the number of valid event objects in a signal-row payload."""
+    if not isinstance(value, (list, tuple)):
+        return 0
+    return sum(isinstance(event, dict) for event in value)
+
+
 class ResultsAnalyzer:
     """
     Class for analyzing the results of a trading strategy backtest.
@@ -587,9 +594,7 @@ class ResultsAnalyzer:
         sys.stdout.write(f"Win Rate:           {m['win_rate']}%\n")
         sys.stdout.write(f"Profit Factor:      {m['profit_factor']}\n")
         sys.stdout.write(f"Drawdown Below Start: {m['max_drawdown']}%\n")
-        sys.stdout.write(
-            f"Peak-to-Trough DD:    {m['peak_to_trough_drawdown']}%\n"
-        )
+        sys.stdout.write(f"Peak-to-Trough DD:    {m['peak_to_trough_drawdown']}%\n")
         sys.stdout.write(f"Avg. Trade:         ${m['avg_pnl_abs']}\n")
         sys.stdout.write(f"Avg. Win:           ${m['avg_win']}\n")
         sys.stdout.write(f"Avg. Loss:          ${m['avg_loss']}\n")
@@ -662,6 +667,8 @@ class ResultsAnalyzer:
         - {folder}/metrics.csv - summary metrics (one row)
         - {folder}/trade_diagnostics.csv - compact exit/side/SL-distance
           diagnostics when trades exist
+        - {folder}/signal_events.csv - one row per portfolio signal event,
+          when the input signal frame contains ``signal_events``
         - {folder}/ohlcv.csv - full OHLCV frame used by the run, when provided
         - {folder}/trade_chart.html - interactive TradingView chart report,
           when OHLCV is provided
@@ -699,13 +706,25 @@ class ResultsAnalyzer:
 
         if not self.signals.empty:
             signals_path = os.path.join(folder, "signals.csv")
-            self.signals.to_csv(signals_path, index=True)
+            signals = self.signals.copy()
+            if "signal_events" in signals.columns:
+                signals.insert(
+                    0,
+                    "signal_event_count",
+                    signals["signal_events"].map(_signal_event_count),
+                )
+            signals.to_csv(signals_path, index=True)
             self._logger.info("Signals saved: %s", signals_path)
 
             diagnostics = self._signal_diagnostics()
             diagnostics_path = os.path.join(folder, "signal_diagnostics.csv")
             diagnostics.to_csv(diagnostics_path, index=False)
             self._logger.info("Signal diagnostics saved: %s", diagnostics_path)
+
+            if "signal_events" in self.signals.columns:
+                events_path = os.path.join(folder, "signal_events.csv")
+                self._signal_events_frame().to_csv(events_path, index=False)
+                self._logger.info("Signal events saved: %s", events_path)
 
         if self.equity_curve is not None:
             equity_path = os.path.join(folder, "equity_curve.csv")
@@ -830,6 +849,37 @@ class ResultsAnalyzer:
             {"metric": "rows", "bucket": "all", "value": len(self.signals)}
         ]
 
+        if "signal_events" in self.signals.columns:
+            event_counts = self.signals["signal_events"].map(_signal_event_count)
+            rows.extend(
+                [
+                    {
+                        "metric": "signal_events_count",
+                        "bucket": "all",
+                        "value": int(event_counts.sum()),
+                    },
+                    {
+                        "metric": "signal_event_rows",
+                        "bucket": "with_events",
+                        "value": int((event_counts > 0).sum()),
+                    },
+                ]
+            )
+            events = self._signal_events_frame()
+            if not events.empty:
+                for column in ("signal", "selected_strategy", "position_group"):
+                    if column not in events.columns:
+                        continue
+                    counts = events[column].value_counts(dropna=False).sort_index()
+                    rows.extend(
+                        {
+                            "metric": f"event_{column}_count",
+                            "bucket": str(bucket),
+                            "value": int(value),
+                        }
+                        for bucket, value in counts.items()
+                    )
+
         for col in ("signal", "decision", "regime"):
             if col not in self.signals.columns:
                 continue
@@ -874,6 +924,26 @@ class ResultsAnalyzer:
                     for q in (0.5, 0.75, 0.9, 0.95, 0.99)
                 )
 
+        return pd.DataFrame(rows)
+
+    def _signal_events_frame(self) -> pd.DataFrame:
+        """Flatten per-bar ``signal_events`` into one auditable row per event."""
+        rows: list[dict[str, Any]] = []
+        if "signal_events" not in self.signals.columns:
+            return pd.DataFrame(columns=["signal_time", "event_index"])
+        for signal_time, raw_events in self.signals["signal_events"].items():
+            events = raw_events if isinstance(raw_events, (list, tuple)) else []
+            for event_index, event in enumerate(events):
+                if not isinstance(event, dict):
+                    continue
+                row: dict[str, Any] = {
+                    "signal_time": signal_time,
+                    "event_index": event_index,
+                }
+                row.update(event)
+                rows.append(row)
+        if not rows:
+            return pd.DataFrame(columns=["signal_time", "event_index"])
         return pd.DataFrame(rows)
 
     def _trade_diagnostics(self) -> pd.DataFrame:

@@ -25,6 +25,7 @@ from backtester.margin_policy import (
     estimate_linear_liquidation_price,
     leverage_is_within_size_tier,
 )
+from backtester.tp_policy import TpPolicyConfig, adjust_tp_rrr
 from backtester.trailing_policy import NativeTrailingGeometry, build_native_trailing_geometry
 from crypt.config import Settings
 from crypt.exchange.okx import OKXClient
@@ -1030,6 +1031,14 @@ class LiveExecutionManager:
             )
             return
         await self._notify_entry_attempt(symbol, event, entry_price)
+        tp_decision = adjust_tp_rrr(
+            signal=event.signal,
+            entry_price=entry_price,
+            sl_price=event.sl_price,
+            original_rrr=event.rrr if event.rrr is not None else self._settings.rrr,
+            last_touch_bars=_optional_event_int(event.raw_event, "tp_last_touch_bars"),
+            policy=TpPolicyConfig.from_event(event.raw_event),
+        )
         open_positions = self._state.all_open_positions()
         decision = self._risk_calc.calculate(
             signal=event.signal,
@@ -1039,7 +1048,7 @@ class LiveExecutionManager:
             risk_base_capital=risk_base,
             open_positions=open_positions,
             risk_percent=event.risk_percent,
-            rrr=event.rrr,
+            rrr=tp_decision.effective_rrr,
             exit_geometry=event.exit_geometry,
             tp_move_pct=event.tp_move_pct,
             structural_sl_mode=event.structural_sl_mode,
@@ -1258,6 +1267,17 @@ class LiveExecutionManager:
         if planned_liquidation is None:
             raise RuntimeError("failed to estimate liquidation before entry submit")
 
+        signal_event = _jsonable_event(event.raw_event)
+        signal_event.update(
+            {
+                "original_rrr": tp_decision.original_rrr,
+                "effective_rrr": tp_decision.effective_rrr,
+                "tp_adjusted": tp_decision.adjusted,
+                "tp_adjustment_reason": tp_decision.reason,
+                "tp_distance_pct": tp_decision.tp_distance_pct,
+                "tp_last_touch_bars": tp_decision.last_touch_bars,
+            }
+        )
         new_pos = LivePosition.create(
             symbol=symbol,
             signal_time=event.bar_time,
@@ -1293,7 +1313,7 @@ class LiveExecutionManager:
             ),
             selected_strategy=event.selected_strategy,
             position_group=event.position_group,
-            signal_event=_jsonable_event(event.raw_event),
+            signal_event=signal_event,
             liquidation_price=planned_liquidation,
             maintenance_margin_rate=rr.maintenance_margin_rate,
             liquidation_fee_rate=rr.liquidation_fee_rate,
@@ -2008,6 +2028,16 @@ def _jsonable_event(raw: dict[str, object]) -> dict[str, object]:
         else:
             output[str(key)] = str(value)
     return output
+
+
+def _optional_event_int(raw: dict[str, object], key: str) -> int | None:
+    value = raw.get(key)
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _amount_matches(actual: float | None, expected: float) -> bool:

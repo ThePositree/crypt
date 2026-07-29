@@ -173,6 +173,64 @@ def test_export_no_trades_preserves_metrics_and_signal_diagnostics(tmp_path):
     assert not (tmp_path / "trade_diagnostics.csv").exists()
 
 
+def test_export_signal_events_flattens_multi_event_rows_and_counts_them(tmp_path):
+    index = pd.to_datetime(
+        ["2026-01-01 04:00:00", "2026-01-01 08:00:00"],
+        utc=True,
+    )
+    signals = pd.DataFrame(
+        {
+            "signal": [0, 0],
+            "signal_events": [
+                [],
+                [
+                    {
+                        "signal": 1,
+                        "sl_price": 99.0,
+                        "selected_strategy": "alpha",
+                        "position_group": "alpha",
+                    },
+                    {
+                        "signal": -1,
+                        "sl_price": 101.0,
+                        "selected_strategy": "beta",
+                        "position_group": "beta",
+                    },
+                ],
+            ],
+        },
+        index=index,
+    )
+    analyzer = ResultsAnalyzer(pd.DataFrame(), signal_df=signals)
+    analyzer.generate()
+    analyzer.export_results(str(tmp_path))
+
+    exported_signals = pd.read_csv(tmp_path / "signals.csv")
+    events = pd.read_csv(tmp_path / "signal_events.csv")
+    diagnostics = pd.read_csv(tmp_path / "signal_diagnostics.csv")
+
+    assert exported_signals["signal_event_count"].tolist() == [0, 2]
+    assert len(events) == 2
+    assert events["selected_strategy"].tolist() == ["alpha", "beta"]
+    assert events["signal"].tolist() == [1, -1]
+    records = {
+        (row["metric"], str(row["bucket"])): row["value"] for row in diagnostics.to_dict("records")
+    }
+    assert records[("signal_events_count", "all")] == 2
+    assert records[("signal_event_rows", "with_events")] == 1
+    assert records[("event_selected_strategy_count", "alpha")] == 1
+    assert records[("event_selected_strategy_count", "beta")] == 1
+
+
+def test_signal_event_count_ignores_malformed_payloads() -> None:
+    signals = pd.DataFrame({"signal_events": [None, "not-a-list", [{"signal": 1}, "bad"]]})
+    analyzer = ResultsAnalyzer(pd.DataFrame(), signal_df=signals)
+
+    assert analyzer._signal_events_frame().to_dict("records") == [
+        {"signal_time": 2, "event_index": 0, "signal": 1}
+    ]
+
+
 def test_export_trades_writes_trade_diagnostics(tmp_path):
     df = _trades_df(
         [

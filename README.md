@@ -167,6 +167,13 @@ SOL smoke backtests are currently slow because each bar replays the whole
 ensemble; H1 MTF runs are especially expensive until the donor route gets a
 range limiter or parity-safe cache.
 
+The filtered donor portfolio also supports an opt-in causal distant-TP
+component. Mount it at `params.components.distant_tp` to lower effective RRR
+for wide or historically stale targets while preserving the signal, structural
+SL, and risk sizing; per-donor overrides can mount or unmount it independently.
+It is disabled by default; see `docs/backtester/tp_reachability_diagnostics.md`
+for fields, audit columns, and validation requirements.
+
 `backtester run` supports optional profit sweep modes for
 withdrawal-style diagnostics:
 
@@ -812,7 +819,8 @@ full-history H1 MTF. The bounds limit the primary/output timeframe while
 preserving earlier candle history for H4/D1 warmup up to `--to`. Expected
 current result: data loads, `crypt_ensemble` shows per-bar progress, and donor
 execution writes `trades.csv`, `trade_diagnostics.csv`, `metrics.csv`,
-`signals.csv`, and `signal_diagnostics.csv` when the run completes.
+`signals.csv`, `signal_events.csv` (for portfolio event inputs), and
+`signal_diagnostics.csv` when the run completes.
 `equity_curve.csv` is written only when trades exist.
 
 ## Developer setup

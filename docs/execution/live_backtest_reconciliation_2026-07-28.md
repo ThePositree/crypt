@@ -214,9 +214,10 @@ historical PnL without a contemporaneous candle/signal snapshot.
 
 ### Artifact caveat
 
-For a filtered donor portfolio, the scalar `signals.csv.signal` remains zero
-and `signal_diagnostics.csv` reports `signal_count=0`. The authoritative
-events are the Python-literal list in `signals.csv.signal_events` (seven in
+For a filtered donor portfolio, the legacy scalar `signals.csv.signal` remains
+zero. The exporter now adds `signal_event_count`, writes one row per event to
+`signal_events.csv`, and reports the real totals in `signal_diagnostics.csv`.
+The source `signals.csv.signal_events` remains a Python-literal list (seven in
 phase A and 17 in phase B). Reconciliation must parse it with
 `ast.literal_eval`; `execution_sequence` and the scalar signal field are not
 join keys.

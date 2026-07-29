@@ -18,6 +18,7 @@ from backtester.strategy_discovery.features import (
     build_discovery_dataset,
     build_donor_discovery_features,
 )
+from backtester.tp_policy import TpPolicyConfig
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,20 @@ class FilteredDonorPortfolioStrategy(BaseStrategy):
         if not isinstance(raw_nested_backtest_args, dict):
             raise ValueError("nested_backtest_args must be a mapping when provided")
         self._nested_backtest_args = dict(raw_nested_backtest_args)
+        raw_components = params.get("components", {})
+        if not isinstance(raw_components, dict):
+            raise ValueError("components must be a mapping when provided")
+        unknown_components = set(raw_components) - {"distant_tp"}
+        if unknown_components:
+            raise ValueError(
+                f"unsupported filtered donor portfolio components: {sorted(unknown_components)}"
+            )
+        # ``tp_policy`` remains a backward-compatible alias for early research
+        # copies. The composable ``components.distant_tp`` mount is canonical.
+        raw_tp_policy = raw_components.get("distant_tp", params.get("tp_policy", {}))
+        if not isinstance(raw_tp_policy, dict):
+            raise ValueError("components.distant_tp must be a mapping when provided")
+        self._tp_policy = dict(raw_tp_policy)
         unknown = set(self._filters) - set(self._strategy_paths)
         if unknown:
             raise ValueError(f"filters reference unknown strategies: {sorted(unknown)}")
@@ -93,6 +108,7 @@ class FilteredDonorPortfolioStrategy(BaseStrategy):
                 timestamp=timestamp,
                 specs=specs,
                 frames=frames,
+                primary=primary,
             )
         return output
 
@@ -127,7 +143,14 @@ class FilteredDonorPortfolioStrategy(BaseStrategy):
         output["signal"] = 0
         output["sl_price"] = 0.0
         output["signal_events"] = pd.Series(
-            [self._events_at(timestamp=timestamp, specs=specs, frames=latest_frames)],
+            [
+                self._events_at(
+                    timestamp=timestamp,
+                    specs=specs,
+                    frames=latest_frames,
+                    primary=primary,
+                )
+            ],
             index=output.index,
             dtype="object",
         )
@@ -325,6 +348,7 @@ class FilteredDonorPortfolioStrategy(BaseStrategy):
         timestamp: pd.Timestamp,
         specs: list[ArchivedStrategySpec],
         frames: dict[str, pd.DataFrame],
+        primary: pd.DataFrame,
     ) -> list[dict[str, Any]]:
         events: list[dict[str, Any]] = []
         for spec in specs:
@@ -337,7 +361,17 @@ class FilteredDonorPortfolioStrategy(BaseStrategy):
                 continue
             if not self._passes_filters(row, self._filters.get(spec.strategy_id, [])):
                 continue
-            events.append(_event_from_signal_row(row, spec))
+            policy = _tp_policy_for_strategy(self._tp_policy, spec.strategy_id)
+            event = _event_from_signal_row(row, spec, tp_policy=policy)
+            event["tp_last_touch_bars"] = _last_tp_touch_bars(
+                primary=primary,
+                timestamp=timestamp,
+                signal=signal,
+                entry_price=_entry_reference_price(primary, timestamp),
+                sl_price=float(row["sl_price"]),
+                rrr=float(event["rrr"]),
+            )
+            events.append(event)
         return events
 
     @staticmethod
@@ -396,21 +430,13 @@ def _catalog_features_from_primary_features(features: pd.DataFrame) -> pd.DataFr
     catalog["catalog_volume_ratio_20"] = closed_features["volume_ratio_20"]
     catalog["catalog_ema_stack_long"] = closed_features["ema_stack_long"].astype("boolean")
     catalog["catalog_ema_stack_short"] = closed_features["ema_stack_short"].astype("boolean")
-    catalog["catalog_bb_squeeze"] = (closed_features["bb_width_rank_20"] <= 0.25).astype(
+    catalog["catalog_bb_squeeze"] = (closed_features["bb_width_rank_20"] <= 0.25).astype("boolean")
+    catalog["catalog_bb_wide"] = (closed_features["bb_width_rank_20"] >= 0.75).astype("boolean")
+    catalog["catalog_volume_above_median"] = (closed_features["volume_ratio_20"] >= 1.0).astype(
         "boolean"
     )
-    catalog["catalog_bb_wide"] = (closed_features["bb_width_rank_20"] >= 0.75).astype(
-        "boolean"
-    )
-    catalog["catalog_volume_above_median"] = (
-        closed_features["volume_ratio_20"] >= 1.0
-    ).astype("boolean")
-    catalog["catalog_session_london"] = closed_features["hour_utc"].between(7, 16).astype(
-        "boolean"
-    )
-    catalog["catalog_session_ny"] = closed_features["hour_utc"].between(13, 21).astype(
-        "boolean"
-    )
+    catalog["catalog_session_london"] = closed_features["hour_utc"].between(7, 16).astype("boolean")
+    catalog["catalog_session_ny"] = closed_features["hour_utc"].between(13, 21).astype("boolean")
     return catalog
 
 
@@ -526,12 +552,16 @@ def _validate_filter_features_available(
             for strategy_id, features in sorted(missing.items())
         )
         raise ValueError(
-            "Filtered donor portfolio config references unavailable filter features: "
-            f"{details}"
+            f"Filtered donor portfolio config references unavailable filter features: {details}"
         )
 
 
-def _event_from_signal_row(row: pd.Series, spec: ArchivedStrategySpec) -> dict[str, Any]:
+def _event_from_signal_row(
+    row: pd.Series,
+    spec: ArchivedStrategySpec,
+    *,
+    tp_policy: TpPolicyConfig | None = None,
+) -> dict[str, Any]:
     event: dict[str, Any] = {
         "signal": int(row["signal"]),
         "sl_price": float(row["sl_price"]),
@@ -548,6 +578,8 @@ def _event_from_signal_row(row: pd.Series, spec: ArchivedStrategySpec) -> dict[s
         "structural_sl_mode": str(getattr(spec.execution, "structural_sl_mode", "cap")),
         "min_tp_move_pct": float(getattr(spec.execution, "min_tp_move_pct", 0.004)),
     }
+    if tp_policy is not None:
+        event.update(tp_policy.as_event_fields())
     if "entry_price" in row.index and not pd.isna(row["entry_price"]):
         event["entry_price"] = float(row["entry_price"])
     for key, value in row.items():
@@ -557,6 +589,52 @@ def _event_from_signal_row(row: pd.Series, spec: ArchivedStrategySpec) -> dict[s
             continue
         event[key] = value.item() if hasattr(value, "item") else value
     return event
+
+
+def _tp_policy_for_strategy(raw: dict[str, Any], strategy_id: str) -> TpPolicyConfig:
+    """Resolve a portfolio default and an optional donor-specific override."""
+
+    default = {key: value for key, value in raw.items() if key != "strategies"}
+    overrides = raw.get("strategies", {})
+    if isinstance(overrides, dict) and isinstance(overrides.get(strategy_id), dict):
+        default.update(overrides[strategy_id])
+    return TpPolicyConfig.from_mapping(default)
+
+
+def _entry_reference_price(primary: pd.DataFrame, timestamp: pd.Timestamp) -> float:
+    """Use next H1 open in replay, signal close for the live tail."""
+
+    try:
+        position = primary.index.get_loc(timestamp)
+        if not isinstance(position, slice) and position + 1 < len(primary):
+            return float(primary.iloc[position + 1]["open"])
+    except (KeyError, TypeError, ValueError):
+        pass
+    return float(primary.loc[timestamp, "close"])
+
+
+def _last_tp_touch_bars(
+    *,
+    primary: pd.DataFrame,
+    timestamp: pd.Timestamp,
+    signal: int,
+    entry_price: float,
+    sl_price: float,
+    rrr: float,
+) -> int | None:
+    """Return H1 bars since the last direction-aware touch before entry."""
+
+    if entry_price <= 0 or sl_price <= 0 or rrr <= 0:
+        return None
+    target = entry_price + signal * abs(entry_price - sl_price) * rrr
+    history = primary.loc[:timestamp]
+    if history.empty:
+        return None
+    touched = history["high"] >= target if signal == 1 else history["low"] <= target
+    if not touched.any():
+        return None
+    last_touch = history.index[touched][-1]
+    return max(len(history) - 1 - history.index.get_loc(last_touch), 0)
 
 
 def _compare_filter_value(value: Any, op: str, expected: float | str | bool) -> bool:

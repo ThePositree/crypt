@@ -94,6 +94,20 @@
         }
       ]
     },
+    "components": {
+      "distant_tp": {
+        "enabled": false,
+        "min_original_rrr": 4.0,
+        "min_tp_distance_pct": 0.06,
+        "min_last_touch_bars": null,
+        "adjusted_rrr": 3.0,
+        "strategies": {
+          "freq_4pw_r03_catcma_011465": {
+            "enabled": true
+          }
+        }
+      }
+    },
     "nested_backtest_args": {
       "instrument_precision_policy": "okx_sol_usdt_swap_2026_07_01",
       "liquidation_buffer_pct": 0.005,

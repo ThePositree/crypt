@@ -4712,3 +4712,15 @@ ADRs introduced: none (all decisions covered by ADRs 0001–0008).
 - Verified via Context7 that OKX exposes everything needed for MVP through
   public REST (OHLCV, funding, OI, long/short ratio, taker volume).
   Liquidations are WS-only and deferred (ADR-0006).
+# 2026-07-29 — Portfolio signal event CSV diagnostics
+
+- **What:** exported `signal_event_count` in `signals.csv`, a flattened
+  `signal_events.csv`, and event-aware counts in `signal_diagnostics.csv`.
+- **Why now:** donor portfolio rows store one or more real events in a nested
+  list while the legacy scalar `signal` remains zero, which made audits report
+  no strategy activity.
+- **Expected gain:** live/backtest reconciliation can inspect one CSV row per
+  strategy event without parsing Python-list text.
+- **Acceptance:** multi-event, no-event, malformed-payload, and artifact
+  export tests pass; contract documented in
+  `docs/backtester/signal_diagnostics.md`.

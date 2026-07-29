@@ -22,6 +22,7 @@ from .margin_policy import (
     per_entry_margin_cap,
 )
 from .risk_model import BasicRiskModel, EntryContext, RiskModel
+from .tp_policy import TpPolicyConfig, adjust_tp_rrr
 from .trailing_policy import build_native_trailing_geometry, with_closed_atr14
 
 
@@ -46,6 +47,12 @@ class _EntryContextDict(TypedDict, total=True):
     min_tp_move_pct: float
     position_group: str
     drain_on_group_change: bool
+    tp_policy_enabled: bool
+    tp_policy_min_original_rrr: float
+    tp_policy_min_distance_pct: float | None
+    tp_policy_min_last_touch_bars: int | None
+    tp_policy_adjusted_rrr: float
+    tp_last_touch_bars: int | None
     metadata: dict[str, Any]
 
 
@@ -70,6 +77,17 @@ _TRADE_METADATA_EXCLUDED_COLUMNS = frozenset(
         "min_tp_move_pct",
         "position_group",
         "drain_on_group_change",
+        "tp_policy_enabled",
+        "tp_policy_min_original_rrr",
+        "tp_policy_min_distance_pct",
+        "tp_policy_min_last_touch_bars",
+        "tp_policy_adjusted_rrr",
+        "tp_last_touch_bars",
+        "original_rrr",
+        "effective_rrr",
+        "tp_adjusted",
+        "tp_adjustment_reason",
+        "tp_distance_pct",
         "trail_atr",
         "entry_price",
         "index",
@@ -804,9 +822,7 @@ class ExecutionSim:
             capital_delta = entry_value - exit_value - fee_exit
         pnl_rel = pnl_abs / entry_value if entry_value != 0 else 0.0
         constituent_pnl_rel = (
-            constituent_pnl_abs / constituent_entry_value
-            if constituent_entry_value != 0
-            else 0.0
+            constituent_pnl_abs / constituent_entry_value if constituent_entry_value != 0 else 0.0
         )
         new_capital = capital + capital_delta
         trade_history.append(
@@ -1390,6 +1406,24 @@ class ExecutionSim:
                     default=False,
                 )
             ),
+            "tp_policy_enabled": bool(
+                self._event_or_row_value(row, event, "tp_policy_enabled", default=False)
+            ),
+            "tp_policy_min_original_rrr": float(
+                self._event_or_row_value(row, event, "tp_policy_min_original_rrr", default=4.0)
+            ),
+            "tp_policy_min_distance_pct": _optional_float_value(
+                self._event_or_row_value(row, event, "tp_policy_min_distance_pct", default=0.07)
+            ),
+            "tp_policy_min_last_touch_bars": _optional_int_value(
+                self._event_or_row_value(row, event, "tp_policy_min_last_touch_bars", default=720)
+            ),
+            "tp_policy_adjusted_rrr": float(
+                self._event_or_row_value(row, event, "tp_policy_adjusted_rrr", default=3.0)
+            ),
+            "tp_last_touch_bars": _optional_int_value(
+                self._event_or_row_value(row, event, "tp_last_touch_bars", default=None)
+            ),
             "metadata": _trade_metadata_from_row(row) | _trade_metadata_from_event(event),
         }
 
@@ -1467,7 +1501,7 @@ class ExecutionSim:
         signal = entry_ctx["signal"]
         sl_price = entry_ctx["sl_price"]
         risk_percent = entry_ctx["risk_percent"]
-        rrr = entry_ctx["rrr"]
+        original_rrr = float(entry_ctx["rrr"])
         ctx_entry_price = entry_ctx.get("entry_price")
         position_group = entry_ctx["position_group"]
 
@@ -1488,11 +1522,37 @@ class ExecutionSim:
             entry_price = next_open
             entry_time = next_time
             bar_opened = i + 1
-        risk_base_capital = self._risk_base_capital_for_entry(entry_time, capital)
-
         if pd.isna(sl_price):
             self._logger.debug("Missing SL price, skipping signal")
             return capital, active_positions
+
+        tp_decision = adjust_tp_rrr(
+            signal=signal,
+            entry_price=entry_price,
+            sl_price=float(sl_price),
+            original_rrr=original_rrr,
+            last_touch_bars=entry_ctx["tp_last_touch_bars"],
+            policy=TpPolicyConfig(
+                enabled=entry_ctx["tp_policy_enabled"],
+                min_original_rrr=entry_ctx["tp_policy_min_original_rrr"],
+                min_tp_distance_pct=entry_ctx["tp_policy_min_distance_pct"],
+                min_last_touch_bars=entry_ctx["tp_policy_min_last_touch_bars"],
+                adjusted_rrr=entry_ctx["tp_policy_adjusted_rrr"],
+            ),
+        )
+        rrr = tp_decision.effective_rrr
+        metadata = dict(entry_ctx["metadata"])
+        metadata.update(
+            {
+                "original_rrr": tp_decision.original_rrr,
+                "effective_rrr": tp_decision.effective_rrr,
+                "tp_adjusted": tp_decision.adjusted,
+                "tp_adjustment_reason": tp_decision.reason,
+                "tp_distance_pct": tp_decision.tp_distance_pct,
+                "tp_last_touch_bars": tp_decision.last_touch_bars,
+            }
+        )
+        risk_base_capital = self._risk_base_capital_for_entry(entry_time, capital)
 
         # Calculate total margin already locked in active positions
         total_locked_margin = sum(pos.locked_margin for pos in active_positions)
@@ -1667,7 +1727,7 @@ class ExecutionSim:
             liquidation_fee_rate=risk_result.liquidation_fee_rate,
             liquidation_buffer_pct=risk_result.liquidation_buffer_pct,
             maintenance_margin_tier_schedule=risk_result.maintenance_margin_tier_schedule,
-            metadata=entry_ctx["metadata"],
+            metadata=metadata,
             aggregate_entry_price=entry_price,
             position_ttl_bars=entry_ctx["position_ttl_bars"],
             position_group=position_group,
@@ -2115,6 +2175,18 @@ def _trade_metadata_from_row(row) -> dict[str, Any]:
             continue
         metadata[column] = value.item() if hasattr(value, "item") else value
     return metadata
+
+
+def _optional_float_value(value: Any) -> float | None:
+    if value is None or pd.isna(value):
+        return None
+    return float(value)
+
+
+def _optional_int_value(value: Any) -> int | None:
+    if value is None or pd.isna(value):
+        return None
+    return int(value)
 
 
 def _adverse_trigger_fill(

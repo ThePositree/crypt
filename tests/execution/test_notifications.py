@@ -46,7 +46,12 @@ async def test_daily_sync_report_includes_blocking_reasons() -> None:
     )
     snapshot = ExchangeSnapshot(
         fetched_at=datetime(2026, 6, 28, 12, tzinfo=UTC),
-        balance=ExchangeBalance(total=10_000.0, free=9_500.0, used=500.0),
+        balance=ExchangeBalance(
+            total=10_000.0,
+            free=9_500.0,
+            used=500.0,
+            equity=9_980.0,
+        ),
         positions=[],
         open_orders=[],
         algo_orders=[],
@@ -62,6 +67,8 @@ async def test_daily_sync_report_includes_blocking_reasons() -> None:
     assert "входы остановлены" in text
     assert "position_mode_not_long_short" in text
     assert "Баланс: всего $10,000.00" in text
+    assert "в работе/маржа $500.00" in text
+    assert "Equity OKX: $9,980.00" in text
 
 
 @pytest.mark.asyncio
@@ -87,6 +94,12 @@ async def test_entry_and_exit_messages_are_sent() -> None:
         is_long=True,
         ttl_bars=0,
         entry_order_id="entry-1",
+        signal_event={
+            "tp_adjusted": True,
+            "original_rrr": 4.0,
+            "effective_rrr": 3.0,
+            "tp_adjustment_reason": "adjusted_distance",
+        },
     )
     await notifier.send_entry_opened(pos)
     pos.status = "closed"
@@ -97,6 +110,7 @@ async def test_entry_and_exit_messages_are_sent() -> None:
 
     assert len(bot.messages) == 2
     assert "Сделка открыта" in bot.messages[0][1]
+    assert "Цель TP сокращена политикой достижимости" in bot.messages[0][1]
     assert "Сделка закрыта" in bot.messages[1][1]
     assert "PnL: $39.48" in bot.messages[1][1]
 

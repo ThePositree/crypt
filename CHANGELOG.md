@@ -6,6 +6,64 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-07-29
+
+- Added event-level portfolio signal exports (`signal_events.csv`), per-bar
+  event counts, and event-aware diagnostics so donor portfolio audits no
+  longer rely on the zero-valued legacy scalar signal.
+- Clarified Telegram full-sync balance as total/free funds plus
+  `в работе/маржа`, with OKX equity (including unrealized PnL) when available.
+- Added the signal diagnostics and distant-TP analysis contracts under
+  `docs/backtester/`.
+- Added an opt-in causal dynamic TP policy shared by backtest and live
+  execution. It lowers only effective RRR for configured wide/stale targets,
+  preserves signal admission/SL/risk sizing, and records adjustment audit
+  fields in trades and live position state.
+- Added ADR-0060 and the TP policy contract in
+  `docs/backtester/tp_reachability_diagnostics.md`.
+- Mounted the distant-TP policy through canonical
+  `params.components.distant_tp`, with portfolio-wide and per-donor mount/
+  unmount overrides; kept `params.tp_policy` as a compatibility alias.
+- Established the flexible-sandbox composition rule in `AGENTS.md`,
+  `docs/architecture/flexible_sandbox.md`, and ADR-0061.
+- Clarified the owner-authorized backtest rule: an explicitly requested run is
+  launched once, observed for ETA, completed when under three minutes, and
+  handed back to the owner only when it exceeds that threshold or lacks
+  progress visibility. Ran the dynamic-TP portfolio and targeted comparisons;
+  neither is production-ready after cross-period evaluation.
+- Attempted to repair the 2026-06-30 minute-data gap; stopped after OKX network
+  retries produced no progress, leaving the owner a one-day backfill command.
+- Completed matched full-history replays for `2022-01-01` → `2026-06-30`:
+  unchanged v6 baseline finished at `$956,449.50` (`+$946,449.50` PnL,
+  1,508 trades, peak-to-trough DD `-39.23%`), while the targeted dynamic-TP
+  mount finished at `$735,712.38` (`+$725,712.38`, 1,568 trades, DD
+  `-33.27%`). The mount saved 5.96 pp of drawdown but lost `$220,737.12`
+  of PnL, so it remains default-off. Artifacts are under
+  `results/strategy_review/v6_2022_2026_{baseline,targeted}_full/`.
+- Searched distance-only dynamic-TP thresholds on the full history. The best
+  tested candidate mounts only on `freq_4pw_r03_catcma_011465`, triggers at
+  TP distance `>=6%`, disables recency, and lowers RRR to `3.0`: 1,560 trades,
+  `+$1,175,598.82` PnL, and `-33.26%` peak-to-trough DD versus baseline
+  `+$946,449.50` and `-39.23%`. Candidate artifact:
+  `results/strategy_review/v6_tp_search_r03_d6_only_rrr3/`; it remains
+  default-off pending holdout validation.
+- Ran separate donor checks before combining components: `sparse_r06` was
+  PnL-neutral, while `sparse_r12` and `freq_r11` lost roughly `$94k` and
+  `$99k` respectively. The current evidence supports only the `freq_r03`
+  mount; combining all wide-TP donors is rejected.
+- Completed the first untouched forward validation on the continuous live-audit
+  window `2026-07-13` → `2026-07-27`. On the same 24 trades and `$10,000`
+  start, baseline returned `+$307.89` (PF 1.23, peak-to-trough DD `-9.50%`)
+  while the `freq_r03` 6%/RRR-3 candidate returned `+$481.48` (PF 1.38,
+  DD `-8.71%`): `+$173.59` / `+56.4%` holdout PnL with no frequency loss.
+  Artifacts are under `results/strategy_review/v6_holdout_{baseline,candidate*}`;
+  the candidate remains a research mount because the window contains only 15
+  days and 24 trades.
+- Owner-approved the narrow production mount: the canonical v6 portfolio JSON
+  now keeps `params.components.distant_tp.enabled=false` and enables only
+  `freq_4pw_r03_catcma_011465` with `TP distance >=6%`, original RRR `>=4`,
+  and effective RRR `3.0`. No Railway deploy was performed by the agent.
+
 ## 2026-07-28 — Hardened live risk-base continuity and Russian Telegram alerts
 
 - Added immutable, checksummed primary/backup monthly risk-base checkpoints

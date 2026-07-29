@@ -1,5 +1,129 @@
 # In progress
 
+## Distant TP review for current v6 portfolio (2026-07-29)
+
+**What:** classify distant/improbable TP trades by donor strategy using a
+continuous full-history v6 backtest, with fixed 5% and top-decile cohorts,
+historical TP-price recency, exit reason, duration, and realized PnL.
+
+**Why now:** live SOL entries included targets well outside the recent price
+range. The owner wants evidence before lowering TP geometry while preserving
+the strategies themselves.
+
+**Expected gain:** identify whether a target cap or a lower per-strategy TP
+improves dollars and drawdown without removing useful donors.
+
+**Implementation status:** the causal policy is now implemented in
+`backtester.tp_policy` and is applied by both `ExecutionSim` and the Railway
+executor. It is disabled by default. Each event/trade records original and
+effective RRR, adjustment reason, TP distance, and target recency; live state
+keeps the same audit values in `signal_event` and the entry notification
+explains a change in plain Russian. The canonical flexible-sandbox mount is
+`params.components.distant_tp`; `strategies` overrides can enable/disable it
+per donor, and the older `params.tp_policy` key remains an alias.
+
+**Next steps:** the component remains globally default-off, while the
+canonical production portfolio now mounts the approved rule only on
+`freq_r03`. The selected candidate passed the first untouched forward check,
+but that sample is only 15 days and 24 portfolio trades; keep monitoring the
+live result and run a longer forward comparison before widening the mount to
+other donors. Any future threshold change must beat the unchanged baseline in
+dollars and drawdown without an unacceptable frequency change.
+
+**Baseline evidence:** the 2025 owner run is
+`results/strategy_review/v6_tp_2025/20260729_060548/`. It has 350 trades and
+`+$55,945.85` PnL. The top 10% by TP distance (35 trades, threshold 9.3566%)
+has `-$2,522.05`, 20% win rate, zero TP exits, 28 stop losses, four TTL exits,
+and three trailing exits. A simple `TP >= 5%` cohort is profitable, so the
+next comparison is an `rrr` cap at 4.0 versus 3.0 rather than deleting every
+wide-target trade.
+
+**Cap comparison:** global cap 4.0 produced `+$48,124.58` (352 trades,
+peak-to-trough DD `-20.27%`); cap 3.0 produced `+$33,593.61` (368 trades,
+peak-to-trough DD `-21.35%`). Both reduce PnL versus baseline `+$55,945.85`
+and neither is suitable as a global production rule. The next candidate is a
+targeted/dynamic rule based on TP distance or historical level recency, tested
+on an untouched range rather than selected from 2025 in-sample results.
+
+**Component comparisons:** portfolio-wide mount with `7%/720-bars -> RRR 3.0`
+produced 371 trades and `+$41,734.46` on 2025; targeted mount on
+`freq_r03`, `freq_r11`, `sparse_r06`, and `sparse_r12` produced 362 trades and
+`+$48,270.88`. Both were below the unchanged 2025 baseline. On the first
+continuous 2026 window (`2026-01-01` through `2026-06-29`, because local 1m
+data has a full-day gap on June 30), baseline produced 224 trades and
+`+$7,298.16`; targeted mount produced 228 trades and `+$8,040.15`. The
+cross-period sign reversal is not robust enough for production.
+
+**Full-period validation:** after the June 30 minute-data repair, both
+configurations were replayed over the complete locally available history,
+`2022-01-01` through `2026-06-30` (39,398 hourly bars). The unchanged v6
+baseline artifact is `results/strategy_review/v6_2022_2026_baseline_full/20260729_083245/`:
+1,508 trades, final capital `$956,449.50`, PnL `+$946,449.50`, win rate
+`34.00%`, PF `1.47`, peak-to-trough DD `-39.23%`. The targeted dynamic-TP
+artifact is `results/strategy_review/v6_2022_2026_targeted_full/20260729_082753/`:
+1,568 trades, final capital `$735,712.38`, PnL `+$725,712.38`, win rate
+`35.63%`, PF `1.47`, peak-to-trough DD `-33.27%`; it adjusted 455 entries.
+Therefore the filter added 60 trades and reduced drawdown by 5.96 percentage
+points, but destroyed `$220,737.12` of cumulative PnL (23.32% below the
+baseline PnL). It stays default-off and is not a production promotion.
+
+**Positive candidate search:** a threshold sweep then tested distance-only
+mounts on `freq_4pw_r03_catcma_011465` with `adjusted_rrr=3.0`. The best tested
+point was `min_tp_distance_pct=0.06` with `min_last_touch_bars=null` (recency
+disabled), leaving every other donor unchanged. Full-history artifact:
+`results/strategy_review/v6_tp_search_r03_d6_only_rrr3/20260729_105954/`.
+It produced 1,560 trades and `+$1,175,598.82` PnL from `$10,000`, versus the
+unchanged baseline's `+$946,449.50`: `+$229,149.32` / `+24.21%`; win rate
+rose from `34.00%` to `35.56%`, and peak-to-trough DD improved from `-39.23%`
+to `-33.26%`. Nearby tested thresholds were 5% (`+$1,145,957.30`), 7%
+(`+$1,152,472.44`), 8% (`+$1,122,994.02`), 9% (`+$1,108,539.25`), and 10%
+(`+$1,098,484.92`). The candidate then passed the first untouched
+forward/holdout validation; only the approved `freq_r03` mount is enabled in
+the canonical production JSON.
+
+**Per-donor follow-up:** the same distance-only idea was tested separately on
+three other donors. `sparse_r06` at 10%/RRR 3.0 was PnL-neutral
+(`+$946,449.50`); `sparse_r12` at 10%/RRR 3.0 reduced PnL to
+`+$852,043.63`; and `freq_r11` at 7%/RRR 3.0 reduced it to
+`+$847,897.70`. Therefore there are not multiple positive TP-adjustment
+components to combine: the evidence currently supports mounting only the
+`freq_r03` candidate and leaving the other donors untouched.
+
+**Holdout / forward validation:** the candidate was replayed against the
+unchanged baseline on the continuous live-audit window `2026-07-13 00:00 UTC`
+through `2026-07-27 23:00 UTC`, which was not used by the full-history search.
+Both runs used the same 1m data, `$10,000` start, and 24 portfolio entries.
+Baseline finished at `$10,307.89` (`+$307.89` PnL, 39.13% win rate, PF 1.23,
+peak-to-trough DD `-9.50%`). The candidate finished at `$10,481.48`
+(`+$481.48`, 43.48% win rate, PF 1.38, peak-to-trough DD `-8.71%`). That is
+`+$173.59` / `+56.4%` more holdout PnL and 0.79 percentage points less
+peak-to-trough drawdown with no trade-count loss. Three `freq_r03` entries
+were adjusted; one changed from a baseline stop (`-$82.13`) to a target exit
+(`+$97.27`), while the other two had the same realized exit. Artifacts:
+`results/strategy_review/v6_holdout_baseline_20260713_27/20260729_114311/` and
+`results/strategy_review/v6_holdout_candidate_r03_d6_rrr3_20260713_27/20260729_114324/`.
+
+Artifacts: `results/strategy_review/v6_tp_dynamic_policy/20260729_080904/`,
+`results/strategy_review/v6_tp_dynamic_targeted/20260729_081033/`,
+`results/strategy_review/v6_2026_baseline_to_jun29/20260729_081320/`, and
+`results/strategy_review/v6_2026_targeted_to_jun29/20260729_081404/`.
+
+**Data limitation:** the attempted 2026-01-01 → 2026-07-28 run was rejected
+because 1m execution coverage is incomplete from `2026-06-30 00:00 UTC`
+(780 missing minutes). Its empty artifact is not a zero-trade result.
+An agent-side repair attempt for `2026-06-30` hit repeated network failures at
+OKX `public/instruments?instType=SPOT` before any bars were written, so the
+owner must run the short one-day repair from an environment with OKX access.
+
+**Retrospective bad-trade label:** among 124 trades with geometric `rrr >= 4`,
+77 finished with negative realized PnL, totaling `-$23,443.86`. This is an
+analysis label only; runtime cannot use future PnL. The negative rows are
+exported in `high_rrr_negative_trades.csv` and grouped in
+`high_rrr_negative_summary.csv`. The largest groups are `freq_r03` (64 rows,
+`-$10,365`), `freq_r11` (5, `-$6,535`), and `sparse_r06` (6, `-$5,864`).
+
+---
+
 ## Live execution vs backtest reconciliation audit (2026-07-28)
 
 **What:** build an evidence-backed reconciliation of the Railway live SOL

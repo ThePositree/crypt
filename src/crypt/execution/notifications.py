@@ -70,7 +70,12 @@ class ExecutionTelegramNotifier:
                 "Баланс: "
                 f"всего ${snapshot.balance.total:,.2f} · "
                 f"доступно ${snapshot.balance.free:,.2f} · "
-                f"занято ${snapshot.balance.used:,.2f}"
+                f"в работе/маржа ${snapshot.balance.used:,.2f}"
+            ),
+            *(
+                [f"Equity OKX: ${snapshot.balance.equity:,.2f} (с учётом нереализованного PnL)"]
+                if snapshot.balance.equity is not None
+                else []
             ),
             f"Позиции: бот — {len(state.all_open_positions())}, OKX — {len(snapshot.positions)}",
             f"Ордера: обычные — {len(snapshot.open_orders)}, защитные — {len(snapshot.algo_orders)}",
@@ -117,6 +122,7 @@ class ExecutionTelegramNotifier:
             if pos.trail_activation_price is not None and pos.trail_callback_spread is not None
             else "Плавающая защита: выключена"
         )
+        tp_adjustment = _tp_adjustment_line(pos.signal_event)
         text = "\n".join(
             [
                 _title("Сделка открыта", icon="✅", status="ok", dry_run=self._dry_run),
@@ -124,6 +130,7 @@ class ExecutionTelegramNotifier:
                 f"Объём: {pos.contracts} контрактов · {pos.size:.4f} {_asset_label(pos.symbol)}",
                 f"Цена входа: ${pos.entry_price:,.4f}",
                 protection,
+                *([tp_adjustment] if tp_adjustment else []),
                 trailing,
                 (
                     f"Ориентир ликвидации: ${pos.liquidation_price:,.4f}"
@@ -455,6 +462,18 @@ def _position_line(pos: LivePosition) -> str:
     return (
         f"• {_esc(pos.symbol)} · {_side_label(pos.is_long)} · {pos.contracts} контрактов\n"
         f"  вход ${pos.entry_price:,.4f} · SL ${pos.sl_price:,.4f} · TP ${pos.tp_price:,.4f}"
+    )
+
+
+def _tp_adjustment_line(signal_event: dict[str, object]) -> str | None:
+    if not bool(signal_event.get("tp_adjusted", False)):
+        return None
+    original = signal_event.get("original_rrr")
+    effective = signal_event.get("effective_rrr")
+    reason = str(signal_event.get("tp_adjustment_reason", "reachability"))
+    return (
+        f"Цель TP сокращена политикой достижимости: RRR {original} → {effective} "
+        f"(<code>{_esc(reason)}</code>)"
     )
 
 

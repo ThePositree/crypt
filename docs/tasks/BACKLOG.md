@@ -91,29 +91,6 @@ documented recovery path; state generation never regresses in a forced race.
 
 ---
 
-## P2 — Export portfolio signal diagnostics from `signal_events`
-
-**What:** make donor-portfolio backtest exports report the real event count
-and event rows instead of a permanently zero scalar `signal`/`signal_count`.
-
-**Why now:** the live reconciliation artifacts contain seven and 17 real
-portfolio events, but `signals.csv.signal` is zero on every row and
-`signal_diagnostics.csv` reports zero signals. The authoritative events are
-currently embedded as a Python-literal list in `signal_events`, which is easy
-to misread during operational audits.
-
-**Expected gain:** analysts and operators can identify missed live signals
-directly from standard CSV diagnostics without reverse-engineering a nested
-field or accidentally reporting zero strategy activity.
-
-**Acceptance:** a filtered donor portfolio run exports an event-level signal
-table/count equal to the number of `signal_events`; regression tests cover
-multi-event rows, no-event rows, and a CLI artifact assertion.
-
-**Links:** `docs/execution/live_backtest_reconciliation_2026-07-28.md`,
-`src/backtester/results_analyzer.py`, `src/backtester/strategies/filtered_donor_portfolio.py`,
-`results/live_reconciliation/v6_capital_102_34/20260728_162357/`.
-
 ---
 
 ## P1 — Revalidate or retire legacy SOM/Forest strategy families
@@ -181,6 +158,63 @@ month count, worst month, median month, and top-3-month profit concentration.
 
 **Links:** `strategies/archive/filtered_donor_portfolio_causal_v4_core4_no_island_long_riskx0p85.json`,
 `results/core4_v5_distribution_tests/`.
+
+---
+
+## P2 — Review distant take-profit geometry by donor strategy (completed 2026-07-29)
+
+**What:** run the current v6 portfolio continuously over the full available
+history and compare fixed-distance and top-decile distant-TP cohorts against
+the remainder, including historical TP-price recency and strategy attribution.
+
+**Why now:** live entries showed targets far outside the recent SOL trading
+range (for example a short TP near $67.90 while SOL traded near $73). A target
+that is rarely reachable may turn otherwise useful trades into long TTL or
+stop-loss outcomes.
+
+**Expected gain:** quantify whether a targeted dynamic TP adjustment improves
+dollars, win rate, duration, and drawdown without deleting the donor strategies
+or applying the damaging global RRR cap.
+
+**Acceptance:** owner-run baseline and explicitly enabled-policy backtests plus
+a report using `docs/backtester/tp_reachability_diagnostics.md`; no TP change
+is promoted without a comparison backtest on an untouched validation range.
+
+**Result:** full-history analysis identified one positive mount candidate:
+`freq_4pw_r03_catcma_011465`, distance-only trigger at `>=6%`, recency
+disabled, effective RRR `3.0`. On the untouched 2026-07-13 → 2026-07-27
+forward window it beat baseline by `$173.59` (`+$481.48` vs `+$307.89`) with
+the same 24 trades and lower peak-to-trough drawdown (`-8.71%` vs `-9.50%`).
+The short 15-day sample is not sufficient to widen the rule to other donors;
+the component stays globally default-off, while the approved `freq_r03` mount
+is enabled in the canonical production JSON. Require a longer forward sample
+before changing scope or thresholds.
+
+**Links:** `docs/backtester/tp_reachability_diagnostics.md`,
+`strategies/archive/filtered_donor_portfolio_post_adr0058_tail_control_v6_drop_negative_v5.json`.
+
+---
+
+## P1 — Accumulate a longer forward sample for the distant-TP candidate
+
+**What:** keep the `freq_4pw_r03_catcma_011465` 6%/RRR-3 policy as a
+reproducible research mount and re-evaluate it on a materially longer period
+of unseen candles before changing the live portfolio.
+
+**Why now:** the first holdout was positive (`+$481.48` vs `+$307.89`), but it
+contains only 15 days and 24 trades. A single target conversion drove most of
+the dollar difference, so promotion on this sample would be premature.
+
+**Expected gain:** distinguish a repeatable improvement from a small-sample
+regime accident while preserving the component's mount/unmount flexibility.
+
+**Acceptance:** a longer forward report compares the candidate and unchanged
+baseline in total dollars, trade count, win rate, PF, and both drawdown
+measures; promote only if the dollar and risk gains persist, otherwise leave
+the component default-off.
+
+**Links:** `docs/tasks/IN_PROGRESS.md`,
+`results/strategy_review/v6_holdout_candidate_r03_d6_rrr3_20260713_27/`.
 
 ---
 

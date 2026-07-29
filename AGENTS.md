@@ -66,7 +66,7 @@ artifacts.
 Agents continue working autonomously until one of these happens:
 
 - the next step requires an owner-run command under the backtest/optimizer
-  policy above;
+  policy above and the owner has not explicitly authorized this run;
 - the owner interrupts or changes direction in chat;
 - the agent cannot determine the next useful step after inspecting the local
   evidence;
@@ -74,11 +74,13 @@ Agents continue working autonomously until one of these happens:
   materially different work.
 
 Short local diagnostics are allowed when they are not owner-scale backtests or
-optimizers. If a command has visible progress/ETA and the ETA is under roughly
-two minutes, the agent may run it, wait for completion, inspect the artifacts,
-and continue. If the ETA is over roughly two minutes, or there is no visible
-progress/ETA for a potentially long operation, stop and hand the exact command
-to the owner.
+optimizers. When the owner explicitly authorizes a specific backtest/optimizer
+run, launch it once and inspect its visible progress/ETA. If the observed ETA
+is under three minutes, the agent may wait for completion and inspect the
+artifacts. If the ETA is over three minutes, or there is no visible
+progress/ETA for a potentially long operation, stop it and hand the exact
+command to the owner. Without explicit authorization, the owner-run default
+still applies.
 
 ### Progress is mandatory for long-running commands
 
@@ -293,6 +295,13 @@ under `docs/` except `ROADMAP.md`.
 - **Critical thinking over agreement.** Ensemble trading systems break in
   subtle ways. If you spot a flaw in a previous decision or in the owner's
   ask, say so — don't politely paper over it.
+- **Flexible sandbox composition.** Prefer narrow, independently mountable
+  components over hard-coded all-or-nothing behavior. A component should be
+  configurable at the broadest useful scope and overridable or removable at a
+  narrower scope, with safe default-off behavior for new experiments. Keep
+  backtest and live decisions on the same pure function, preserve unrelated
+  signal/SL/risk behavior, and emit audit fields sufficient to reproduce the
+  mounted experiment. See `docs/architecture/flexible_sandbox.md`.
 - **MVP-first.** Prefer cutting scope over building optional features.
 - **Tests for every engine.** Synthetic-data unit tests are mandatory; the
   ensemble result is meaningless if any individual engine is wrong.
