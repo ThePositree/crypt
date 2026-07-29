@@ -37,6 +37,7 @@ src/crypt/execution/
     settings.py          # ExecutionSettings (pydantic-settings, from .env)
     position_state.py    # LivePosition dataclass + JSON persistence
     exchange_sync.py     # Exchange snapshot + local/exchange reconciliation
+    risk_base_continuity.py # Immutable monthly anchor verification/recovery
     risk_calculator.py   # LiveRiskCalculator — wraps BasicRiskModel
     signal_runner.py     # LiveSignalRunner — runs registry strategies on Parquet
     okx_order_client.py  # OKXTradingClient — order placement / management
@@ -64,9 +65,13 @@ Loaded from `.env` via `pydantic-settings`. All keys prefixed `EXECUTION_`.
 | `EXECUTION_ENABLED` | `false` | Must be set to `true` to activate |
 | `EXECUTION_DRY_RUN` | `true` | Log orders without placing them |
 | `EXECUTION_DRY_RUN_CAPITAL` | `0.0` | Optional dry-run-only sizing capital; `0` uses real OKX balance |
-| `EXECUTION_STRATEGY_CONFIG` | `strategies/live/active.json` | Path to the selected strategy JSON |
+| `EXECUTION_STRATEGY_CONFIG` | `strategies/live/active.json` | Generic library default; the Railway start script explicitly overrides this to the production archived v6 JSON |
 | `EXECUTION_DATA_DIR` | `data` | Root Parquet directory |
 | `EXECUTION_STATE_PATH` | `data/live_positions.json` | State file |
+| `EXECUTION_RISK_BASE_CHECKPOINT_DIR` | `<EXECUTION_DATA_DIR>/risk_base_checkpoints` | Immutable monthly risk anchors |
+| `EXECUTION_RISK_BASE_ADOPT_EXISTING_STATE` | `false` | One-deploy operator migration switch; requires the exact expected month/base manifest and never adopts an empty or recovered-previous state |
+| `EXECUTION_RISK_BASE_ADOPT_EXPECTED_MONTH` | unset | Exact UTC month (`YYYY-MM`) allowed for the one-time adoption |
+| `EXECUTION_RISK_BASE_ADOPT_EXPECTED_BASE` | unset | Exact unrounded risk base allowed for the one-time adoption |
 | `EXECUTION_EXIT_GEOMETRY` | `sl_rrr` | Fallback exit geometry for legacy/sparse events |
 | `EXECUTION_TP_MOVE_PCT` | `0.016` | Fallback TP percent for legacy single-signal strategies |
 | `EXECUTION_STRUCTURAL_SL_MODE` | `cap` | Fallback structural SL handling |
@@ -135,7 +140,9 @@ H1 tick where `EXECUTION_REQUIRE_EXCHANGE_SYNC=true` blocks entry:
 1. Run the normal latest-bar signal path without placing orders.
 2. Emit one `MISSED SIGNAL` error log per actionable event with symbol, closed
    signal time, side, donor strategy, expected next open, SL, blocking reasons,
-   and a persistent cumulative missed-event count.
+   and a persistent cumulative missed-event count. A bounded persisted history
+   of deterministic event ids prevents duplicate callbacks from recounting or
+   re-notifying the same signal.
 3. When the bar has no actionable event, log that explicitly without
    incrementing the count.
 4. Persist `blocked_signal_events_total` in `live_positions.json` so restarts
@@ -328,21 +335,25 @@ enables that workflow.
 ### 7a. Telegram execution notifications
 
 When `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are configured, live execution
-must send:
+must send Russian, operator-oriented messages defined in
+`docs/execution/telegram_notifications.md`:
 
 - one full sync report per UTC day, persisted by date in `live_positions.json`
   so service restarts do not spam repeated daily reports;
-- one `ENTRY ATTEMPT` message for every actionable donor event before risk
+- one `Найден сигнал` message for every actionable donor event before risk
   sizing or OKX order calls;
 - one terminal result for every entry attempt:
-  - `ENTRY` when the position was recorded successfully;
-  - `ENTRY REJECTED` when a deterministic risk, margin, group, size, or circuit
+  - `Сделка открыта` when the position was recorded successfully;
+  - `Вход пропущен` when a deterministic risk, margin, group, size, or circuit
     breaker rejects the event;
-  - `EXECUTION ERROR` when leverage setup, order placement, candle refresh,
+  - `Нужна проверка` when leverage setup, order placement, candle refresh,
     signal generation, exchange synchronization, or another execution step
     raises;
 - one exit notification after a position is marked closed from OKX fills,
   startup reconciliation, or TTL market close.
+- one Telegram message headed `Сигнал пропущен из-за защиты` for each unique
+  actionable signal that a dirty exchange-sync or risk-base continuity guard
+  prevented from opening. `MISSED SIGNAL` remains the canonical log/event key.
 
 Every attempt and rejection is also written to the normal service log with the
 same symbol, side, strategy, prices, and rejection reason. Telegram is not the
@@ -353,22 +364,25 @@ positions, regular orders, algo SL/TP orders, current sync status, and blocking
 reasons. Telegram failures must be logged and must not stop state persistence or
 order management.
 
-Entry-attempt messages include symbol, side, donor strategy, signal time,
-expected entry, and structural SL. Rejection/error messages include the
-operator-facing reason. A persistent exchange-sync blocker is sent on every H1
-execution cycle while it remains active. Repeated alerts are intentional: the
-operator must not miss a condition that prevents entries.
+Entry-attempt messages include symbol, direction, donor strategy, signal time,
+expected entry, and structural SL. Rejection/error messages explain the money
+impact first, then retain the canonical reason for audit. A persistent
+exchange-sync or risk-base blocker is sent on every H1 execution cycle while it
+remains active. Repeated alerts are intentional: the operator must not miss a
+condition that prevents entries.
 
 The notification contract is best-effort: failure to reach Telegram is retried
 and logged, but never changes whether an otherwise valid order is placed or
-whether state is persisted.
+whether state is persisted. Critical blocker and missed-signal state is saved
+before its Telegram delivery is scheduled; Telegram retries never consume the
+H1 execution callback deadline.
 
 Entry drift is alert-only (ADR-0054). A quote or actual fill farther than
 `EXECUTION_MAX_ENTRY_DRIFT_PCT` from the H1 backtest open must be logged and
 sent to Telegram after submission; it must not reject the entry. The alert
 contains the H1 open, pre-submit quote, actual fill, H1-to-fill drift, and
-quote-to-fill drift. Telegram labels it `ENTRY DRIFT [OK]` and explicitly says
-the entry executed; it is not an `EXECUTION ERROR`. Liquidation and leverage
+quote-to-fill drift. Telegram labels it `Цена входа отличается от плана` and
+explicitly says the entry executed; it is not a blocked trade. Liquidation and leverage
 safety remain independent blocking checks. Risk sizing, SL/TP placement, and
 native trailing geometry are planned from the H1 next-open price used by the
 backtester; the pre-submit quote is observability only and must not mutate the
@@ -413,15 +427,35 @@ a short).
 
 ## 8. Monthly risk base
 
-At each H1 tick, `LiveRiskCalculator` checks whether the current calendar month
-differs from the persisted `risk_window_month` in state. If yes:
+For `risk_base_period = "monthly"`, `LiveRiskCalculator` receives its base
+from the durable continuity guard, not directly from mutable state:
 
-1. Query OKX USDT balance.
-2. Record as `monthly_risk_base` in state file.
-3. Update `risk_window_month = (year, month)`.
+1. The guard loads both `<checkpoint_dir>/YYYY-MM.json` and
+   `<checkpoint_dir>/YYYY-MM.backup.json` for the entry's UTC month. Both must
+   be valid, checksummed, identical, and bound to the configured state path.
+2. If present, the checkpoint value is authoritative; a missing state anchor
+   is restored from it before sizing.
+3. On a normal month transition, the guard verifies the previous state against
+   its checkpoint and a clean exchange sync, records the current OKX balance
+   in a new immutable monthly checkpoint pair, then updates
+   `risk_window_month` and `monthly_risk_base`. This remains mandatory even
+   when the ordinary exchange-sync gate was configured less strictly.
+4. A missing, conflicting, partial, or malformed current-month anchor blocks new
+   entries and alerts the operator. Existing positions continue through sync,
+   protection recovery, and close management.
+5. A live current-month state without a checkpoint requires the one-deploy
+   explicit `EXECUTION_RISK_BASE_ADOPT_EXISTING_STATE=true` migration switch
+   plus exact `...ADOPT_EXPECTED_MONTH` and `...ADOPT_EXPECTED_BASE` values;
+   an empty or previous-snapshot-recovered state is never auto-anchored from
+   current balance.
 
-This mirrors `ExecutionSim._risk_base_capital_for_entry()` for
-`risk_base_period = "monthly"`.
+The rollover anchor follows the existing backtester-compatible timing: it is
+created at the first post-sync actionable H1 batch in the new UTC month, before
+per-event sizing/precision checks. It is not created at midnight or by a
+blocked/startup catch-up callback.
+
+The checkpoint stores the exact unrounded number used for sizing. See
+ADR-0059 for migration and durability rules.
 
 ---
 
@@ -429,13 +463,19 @@ This mirrors `ExecutionSim._risk_base_capital_for_entry()` for
 
 ```json
 {
-  "schema_version": 6,
+  "schema_version": 12,
+  "generation": 42,
+  "state_checksum": "sha256 of the persisted payload",
   "risk_window_month": [2026, 6],
   "monthly_risk_base": 10000.0,
   "last_exchange_sync_at": "2026-06-09T15:02:00+00:00",
   "last_exchange_sync_ok": true,
   "last_exchange_sync_errors": [],
   "last_daily_sync_report_date": "2026-06-09",
+  "blocked_signal_event_ids": ["deterministic-event-id"],
+  "risk_base_continuity_status": "verified",
+  "risk_base_continuity_error": null,
+  "state_recovered_from_previous_snapshot": false,
   "positions": [
     {
       "position_id": "uuid",
@@ -473,8 +513,10 @@ This mirrors `ExecutionSim._risk_base_capital_for_entry()` for
 }
 ```
 
-State is written atomically (write to `.tmp`, then rename) to prevent
-corruption on crash.
+State is written with an fsync-backed atomic replacement and a previous valid
+snapshot. It remains mutable recovery state; the independent monthly checkpoint
+pair is the authoritative economic anchor. A state encoded with a future schema
+is rejected rather than silently downgraded on the next write.
 
 ---
 
@@ -489,8 +531,9 @@ On startup, `LiveExecutionManager.reconcile()`:
 5. If OKX has an open position → keep tracking.
 6. Orphan exchange positions/orders still block new entries until an operator
    resolves or imports them.
-7. Monthly risk base is read from state file; if missing (fresh start), set to
-   current OKX balance.
+7. Monthly risk base is verified against the independent checkpoint. A missing
+   local state may be repaired from the checkpoint; a missing checkpoint never
+   permits a same-month live re-anchor from current balance.
 
 ---
 
@@ -519,6 +562,8 @@ not simulated.
 4. **Authentication guard**: if OKX API key is empty, refuse to start executor.
 5. **Parquet freshness guard**: if newest H1 bar is older than 3 hours, log
    WARNING and skip signal check (likely data pipeline failure).
+6. **Risk-base continuity guard**: a missing or conflicting current-month
+   checkpoint blocks only new entries until the operator resolves it.
 
 ---
 

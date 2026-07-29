@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable
 from datetime import UTC, datetime, timedelta
 
 from backtester.instrument_precision import instrument_precision_from_name
@@ -48,6 +49,10 @@ from crypt.execution.position_state import (
     load_state,
     save_state,
 )
+from crypt.execution.risk_base_continuity import (
+    MonthlyRiskBaseContinuity,
+    RiskBaseContinuityError,
+)
 from crypt.execution.risk_calculator import LiveRiskCalculator
 from crypt.execution.settings import ExecutionSettings
 from crypt.execution.signal_runner import LiveSignalRunner, SignalBatch, SignalEvent
@@ -77,6 +82,7 @@ _BACKTEST_ARG_TO_SETTING = {
     "taker_fee": "taker_fee",
     "maker_fee": "maker_fee",
 }
+_MAX_BLOCKED_SIGNAL_EVENT_HISTORY = 512
 
 
 class LiveExecutionManager:
@@ -123,6 +129,24 @@ class LiveExecutionManager:
 
         self._risk_calc = LiveRiskCalculator(exec_settings)
         self._state = load_state(exec_settings.state_path)
+        self._risk_base_continuity = MonthlyRiskBaseContinuity(
+            checkpoint_dir=exec_settings.resolved_risk_base_checkpoint_dir,
+            state_path=exec_settings.state_path,
+            allow_adopt_existing_state=exec_settings.risk_base_adopt_existing_state,
+            adopt_expected_month=exec_settings.risk_base_adopt_expected_month,
+            adopt_expected_base=exec_settings.risk_base_adopt_expected_base,
+        )
+        self._risk_base_block_reason: str | None = None
+        logger.info(
+            "Execution state loaded: path=%s schema=%d generation=%d risk_window=%s "
+            "monthly_risk_base=%.12g checkpoint_dir=%s",
+            exec_settings.state_path,
+            self._state.schema_version,
+            self._state.generation,
+            self._state.risk_window_month,
+            self._state.monthly_risk_base,
+            exec_settings.resolved_risk_base_checkpoint_dir,
+        )
         self._notifier = ExecutionTelegramNotifier.from_settings(
             app_settings,
             dry_run=exec_settings.dry_run,
@@ -218,6 +242,13 @@ class LiveExecutionManager:
 
         self._state.positions = remaining
         sync_ok = self._apply_exchange_sync(snapshot=snapshot, log_summary=True)
+        risk_base_ok = await self._verify_risk_base_continuity(
+            now=snapshot.fetched_at,
+            exchange_sync_ok=sync_ok,
+        )
+        if not risk_base_ok:
+            self._persist_state_before_best_effort_notification()
+            self._queue_risk_base_blocker()
         await self._notify_sync_blocker(sync_ok)
         await self._notify_daily_sync_if_due(snapshot)
         save_state(self._state, self._settings.state_path)
@@ -493,21 +524,31 @@ class LiveExecutionManager:
             snapshot = await self._exchange_snapshot(self._settings.symbols)
             snapshot = await self._close_unsafe_exchange_positions(snapshot)
         sync_ok = self._apply_exchange_sync(snapshot=snapshot, log_summary=True)
+        risk_base_ok = await self._verify_risk_base_continuity(
+            now=snapshot.fetched_at,
+            exchange_sync_ok=sync_ok,
+        )
+        if not risk_base_ok:
+            self._persist_state_before_best_effort_notification()
+            self._queue_risk_base_blocker()
         await self._notify_sync_blocker(sync_ok)
         await self._notify_daily_sync_if_due(snapshot)
 
-        if self._settings.require_exchange_sync and not sync_ok:
+        if (self._settings.require_exchange_sync and not sync_ok) or not risk_base_ok:
+            blocking_reasons = list(self._state.last_exchange_sync_errors)
+            if self._risk_base_block_reason is not None:
+                blocking_reasons.append(f"risk_base_continuity:{self._risk_base_block_reason}")
             logger.error(
-                "Exchange sync is not clean — skipping new entries for %s: %s",
+                "Entry safety gate is not clean — skipping new entries for %s: %s",
                 symbol,
-                self._state.last_exchange_sync_errors,
+                blocking_reasons,
             )
             if trigger_source != "startup":
                 signal_batch = await self._get_latest_signal_batch(symbol)
-                self._audit_blocked_signal_batch(
+                await self._audit_blocked_signal_batch(
                     symbol=symbol,
                     signal_batch=signal_batch,
-                    blocking_reasons=self._state.last_exchange_sync_errors,
+                    blocking_reasons=blocking_reasons,
                 )
             save_state(self._state, self._settings.state_path)
             return
@@ -560,7 +601,7 @@ class LiveExecutionManager:
             symbol,
         )
 
-    def _audit_blocked_signal_batch(
+    async def _audit_blocked_signal_batch(
         self,
         *,
         symbol: str,
@@ -575,13 +616,34 @@ class LiveExecutionManager:
                 blocking_reasons,
             )
             return
+        pending_notifications: list[tuple[SignalEvent, int]] = []
         for event in signal_batch.events:
+            event_id = build_event_id(
+                symbol=symbol,
+                signal_time=event.bar_time,
+                selected_strategy=event.selected_strategy,
+                is_long=event.signal == 1,
+            )
+            if event_id in self._state.blocked_signal_event_ids:
+                logger.info(
+                    "Blocked signal was already audited: symbol=%s event_id=%s",
+                    symbol,
+                    event_id,
+                )
+                continue
+
             self._state.blocked_signal_events_total += 1
+            self._state.blocked_signal_event_ids.append(event_id)
+            if len(self._state.blocked_signal_event_ids) > _MAX_BLOCKED_SIGNAL_EVENT_HISTORY:
+                self._state.blocked_signal_event_ids = self._state.blocked_signal_event_ids[
+                    -_MAX_BLOCKED_SIGNAL_EVENT_HISTORY:
+                ]
             logger.error(
-                "MISSED SIGNAL: symbol=%s signal_time=%s side=%s strategy=%s "
+                "MISSED SIGNAL: symbol=%s event_id=%s signal_time=%s side=%s strategy=%s "
                 "expected_entry=%.4f sl=%.4f blocked_reasons=%s "
                 "blocked_signal_events_total=%d",
                 symbol,
+                event_id,
                 event.bar_time.isoformat(),
                 "LONG" if event.signal == 1 else "SHORT",
                 event.selected_strategy or "unknown",
@@ -589,6 +651,28 @@ class LiveExecutionManager:
                 event.sl_price,
                 blocking_reasons,
                 self._state.blocked_signal_events_total,
+            )
+            pending_notifications.append((event, self._state.blocked_signal_events_total))
+
+        if not pending_notifications:
+            return
+        self._persist_state_before_best_effort_notification()
+        notifier = getattr(self, "_notifier", None)
+        missed_signal = getattr(notifier, "send_missed_signal", None) if notifier else None
+        if missed_signal is None:
+            return
+        for event, cumulative_count in pending_notifications:
+            self._queue_notification(
+                missed_signal(
+                    symbol=symbol,
+                    is_long=event.signal == 1,
+                    strategy=event.selected_strategy,
+                    signal_time=event.bar_time,
+                    entry_price=event.next_open,
+                    sl_price=event.sl_price,
+                    blocking_reasons=blocking_reasons,
+                    cumulative_count=cumulative_count,
+                )
             )
 
     # ------------------------------------------------------------------
@@ -838,7 +922,33 @@ class LiveExecutionManager:
 
         # Monthly risk base
         entry_time = signal_batch.next_time
-        risk_base = self._risk_calc.update_monthly_risk_base(self._state, entry_time, capital)
+        if self._settings.risk_base_period == "monthly" and not self._settings.dry_run:
+            continuity = getattr(self, "_risk_base_continuity", None)
+            if continuity is None:
+                raise RuntimeError(
+                    "monthly live execution started without a risk-base continuity guard"
+                )
+            try:
+                resolution = continuity.resolve_for_entry(
+                    self._state,
+                    entry_time=entry_time,
+                    current_capital=capital,
+                    exchange_sync_ok=self._state.last_exchange_sync_ok,
+                )
+            except RiskBaseContinuityError as exc:
+                self._set_risk_base_blocked(str(exc))
+                self._persist_state_before_best_effort_notification()
+                self._queue_risk_base_blocker()
+                await self._audit_blocked_signal_batch(
+                    symbol=symbol,
+                    signal_batch=signal_batch,
+                    blocking_reasons=[f"risk_base_continuity:{exc}"],
+                )
+                return
+            self._set_risk_base_resolution(resolution.action)
+            risk_base = resolution.risk_base
+        else:
+            risk_base = self._risk_calc.update_monthly_risk_base(self._state, entry_time, capital)
         entry_price = signal_batch.next_open
         pre_submit_quote = entry_price
         if self._app_settings.okx_is_authenticated:
@@ -1610,6 +1720,105 @@ class LiveExecutionManager:
                 if len(tp_candidates) == 1:
                     pos.take_profit_order_id = tp_candidates[0].order_id
 
+    async def _verify_risk_base_continuity(
+        self,
+        *,
+        now: datetime,
+        exchange_sync_ok: bool,
+    ) -> bool:
+        """Verify the current monthly anchor without pausing risk-reducing work."""
+        if self._settings.risk_base_period != "monthly" or self._settings.dry_run:
+            self._state.risk_base_continuity_status = "not_applicable"
+            self._state.risk_base_continuity_error = None
+            self._risk_base_block_reason = None
+            return True
+
+        continuity = getattr(self, "_risk_base_continuity", None)
+        if continuity is None:
+            self._set_risk_base_blocked("monthly live execution has no risk-base continuity guard")
+            return False
+        try:
+            resolution = continuity.verify_startup(
+                self._state,
+                now=now,
+                exchange_sync_ok=exchange_sync_ok,
+            )
+        except RiskBaseContinuityError as exc:
+            self._set_risk_base_blocked(str(exc))
+            logger.error("Monthly risk-base continuity blocked: %s", exc)
+            return False
+
+        self._set_risk_base_resolution(resolution.action)
+        logger.info(
+            "Monthly risk-base continuity %s: window=%s base=%.12g checkpoint_dir=%s",
+            resolution.action,
+            self._state.risk_window_month,
+            resolution.risk_base,
+            continuity.checkpoint_dir,
+        )
+        return True
+
+    def _set_risk_base_resolution(self, action: str) -> None:
+        self._state.risk_base_continuity_status = action
+        self._state.risk_base_continuity_error = None
+        self._risk_base_block_reason = None
+
+    def _set_risk_base_blocked(self, reason: str) -> None:
+        self._state.risk_base_continuity_status = "blocked"
+        self._state.risk_base_continuity_error = reason
+        self._risk_base_block_reason = reason
+
+    def _persist_state_before_best_effort_notification(self) -> None:
+        """Persist critical state before scheduling non-critical Telegram delivery."""
+        settings = getattr(self, "_settings", None)
+        state_path = getattr(settings, "state_path", None)
+        if state_path is not None:
+            save_state(self._state, state_path)
+
+    def _queue_risk_base_blocker(self) -> None:
+        """Schedule a blocker alert without delaying risk-reducing execution work."""
+        notifier = getattr(self, "_notifier", None)
+        reason = self._risk_base_block_reason or "unknown risk-base continuity failure"
+        if notifier is None:
+            return
+        method = getattr(notifier, "send_risk_base_continuity_blocked", None)
+        if method is not None:
+            continuity = getattr(self, "_risk_base_continuity", None)
+            checkpoint_dir = (
+                str(continuity.checkpoint_dir) if continuity is not None else "unconfigured"
+            )
+            self._queue_notification(
+                method(
+                    reason=reason,
+                    checkpoint_dir=checkpoint_dir,
+                    state_path=str(self._settings.state_path),
+                )
+            )
+            return
+        self._queue_notification(
+            notifier.send_execution_error(
+                context="monthly risk-base continuity blocked",
+                detail=reason,
+            )
+        )
+
+    def _queue_notification(self, delivery: Awaitable[object]) -> None:
+        """Track a best-effort notification without making it part of the H1 deadline."""
+        task = asyncio.create_task(self._deliver_queued_notification(delivery))
+        tasks = getattr(self, "_notification_tasks", None)
+        if tasks is None:
+            tasks = set()
+            self._notification_tasks = tasks
+        tasks.add(task)
+        task.add_done_callback(tasks.discard)
+
+    @staticmethod
+    async def _deliver_queued_notification(delivery: Awaitable[object]) -> None:
+        try:
+            await delivery
+        except Exception:
+            logger.exception("Best-effort execution Telegram notification failed")
+
     async def _notify_daily_sync_if_due(self, snapshot: ExchangeSnapshot) -> None:
         notifier = getattr(self, "_notifier", None)
         if notifier is None:
@@ -1617,8 +1826,9 @@ class LiveExecutionManager:
         report_date = snapshot.fetched_at.date().isoformat()
         if self._state.last_daily_sync_report_date == report_date:
             return
-        await notifier.send_daily_sync_report(snapshot=snapshot, state=self._state)
-        self._state.last_daily_sync_report_date = report_date
+        delivered = await notifier.send_daily_sync_report(snapshot=snapshot, state=self._state)
+        if delivered is not False:
+            self._state.last_daily_sync_report_date = report_date
 
     async def _notify_entry_opened(self, pos: LivePosition) -> None:
         await self._wait_for_pending_notifications()

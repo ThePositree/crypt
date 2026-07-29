@@ -1,3 +1,5 @@
+# ruff: noqa: RUF001
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -56,10 +58,10 @@ async def test_daily_sync_report_includes_blocking_reasons() -> None:
 
     assert bot.messages
     text = bot.messages[0][1]
-    assert "FULL SYNC" in text
-    assert "BLOCKED" in text
+    assert "Проверка бота" in text
+    assert "входы остановлены" in text
     assert "position_mode_not_long_short" in text
-    assert "Balance: total $10,000.00" in text
+    assert "Баланс: всего $10,000.00" in text
 
 
 @pytest.mark.asyncio
@@ -94,8 +96,8 @@ async def test_entry_and_exit_messages_are_sent() -> None:
     await notifier.send_position_closed(pos)
 
     assert len(bot.messages) == 2
-    assert "ENTRY" in bot.messages[0][1]
-    assert "EXIT" in bot.messages[1][1]
+    assert "Сделка открыта" in bot.messages[0][1]
+    assert "Сделка закрыта" in bot.messages[1][1]
     assert "PnL: $39.48" in bot.messages[1][1]
 
 
@@ -128,12 +130,12 @@ async def test_entry_attempt_rejection_and_execution_error_are_sent() -> None:
     )
 
     assert len(bot.messages) == 3
-    assert "ENTRY ATTEMPT" in bot.messages[0][1]
-    assert "[PENDING]" in bot.messages[0][1]
+    assert "Найден сигнал" in bot.messages[0][1]
+    assert "Сигнал передан на проверку" in bot.messages[0][1]
     assert "dss_donor" in bot.messages[0][1]
-    assert "ENTRY REJECTED" in bot.messages[1][1]
+    assert "Вход пропущен" in bot.messages[1][1]
     assert "insufficient margin" in bot.messages[1][1]
-    assert "EXECUTION ERROR" in bot.messages[2][1]
+    assert "Нужна проверка" in bot.messages[2][1]
     assert "order rejected" in bot.messages[2][1]
 
 
@@ -157,7 +159,88 @@ async def test_entry_drift_message_states_that_entry_was_executed() -> None:
     )
 
     text = bot.messages[0][1]
-    assert "ENTRY DRIFT" in text
-    assert "[OK]" in text
-    assert "H1-to-fill drift: 1.000%" in text
-    assert "Result: entry executed" in text
+    assert "Цена входа отличается от плана" in text
+    assert "Сделка уже открыта" in text
+    assert "Отклонение от плана: 1.000%" in text
+
+
+@pytest.mark.asyncio
+async def test_missed_signal_and_risk_base_blocker_are_plain_russian_alerts() -> None:
+    bot = _FakeBot()
+    notifier = ExecutionTelegramNotifier(
+        _bot=bot,  # type: ignore[arg-type]
+        _chat_id="chat-1",
+        _dry_run=False,
+    )
+
+    await notifier.send_missed_signal(
+        symbol="SOL-USDT-SWAP",
+        is_long=False,
+        strategy="donor_short",
+        signal_time=datetime(2026, 7, 23, 12, tzinfo=UTC),
+        entry_price=76.90,
+        sl_price=77.71,
+        blocking_reasons=["position_size_mismatch:SOL-USDT-SWAP"],
+        cumulative_count=1,
+    )
+    await notifier.send_risk_base_continuity_blocked(
+        reason="state and checkpoint disagree",
+        checkpoint_dir="/app/data/risk_base_checkpoints",
+        state_path="/app/data/live_positions.json",
+    )
+
+    assert "Сигнал пропущен из-за защиты" in bot.messages[0][1]
+    assert "Ордер не отправлен" in bot.messages[0][1]
+    assert "Всего пропущено из-за защиты: 1" in bot.messages[0][1]
+    assert "Проверка риск-базы не пройдена" in bot.messages[1][1]
+    assert "Новые входы остановлены" in bot.messages[1][1]
+
+
+@pytest.mark.asyncio
+async def test_dynamic_execution_error_is_escaped_and_kept_within_telegram_limit() -> None:
+    bot = _FakeBot()
+    notifier = ExecutionTelegramNotifier(
+        _bot=bot,  # type: ignore[arg-type]
+        _chat_id="chat-1",
+        _dry_run=False,
+    )
+
+    await notifier.send_execution_error(
+        context="place entry for <untrusted>",
+        detail="&<>" * 2_000,
+    )
+
+    text = bot.messages[0][1]
+    assert len(text) <= 4_000
+    assert "&lt;untrusted&gt;" in text
+    assert "&amp;&lt;&gt;" in text
+
+
+@pytest.mark.asyncio
+async def test_opened_trade_uses_the_asset_from_its_symbol() -> None:
+    bot = _FakeBot()
+    notifier = ExecutionTelegramNotifier(
+        _bot=bot,  # type: ignore[arg-type]
+        _chat_id="chat-1",
+        _dry_run=False,
+    )
+    pos = LivePosition.create(
+        symbol="TON-USDT-SWAP",
+        signal_time=datetime(2026, 7, 28, 10, tzinfo=UTC),
+        entry_time=datetime(2026, 7, 28, 11, tzinfo=UTC),
+        entry_price=3.0,
+        sl_price=2.8,
+        tp_price=3.4,
+        size=10.0,
+        contracts=10.0,
+        leverage=25.0,
+        locked_margin=1.2,
+        risk_base_capital=100.0,
+        is_long=True,
+        ttl_bars=0,
+        entry_order_id="entry-1",
+    )
+
+    await notifier.send_entry_opened(pos)
+
+    assert "10.0000 TON" in bot.messages[0][1]

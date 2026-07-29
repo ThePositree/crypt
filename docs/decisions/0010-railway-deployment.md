@@ -78,6 +78,12 @@ keeping both parquet files and log files on the single persistent volume.
 - If the run grows beyond 14 days, consider upgrading to Pro (30-day log retention, 50 GB volume).
 - M2 backtest will need a larger volume; resize is supported live on Hobby.
 
+### Operational amendment (2026-07-28)
+
+The active repository deployment branch is `main`, not the historical
+`master` reference above. Railway operators must select `main` unless a future
+deployment decision explicitly changes the production branch.
+
 ## References
 
 - Railpack Python docs: https://railpack.com/languages/python.md

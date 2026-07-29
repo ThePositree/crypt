@@ -6,7 +6,7 @@ operator-visible behaviour is added.
 
 Linked documents:
 - `docs/decisions/0011-thresholds-rationale-and-uncalibrated-marker.md`
-  — why the `[UNCALIBRATED]` tag exists and when it goes away.
+  — why the “model is not yet calibrated” warning exists and when it goes away.
 - `docs/paper_trading.md` — the parallel ledger that records "what would
   have happened".
 - `docs/operations/telegram_commands.md` — the bot commands you can use.
@@ -18,31 +18,29 @@ Linked documents:
 A Telegram message like this:
 
 ```
-🟢 SOL-USDT-SWAP — BUY ⚠️ [UNCALIBRATED]
-Confidence: 78%   Score: +0.412
-Regime: TRENDING
+🟢 SOL-USDT-SWAP — рост (покупка) ⚠️ [UNCALIBRATED] модель ещё не откалибрована
+Уверенность модели: 78% · оценка: +0.412
+Состояние рынка: выраженное движение
 
-trend:       bullish  strength=+0.62  weight=0.55
-meanrev:     neutral  strength= 0.00  weight=0.05
-derivatives: bullish  strength=+0.31  weight=0.30
-volatility:  vol_regime=normal
-regime:      TRENDING (ADX_h4=24, ADX_d1=22)
+Техническое объяснение:
+Regime: TRENDING | decision: BUY (78%)
 ```
 
 Anatomy:
 - Emoji + symbol + decision in the first line.
-- `[UNCALIBRATED]` tag is present until M2 calibration is shipped and
+- The “model is not yet calibrated” warning is present until M2 calibration is shipped and
   ADR-0011's flag flips off. Treat alerts as **informational** during
   this period. Do not size trades to them yet.
-- `Confidence` — 0..100. Below 75 alerts are suppressed (default
+- `Уверенность модели` — 0..100. Below 75 alerts are suppressed (default
   placeholder threshold); a 78 only means it passed the current alert gate,
   not that it is a calibrated probability.
-- `Score` — weighted-sum across engines, in `[-1, +1]`. The sign matches
+- `оценка` — weighted-sum across engines, in `[-1, +1]`. The sign matches
   the decision.
-- `Regime` — `TRENDING / RANGING / HIGH_VOL`. Decides which weight set
+- `Состояние рынка` — a plain-language view of `TRENDING / RANGING / HIGH_VOL`.
+  It decides which weight set
   the aggregator used.
-- Per-engine breakdown: which trader views agreed, with what strength
-  and weight.
+- `Техническое объяснение` retains the generated evidence for later review;
+  it is not a direct order instruction.
 
 ---
 

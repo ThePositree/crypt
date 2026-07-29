@@ -4,6 +4,45 @@ Reverse-chronological archive of completed work. Newest on top.
 
 ---
 
+## 2026-07-28 — Hardened monthly risk-base continuity and Russian Telegram alerts
+
+**What:** added an immutable dual-file monthly risk-base checkpoint guard for
+live Railway execution, plus a Russian, plain-language Telegram presentation
+for live execution and legacy decision alerts.
+
+**Why now:** the live reconciliation proved that five July redeployments
+changed the same-month sizing anchor from `$104.77` to
+`$102.3381502678064`. The prior mutable state file could disappear and silently
+re-anchor the next entry from current balance; Telegram also made it hard to
+distinguish a real trade, an alert-only fill drift, and a blocked signal.
+
+**Result:** live monthly entries now require matching checksummed primary and
+backup anchors bound to the configured state path. Missing, partial, corrupt,
+future-schema, or conflicting state/checkpoint data pauses only new entries.
+The one-time July adoption requires the exact UTC month/base manifest and
+refuses a state recovered from the prior snapshot. A new-month anchor requires
+a clean sync and preserves backtester-compatible first-actionable-batch timing.
+Critical blocker/missed-signal state is persisted before Telegram delivery is
+queued, and repeated callbacks cannot recount one signal. All operator-facing
+execution messages are Russian, retain PnL/SL/TP/OKX/IDs, preserve the legacy
+`[UNCALIBRATED]` marker, escape dynamic HTML, and stay within Telegram's size
+limit.
+
+**Acceptance:** focused persistence, risk-continuity, executor, notification,
+and sink tests pass (`80 passed`); the broader `tests/execution` and
+`tests/sinks` slices pass; ruff and strict mypy pass for all touched source
+modules. The Railway runbook records the safe July migration and explicit
+checkpoint-pair verification.
+
+**Links:** ADR-0059, `docs/execution/live_execution.md`,
+`docs/execution/telegram_notifications.md`, `docs/deploy/railway.md`,
+`src/crypt/execution/position_state.py`,
+`src/crypt/execution/risk_base_continuity.py`,
+`src/crypt/execution/notifications.py`,
+`tests/execution/test_risk_base_continuity.py`.
+
+---
+
 ## 2026-07-24 — Repaired partial live-close recovery and missed-signal audit
 
 **What:** fixed live reconciliation when one logical constituent of an

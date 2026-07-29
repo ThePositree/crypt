@@ -21,6 +21,7 @@ container defaults:
 - `DATA_DIR=/app/data`
 - `EXECUTION_DATA_DIR=/app/data`
 - `EXECUTION_STATE_PATH=/app/data/live_positions.json`
+- `EXECUTION_RISK_BASE_CHECKPOINT_DIR=/app/data/risk_base_checkpoints`
 - `LOG_DIR=/app/data/logs`
 - `EXECUTION_STRATEGY_CONFIG=strategies/archive/filtered_donor_portfolio_post_adr0058_tail_control_v6_drop_negative_v5.json`
 - `PYTHONPATH=/app/src`
@@ -59,6 +60,7 @@ Recommended explicit values:
 | `DATA_DIR` | `/app/data` |
 | `EXECUTION_DATA_DIR` | `/app/data` |
 | `EXECUTION_STATE_PATH` | `/app/data/live_positions.json` |
+| `EXECUTION_RISK_BASE_CHECKPOINT_DIR` | `/app/data/risk_base_checkpoints` |
 | `LOG_DIR` | `/app/data/logs` |
 | `EXECUTION_STRATEGY_CONFIG` | Override only when deploying a different archived strategy JSON |
 
@@ -112,6 +114,72 @@ On a healthy volume, expect:
 Railway live preflight OK: data_dir=/app/data symbols=['SOL-USDT-SWAP'] data_types=['ohlcv'] no backfill needed
 Starting crypt [execution-only] ...
 ```
+
+The live executor must also log the resolved state path, checkpoint directory,
+loaded state generation, and verified monthly risk window/base. A warning that
+new entries are blocked for risk-base continuity is a safety stop: existing
+positions still synchronize and close normally.
+
+## Monthly risk-base migration and recovery
+
+The first deployment containing ADR-0059 must not change July's historical
+base mid-month. Schedule this deploy outside an H1 boundary (avoid roughly
+`HH:58` through `HH:05` UTC), preserve the current Telegram/log evidence, and
+confirm that the startup H1 callback reports its normal no-catch-up behaviour.
+For the current reconciled state, set all three Railway variables for one
+deploy only:
+
+```text
+EXECUTION_RISK_BASE_ADOPT_EXISTING_STATE=true
+EXECUTION_RISK_BASE_ADOPT_EXPECTED_MONTH=2026-07
+EXECUTION_RISK_BASE_ADOPT_EXPECTED_BASE=102.3381502678064
+```
+
+After startup reports a clean sync and an adopted checkpoint, verify the
+durable pair before removing the variables and restarting once. The expected
+July checkpoint pair is:
+
+```text
+/app/data/risk_base_checkpoints/2026-07.json
+/app/data/risk_base_checkpoints/2026-07.backup.json
+```
+
+It must retain the exact current persisted value `102.3381502678064`; do not
+replace historical July positions with a guessed `$104.77` number. Confirm the
+pair exists, has matching hashes, and that each file exposes the expected base
+and `/app/data/live_positions.json` path:
+
+```bash
+railway ssh --service crypt --environment production -- \
+  sha256sum /app/data/risk_base_checkpoints/2026-07.json \
+  /app/data/risk_base_checkpoints/2026-07.backup.json
+railway ssh --service crypt --environment production -- \
+  grep -E 'monthly_risk_base|state_path|checkpoint_checksum' \
+  /app/data/risk_base_checkpoints/2026-07.json \
+  /app/data/risk_base_checkpoints/2026-07.backup.json
+railway ssh --service crypt --environment production -- \
+  ls -l /app/data/live_positions.json /app/data/live_positions.previous.json
+```
+
+The two hashes must match; both files must show the exact base and state path.
+Only then remove all three adoption variables and restart. The August anchor is
+created at the first post-sync actionable H1 batch that reaches risk sizing,
+not at midnight and not during a blocked or startup callback.
+
+If Railway reports a missing/conflicting checkpoint, do not add a guessed
+balance through the dashboard. Leave new entries paused, export the state,
+checkpoint directory, and persistent log, then restore the confirmed checkpoint
+or investigate the state path/volume:
+
+```bash
+railway ssh -- sh -c 'ls -la /app/data/risk_base_checkpoints /app/data/live_positions*'
+railway ssh -- cat /app/data/live_positions.json > live_positions_export.json
+railway ssh -- sh -c 'tar -C /app/data -czf - risk_base_checkpoints logs' > execution_recovery_export.tgz
+```
+
+`Цена входа отличается от плана` is an alert-only fill-drift notification: the
+trade was opened. `Сигнал пропущен из-за защиты` means a safety block prevented
+an otherwise actionable entry and should be preserved for later reconciliation.
 
 ## Monitoring and export
 

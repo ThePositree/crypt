@@ -53,6 +53,34 @@ class ExecutionSettings(BaseSettings):
     )
     data_dir: Path = Field(default=Path("data"))
     state_path: Path = Field(default=Path("data/live_positions.json"))
+    risk_base_checkpoint_dir: Path | None = Field(
+        default=None,
+        description=(
+            "Directory for immutable monthly risk anchors. "
+            "Defaults to <EXECUTION_DATA_DIR>/risk_base_checkpoints."
+        ),
+    )
+    risk_base_adopt_existing_state: bool = Field(
+        default=False,
+        description=(
+            "One-deploy migration switch for an already synchronized current state. "
+            "Requires an exact expected month/base manifest and never seeds an empty live state."
+        ),
+    )
+    risk_base_adopt_expected_month: str | None = Field(
+        default=None,
+        description=(
+            "One-time migration manifest month in YYYY-MM form. Required with "
+            "EXECUTION_RISK_BASE_ADOPT_EXISTING_STATE=true."
+        ),
+    )
+    risk_base_adopt_expected_base: float | None = Field(
+        default=None,
+        description=(
+            "Exact unrounded monthly risk base expected during the one-time migration. "
+            "Required with EXECUTION_RISK_BASE_ADOPT_EXISTING_STATE=true."
+        ),
+    )
 
     # ── execution parameters (must match the mandate-validated backtest) ───
     exit_geometry: str = Field(default="sl_rrr")
@@ -139,3 +167,8 @@ class ExecutionSettings(BaseSettings):
     def _validate_instrument_precision_policy(cls, v: str | None) -> str | None:
         instrument_precision_from_name(v)
         return v
+
+    @property
+    def resolved_risk_base_checkpoint_dir(self) -> Path:
+        """Return the durable checkpoint directory without requiring an env override."""
+        return self.risk_base_checkpoint_dir or self.data_dir / "risk_base_checkpoints"

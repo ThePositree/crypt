@@ -38,6 +38,84 @@ backtester stop/TP minute.
 
 ---
 
+## P1 — Attest the Railway persistent execution volume before live startup
+
+**What:** add an operator-created immutable volume marker/identifier and a
+live-money preflight check that proves `EXECUTION_DATA_DIR`,
+`EXECUTION_STATE_PATH`, checkpoint directory, and log directory all resolve
+under the intended Railway volume before OKX order logic starts.
+
+**Why now:** ADR-0059 makes a missing state/checkpoint fail closed for new
+entries, but Railway can still create an ephemeral `/app/data` directory when
+the volume is absent or dashboard paths drift. The current guard prevents a
+silent re-anchor; an attestation would also prove the intended durable storage
+is mounted before the service begins managing money.
+
+**Expected gain:** a bad Railway mount/path configuration becomes an explicit
+startup failure instead of a partially functioning service with non-durable
+logs or recovery state.
+
+**Acceptance:** live (`EXECUTION_DRY_RUN=false`) preflight rejects an absent,
+wrong, or path-mismatched marker before creating an OKX client/order; a staging
+redeploy proves marker, state, checkpoint pair, and logs survive; tests cover
+correct and incorrect mount/path combinations.
+
+**Links:** ADR-0059, `docs/deploy/railway.md`,
+`src/crypt/runtime/deploy_preflight.py`,
+`scripts/railway_live_start.sh`.
+
+---
+
+## P1 — Add a single-writer lease for live execution state
+
+**What:** introduce a durable process/file lease or generation compare-and-swap
+around live state reconciliation, checkpoint rollover, and entry-intent
+persistence, with an explicit operator-visible failure when a second writer is
+active.
+
+**Why now:** state generations/checksums protect torn writes but do not prevent
+two overlapping processes from reading one generation and last-writer-wins
+overwriting position lifecycle data. Railway's single mounted volume reduces
+the likelihood but is not a substitute for an execution-level guarantee.
+
+**Expected gain:** a redeploy, scheduler overlap, or accidental second process
+cannot race a live order intent or erase newer state while the risk-base
+checkpoint remains valid.
+
+**Acceptance:** concurrent-process tests show only one manager can hold the
+lease; a second manager fails before order placement; crash/lease expiry has a
+documented recovery path; state generation never regresses in a forced race.
+
+**Links:** ADR-0033, ADR-0055, ADR-0059,
+`src/crypt/execution/executor.py`, `src/crypt/execution/position_state.py`.
+
+---
+
+## P2 — Export portfolio signal diagnostics from `signal_events`
+
+**What:** make donor-portfolio backtest exports report the real event count
+and event rows instead of a permanently zero scalar `signal`/`signal_count`.
+
+**Why now:** the live reconciliation artifacts contain seven and 17 real
+portfolio events, but `signals.csv.signal` is zero on every row and
+`signal_diagnostics.csv` reports zero signals. The authoritative events are
+currently embedded as a Python-literal list in `signal_events`, which is easy
+to misread during operational audits.
+
+**Expected gain:** analysts and operators can identify missed live signals
+directly from standard CSV diagnostics without reverse-engineering a nested
+field or accidentally reporting zero strategy activity.
+
+**Acceptance:** a filtered donor portfolio run exports an event-level signal
+table/count equal to the number of `signal_events`; regression tests cover
+multi-event rows, no-event rows, and a CLI artifact assertion.
+
+**Links:** `docs/execution/live_backtest_reconciliation_2026-07-28.md`,
+`src/backtester/results_analyzer.py`, `src/backtester/strategies/filtered_donor_portfolio.py`,
+`results/live_reconciliation/v6_capital_102_34/20260728_162357/`.
+
+---
+
 ## P1 — Revalidate or retire legacy SOM/Forest strategy families
 
 **What:** decide whether the legacy `som` and `forest` ML strategies should be

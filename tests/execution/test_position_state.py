@@ -11,6 +11,9 @@ import pytest
 from crypt.execution.position_state import (
     ExecutionState,
     LivePosition,
+    RiskBaseCheckpointError,
+    create_monthly_risk_base_checkpoint,
+    load_monthly_risk_base_checkpoint,
     load_state,
     save_state,
 )
@@ -76,7 +79,7 @@ class TestExecutionState:
     def test_all_open_positions_excludes_closed(self) -> None:
         open_pos = _make_position()
         closed_pos = _make_position()
-        closed_pos.status = "closed"  # type: ignore[misc]
+        closed_pos.status = "closed"
         state = ExecutionState(
             schema_version=1,
             risk_window_month=None,
@@ -95,17 +98,21 @@ class TestStatePersistence:
             monthly_risk_base=10_000.0,
             positions=[pos],
             blocked_signal_events_total=7,
+            blocked_signal_event_ids=["event-1"],
         )
         path = tmp_path / "state.json"
         save_state(state, path)
 
         loaded = load_state(path)
+        assert loaded.schema_version == 12
         assert loaded.monthly_risk_base == pytest.approx(10_000.0)
         assert loaded.risk_window_month == (2026, 6)
         assert loaded.blocked_signal_events_total == 7
+        assert loaded.blocked_signal_event_ids == ["event-1"]
         assert len(loaded.positions) == 1
         assert loaded.positions[0].symbol == "SOL-USDT-SWAP"
         assert loaded.positions[0].entry_price == pytest.approx(145.30)
+        assert loaded.generation == 1
 
     def test_load_nonexistent_returns_empty(self, tmp_path: Path) -> None:
         state = load_state(tmp_path / "missing.json")
@@ -137,6 +144,153 @@ class TestStatePersistence:
         )
         save_state(state, path)
         raw = json.loads(path.read_text())
-        assert raw["schema_version"] == 1
+        assert raw["schema_version"] == 12
+        assert isinstance(raw["state_checksum"], str)
         assert len(raw["positions"]) == 1
         assert raw["positions"][0]["symbol"] == "SOL-USDT-SWAP"
+
+    def test_missing_primary_loads_previous_valid_snapshot(self, tmp_path: Path) -> None:
+        path = tmp_path / "state.json"
+        state = ExecutionState(
+            schema_version=10,
+            risk_window_month=(2026, 7),
+            monthly_risk_base=104.77,
+            positions=[],
+        )
+        save_state(state, path)
+        state.monthly_risk_base = 102.34
+        save_state(state, path)
+
+        path.unlink()
+
+        loaded = load_state(path)
+        assert loaded.monthly_risk_base == pytest.approx(104.77)
+        assert loaded.generation == 1
+        assert loaded.state_recovered_from_previous_snapshot
+        assert json.loads(path.read_text(encoding="utf-8"))[
+            "state_recovered_from_previous_snapshot"
+        ]
+        save_state(loaded, path)
+        assert load_state(path).state_recovered_from_previous_snapshot
+
+    def test_corrupt_primary_is_restored_from_previous_valid_snapshot(self, tmp_path: Path) -> None:
+        path = tmp_path / "state.json"
+        state = ExecutionState(
+            schema_version=10,
+            risk_window_month=(2026, 7),
+            monthly_risk_base=104.77,
+            positions=[],
+        )
+        save_state(state, path)
+        state.monthly_risk_base = 102.34
+        save_state(state, path)
+        path.write_text("not valid json", encoding="utf-8")
+
+        loaded = load_state(path)
+        assert loaded.monthly_risk_base == pytest.approx(104.77)
+        assert json.loads(path.read_text(encoding="utf-8"))["monthly_risk_base"] == pytest.approx(
+            104.77
+        )
+
+
+class TestMonthlyRiskBaseCheckpoints:
+    def test_checkpoint_roundtrip_creates_primary_and_backup(self, tmp_path: Path) -> None:
+        checkpoint = create_monthly_risk_base_checkpoint(
+            tmp_path / "checkpoints",
+            risk_window_month=(2026, 7),
+            monthly_risk_base=104.77,
+            source="test",
+            state_path=tmp_path / "state.json",
+            created_at=datetime(2026, 7, 1, tzinfo=UTC),
+        )
+
+        loaded = load_monthly_risk_base_checkpoint(tmp_path / "checkpoints", (2026, 7))
+
+        assert loaded == checkpoint
+        assert (tmp_path / "checkpoints" / "2026-07.json").exists()
+        assert (tmp_path / "checkpoints" / "2026-07.backup.json").exists()
+
+    def test_checkpoint_refuses_a_different_same_month_anchor(self, tmp_path: Path) -> None:
+        directory = tmp_path / "checkpoints"
+        create_monthly_risk_base_checkpoint(
+            directory,
+            risk_window_month=(2026, 7),
+            monthly_risk_base=104.77,
+            source="test",
+            state_path=tmp_path / "state.json",
+            created_at=datetime(2026, 7, 1, tzinfo=UTC),
+        )
+
+        with pytest.raises(RiskBaseCheckpointError, match="different anchor"):
+            create_monthly_risk_base_checkpoint(
+                directory,
+                risk_window_month=(2026, 7),
+                monthly_risk_base=102.34,
+                source="test",
+                state_path=tmp_path / "state.json",
+                created_at=datetime(2026, 7, 2, tzinfo=UTC),
+            )
+
+    @pytest.mark.parametrize("missing_name", ["2026-07.json", "2026-07.backup.json"])
+    def test_checkpoint_requires_both_primary_and_backup(
+        self,
+        tmp_path: Path,
+        missing_name: str,
+    ) -> None:
+        directory = tmp_path / "checkpoints"
+        create_monthly_risk_base_checkpoint(
+            directory,
+            risk_window_month=(2026, 7),
+            monthly_risk_base=104.77,
+            source="test",
+            state_path=tmp_path / "state.json",
+            created_at=datetime(2026, 7, 1, tzinfo=UTC),
+        )
+        (directory / missing_name).unlink()
+
+        with pytest.raises(RiskBaseCheckpointError, match="primary and backup"):
+            load_monthly_risk_base_checkpoint(directory, (2026, 7))
+
+    def test_checkpoint_refuses_non_finite_risk_base(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match="finite and positive"):
+            create_monthly_risk_base_checkpoint(
+                tmp_path / "checkpoints",
+                risk_window_month=(2026, 7),
+                monthly_risk_base=float("nan"),
+                source="test",
+                state_path=tmp_path / "state.json",
+                created_at=datetime(2026, 7, 1, tzinfo=UTC),
+            )
+
+    def test_checkpoint_refuses_nonidentical_primary_and_backup_bytes(self, tmp_path: Path) -> None:
+        directory = tmp_path / "checkpoints"
+        create_monthly_risk_base_checkpoint(
+            directory,
+            risk_window_month=(2026, 7),
+            monthly_risk_base=104.77,
+            source="test",
+            state_path=tmp_path / "state.json",
+            created_at=datetime(2026, 7, 1, tzinfo=UTC),
+        )
+        backup_path = directory / "2026-07.backup.json"
+        backup_path.write_text(backup_path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+
+        with pytest.raises(RiskBaseCheckpointError, match="primary and backup disagree"):
+            load_monthly_risk_base_checkpoint(directory, (2026, 7))
+
+    def test_future_state_schema_fails_closed(self, tmp_path: Path) -> None:
+        path = tmp_path / "state.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 999,
+                    "risk_window_month": None,
+                    "monthly_risk_base": 0.0,
+                    "positions": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ValueError, match="newer than supported"):
+            load_state(path)

@@ -1,5 +1,65 @@
 # In progress
 
+## Live execution vs backtest reconciliation audit (2026-07-28)
+
+**What:** build an evidence-backed reconciliation of the Railway live SOL
+portfolio from its first real entry on 2026-07-13 through the current live
+period. Join Railway volume logs and persisted state, Telegram notifications,
+OKX fills/orders/ledger, deployment/version boundaries, and an exact bounded
+replay of the effective live strategy.
+
+**Why now:** the owner wants live trade count, entry/exit set, and dollar PnL
+to be compared with the backtester. The period contains known candle repairs,
+WebSocket/REST callback failures, a restart catch-up entry, partial-close
+recovery defects, and an exchange-sync block, so a naive fresh replay would
+mislabel operational defects as strategy disagreement.
+
+**Expected gain:** a cash-meaningful audit: every difference is classified as
+normal fill/slippage, a known missed signal/downtime, an extra stale/catch-up
+entry, an accounting/protection recovery event, a changed historical candle,
+or an unresolved data gap. This will establish a reliable live baseline for a
+$100-scale account before interpreting future strategy PnL.
+
+**Acceptance:**
+
+1. An immutable or reproducibly exported OKX fill/order/ledger table covers
+   2026-07-13 onward and reconciles to the account cash path.
+2. A UTC event ledger links every live entry/exit/blocked callback to Railway
+   logs and Telegram evidence, with normal same-side OKX aggregation kept
+   separate from logical constituents.
+3. All confirmed outage/sync-block windows and delayed/extra entries are
+   listed explicitly before comparison.
+4. One owner-run exact replay command is frozen against the identified v6
+   strategy/data window; its artifacts are compared trade-by-trade rather
+   than only by aggregate PnL.
+5. A report gives entry count, closed/open trade count, gross and net dollars,
+   fees, entry/exit drift, matched/unmatched rows, and a final discrepancy
+   verdict.
+
+**Evidence already captured:** owner-run v6 replay artifacts are
+`results/live_reconciliation/v6_capital_104_77/20260728_162345` and
+`results/live_reconciliation/v6_capital_102_34/20260728_162357`. Phase B
+matches all 16 real post-rollout entries and proves one missed short at
+2026-07-23 12:00 UTC, worth `+$4.99897320` in the deterministic replay.
+Phase A remains historically non-deterministic after H1 repair; its first
+three entries retain the stored strict replay (`-1.685379` backtest versus
+`-1.689069` OKX account PnL). Current Railway deployment `a7362c9` is
+post-fix; earlier source version must be inferred from live event payloads and
+logs rather than only deployment metadata.
+
+**Links:** `docs/execution/live_backtest_reconciliation_2026-07-28.md`,
+`docs/archive/candidates/post_adr0058_tail_control_portfolio/live_replay_20260714.md`,
+`docs/execution/live_backtest_parity_audit_2026-06-30.md`, ADR-0048 through
+ADR-0058, `/app/data/live_positions.json`, `/app/data/logs/crypt.log*`.
+
+**Next steps:** after `2026-07-29T00:00:00Z`, the owner must run the one-day
+backfill and continuous phase-B extension recorded in
+`docs/execution/live_backtest_reconciliation_2026-07-28.md`. This appends the
+five 28 July short entries/exits while preserving the 27 July open-position
+path. Then join its artifacts to the final OKX ledger snapshot, classify the
+remaining 28 July events, reconcile the cash bridge including type-8 balance
+changes, and issue the complete-period verdict.
+
 ## Fresh post-ADR-0058 strategy search and portfolio rebuild (2026-07-08)
 
 **What:** restart strategy discovery under the corrected minute execution and

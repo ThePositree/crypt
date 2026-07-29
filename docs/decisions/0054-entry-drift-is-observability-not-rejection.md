@@ -43,3 +43,10 @@ parity error than accepting measurable market slippage.
 - ADR-0051
 - `docs/execution/live_execution.md`
 - `docs/execution/live_backtest_parity_audit_2026-06-30.md`
+
+## 2026-07-28 presentation amendment
+
+The trading decision above is unchanged. Telegram now presents a threshold
+breach in Russian as `Цена входа отличается от плана` and explicitly says that
+the trade is already open; it no longer uses the misleading generic
+`EXECUTION ERROR [BLOCKED]` presentation for this alert-only condition.

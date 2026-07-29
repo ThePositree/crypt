@@ -125,6 +125,11 @@ last-trade and mark-price candles. The signal remains H1; minute data only
 orders stop, TP, native-trailing, and liquidation events inside each hour.
 Use the parallel `last_1m` / `mark_1m` commands in `docs/backfill.md`.
 
+Live Telegram execution notifications are Russian and operator-oriented: they
+separate a real opened trade, an alert-only price drift, and a safety-paused
+entry. The durable monthly risk-base checkpoint and its Railway migration are
+documented in `docs/execution/live_execution.md` and `docs/deploy/railway.md`.
+
 ## Backtester (M2)
 
 ADR-0018 moves future M2 work toward the donor `backtester/` package.
@@ -838,7 +843,7 @@ CI runs the same checks plus `pytest` and `uv lock --check` on every push.
 Follow the step-by-step checklist in `docs/deploy/railway.md`.
 
 Short version:
-1. Connect GitHub repo to Railway → branch `master`.
+1. Connect the GitHub repo to Railway → branch `main`.
 2. Add environment variables (see checklist for full list).
 3. Attach a persistent volume at `/app/data`.
 4. Keep `railway.toml` start command as `sh scripts/railway_live_start.sh`.

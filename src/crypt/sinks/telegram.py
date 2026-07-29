@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import random
 
 from aiogram import Bot
@@ -12,23 +13,68 @@ from crypt.models import Verdict
 from crypt.sinks.base import BaseSink
 
 _DECISION_EMOJI = {"BUY": "🟢", "SELL": "🔴", "HOLD": "🟡"}
+_DECISION_LABEL = {
+    "BUY": "рост (покупка)",
+    "SELL": "снижение (продажа)",
+    "HOLD": "без сделки",
+}
+_REGIME_LABEL = {
+    "TRENDING": "выраженное движение",
+    "RANGING": "боковой рынок",
+    "VOLATILE": "повышенная волатильность",
+    "UNKNOWN": "не определён",
+}
 _MAX_RETRIES = 3
 _RETRY_BACKOFF = 2.0  # seconds
+_MAX_TELEGRAM_MESSAGE = 4_000
+_MAX_ESCAPED_RATIONALE = 2_800
+_MAX_ESCAPED_SYMBOL = 240
 
 
 def _format_message(verdict: Verdict, *, uncalibrated: bool = True) -> str:
     emoji = _DECISION_EMOJI.get(verdict.decision, "⚪")
-    title = f"{emoji} <b>{verdict.symbol}</b> — <b>{verdict.decision}</b>"
+    decision_label = _DECISION_LABEL.get(verdict.decision, verdict.decision)
+    title = (
+        f"{emoji} <b>{_escape_bounded(verdict.symbol, _MAX_ESCAPED_SYMBOL)}</b> "
+        f"— <b>{_escape_bounded(decision_label, _MAX_ESCAPED_SYMBOL)}</b>"
+    )
     if uncalibrated:
-        title += " ⚠️ [UNCALIBRATED]"
+        title += " ⚠️ <b>[UNCALIBRATED] модель ещё не откалибрована</b>"
     lines = [
         title,
-        f"Confidence: {verdict.confidence}%   Score: {verdict.score:+.3f}",
-        f"Regime: {verdict.regime.value}",
+        f"Уверенность модели: {verdict.confidence}% · оценка: {verdict.score:+.3f}",
+        f"Состояние рынка: {_REGIME_LABEL.get(verdict.regime.value, verdict.regime.value)}",
         "",
-        f"<pre>{verdict.rationale}</pre>",
+        "Техническое объяснение:",
+        f"<pre>{_escape_bounded(verdict.rationale, _MAX_ESCAPED_RATIONALE)}</pre>",
     ]
-    return "\n".join(lines)
+    return _limit_telegram_message(lines)
+
+
+def _escape_bounded(value: object, limit: int) -> str:
+    """Escape an operator field while preserving complete HTML entities."""
+    text = str(value).replace("\r\n", "\n").replace("\r", "\n").replace("\n", " ↩ ")
+    output: list[str] = []
+    used = 0
+    for char in text:
+        encoded = html.escape(char, quote=False)
+        if used + len(encoded) > limit - 1:
+            output.append("…")
+            break
+        output.append(encoded)
+        used += len(encoded)
+    return "".join(output)
+
+
+def _limit_telegram_message(lines: list[str]) -> str:
+    """Return complete HTML lines only, under Telegram's 4096-character cap."""
+    kept: list[str] = []
+    for line in lines:
+        candidate = "\n".join([*kept, line])
+        if len(candidate) > _MAX_TELEGRAM_MESSAGE:
+            break
+        kept.append(line)
+    return "\n".join(kept)
 
 
 class TelegramSink(BaseSink):
@@ -39,9 +85,10 @@ class TelegramSink(BaseSink):
     Failures are logged but never raised — the verdict is always persisted by
     other sinks regardless.
 
-    When ``uncalibrated=True`` (default), every alert includes an
-    ``[UNCALIBRATED]`` warning per ADR-0011. Flip to ``False`` only after
-    M2 produces calibrated weights and ADR-0013 ratifies them.
+    When ``uncalibrated=True`` (default), every alert includes the canonical
+    ``[UNCALIBRATED]`` marker plus a Russian explanation per ADR-0011. Flip
+    to ``False`` only after M2 produces calibrated weights and ADR-0013
+    ratifies them.
     """
 
     def __init__(self, bot_token: str, chat_id: str, *, uncalibrated: bool = True) -> None:

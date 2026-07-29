@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
@@ -20,7 +21,13 @@ from crypt.execution.executor import (
     _validate_execution_settings_match_strategy,
 )
 from crypt.execution.okx_order_client import CloseOrderResult, EntryOrderResult
-from crypt.execution.position_state import ExecutionState, LivePosition
+from crypt.execution.position_state import (
+    ExecutionState,
+    LivePosition,
+    create_monthly_risk_base_checkpoint,
+    load_state,
+)
+from crypt.execution.risk_base_continuity import MonthlyRiskBaseContinuity
 from crypt.execution.risk_calculator import LiveRiskCalculator
 from crypt.execution.settings import ExecutionSettings
 from crypt.execution.signal_runner import SignalBatch, SignalEvent
@@ -295,6 +302,8 @@ class _FakeNotifier:
         self.drift_alerts: list[dict[str, object]] = []
         self.entries: list[LivePosition] = []
         self.exits: list[LivePosition] = []
+        self.missed: list[dict[str, object]] = []
+        self.risk_base_blocks: list[dict[str, object]] = []
 
     async def send_daily_sync_report(
         self,
@@ -321,6 +330,12 @@ class _FakeNotifier:
 
     async def send_position_closed(self, pos: LivePosition) -> None:
         self.exits.append(pos)
+
+    async def send_missed_signal(self, **kwargs: object) -> None:
+        self.missed.append(kwargs)
+
+    async def send_risk_base_continuity_blocked(self, **kwargs: object) -> None:
+        self.risk_base_blocks.append(kwargs)
 
     async def close(self) -> None:
         return None
@@ -1261,6 +1276,55 @@ async def test_sync_blocker_alert_is_sent_on_every_failed_sync() -> None:
 
 
 @pytest.mark.asyncio
+async def test_live_risk_base_conflict_blocks_new_entries_and_alerts_operator(
+    tmp_path: Path,
+) -> None:
+    settings = _settings(tmp_path).model_copy(
+        update={
+            "dry_run": False,
+            "risk_base_checkpoint_dir": tmp_path / "risk_base_checkpoints",
+        }
+    )
+    create_monthly_risk_base_checkpoint(
+        settings.resolved_risk_base_checkpoint_dir,
+        risk_window_month=(2026, 7),
+        monthly_risk_base=104.77,
+        source="test",
+        state_path=settings.state_path,
+        created_at=datetime(2026, 7, 1, tzinfo=UTC),
+    )
+    notifier = _FakeNotifier()
+    manager = LiveExecutionManager.__new__(LiveExecutionManager)
+    manager._settings = settings
+    manager._notifier = notifier
+    manager._state = ExecutionState(
+        schema_version=10,
+        risk_window_month=(2026, 7),
+        monthly_risk_base=102.34,
+        positions=[],
+    )
+    manager._risk_base_continuity = MonthlyRiskBaseContinuity(
+        checkpoint_dir=settings.resolved_risk_base_checkpoint_dir,
+        state_path=settings.state_path,
+        allow_adopt_existing_state=False,
+    )
+    manager._risk_base_block_reason = None
+
+    verified = await manager._verify_risk_base_continuity(
+        now=datetime(2026, 7, 28, tzinfo=UTC),
+        exchange_sync_ok=True,
+    )
+
+    assert not verified
+    assert manager._state.risk_base_continuity_status == "blocked"
+    assert "disagree" in (manager._state.risk_base_continuity_error or "")
+    manager._persist_state_before_best_effort_notification()
+    manager._queue_risk_base_blocker()
+    await manager._wait_for_pending_notifications()
+    assert len(notifier.risk_base_blocks) == 1
+
+
+@pytest.mark.asyncio
 async def test_dry_run_capital_override_sizes_against_test_capital(tmp_path: Path) -> None:
     settings = _settings(tmp_path).model_copy(update={"dry_run_capital": 10_000.0})
     manager = LiveExecutionManager.__new__(LiveExecutionManager)
@@ -1893,10 +1957,13 @@ async def test_manage_open_positions_closes_reduced_same_side_constituent_with_m
     assert notifier.exits == [second]
 
 
-def test_audit_blocked_signal_batch_logs_each_missed_event_and_counts_them(
+@pytest.mark.asyncio
+async def test_audit_blocked_signal_batch_logs_each_unique_missed_event_once_and_counts_them(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     manager = LiveExecutionManager.__new__(LiveExecutionManager)
+    notifier = _FakeNotifier()
+    manager._notifier = notifier
     manager._state = ExecutionState(
         schema_version=9,
         risk_window_month=(2026, 7),
@@ -1921,11 +1988,17 @@ def test_audit_blocked_signal_batch_logs_each_missed_event_and_counts_them(
     )
 
     with caplog.at_level(logging.ERROR, logger="crypt.execution.executor"):
-        manager._audit_blocked_signal_batch(
+        await manager._audit_blocked_signal_batch(
             symbol="SOL-USDT-SWAP",
             signal_batch=batch,
             blocking_reasons=["position_size_mismatch:SOL-USDT-SWAP:long:local=1.04:exchange=0.5"],
         )
+        await manager._audit_blocked_signal_batch(
+            symbol="SOL-USDT-SWAP",
+            signal_batch=batch,
+            blocking_reasons=["position_size_mismatch:SOL-USDT-SWAP:long:local=1.04:exchange=0.5"],
+        )
+        await manager._wait_for_pending_notifications()
 
     assert manager._state.blocked_signal_events_total == 6
     assert caplog.text.count("MISSED SIGNAL:") == 2
@@ -1934,6 +2007,53 @@ def test_audit_blocked_signal_batch_logs_each_missed_event_and_counts_them(
     assert "signal_time=2026-07-23T12:00:00+00:00" in caplog.text
     assert "blocked_signal_events_total=6" in caplog.text
     assert "position_size_mismatch" in caplog.text
+    assert len(notifier.missed) == 2
+    assert notifier.missed[-1]["cumulative_count"] == 6
+    assert len(manager._state.blocked_signal_event_ids) == 2
+
+
+@pytest.mark.asyncio
+async def test_missed_signal_state_is_saved_before_slow_telegram_delivery(tmp_path: Path) -> None:
+    class _SlowNotifier:
+        def __init__(self) -> None:
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def send_missed_signal(self, **_kwargs: object) -> None:
+            self.started.set()
+            await self.release.wait()
+
+    settings = _settings(tmp_path)
+    manager = LiveExecutionManager.__new__(LiveExecutionManager)
+    notifier = _SlowNotifier()
+    manager._settings = settings
+    manager._notifier = notifier
+    manager._state = ExecutionState(
+        schema_version=11,
+        risk_window_month=(2026, 7),
+        monthly_risk_base=100.0,
+        positions=[],
+    )
+    batch = SignalBatch(
+        bar_time=datetime(2026, 7, 23, 12, tzinfo=UTC),
+        next_time=datetime(2026, 7, 23, 13, tzinfo=UTC),
+        next_open=76.9,
+        events=[_long_event(bar_time=datetime(2026, 7, 23, 12, tzinfo=UTC))],
+    )
+
+    await manager._audit_blocked_signal_batch(
+        symbol="SOL-USDT-SWAP",
+        signal_batch=batch,
+        blocking_reasons=["position_size_mismatch"],
+    )
+
+    persisted = load_state(settings.state_path)
+    assert persisted.blocked_signal_events_total == 1
+    assert len(persisted.blocked_signal_event_ids) == 1
+    await asyncio.sleep(0)
+    assert notifier.started.is_set()
+    notifier.release.set()
+    await manager._wait_for_pending_notifications()
 
 
 @pytest.mark.asyncio

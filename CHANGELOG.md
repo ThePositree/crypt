@@ -6,6 +6,50 @@ Format: keep entries terse. Date in `YYYY-MM-DD`. Newest on top.
 
 ---
 
+## 2026-07-28 — Hardened live risk-base continuity and Russian Telegram alerts
+
+- Added immutable, checksummed primary/backup monthly risk-base checkpoints
+  bound to the configured execution state path. Missing, partial, conflicting,
+  non-finite, or future-schema state now blocks only new live entries instead
+  of silently re-anchoring monthly sizing from the current balance.
+- Added the exact-manifest July migration path (`2026-07`,
+  `102.3381502678064`) and a Railway verification/runbook before migration
+  variables are removed. New-month anchors require clean exchange sync.
+- Added durable previous-snapshot recovery provenance, bounded idempotent missed-signal
+  audit IDs, and persistence-before-background-delivery for risk-base/missed
+  Telegram alerts so delivery retries cannot consume the H1 callback deadline.
+- Rewrote live and legacy Telegram presentation in Russian, preserving PnL,
+  SL/TP, OKX, strategy/order identifiers, the canonical `[UNCALIBRATED]`
+  marker, HTML escaping, and the Telegram message-size cap.
+- Added persistence, migration, checkpoint-pair, sync, state-path, Telegram
+  escaping/length, non-SOL label, and callback-idempotency regressions.
+- ADRs: ADR-0059; operational amendments to ADR-0010 and ADR-0054.
+- Files touched: `src/crypt/execution/`, `src/crypt/sinks/`, `tests/execution/`,
+  `tests/sinks/`, `docs/decisions/`, `docs/execution/`, `docs/deploy/`,
+  `docs/tasks/`, `.env.example`, `scripts/`, `README.md`, `CHANGELOG.md`.
+
+---
+
+## 2026-07-28 — Started live execution / backtest reconciliation audit
+
+- Verified read-only Railway production-volume/log access and OKX private
+  fills, orders, algo-orders, and ledger access.
+- Froze the v6 strategy/data provenance, split the comparison at the proven
+  18–19 July state-epoch reset, and recorded exact owner-run replay commands.
+- Classified known callback failures, the eight-hour 23 July sync gate, late
+  startup behaviour, and aggregate-position accounting before interpreting
+  PnL differences as strategy defects.
+- Joined the owner-run replay artifacts: post-rollout signal parity is 16 of
+  17, with one confirmed sync-blocked short worth `+$4.99897320` in replay;
+  the pre-rollout fresh replay remains invalid for aggregate PnL because H1
+  repair changed its historical event set.
+- Added a P1 follow-up for monthly risk-base continuity across deployments.
+- Added a P2 follow-up for zero-valued portfolio signal diagnostics.
+- ADRs: none.
+- Files touched: `docs/execution/`, `docs/tasks/`, `CHANGELOG.md`.
+
+---
+
 ## 2026-07-24 — Fixed partial live-close recovery and audited missed signals
 
 - Fixed same-side reduction attribution when an executed constituent stop
