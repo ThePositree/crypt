@@ -104,7 +104,7 @@ def compute_mandate_score(
 
 def run_dss_backtest(
     signal_df: pd.DataFrame,
-    config: TrialConfig,
+    config: TrialConfig,  # noqa: ARG001 - legacy downstream helper, outside DSS v3 search.
     window_data: StrategyData,
     *,
     initial_capital: float = 10_000.0,
@@ -134,12 +134,9 @@ def run_dss_backtest(
     bt = Backtester(window_data, _strategy)
     results = bt.run(
         initial_capital=initial_capital,
-        risk_percent=config.risk_percent,
-        rrr=config.rrr,
         taker_fee=taker_fee,
         maker_fee=maker_fee,
         max_positions=max_positions,
-        position_ttl_bars=config.position_ttl_bars,
         risk_base_period=risk_base_period,
         exit_geometry="sl_rrr",
         structural_sl_mode="ignore",
@@ -224,32 +221,11 @@ def _sample_trial_config(trial: optuna.Trial, search_space: DSSSearchSpace) -> T
                 )
         filter_params[fn] = fp
 
-    rrr_range = search_space.rrr_range
-    rrr = trial.suggest_float(
-        "rrr", rrr_range[0], rrr_range[1], step=rrr_range[2]
-    )
-    risk_range = search_space.risk_percent_range
-    risk_percent = trial.suggest_float(
-        "risk_percent", risk_range[0], risk_range[1], step=risk_range[2]
-    )
-    ttl_range = search_space.position_ttl_bars_range
-    ttl = trial.suggest_int(
-        "position_ttl_bars", ttl_range[0], ttl_range[1], step=ttl_range[2]
-    )
-    atr_sl_range = search_space.atr_sl_mult_range
-    atr_sl_mult = trial.suggest_float(
-        "atr_sl_mult", atr_sl_range[0], atr_sl_range[1], step=atr_sl_range[2]
-    )
-
     return TrialConfig(
         trigger_name=trigger_name_str,
         trigger_params=trigger_params,
         filter_names=filter_names,
         filter_params=filter_params,
-        rrr=float(rrr),
-        risk_percent=float(risk_percent),
-        position_ttl_bars=int(ttl),
-        atr_sl_mult=float(atr_sl_mult),
     )
 
 

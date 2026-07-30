@@ -105,6 +105,51 @@ dollars, trade count, win rate, profit factor, and both drawdown measures.
 **Links:** `docs/tasks/IN_PROGRESS.md`,
 `docs/backtester/tp_reachability_diagnostics.md`.
 
+## P1 — Implement DSS v3 persistent multi-timeframe search
+
+**What:** evolve DSS without renaming it: make timeframe a first-class part of
+every trigger/filter instance, allow repeated filter names on different
+timeframes, add shared random unseen/novelty injection to all search backends,
+remove DSS v2 Stage 2/3 backtests from DSS v3, keep Stage 1 directional
+labeling as the only evaluator, replace the single min-trade gate with
+frequency-class-aware archives so sparse and frequent candidates can be found
+in one run, break DSS v2 compatibility where useful, and add resumable endless
+search when `--n-trials` is omitted.
+
+**Why now:** the current active strategy and catalog search are effectively
+single-primary-timeframe. Useful edge may live in combinations such as
+`trigger@5m`, local filter `@5m`, setup filter `@H1`, and regime filter `@H4`.
+Large search space is intentional, but it needs persistent journals, stable
+candidate hashes, feature caching, and forced exploration so long searches can
+run continuously beside live execution. The final product is a portfolio, so
+DSS must preserve both frequent candidates and rare high-quality candidates for
+downstream combination tests.
+
+**Expected gain:** a research engine that keeps looking for new strategy
+families over large multi-timeframe spaces instead of only optimizing current
+H1-style families, while staying fast because DSS v3 does not optimize trading
+geometry.
+
+**Acceptance:** DSS v3 candidate schema is implemented; exact duplicate
+instances are rejected while same filter name on different timeframes is
+allowed; seen-candidate registry prevents repeat evaluations; every backend
+periodically injects valid random unseen candidates; DSS v3 candidates contain
+no `rrr`, `risk_percent`, `position_ttl_bars`, `atr_sl_mult`, trailing, or
+portfolio sizing fields; DSS v3 does not run Stage 2/3 backtests; endless mode
+resumes from an existing output directory with durable journal/archive/backend
+state; Stage 1 reports and archive cells distinguish sparse, medium, frequent,
+and overactive candidates; a bounded smoke run can preserve both a `20-30`
+signals/year candidate and a frequent candidate without separate command
+profiles; archive/export ranking uses per-frequency-class quotas so sparse
+high-win-rate candidates cannot fill the entire shortlist and frequent
+candidates cannot erase sparse candidates through a global floor; old DSS v2
+state/candidate/export artifacts are not required to resume through DSS v3;
+bounded smoke searches prove no look-ahead in lower-timeframe trigger plus
+higher-timeframe filter alignment.
+
+**Links:** ADR-0062, `docs/discovery/direct_signal_search_v3.md`,
+`src/backtester/strategy_discovery/`.
+
 ## P1 — Revalidate or retire legacy SOM/Forest strategy families
 
 **What:** decide whether legacy `som` and `forest` ML strategies should be

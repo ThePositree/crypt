@@ -6,6 +6,39 @@ Format: newest on top, date in `YYYY-MM-DD`.
 
 ---
 
+## 2026-07-30 — DSS v3 multi-timeframe search direction
+
+- Added ADR-0062 for DSS v3 persistent multi-timeframe search while keeping the
+  DSS name.
+- Added `docs/discovery/direct_signal_search_v3.md` with the candidate model:
+  trigger/filter instances are `name + timeframe + params`, repeated filter
+  names are allowed across different timeframes, and exact duplicate instances
+  are invalid.
+- Specified shared random unseen/novelty injection for all DSS search backends.
+- Clarified DSS v3 as Stage 1-only directional labeling: no DSS Stage 2/3
+  backtests and no RRR/risk/TTL/ATR-stop/trailing/portfolio sizing fields in
+  DSS candidates.
+- Added DSS v3 frequency-class requirements so sparse and frequent candidates
+  can be discovered and archived in the same search run, with independent
+  archive/export quotas rather than a single global frequency floor.
+- Recorded that DSS v3 may break DSS v2 candidate/state/journal/export
+  compatibility; old DSS v2 artifacts are historical only.
+- Specified endless `search-signals` mode when `--n-trials` is omitted, with
+  resumable journals, seen registry, backend state, archive checkpoints,
+  heartbeat/progress files, and live-execution isolation.
+- Started the first implementation slice: removed DSS geometry fields from
+  `TrialConfig`, `DSSCandidate`, and `DSSSearchSpace`; changed
+  `SignalComposer` output to neutral SL/TP placeholders for directional rows;
+  made `search-signals` default to Stage 1-only; and added frequency-class
+  Stage 1 behavior/export reporting.
+- Added a P1 backlog task to implement DSS v3.
+- ADRs: ADR-0062.
+- Verification: `PYTHONPATH=src uv run pytest tests/backtester/test_dss.py -q`;
+  `uv run ruff check` on the touched DSS files.
+- Files touched: `src/backtester/strategy_discovery/`, `src/backtester/__main__.py`,
+  `tests/backtester/test_dss.py`, `docs/discovery/`, `docs/decisions/`,
+  `docs/tasks/`, `CHANGELOG.md`.
+
 ## 2026-07-30 — Documentation reframed as research workbench + live execution
 
 - Rewrote `README.md` as a shorter human-facing product surface: research

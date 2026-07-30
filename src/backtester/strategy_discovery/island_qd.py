@@ -206,9 +206,5 @@ def _append_island_score(output: Path, target: DSSWindowSpec, result: StageScore
             "robust_score": result.score.robust_score,
             "target_score": result.score.window_scores.get(target.label, ""),
             "target_trades": result.score.trades_by_window.get(target.label, ""),
-            "rrr": result.candidate.rrr,
-            "risk_percent": result.candidate.risk_percent,
-            "position_ttl_bars": result.candidate.position_ttl_bars,
-            "atr_sl_mult": result.candidate.atr_sl_mult,
         },
     )

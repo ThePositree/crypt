@@ -3076,7 +3076,7 @@ def search_signals_matrix(
 @click.option(
     "--min-signals-per-week",
     type=float,
-    default=4.0,
+    default=0.0,
     show_default=True,
     help="Min Stage 1 signal frequency per week in each window.",
 )
@@ -3090,7 +3090,7 @@ def search_signals_matrix(
 @click.option(
     "--stage-mode",
     type=click.Choice(["full", "stage1"], case_sensitive=False),
-    default="full",
+    default="stage1",
     show_default=True,
     help="Use stage1 to stop after signal/barrier ranking without backtests.",
 )

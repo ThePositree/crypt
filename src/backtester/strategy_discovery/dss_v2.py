@@ -84,7 +84,7 @@ def run_dss_v2_search(
     window_data: dict[str, StrategyData],
     progress_callback: Callable[[int], None] | None = None,
 ) -> DSSV2Result:
-    """Run DSS v2 and write resumable staged artifacts under config.output."""
+    """Run DSS search and write Stage 1 directional artifacts under config.output."""
     output = config.output
     output.mkdir(parents=True, exist_ok=True)
     _guard_output_dir(output)
@@ -127,49 +127,13 @@ def run_dss_v2_search(
             behavior = stage1.behavior
             assert behavior is not None
             stage1_survivors += 1
-            if config.stage_mode == "stage1":
-                continue
-
-            stage2 = evaluate_stage_scores(
-                candidate=candidate,
-                behavior=behavior,
-                windows=_proxy_windows(config.windows),
-                window_data=window_data,
-                config=config,
-                composer=composer,
-                novelty_bonus=10.0 if archive.occupied_cells == 0 else 0.0,
-            )
-            _append_stage_score(output / "stage2_proxy.csv", stage2, config.windows)
-            archive.consider(stage2.candidate, stage2.behavior, stage2.score)
-
-            if not _should_promote_to_stage3(stage2, archive, config):
-                continue
-            stage2_survivors += 1
-
-            stage3 = evaluate_stage_scores(
-                candidate=candidate,
-                behavior=behavior,
-                windows=config.windows,
-                window_data=window_data,
-                config=config,
-                composer=composer,
-                novelty_bonus=0.0,
-            )
-            _append_stage_score(output / "stage3_full_scores.csv", stage3, config.windows)
-            _append_score_history(output / "score_history.csv", stage3)
-            archive.consider(stage3.candidate, stage3.behavior, stage3.score)
-            completed_stage3.add(candidate.candidate_id)
-            stage3_evaluations += 1
+            continue
         finally:
             if progress_callback is not None:
                 progress_callback(1)
 
     stage1_ranked = write_stage1_ranked(output, config)
-    if config.stage_mode == "stage1":
-        exported = export_stage1_candidates(stage1_ranked, output, config)
-    else:
-        _write_archive(output, archive)
-        exported = export_stage4_candidates(archive, config)
+    exported = export_stage1_candidates(stage1_ranked, output, config)
     _write_summary(
         output=output,
         config=config,
@@ -266,20 +230,13 @@ def export_stage4_candidates(archive: DSSArchive, config: DSSConfig) -> list[Pat
         path = candidates_dir / f"dss_v2_{rank:03d}_{candidate.trigger_name}_{safe_cell}.json"
         payload = {
             "name": "dss_strategy",
-            "version": "2.0",
+            "version": "3.0-stage1",
             "candidate_id": candidate.candidate_id,
             "scores": elite.score.window_scores,
             "min_score": elite.score.score_min,
             "robust_score": elite.score.robust_score,
             "behavior_cell": elite.behavior.to_label(),
             "params": candidate.trial_config.to_dict(),
-            "backtest_args": {
-                "rrr": candidate.rrr,
-                "risk_percent": candidate.risk_percent,
-                "position_ttl_bars": candidate.position_ttl_bars,
-                "risk_base_period": config.risk_base_period,
-                "exit_geometry": "sl_rrr",
-            },
         }
         path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
         exports.append(path)
@@ -293,10 +250,6 @@ def export_stage4_candidates(archive: DSSArchive, config: DSSConfig) -> list[Pat
                 "score_min": elite.score.score_min,
                 "trigger_name": candidate.trigger_name,
                 "filter_names": "+".join(candidate.filter_names),
-                "rrr": candidate.rrr,
-                "risk_percent": candidate.risk_percent,
-                "ttl": candidate.position_ttl_bars,
-                "atr_sl_mult": candidate.atr_sl_mult,
                 "validation_command": _validation_command(config, path),
             }
         )
@@ -360,7 +313,9 @@ def export_stage1_candidates(
     candidates_dir.mkdir(exist_ok=True)
     exports: list[Path] = []
     manifest_rows: list[dict[str, object]] = []
-    for idx, row in enumerate(ranked_rows[: config.top_n_candidates], 1):
+    selected_rows = _select_stage1_export_rows(ranked_rows, config.top_n_candidates)
+    _write_frequency_archive(output, ranked_rows)
+    for idx, row in enumerate(selected_rows, 1):
         candidate_id = str(row["candidate_id"])
         candidate = candidates_by_id.get(candidate_id)
         if candidate is None:
@@ -368,18 +323,11 @@ def export_stage1_candidates(
         path = candidates_dir / f"stage1_{idx:03d}_{candidate_id}_{candidate.trigger_name}.json"
         payload = {
             "name": "dss_strategy",
-            "version": "2.0-stage1",
+            "version": "3.0-stage1",
             "candidate_id": candidate.candidate_id,
             "stage1_score": row["stage1_score"],
             "stage1_metrics": row,
             "params": candidate.trial_config.to_dict(),
-            "backtest_args": {
-                "rrr": candidate.rrr,
-                "risk_percent": candidate.risk_percent,
-                "position_ttl_bars": candidate.position_ttl_bars,
-                "risk_base_period": config.risk_base_period,
-                "exit_geometry": "sl_rrr",
-            },
         }
         path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
         exports.append(path)
@@ -390,6 +338,7 @@ def export_stage1_candidates(
                 "candidate_path": str(path),
                 "trigger_name": candidate.trigger_name,
                 "filter_names": "+".join(candidate.filter_names),
+                "frequency_class": row.get("frequency_class", ""),
                 "stage1_score": row["stage1_score"],
             }
         )
@@ -413,11 +362,59 @@ def _write_stage1_manifest(path: Path, rows: list[dict[str, object]]) -> None:
                 f"- Path: `{row['candidate_path']}`",
                 f"- Trigger: `{row['trigger_name']}`",
                 f"- Filters: `{row['filter_names']}`",
+                f"- Frequency class: `{row.get('frequency_class', '')}`",
                 f"- Stage 1 score: `{cast(float, row['stage1_score']):.2f}`",
                 "",
             ]
         )
     path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _select_stage1_export_rows(
+    ranked_rows: list[dict[str, object]], top_n: int
+) -> list[dict[str, object]]:
+    if top_n <= 0:
+        return []
+    buckets: dict[str, list[dict[str, object]]] = {}
+    for row in ranked_rows:
+        buckets.setdefault(str(row.get("frequency_class", "")), []).append(row)
+
+    selected: list[dict[str, object]] = []
+    seen: set[str] = set()
+    preferred_order = ["sparse", "medium", "frequent", "overactive", "too_sparse", "empty", ""]
+    while len(selected) < top_n:
+        before = len(selected)
+        for frequency_class in preferred_order:
+            bucket = buckets.get(frequency_class, [])
+            while bucket:
+                row = bucket.pop(0)
+                candidate_id = str(row.get("candidate_id", ""))
+                if candidate_id in seen:
+                    continue
+                selected.append(row)
+                seen.add(candidate_id)
+                break
+            if len(selected) >= top_n:
+                break
+        if len(selected) == before:
+            break
+    return selected
+
+
+def _write_frequency_archive(output: Path, ranked_rows: list[dict[str, object]]) -> None:
+    summary: dict[str, dict[str, object]] = {}
+    for row in ranked_rows:
+        frequency_class = str(row.get("frequency_class", ""))
+        bucket = summary.setdefault(
+            frequency_class,
+            {"frequency_class": frequency_class, "count": 0, "best_stage1_score": ""},
+        )
+        bucket["count"] = int(cast(int, bucket["count"])) + 1
+        score = float(cast(float, row.get("stage1_score", 0.0) or 0.0))
+        best = bucket["best_stage1_score"]
+        if best == "" or score > float(cast(float, best)):
+            bucket["best_stage1_score"] = score
+    _write_csv(output / "stage1_frequency_archive.csv", list(summary.values()))
 
 
 def _generate_stage0_candidates(
@@ -431,20 +428,12 @@ def _generate_stage0_candidates(
     triggers = list(search_space.trigger_names)
     filters = list(search_space.filter_names)
     out: list[DSSCandidate] = []
-    exec_grid = [
-        (1.5, 1.0, 24, 0.75),
-        (2.0, 1.5, 36, 1.0),
-        (2.5, 2.0, 48, 1.5),
-        (3.0, 2.5, 60, 2.0),
-        (4.0, 3.0, 72, 2.5),
-    ]
     filter_depths = [0, 1, 2, min(3, max_filters)]
     for idx in range(start, limit):
         trigger = triggers[idx % len(triggers)]
         depth = filter_depths[(idx // max(len(triggers), 1)) % len(filter_depths)]
         depth = min(depth, max_filters, len(filters))
         chosen_filters = tuple(sorted(rng.sample(filters, depth))) if depth else ()
-        rrr, risk, ttl, atr = exec_grid[idx % len(exec_grid)]
         out.append(
             DSSCandidate(
                 candidate_id=f"dssv2_{idx + 1:06d}",
@@ -461,10 +450,6 @@ def _generate_stage0_candidates(
                     }
                     for name in chosen_filters
                 },
-                rrr=rrr,
-                risk_percent=risk,
-                position_ttl_bars=ttl,
-                atr_sl_mult=atr,
                 generation=0,
             )
         )
@@ -574,6 +559,7 @@ def _append_stage1(
         "candidate_id": candidate.candidate_id,
         "trigger_name": candidate.trigger_name,
         "filter_names": "+".join(candidate.filter_names),
+        "frequency_class": result.behavior.frequency_class if result.behavior else "",
         "passed": result.passed,
         "should_promote": result.should_promote,
         "stage1_score": result.advisory_score if result.advisory_score is not None else "",
@@ -629,10 +615,6 @@ def _append_stage_score(path: Path, result: StageScoreResult, windows: list[DSSW
         "score_median": score.score_median,
         "score_mean": score.score_mean,
         "score_stdev": score.score_stdev,
-        "rrr": candidate.rrr,
-        "risk_percent": candidate.risk_percent,
-        "position_ttl_bars": candidate.position_ttl_bars,
-        "atr_sl_mult": candidate.atr_sl_mult,
     }
     for window in windows:
         row[f"score_{window.label}"] = score.window_scores.get(window.label, "")

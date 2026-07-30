@@ -59,14 +59,10 @@ class TrialConfig:
     trigger_params: dict[str, ParamValue]
     filter_names: tuple[str, ...]
     filter_params: dict[str, dict[str, ParamValue]]
-    rrr: float
-    risk_percent: float
-    position_ttl_bars: int
-    atr_sl_mult: float = 1.0
 
     @property
     def signal_cache_key(self) -> str:
-        """Hash covering signal shape only (trigger + filters, not exec params)."""
+        """Hash covering signal shape only."""
         payload = {
             "trigger": self.trigger_name,
             "trigger_params": dict(sorted(self.trigger_params.items())),
@@ -74,7 +70,6 @@ class TrialConfig:
             "filter_params": {
                 k: dict(sorted(v.items())) for k, v in sorted(self.filter_params.items())
             },
-            "atr_sl_mult": self.atr_sl_mult,
         }
         return hashlib.sha1(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
@@ -85,10 +80,6 @@ class TrialConfig:
             "trigger_params": dict(self.trigger_params),
             "filter_names": list(self.filter_names),
             "filter_params": {k: dict(v) for k, v in self.filter_params.items()},
-            "rrr": self.rrr,
-            "risk_percent": self.risk_percent,
-            "position_ttl_bars": self.position_ttl_bars,
-            "atr_sl_mult": self.atr_sl_mult,
         }
 
     @classmethod
@@ -105,26 +96,18 @@ class TrialConfig:
             trigger_params=dict(trigger_params_raw),
             filter_names=tuple(str(n) for n in filter_names_raw),
             filter_params={k: dict(v) for k, v in filter_params_raw.items()},
-            rrr=float(cast(Any, d["rrr"])),
-            risk_percent=float(cast(Any, d["risk_percent"])),
-            position_ttl_bars=int(cast(Any, d["position_ttl_bars"])),
-            atr_sl_mult=float(cast(Any, d.get("atr_sl_mult", 1.0))),
         )
 
 
 @dataclass(frozen=True, slots=True)
 class DSSCandidate:
-    """Immutable DSS v2 candidate with reproducible signal and execution shape."""
+    """Immutable DSS candidate with reproducible directional signal shape."""
 
     candidate_id: str
     trigger_name: str
     trigger_params: dict[str, float | int | str]
     filter_names: tuple[str, ...]
     filter_params: dict[str, dict[str, float | int | str]]
-    rrr: float
-    risk_percent: float
-    position_ttl_bars: int
-    atr_sl_mult: float
     generation: int
     parent_ids: tuple[str, ...] = ()
 
@@ -135,10 +118,6 @@ class DSSCandidate:
             trigger_params=dict(self.trigger_params),
             filter_names=self.filter_names,
             filter_params={name: dict(params) for name, params in self.filter_params.items()},
-            rrr=self.rrr,
-            risk_percent=self.risk_percent,
-            position_ttl_bars=self.position_ttl_bars,
-            atr_sl_mult=self.atr_sl_mult,
         )
 
     @property
@@ -147,16 +126,11 @@ class DSSCandidate:
 
     @property
     def execution_key(self) -> str:
-        payload = {
-            "rrr": self.rrr,
-            "risk_percent": self.risk_percent,
-            "position_ttl_bars": self.position_ttl_bars,
-        }
-        return hashlib.sha1(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+        return "stage1_directional_only"
 
     @property
     def candidate_key(self) -> str:
-        return hashlib.sha1(f"{self.signal_cache_key}:{self.execution_key}".encode()).hexdigest()
+        return self.signal_cache_key
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -165,10 +139,6 @@ class DSSCandidate:
             "trigger_params": dict(self.trigger_params),
             "filter_names": list(self.filter_names),
             "filter_params": {k: dict(v) for k, v in self.filter_params.items()},
-            "rrr": self.rrr,
-            "risk_percent": self.risk_percent,
-            "position_ttl_bars": self.position_ttl_bars,
-            "atr_sl_mult": self.atr_sl_mult,
             "generation": self.generation,
             "parent_ids": list(self.parent_ids),
         }
@@ -188,10 +158,6 @@ class DSSCandidate:
             trigger_params=dict(trigger_params_raw),
             filter_names=tuple(str(v) for v in filter_names_raw),
             filter_params={str(k): dict(v) for k, v in filter_params_raw.items()},
-            rrr=float(cast(Any, data["rrr"])),
-            risk_percent=float(cast(Any, data["risk_percent"])),
-            position_ttl_bars=int(cast(Any, data["position_ttl_bars"])),
-            atr_sl_mult=float(cast(Any, data.get("atr_sl_mult", 1.0))),
             generation=int(cast(Any, data.get("generation", 0))),
             parent_ids=tuple(str(v) for v in parent_ids_raw),
         )
@@ -201,9 +167,7 @@ class DSSCandidate:
 class DSSBehavior:
     trigger_family: str
     side_profile: str
-    trade_count_bucket: str
-    hold_time_bucket: str
-    risk_geometry: str
+    frequency_class: str
     regime_strength: str
     filter_depth: str
 
@@ -212,8 +176,8 @@ class DSSBehavior:
         return (
             self.trigger_family,
             self.side_profile,
-            self.trade_count_bucket,
-            self.risk_geometry,
+            self.frequency_class,
+            self.regime_strength,
             self.filter_depth,
         )
 
@@ -289,10 +253,6 @@ class DSSSearchSpace:
     trigger_param_bounds: dict[str, dict[str, ParamDef]]
     filter_param_bounds: dict[str, dict[str, ParamDef]]
     max_filters: int = 4
-    rrr_range: FloatRange = (1.5, 4.0, 0.25)
-    risk_percent_range: FloatRange = (1.0, 3.0, 0.25)
-    position_ttl_bars_range: IntRange = (24, 72, 4)
-    atr_sl_mult_range: FloatRange = (0.5, 2.5, 0.25)
 
 
 # ---------------------------------------------------------------------------
@@ -323,7 +283,7 @@ class DSSConfig:
     signal_cache_max_entries: int = 2_000
     algorithm: Literal["staged", "catcma_qd", "island_qd", "hyperband_qd", "smac_qd"] = "staged"
     catalog: Literal["legacy", "pinescript_v1", "all"] = "legacy"
-    stage_mode: Literal["full", "stage1"] = "full"
+    stage_mode: Literal["full", "stage1"] = "stage1"
     seed: int = 36
     stage1_tp_move_pct: float = 0.007
     stage1_sl_move_pct: float = 0.004

@@ -3,6 +3,47 @@
 Only active work belongs here. Historical research notes belong in
 `CHANGELOG.md`, `CHANGELOG_ARCHIVE.md`, or archive docs.
 
+## DSS v3 persistent multi-timeframe search implementation
+
+**What:** implement ADR-0062 in slices: Stage 1-only directional DSS first,
+then multi-timeframe trigger/filter instances, frequency-class archives,
+novelty injection, and endless resumable search.
+
+**Why now:** the owner approved breaking DSS v2 compatibility. Current DSS
+must stop mixing signal discovery with RRR/risk/TTL/ATR-stop geometry, and it
+must preserve both sparse and frequent candidates in one search run.
+
+**Expected gain:** faster large-space signal discovery that produces clean
+directional candidates for later optimizer/backtest/portfolio workflows.
+
+**Current evidence:**
+
+- Implemented first code slice: DSS candidate/config/search-space no longer
+  carries `rrr`, `risk_percent`, `position_ttl_bars`, or `atr_sl_mult`.
+- `SignalComposer` emits directional signal rows with neutral `stop_price` and
+  `tp_price`; Stage 1 barriers remain labeling-only.
+- `search-signals` defaults to `stage1`; DSS runner no longer enters Stage 2/3
+  from the main path.
+- Stage 1 behavior now uses `frequency_class`; Stage 1 exports use
+  frequency-class round-robin selection and write `stage1_frequency_archive.csv`.
+- Focused verification: `PYTHONPATH=src uv run pytest tests/backtester/test_dss.py -q`.
+
+**Next steps:**
+
+1. Finish removing or isolating obsolete DSS v2 full-backtest helpers
+   (`dss_objective`, `evaluate_stage_scores`, Stage 2/3 reports) so they cannot
+   be mistaken for active DSS.
+2. Add real v3 trigger/filter instance schema with timeframe and stable hash.
+3. Add multi-timeframe feature loading/cache and closed-candle as-of alignment.
+4. Add seen registry plus random unseen/novelty injection shared across
+   backends.
+5. Add endless mode with durable journal/archive/backend state and output lock.
+
+**Acceptance:** see the P1 DSS v3 task in `docs/tasks/BACKLOG.md`.
+
+**Links:** ADR-0062, `docs/discovery/direct_signal_search_v3.md`,
+`src/backtester/strategy_discovery/`.
+
 ## Live execution / backtest reconciliation audit
 
 **What:** finish the evidence-backed reconciliation of the live SOL portfolio

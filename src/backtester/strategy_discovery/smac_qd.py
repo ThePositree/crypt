@@ -90,14 +90,6 @@ class _CandidateEncoder:
         values.append(
             _safe_ratio(len(candidate.filter_names), max(self._search_space.max_filters, 1))
         )
-        values.append(_normalize_float(candidate.rrr, self._search_space.rrr_range))
-        values.append(
-            _normalize_float(candidate.risk_percent, self._search_space.risk_percent_range)
-        )
-        values.append(
-            _normalize_int(candidate.position_ttl_bars, self._search_space.position_ttl_bars_range)
-        )
-        values.append(_normalize_float(candidate.atr_sl_mult, self._search_space.atr_sl_mult_range))
 
         for trigger in self._search_space.trigger_names:
             params = candidate.trigger_params if candidate.trigger_name == trigger else {}
@@ -122,7 +114,7 @@ class _CandidateEncoder:
         names: list[str] = []
         names.extend(f"trigger={name}" for name in search_space.trigger_names)
         names.extend(f"filter={name}" for name in search_space.filter_names)
-        names.extend(["filter_depth", "rrr", "risk_percent", "position_ttl_bars", "atr_sl_mult"])
+        names.append("filter_depth")
         for trigger in search_space.trigger_names:
             for name in sorted(search_space.trigger_param_bounds.get(trigger, {})):
                 names.append(f"trigger_param={trigger}.{name}")
@@ -224,10 +216,6 @@ def run_smac_qd_search(
                 trigger_params=candidate.trigger_params,
                 filter_names=candidate.filter_names,
                 filter_params=candidate.filter_params,
-                rrr=candidate.rrr,
-                risk_percent=candidate.risk_percent,
-                position_ttl_bars=candidate.position_ttl_bars,
-                atr_sl_mult=candidate.atr_sl_mult,
                 generation=generation,
             )
             stage0_by_id[candidate.candidate_id] = candidate
@@ -385,8 +373,6 @@ def _next_proposals(
         shape = (
             proposal.candidate.trigger_name,
             proposal.candidate.filter_names,
-            proposal.candidate.rrr,
-            proposal.candidate.position_ttl_bars,
         )
         if shape in seen_shapes:
             continue
@@ -420,10 +406,6 @@ def _append_proposal(output: Path, proposal: _SMACProposal, candidate: DSSCandid
             "predicted_mean": proposal.predicted_mean,
             "predicted_std": proposal.predicted_std,
             "acquisition": proposal.acquisition,
-            "rrr": candidate.rrr,
-            "risk_percent": candidate.risk_percent,
-            "position_ttl_bars": candidate.position_ttl_bars,
-            "atr_sl_mult": candidate.atr_sl_mult,
         },
     )
 
@@ -438,10 +420,6 @@ def _append_observation(output: Path, observation: _SMACObservation) -> None:
             "fidelity": observation.fidelity,
             "trigger_name": candidate.trigger_name,
             "filter_names": "+".join(candidate.filter_names),
-            "rrr": candidate.rrr,
-            "risk_percent": candidate.risk_percent,
-            "position_ttl_bars": candidate.position_ttl_bars,
-            "atr_sl_mult": candidate.atr_sl_mult,
         },
     )
 

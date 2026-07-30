@@ -75,10 +75,6 @@ class _WeightedModel:
         self._trigger_weights = _uniform_weights(search_space.trigger_names)
         self._filter_weights = _uniform_weights(search_space.filter_names)
         self._depth_weights = _uniform_weights(tuple(range(search_space.max_filters + 1)))
-        self._rrr_weights = _uniform_weights(_float_grid(search_space.rrr_range))
-        self._risk_weights = _uniform_weights(_float_grid(search_space.risk_percent_range))
-        self._ttl_weights = _uniform_weights(_int_grid(search_space.position_ttl_bars_range))
-        self._atr_weights = _uniform_weights(_float_grid(search_space.atr_sl_mult_range))
         self._param_weights: dict[tuple[str, str, str], dict[Hashable, float]] = {}
         self._init_param_weights("trigger", search_space.trigger_param_bounds)
         self._init_param_weights("filter", search_space.filter_param_bounds)
@@ -94,10 +90,6 @@ class _WeightedModel:
             trigger_params=self._sample_param_group("trigger", trigger),
             filter_names=filters,
             filter_params={name: self._sample_param_group("filter", name) for name in filters},
-            rrr=float(_weighted_choice(self._rrr_weights, self._rng)),
-            risk_percent=float(_weighted_choice(self._risk_weights, self._rng)),
-            position_ttl_bars=int(_weighted_choice(self._ttl_weights, self._rng)),
-            atr_sl_mult=float(_weighted_choice(self._atr_weights, self._rng)),
             generation=generation,
         )
 
@@ -118,22 +110,6 @@ class _WeightedModel:
         self._depth_weights = _update_weights(
             self._depth_weights,
             [len(elite.candidate.filter_names) for elite in elites],
-        )
-        self._rrr_weights = _update_weights(
-            self._rrr_weights,
-            [elite.candidate.rrr for elite in elites],
-        )
-        self._risk_weights = _update_weights(
-            self._risk_weights,
-            [elite.candidate.risk_percent for elite in elites],
-        )
-        self._ttl_weights = _update_weights(
-            self._ttl_weights,
-            [elite.candidate.position_ttl_bars for elite in elites],
-        )
-        self._atr_weights = _update_weights(
-            self._atr_weights,
-            [elite.candidate.atr_sl_mult for elite in elites],
         )
         for elite in elites:
             self._update_param_group(
@@ -371,10 +347,6 @@ def _write_model_summary(path: Path, model: _WeightedModel) -> None:
     _extend_weight_rows(rows, "trigger", model._trigger_weights)
     _extend_weight_rows(rows, "filter", model._filter_weights)
     _extend_weight_rows(rows, "depth", model._depth_weights)
-    _extend_weight_rows(rows, "rrr", model._rrr_weights)
-    _extend_weight_rows(rows, "risk_percent", model._risk_weights)
-    _extend_weight_rows(rows, "ttl", model._ttl_weights)
-    _extend_weight_rows(rows, "atr_sl_mult", model._atr_weights)
     with path.open("w", encoding="utf-8", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=["namespace", "value", "weight"])
         writer.writeheader()

@@ -93,6 +93,8 @@ def evaluate_stage1(
     median_stop_atr: dict[str, float] = {}
     barrier_metrics: dict[str, BarrierMetrics] = {}
     total_signals = 0
+    total_resolved = 0
+    total_days = 0.0
     first_rejection_reason = ""
     passing_windows: list[str] = []
 
@@ -105,6 +107,7 @@ def evaluate_stage1(
         count = len(signals)
         signal_counts[window.label] = count
         total_signals += count
+        total_days += _window_days(data)
         if count > _max_signals_for_window(window, data):
             first_rejection_reason = first_rejection_reason or f"overtrading:{window.label}"
             if not config.specialist_windows:
@@ -131,6 +134,7 @@ def evaluate_stage1(
         barrier_metrics[window.label] = metrics
         min_signals = _min_signals_for_window(window, data, config)
         resolved_signals = metrics.tp_first + metrics.sl_first
+        total_resolved += resolved_signals
         if resolved_signals < min_signals:
             first_rejection_reason = first_rejection_reason or f"too_few_signals:{window.label}"
             if not config.specialist_windows:
@@ -179,7 +183,11 @@ def evaluate_stage1(
 
     if len(passing_windows) == len(config.windows):
         behavior = _balanced_behavior(
-            candidate, total_signals=total_signals, long_ratios=long_ratios
+            candidate,
+            total_signals=total_signals,
+            total_resolved=total_resolved,
+            total_days=total_days,
+            long_ratios=long_ratios,
         )
         return _stage1_result(
             candidate=candidate,
@@ -201,6 +209,8 @@ def evaluate_stage1(
         behavior = _behavior_from_metrics(
             candidate,
             total_signals=total_signals,
+            total_resolved=total_resolved,
+            total_days=total_days,
             long_ratio=sum(long_ratios.values()) / max(len(long_ratios), 1),
             regime_strength=target_window,
         )
@@ -241,7 +251,10 @@ def stage1_advisory_score(result: Stage1Result) -> float:
         "medium": 35.0,
         "high": 5.0,
         "too_high": -80.0,
-    }.get(result.behavior.trade_count_bucket, 0.0)
+        "sparse": 20.0,
+        "frequent": 20.0,
+        "overactive": -80.0,
+    }.get(result.behavior.frequency_class, 0.0)
     long_ratio_values = list(result.long_ratios.values())
     if long_ratio_values:
         side_dispersion = max(long_ratio_values) - min(long_ratio_values)
@@ -360,11 +373,15 @@ def _balanced_behavior(
     candidate: DSSCandidate,
     *,
     total_signals: int,
+    total_resolved: int,
+    total_days: float,
     long_ratios: dict[str, float],
 ) -> DSSBehavior:
     return _behavior_from_metrics(
         candidate,
         total_signals=total_signals,
+        total_resolved=total_resolved,
+        total_days=total_days,
         long_ratio=sum(long_ratios.values()) / max(len(long_ratios), 1),
         regime_strength="balanced",
     )
@@ -374,6 +391,8 @@ def _behavior_from_metrics(
     candidate: DSSCandidate,
     *,
     total_signals: int,
+    total_resolved: int,
+    total_days: float,
     long_ratio: float,
     regime_strength: str,
 ) -> DSSBehavior:
@@ -388,37 +407,15 @@ def _behavior_from_metrics(
     else:
         side_profile = "balanced"
 
-    if total_signals < 100:
-        trade_bucket = "low"
-    elif total_signals < 400:
-        trade_bucket = "medium"
-    elif total_signals < 900:
-        trade_bucket = "high"
-    else:
-        trade_bucket = "too_high"
-
-    if candidate.position_ttl_bars <= 30:
-        hold_bucket = "short"
-    elif candidate.position_ttl_bars <= 54:
-        hold_bucket = "medium"
-    else:
-        hold_bucket = "long"
-
-    if candidate.atr_sl_mult < 1.0:
-        risk_geometry = "tight_sl"
-    elif candidate.atr_sl_mult <= 1.75:
-        risk_geometry = "medium_sl"
-    else:
-        risk_geometry = "wide_sl"
+    del total_signals
+    frequency_class = _frequency_class(total_resolved, total_days)
     depth = len(candidate.filter_names)
     filter_depth = "3plus" if depth >= 3 else str(depth)
 
     return DSSBehavior(
         trigger_family=candidate.trigger_name,
         side_profile=side_profile,
-        trade_count_bucket=trade_bucket,
-        hold_time_bucket=hold_bucket,
-        risk_geometry=risk_geometry,
+        frequency_class=frequency_class,
         regime_strength=regime_strength,
         filter_depth=filter_depth,
     )
@@ -597,6 +594,32 @@ def _max_signals_for_window(window: DSSWindowSpec, data: StrategyData) -> int:
     elapsed_days = max((index.max() - index.min()).total_seconds() / 86_400, 0.0)
     covered_days = max(1.0, elapsed_days + 1.0 / 24.0)
     return max(_MAX_SIGNALS_PER_DAY, int(covered_days * _MAX_SIGNALS_PER_DAY))
+
+
+def _window_days(data: StrategyData) -> float:
+    primary = data.primary
+    if primary.empty:
+        return 0.0
+    index = pd.DatetimeIndex(primary.index)
+    if len(index) <= 1:
+        return 1.0 / 24.0
+    elapsed_days = max((index.max() - index.min()).total_seconds() / 86_400, 0.0)
+    return max(1.0 / 24.0, elapsed_days + 1.0 / 24.0)
+
+
+def _frequency_class(resolved_events: int, covered_days: float) -> str:
+    if resolved_events <= 0 or covered_days <= 0:
+        return "empty"
+    annualized = resolved_events * 365.0 / covered_days
+    if annualized < 20:
+        return "too_sparse"
+    if annualized < 60:
+        return "sparse"
+    if annualized < 180:
+        return "medium"
+    if annualized <= 520:
+        return "frequent"
+    return "overactive"
 
 
 def _min_signals_for_window(window: DSSWindowSpec, data: StrategyData, config: DSSConfig) -> int:

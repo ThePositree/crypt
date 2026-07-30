@@ -113,10 +113,6 @@ def _trial_to_trial_config(trial: optuna.trial.FrozenTrial) -> TrialConfig | Non
             trigger_params=trigger_params,
             filter_names=filter_names,
             filter_params=filter_params,
-            rrr=float(params.get("rrr", 2.0)),
-            risk_percent=float(params.get("risk_percent", 1.0)),
-            position_ttl_bars=int(params.get("position_ttl_bars", 36)),
-            atr_sl_mult=float(params.get("atr_sl_mult", 1.0)),
         )
     except (TypeError, ValueError, KeyError):
         return None
@@ -146,13 +142,6 @@ def _trial_to_candidate_json(
         "scores": scores,
         "min_score": min(scores.values()) if scores else float("-inf"),
         "params": config.to_dict(),
-        "backtest_args": {
-            "rrr": config.rrr,
-            "risk_percent": config.risk_percent,
-            "position_ttl_bars": config.position_ttl_bars,
-            "risk_base_period": "monthly",
-            "exit_geometry": "sl_rrr",
-        },
     }
 
 

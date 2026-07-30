@@ -49,11 +49,7 @@ from backtester.strategy_discovery.dss_config import (
     IntParam,
     TrialConfig,
 )
-from backtester.strategy_discovery.dss_objective import (
-    DSSObjective,
-    compute_mandate_score,
-    run_dss_backtest,
-)
+from backtester.strategy_discovery.dss_objective import compute_mandate_score
 from backtester.strategy_discovery.dss_report import _extract_pareto_front, _is_dominated
 from backtester.strategy_discovery.dss_v2 import (
     BarrierMetrics,
@@ -121,10 +117,6 @@ def _make_candidate(
         trigger_params={"lookback": 4},
         filter_names=filters,
         filter_params={name: {} for name in filters},
-        rrr=2.0,
-        risk_percent=1.0,
-        position_ttl_bars=36,
-        atr_sl_mult=1.0,
         generation=0,
     )
 
@@ -133,9 +125,7 @@ def _make_behavior(trigger_name: str = "pt_nr4_breakout") -> DSSBehavior:
     return DSSBehavior(
         trigger_family=trigger_name,
         side_profile="balanced",
-        trade_count_bucket="medium",
-        hold_time_bucket="medium",
-        risk_geometry="medium_sl",
+        frequency_class="medium",
         regime_strength="balanced",
         filter_depth="0",
     )
@@ -286,16 +276,12 @@ def test_trial_config_round_trip() -> None:
         trigger_params={"lookback": 5},
         filter_names=("pf_body_to_range_min", "pf_side_short_only"),
         filter_params={"pf_body_to_range_min": {"ratio": 0.35}},
-        rrr=2.5,
-        risk_percent=1.5,
-        position_ttl_bars=36,
-        atr_sl_mult=1.0,
     )
     d = config.to_dict()
     restored = TrialConfig.from_dict(d)
     assert restored.trigger_name == config.trigger_name
     assert restored.filter_names == config.filter_names
-    assert abs(restored.rrr - config.rrr) < 1e-9
+    assert "rrr" not in d
 
 
 def test_trial_config_signal_cache_key_is_deterministic() -> None:
@@ -304,9 +290,6 @@ def test_trial_config_signal_cache_key_is_deterministic() -> None:
         trigger_params={"lookback": 4},
         filter_names=("pf_body_to_range_min",),
         filter_params={"pf_body_to_range_min": {"ratio": 0.3}},
-        rrr=2.0,
-        risk_percent=1.0,
-        position_ttl_bars=36,
     )
     assert config.signal_cache_key == config.signal_cache_key
 
@@ -318,27 +301,16 @@ def test_dss_candidate_round_trip() -> None:
     assert restored.signal_cache_key == candidate.signal_cache_key
 
 
-def test_trial_config_exec_params_do_not_affect_signal_cache_key() -> None:
-    """Different rrr/risk_percent/ttl → same cache key (signal shape unchanged)."""
+def test_trial_config_rejects_geometry_fields_from_signal_cache_key() -> None:
+    """DSS v3 ignores legacy geometry fields during deserialization."""
     base = TrialConfig(
         trigger_name="pt_nr4_breakout",
         trigger_params={"lookback": 4},
         filter_names=(),
         filter_params={},
-        rrr=2.0,
-        risk_percent=1.0,
-        position_ttl_bars=36,
     )
-    different_exec = TrialConfig(
-        trigger_name="pt_nr4_breakout",
-        trigger_params={"lookback": 4},
-        filter_names=(),
-        filter_params={},
-        rrr=3.0,
-        risk_percent=2.0,
-        position_ttl_bars=48,
-    )
-    assert base.signal_cache_key == different_exec.signal_cache_key
+    legacy = TrialConfig.from_dict({**base.to_dict(), "rrr": 3.0, "risk_percent": 2.0})
+    assert base.signal_cache_key == legacy.signal_cache_key
 
 
 def test_archive_keeps_separate_trigger_family_elites() -> None:
@@ -508,10 +480,6 @@ def test_stage1_accepts_tp_first_barrier_signal(tmp_path: Path) -> None:
         trigger_params={"lookback": 4},
         filter_names=(),
         filter_params={},
-        rrr=1.0,
-        risk_percent=1.0,
-        position_ttl_bars=6,
-        atr_sl_mult=1.0,
         generation=0,
     )
     result = evaluate_stage1(
@@ -565,10 +533,6 @@ def test_stage1_records_window_specialist_without_survivor_export(tmp_path: Path
         trigger_params={"lookback": 4},
         filter_names=(),
         filter_params={},
-        rrr=1.0,
-        risk_percent=1.0,
-        position_ttl_bars=6,
-        atr_sl_mult=1.0,
         generation=0,
     )
     result = evaluate_stage1(
@@ -650,10 +614,6 @@ def test_stage1_counts_same_bar_tp_and_sl_as_sl_first(tmp_path: Path) -> None:
         trigger_params={"lookback": 4},
         filter_names=(),
         filter_params={},
-        rrr=1.0,
-        risk_percent=1.0,
-        position_ttl_bars=6,
-        atr_sl_mult=1.0,
         generation=0,
     )
     result = evaluate_stage1(
@@ -688,10 +648,6 @@ def test_stage1_barrier_uses_next_open_entry_like_stage2(tmp_path: Path) -> None
         trigger_params={"lookback": 4},
         filter_names=(),
         filter_params={},
-        rrr=1.0,
-        risk_percent=1.0,
-        position_ttl_bars=6,
-        atr_sl_mult=1.0,
         generation=0,
     )
     result = evaluate_stage1(
@@ -724,10 +680,6 @@ def test_stage1_atr_scaled_label_ignores_rrr_ttl_and_signal_stop(tmp_path: Path)
         trigger_params={"lookback": 4},
         filter_names=(),
         filter_params={},
-        rrr=1.0,
-        risk_percent=1.0,
-        position_ttl_bars=1,
-        atr_sl_mult=0.5,
         generation=0,
     )
     variant = DSSCandidate(
@@ -736,10 +688,6 @@ def test_stage1_atr_scaled_label_ignores_rrr_ttl_and_signal_stop(tmp_path: Path)
         trigger_params={"lookback": 4},
         filter_names=(),
         filter_params={},
-        rrr=10.0,
-        risk_percent=3.0,
-        position_ttl_bars=100,
-        atr_sl_mult=5.0,
         generation=0,
     )
     signals = _make_one_signal(primary)
@@ -878,10 +826,6 @@ def test_stage1_rejects_barrier_win_rate_below_floor(tmp_path: Path) -> None:
         trigger_params={"lookback": 4},
         filter_names=(),
         filter_params={},
-        rrr=1.0,
-        risk_percent=1.0,
-        position_ttl_bars=6,
-        atr_sl_mult=1.0,
         generation=0,
     )
     result = evaluate_stage1(
@@ -1246,10 +1190,6 @@ def test_catcma_weighted_model_updates_toward_elites() -> None:
         trigger_params={},
         filter_names=("pf_b",),
         filter_params={"pf_b": {}},
-        rrr=2.0,
-        risk_percent=1.5,
-        position_ttl_bars=36,
-        atr_sl_mult=1.0,
         generation=0,
     )
     model.update([_EvaluatedCandidate(elite, robust_score=10.0, promoted_to_stage3=False)])
@@ -1527,10 +1467,6 @@ def test_smac_qd_encoder_is_fixed_width_for_conditional_candidates() -> None:
         trigger_params={"lookback": 4},
         filter_names=("pf_a",),
         filter_params={"pf_a": {"mode": "y"}},
-        rrr=2.0,
-        risk_percent=1.0,
-        position_ttl_bars=36,
-        atr_sl_mult=1.0,
         generation=0,
     )
     c2 = DSSCandidate(
@@ -1539,10 +1475,6 @@ def test_smac_qd_encoder_is_fixed_width_for_conditional_candidates() -> None:
         trigger_params={"threshold": 0.3},
         filter_names=("pf_b",),
         filter_params={"pf_b": {}},
-        rrr=2.5,
-        risk_percent=1.5,
-        position_ttl_bars=48,
-        atr_sl_mult=1.5,
         generation=0,
     )
     assert len(encoder.encode(c1)) == len(encoder.feature_names)
@@ -1623,9 +1555,7 @@ def test_dss_stage1_mode_stops_before_backtest_and_exports_shortlist(
     behavior = DSSBehavior(
         trigger_family="pt_nr4_breakout",
         side_profile="balanced",
-        trade_count_bucket="medium",
-        hold_time_bucket="medium",
-        risk_geometry="medium_sl",
+        frequency_class="medium",
         regime_strength="balanced",
         filter_depth="0",
     )
@@ -1808,9 +1738,6 @@ def test_cache_basic_hit_miss() -> None:
         trigger_params={"lookback": 4},
         filter_names=(),
         filter_params={},
-        rrr=2.0,
-        risk_percent=1.0,
-        position_ttl_bars=36,
     )
     calls = [0]
 
@@ -1836,9 +1763,6 @@ def test_cache_evicts_oldest_when_full() -> None:
             trigger_params={"body_ratio": float(n) / 10},
             filter_names=(),
             filter_params={},
-            rrr=2.0,
-            risk_percent=1.0,
-            position_ttl_bars=36,
         )
 
     empty_df = pd.DataFrame()
@@ -1855,9 +1779,6 @@ def test_cache_different_windows_cached_separately() -> None:
         trigger_params={"lookback": 4},
         filter_names=(),
         filter_params={},
-        rrr=2.0,
-        risk_percent=1.0,
-        position_ttl_bars=36,
     )
     calls: dict[str, int] = {"2022": 0, "2023": 0}
 
@@ -1955,10 +1876,6 @@ def test_signal_composer_replays_pinescript_catalog_config() -> None:
         trigger_params={"zero_filter": "off"},
         filter_names=(),
         filter_params={},
-        rrr=2.0,
-        risk_percent=1.0,
-        position_ttl_bars=24,
-        atr_sl_mult=1.0,
     )
 
     composer = SignalComposer()
@@ -2020,10 +1937,6 @@ def test_signal_composer_replays_pinescript_smc_config() -> None:
         trigger_params={"min_gap_atr": 0.0},
         filter_names=("pf_ps_smc_fvg_recent",),
         filter_params={"pf_ps_smc_fvg_recent": {"lookback": 12}},
-        rrr=2.0,
-        risk_percent=1.0,
-        position_ttl_bars=24,
-        atr_sl_mult=1.0,
     )
 
     composer = SignalComposer()
@@ -2151,13 +2064,8 @@ def test_extract_pareto_front_empty() -> None:
     assert front == []
 
 
-# ---------------------------------------------------------------------------
-# run_dss_backtest
-# ---------------------------------------------------------------------------
-
-
-def test_run_dss_backtest_completes_with_ignore_structural_sl_mode() -> None:
-    """DSS signals embed sl_price; backtest must not use invalid structural_sl_mode."""
+def test_dss_v3_signal_composer_does_not_export_trade_geometry() -> None:
+    """DSS v3 signals are directional research rows, not trade geometry."""
     primary = _make_primary(500, seed=42)
     data = _make_strategy_data(primary)
     config = TrialConfig(
@@ -2165,52 +2073,14 @@ def test_run_dss_backtest_completes_with_ignore_structural_sl_mode() -> None:
         trigger_params={"lookback": 4},
         filter_names=(),
         filter_params={},
-        rrr=2.0,
-        risk_percent=1.0,
-        position_ttl_bars=36,
-        atr_sl_mult=1.0,
     )
     signal_df = SignalComposer().build(config)(data)
     assert not signal_df.empty
-
-    trades = run_dss_backtest(signal_df, config, data)
-    assert not trades.empty
-    score = compute_mandate_score(
-        trades,
-        initial_capital=10_000.0,
-        start="2024-01-01",
-        end="2024-12-31",
-    )
-    assert score not in (-5_000.0, -10_000.0)
+    assert set(signal_df["stop_price"]) == {0.0}
+    assert set(signal_df["tp_price"]) == {0.0}
 
 
-# ---------------------------------------------------------------------------
-# DSSObjective smoke test (5 trials on synthetic data)
-# ---------------------------------------------------------------------------
-
-
-def test_dss_objective_smoke(tmp_path: Path) -> None:
-    """DSSObjective must complete 5 trials without crashing."""
-    import optuna
-
-    primary = _make_primary(500, seed=7)
-
-    windows = [
-        DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-06-30"),
-        DSSWindowSpec(label="w2", symbol="TEST-USDT-SWAP", start="2024-07-01", end="2024-12-31"),
-    ]
-    primary_w1 = primary.loc["2024-01-01":"2024-06-30"]
-    primary_w2 = primary.loc["2024-07-01":"2024-12-31"]
-
-    window_data = {
-        "w1": StrategyData(
-            primary=primary_w1, candles={}, extras={}, metadata={"symbol": "TEST-USDT-SWAP"}
-        ),
-        "w2": StrategyData(
-            primary=primary_w2, candles={}, extras={}, metadata={"symbol": "TEST-USDT-SWAP"}
-        ),
-    }
-
+def test_dss_v3_search_space_has_no_geometry_ranges() -> None:
     t_catalog = parameterized_trigger_catalog()
     f_catalog = parameterized_filter_catalog()
 
@@ -2220,38 +2090,8 @@ def test_dss_objective_smoke(tmp_path: Path) -> None:
         trigger_param_bounds={},
         filter_param_bounds={},
         max_filters=1,
-        rrr_range=(2.0, 2.0, 0.5),
-        risk_percent_range=(1.0, 1.0, 0.5),
-        position_ttl_bars_range=(36, 36, 4),
-        atr_sl_mult_range=(1.0, 1.0, 0.5),
     )
-
-    dss_config = DSSConfig(
-        output=tmp_path,
-        windows=windows,
-        n_trials=5,
-        n_jobs=1,
-        max_filters=1,
-        min_trades_per_window=1,
-    )
-
-    signal_cache = DSSSignalCache(max_entries=100)
-    objective = DSSObjective(
-        windows=windows,
-        window_data=window_data,
-        search_space=search_space,
-        signal_cache=signal_cache,
-        config=dss_config,
-    )
-
-    optuna.logging.set_verbosity(optuna.logging.ERROR)
-    study = optuna.create_study(
-        directions=["maximize", "maximize"],
-        sampler=optuna.samplers.RandomSampler(seed=42),
-    )
-    study.optimize(objective, n_trials=5)
-    complete = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
-    assert len(complete) == 5
-    for trial in complete:
-        assert trial.values is not None
-        assert len(trial.values) == 2
+    assert not hasattr(search_space, "rrr_range")
+    assert not hasattr(search_space, "risk_percent_range")
+    assert not hasattr(search_space, "position_ttl_bars_range")
+    assert not hasattr(search_space, "atr_sl_mult_range")

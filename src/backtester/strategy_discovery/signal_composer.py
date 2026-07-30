@@ -124,8 +124,6 @@ class SignalComposer:
             self._filter_catalog[fn](config.filter_params.get(fn, {})) for fn in config.filter_names
         ]
 
-        rrr = config.rrr
-        atr_sl_mult = config.atr_sl_mult
         filter_names_str = "+".join(config.filter_names) if config.filter_names else "no_filter"
         rationale_base = f"{trigger_name} | {filter_names_str}"
 
@@ -149,16 +147,7 @@ class SignalComposer:
         for event in raw_events:
             if not _apply_filters(event, dataset, filter_fns):
                 continue
-            atr = _atr_at(dataset.primary, event.event_time)
-            if atr is None or atr <= 0:
-                continue
             entry = event.entry_reference_price
-            if event.side == "long":
-                stop = entry - atr * atr_sl_mult
-                tp = entry + (entry - stop) * rrr
-            else:
-                stop = entry + atr * atr_sl_mult
-                tp = entry - (stop - entry) * rrr
             surviving.append(
                 {
                     "bar_time": event.event_time,
@@ -167,8 +156,8 @@ class SignalComposer:
                     "confidence": confidence,
                     "rationale": rationale_base,
                     "entry_price": entry,
-                    "stop_price": stop,
-                    "tp_price": tp,
+                    "stop_price": 0.0,
+                    "tp_price": 0.0,
                 }
             )
 
