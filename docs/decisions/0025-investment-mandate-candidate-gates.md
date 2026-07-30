@@ -30,10 +30,11 @@ The owner clarified the product direction:
 
 ## Decision
 
-Adopt `docs/investment_mandate.md` as the canonical candidate acceptance
-document. All agents read it at session start (`AGENTS.md`). Candidate reports
-must emit a promote / archive / discard / full-Optuna verdict against that
-mandate before any auto-trading work.
+Adopt the strategy benchmark document as the canonical candidate comparison
+surface. The document was originally `docs/investment_mandate.md` and is now
+`docs/strategy_benchmark.md`. All agents read it at session start
+(`AGENTS.md`). Candidate reports must emit a benchmark verdict before strategy
+selection or production discussion.
 
 Key numeric gates:
 
@@ -62,7 +63,7 @@ Key numeric gates:
 
 ## References
 
-- `docs/investment_mandate.md`
+- `docs/strategy_benchmark.md`
 - ADR-0024 — margin realism
 - `docs/tasks/BACKLOG.md`
 - `docs/tasks/IDEAS.md` — 2026-06-03 capped profits (approved)

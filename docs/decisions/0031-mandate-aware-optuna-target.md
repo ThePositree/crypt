@@ -69,4 +69,4 @@ Where:
 - ADR-0025 — investment mandate candidate gates
 - ADR-0030 — drawdown from window-start capital
 - `src/backtester/optimizer.py`
-- `docs/investment_mandate.md`
+- `docs/strategy_benchmark.md`

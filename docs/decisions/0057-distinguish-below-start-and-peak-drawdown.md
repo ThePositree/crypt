@@ -41,6 +41,6 @@ hides the investor's actual peak-to-trough loss.
 ## References
 
 - ADR-0030
-- `docs/investment_mandate.md`
+- `docs/strategy_benchmark.md`
 - `docs/mandate_reporting.md`
 - `src/backtester/results_analyzer.py`

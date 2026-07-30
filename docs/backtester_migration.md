@@ -114,7 +114,7 @@ Visual verdict workflow:
   `metrics.csv`, `trades.csv`, and mandate summaries.
 - The owner may add an operator verdict in chat after reviewing the HTML
   reports. This verdict is optional, but when it exists the acting agent must
-  record it in `docs/tasks/IN_PROGRESS.md` or `docs/tasks/DONE.md` with the
+  record it in `docs/tasks/IN_PROGRESS.md` or `CHANGELOG.md` with the
   artifact path.
 - The agent must then add its own verdict from metrics, trade logs, and chart
   evidence. If owner and agent verdicts disagree, the next step should be a

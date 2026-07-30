@@ -8,6 +8,10 @@ process starts when data is missing, stale, or gapped.
 The first deployment can take a long time. That is intentional: a bot that
 starts on empty parquet files is more dangerous than a slow deployment.
 
+Railway runtime configuration is the source of truth for the active live
+strategy. If `EXECUTION_STRATEGY_CONFIG` in Railway/env disagrees with prose
+docs, stop and ask the owner before changing live behavior.
+
 ## Railway service
 
 1. Create a Railway project from the GitHub repository.

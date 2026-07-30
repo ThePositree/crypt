@@ -4,6 +4,16 @@ Owner-defined global milestones. Agents may **suggest** edits in chat but do
 not silently rewrite this file. Implementation details belong to
 `BACKLOG.md`.
 
+## Current reality note
+
+The project is now best described as a research workbench for finding automated
+crypto perpetual strategies plus a live execution module for the owner-selected
+strategy. The milestones below preserve the original project history and are
+not a complete description of the current implementation state: live execution
+exists, strategy research remains active, and the benchmark in
+`docs/strategy_benchmark.md` is an optimization target rather than a hard
+restriction on owner production selection.
+
 ---
 
 ## M0 — Project scaffold ✅

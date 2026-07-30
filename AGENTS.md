@@ -1,315 +1,192 @@
 # AGENTS.md — operating manual for AI agents
 
-This repository is developed **AI-first**. The human owner sets global
-direction in chat. Everything else — implementation plans, file layout under
-`src/`, documentation, changelogs, task tracking — is owned by agents.
+This repository is developed **AI-first**. The owner sets direction in chat;
+agents own implementation planning, code, documentation, changelog entries,
+and task files.
 
-The owner does **not** maintain any markdown file directly. If the owner wants
-to change direction or correct course, they will say so in chat, and the
-acting agent is responsible for propagating that into the relevant docs.
+`crypt` is a research workbench for finding automated crypto perpetual
+strategies plus a live execution module for the owner-selected strategy. The
+old signal-only Telegram MVP is historical context, not the main product
+framing.
+
+The owner may promote any strategy to production, including strategies that do
+not pass the benchmark. Treat that as a normal owner override: document the
+evidence and risks once, then continue from the active runtime source of truth.
 
 ---
 
 ## 1. Read this at the start of every session
 
-Read in this order, fully:
+Read in this order:
 
-1. `README.md` — current public surface.
+1. `README.md` — public surface for humans and agents.
 2. This file (`AGENTS.md`).
-3. `.cursor/rules/` (rules are also auto-applied, but read them so you know
-   what you have committed to).
-4. `docs/investment_mandate.md` — owner economic targets and candidate
-   promote/archive/discard gates (ADR-0025). **Mandatory** before any
-   strategy search, optimizer run, or promotion decision.
-5. `docs/tasks/ROADMAP.md` — global milestones (owner-defined).
-6. `docs/tasks/IN_PROGRESS.md` — what the previous agent was doing. If it is
-   non-empty and not yours, assume the previous session was interrupted and
-   continue from where it left off, unless the owner says otherwise.
-7. `docs/tasks/IDEAS.md` — owner ideas saved for later. These are not
-   approved tasks unless moved into the mandate or `BACKLOG.md`.
-8. `docs/tasks/BACKLOG.md` — what is queued next.
-9. The 2 most recent entries in `CHANGELOG.md`.
-10. Any ADR in `docs/decisions/` whose subject is relevant to the task
-    (including ADR-0025 when evaluating candidates).
+3. `docs/strategy_benchmark.md` — money benchmark and reporting target.
+4. `docs/tasks/ROADMAP.md` — owner-defined milestones.
+5. `docs/tasks/IN_PROGRESS.md` — active work only.
+6. `docs/tasks/IDEAS.md` — owner ideas saved for later, not approved tasks.
+7. `docs/tasks/BACKLOG.md` — queued unfinished work.
+8. The recent entries in `CHANGELOG.md`; use `CHANGELOG_ARCHIVE.md` for older
+   history.
+9. Any ADR in `docs/decisions/` relevant to the task.
 
-If any of these files contradict each other, stop and ask the owner.
+If docs and active runtime config disagree, stop and ask the owner. For live
+execution, the runtime source of truth is the loaded config/env, especially
+`EXECUTION_STRATEGY_CONFIG`, not a prose summary.
 
 ---
 
-## 2. During the session
+## 2. Project rules
 
-### Plan locally, do not ask the owner to plan
+### Owner override and benchmark
 
-The owner intentionally does not write implementation plans. You build the
-local task plan yourself. If the task is non-trivial, use the todo-list tool
-and keep it updated as you go.
+`docs/strategy_benchmark.md` is the main optimization target, not a hard
+production gate. Agents should use it to report whether a strategy is strong,
+weak, risky, or benchmark-quality.
 
-### Owner-run backtests
+If the owner chooses a benchmark-failing strategy for production:
 
-Backtests and optimizer runs are owner-run by default. When the next useful
-step requires a `backtester` command, agents must give the owner the exact
-command to run, explain the expected artifact path or output files, and then
-wait for the owner to return with the result. Do **not** run repository
-backtests, `compare-fixed`, `compare-grid`, `signal-quality`, or optimizer
-commands yourself unless the owner explicitly asks you to run that specific
-command in chat.
+- accept the selection as current direction;
+- record known benchmark failures and money risks once;
+- do not keep re-litigating the same objection;
+- keep improving safety, reconciliation, and strategy quality from the active
+  config.
 
-When giving owner-run commands for independent jobs, default to parallel
-execution. Assume the owner has enough CPU/RAM unless they say otherwise.
-Create output/log directories before shell redirection, and avoid commands
-whose logs fail if a parent directory is missing. Provide a sequential variant
-only when the owner asks for it or when parallelism would corrupt shared
-artifacts.
+### Planning
 
-### Agent autonomy and short self-runs
+Plan locally. Do not ask the owner to create implementation plans. For
+non-trivial work, keep the todo-list tool updated.
 
-Agents continue working autonomously until one of these happens:
+### Running commands, backtests, and optimizers
 
-- the next step requires an owner-run command under the backtest/optimizer
-  policy above and the owner has not explicitly authorized this run;
-- the owner interrupts or changes direction in chat;
-- the agent cannot determine the next useful step after inspecting the local
-  evidence;
-- there is a real owner choice where different reasonable paths would lead to
-  materially different work.
+Agents may run any in-scope command they need, including `backtester` and
+optimizer commands, but long work must be controlled by visible progress:
 
-Short local diagnostics are allowed when they are not owner-scale backtests or
-optimizers. When the owner explicitly authorizes a specific backtest/optimizer
-run, launch it once and inspect its visible progress/ETA. If the observed ETA
-is under three minutes, the agent may wait for completion and inspect the
-artifacts. If the ETA is over three minutes, or there is no visible
-progress/ETA for a potentially long operation, stop it and hand the exact
-command to the owner. Without explicit authorization, the owner-run default
-still applies.
+- commands expected to take more than roughly one minute must show completed
+  work, elapsed time, rate, and ETA;
+- launch the command and immediately inspect progress/ETA;
+- if ETA is `<= 3 minutes`, the agent may wait and inspect artifacts;
+- if ETA is `> 3 minutes`, stop the command and give the owner the exact
+  command, expected output path, and what to paste back;
+- if there is no visible progress/ETA for a potentially long command, stop it
+  and hand it to the owner;
+- independent owner-run jobs should default to parallel commands when safe.
 
-### Progress is mandatory for long-running commands
+Do not let silent multi-hour jobs run inside the agent session.
 
-Any CLI operation expected to take more than roughly one minute or process a
-known collection must expose visible progress by default:
+### Owner-run process visibility
 
-- completed / total work units;
-- elapsed time;
-- processing rate;
-- ETA when the total is known;
-- a meaningful unit and phase description.
+Owner-started processes may be outside the agent's PID namespace. A missing
+PID from agent-side `ps`/`pgrep` does not prove the process stopped.
 
-Use a progress bar such as `tqdm` for iterative work. Multi-process launchers
-must expose progress for each child through logs or a parent summary; a silent
-`Started pid=...` followed by hours without status is not acceptable.
+Use owner-pasted output, logs, artifact modification times, and owner-side
+status commands to determine state.
 
-Tests may disable progress explicitly. Non-interactive redirected output must
-still receive periodic progress lines or flushed bar updates.
+### One-off commands
 
-### Owner-run process visibility from agent sandboxes
+Do not persist one-off diagnostic CLIs or scripts. Use ephemeral shell commands
+or existing project functions. Add a durable CLI only when the owner asks for a
+reusable command, the workflow is recurring, or tests/automation need it.
 
-Do not assume an agent can inspect an owner-started PID. Owner commands may run
-outside the agent sandbox or PID namespace even when both use the same
-workspace. A missing PID in agent-side `ps`/`pgrep` does not prove the owner
-process stopped.
+### Task documentation
 
-For owner runs, determine status from:
+`docs/tasks/IN_PROGRESS.md` must contain only active work. `BACKLOG.md` must
+contain only unfinished queued work. Completed or historical material belongs
+in `CHANGELOG.md`, `CHANGELOG_ARCHIVE.md`, or archive docs.
 
-1. output pasted by the owner;
-2. completion/failure lines in run logs;
-3. expected artifacts and their modification times;
-4. owner-side status commands provided in chat.
+When adding active/backlog work, include:
 
-State this limitation explicitly instead of reporting an owner run as failed
-solely because its PID is invisible inside the sandbox.
+- **What**
+- **Why now**
+- **Expected gain**
+- **Acceptance**
+- **Links**
 
-### Do not persist one-off CLI commands
+### Ideas
 
-Before adding any CLI command, executable module, or repository script, prove
-that the operation is a recurring owner/operator workflow rather than a
-one-time diagnostic or repair. One-off actions must use ephemeral shell or
-`python -c` code that imports existing project functions and leaves no command
-or script behind.
+Ideas in `docs/tasks/IDEAS.md` are reminders, not tasks. Do not implement,
+spec, or move an idea to `BACKLOG.md` without explicit owner approval.
 
-Persist a new CLI only when at least one of these is true:
+### Specs before code
 
-- the owner explicitly asks for a reusable command;
-- the workflow is expected to recur and its stable inputs/outputs are defined;
-- automation, deployment, or acceptance tests require a durable interface.
+For any new engine, sink, execution component, or non-trivial module, update
+the relevant spec under `docs/` before or alongside code. The spec must define
+inputs, outputs, logic, edge cases, missing-data behavior, and audit fields.
 
-When uncertain, do not create the CLI. First perform the operation ephemerally
-and collect evidence that reuse is real.
+### ADRs
 
-### Document task intent, not only task mechanics
+Write a new ADR when a decision commits the project to a trade-off that future
+agents could reasonably question or reverse. ADRs are append-only: supersede
+old decisions instead of silently rewriting them.
 
-Task files must explain the work broadly enough that the next agent can
-understand why the item exists without reconstructing the whole prior session.
-When adding or rewriting a task in `BACKLOG.md`, `IN_PROGRESS.md`, or
-`DONE.md`, include:
+### External libraries and APIs
 
-- **What:** the concrete change or investigation.
-- **Why now:** the evidence, failure, owner request, or previous result that
-  created the task.
-- **Expected gain:** what the project wins if the task is completed.
-- **Acceptance:** the observable output, command, report, test, or decision
-  that proves the task is done.
-- **Links:** relevant docs, ADRs, commands, or artifact paths when available.
+Use Context7 before writing non-trivial code against external libraries or
+APIs. If Context7 is unavailable, warn the owner and proceed cautiously.
 
-At the start of a session, after reading the required files and choosing the
-task or task chain, briefly tell the owner what you are taking, why it exists,
-what it should give us, and how you will know it is done. If you take multiple
-linked tasks, explain the dependency between them.
+### Data availability
 
-### Preserve owner ideas for later
-
-The owner may explicitly say that something is an idea for later / "прозапас"
-and not for implementation now. Record those ideas in
-`docs/tasks/IDEAS.md`, not in `BACKLOG.md`, unless the owner explicitly
-approves turning the idea into work.
-
-Ideas in `IDEAS.md` are reminders, not tasks. Agents must:
-
-- read `IDEAS.md` at session start;
-- briefly remind the owner about relevant saved ideas when they fit the
-  current work;
-- say whether the timing looks good now or whether the idea should wait;
-- ask for explicit owner approval before writing a spec, moving the idea to
-  `BACKLOG.md`, or implementing code.
-
-Agents must not implement saved ideas just because they are relevant.
-
-### Write the spec before the code
-
-For any new engine, sink, or non-trivial module, **first** create or update
-the spec in `docs/engines/<name>.md` (or `docs/<feature>.md`). The spec
-contains: inputs, outputs (the `Signal` payload), logic, thresholds, edge
-cases, what data is required and what happens when data is missing.
-
-Only then write the code. The spec is the contract.
-
-### Record architectural choices as ADRs
-
-Whenever you make a decision that future agents could reasonably reverse or
-question (library choice, data source, design pattern, threshold rule, etc.),
-add a new ADR in `docs/decisions/NNNN-short-title.md`. Use the existing
-ADRs as a template. ADRs are append-only — to change a decision, write a new
-ADR that supersedes the old one and update the old one's status.
-
-### Use Context7 (MCP) before writing any library- or API-related code
-
-The owner's rule: always resolve library docs via the `user-context7` MCP
-before generating non-trivial code that touches an external library or API.
-If Context7 is unavailable for some reason, **explicitly warn the owner in
-chat** and proceed with caution.
-
-### Never assume data is available
-
-OKX is the primary exchange, but some endpoints may be missing, rate-limited,
-or temporarily down. Engines must degrade gracefully: missing data ⇒ the
-engine emits `neutral` with reduced confidence, never raises into the pipeline.
-
-### When the owner says "fix" / pastes errors (not "continue")
-
-Chat instructions **override** stale assumptions from `IN_PROGRESS.md`. If the
-owner opens a fresh session with logs, tracebacks, CI output, or "this broke",
-treat it as **incident response**, not necessarily "resume the last bullet list".
-
-**Goal:** reproduce → isolate root cause → minimal fix + tests → document so
-the next agent is not blind.
-
-1. **Classify the signal**
-   - Build / lint / typecheck / unit test failure → run the same commands
-     locally (or infer the CI job from the pasted log).
-   - Runtime / deploy / exchange / infra → read any doc the error references
-     (e.g. `docs/deploy/*.md`), then reproduce or state why you cannot.
-
-2. **Reproduce before refactoring**
-   - Prefer one failing command with a stable exit code over guessing.
-   - If reproduction needs secrets or a host you do not have, say so in chat
-     and record what is missing in `IN_PROGRESS.md` (owner-facing "blocked on
-     …").
-
-3. **Fix**
-   - Smallest change that fixes the root cause; add or adjust tests when the
-     failure was a regression or logic bug.
-   - If the fix changes a public contract (CLI, env vars, engine behaviour),
-     update the relevant spec under `docs/` first or in the same change set.
-
-4. **Architectural or policy-changing fixes**
-   - If the fix commits the project to a new trade-off (library, threshold,
-     fallback exchange, deploy shape), add or supersede an ADR — same rule as
-     normal development.
-
-**Which markdown to touch (checklist)**
-
-| Situation                                                      | Update                                                                                     |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Any completed fix worth a paper trail                          | `CHANGELOG.md` (dated; say what broke and how it was fixed).                               |
-| You fixed something but another agent should verify / deploy   | Top of `docs/tasks/IN_PROGRESS.md` — short **next steps** + link to failing command or PR. |
-| The fix closes a task line item                                | Move that item to `docs/tasks/DONE.md` with the date.                                      |
-| You discovered follow-up risk (flaky test, missing monitoring) | `docs/tasks/BACKLOG.md` with `P0`/`P1`/`P2`.                                               |
-| Behaviour or operator steps changed                            | Spec under `docs/` or `README.md` if commands / env / flags changed.                       |
-| Owner-facing deploy or ops behaviour changed                   | Relevant file under `docs/deploy/` or feature doc.                                         |
-
-**"Continue" vs "fix"**
-
-- **Continue:** default when `IN_PROGRESS.md` describes unfinished work and the
-  owner did not paste a new failure — pick up from **next steps** there.
-- **Fix:** owner-supplied errors take priority; after the fix, reconcile
-  `IN_PROGRESS.md` (remove obsolete next steps, or add new ones if still open).
+Never assume exchange/data availability. Missing data should degrade to neutral
+signals, blocked entries, or explicit operator errors as appropriate; it must
+not silently create false confidence.
 
 ---
 
-## 3. End of every session
+## 3. Incident response
 
-Before handing back to the owner, do **all** of:
+When the owner says "fix" or pastes errors, treat it as incident response:
 
-1. Move every item you completed from `docs/tasks/IN_PROGRESS.md` to the top
-   of `docs/tasks/DONE.md` with the date.
-2. Update `docs/tasks/BACKLOG.md` with any new items you discovered. Mark
-   priority (`P0` blocker / `P1` important / `P2` nice-to-have).
-3. If you are leaving work unfinished, leave a clear "next steps" block at
-   the top of `docs/tasks/IN_PROGRESS.md` for the next agent.
-4. Append an entry to `CHANGELOG.md` — date (`YYYY-MM-DD`), short summary,
-   list of ADRs touched, list of files touched at directory level.
-5. If the public surface changed (run command, env vars, dependencies,
-   feature flags), update `README.md`.
-6. In the final chat reply, read the next step back to the owner explicitly:
-   what remains, why it remains, what it should give the project, and which
-   command or artifact the next agent should start from.
+1. Reproduce the failure or state why reproduction is impossible.
+2. Isolate root cause before refactoring.
+3. Apply the smallest fix that resolves the cause.
+4. Add or update tests when the failure is a regression or logic bug.
+5. Update docs/changelog/task files so the next agent is not blind.
+
+If the fix changes public behavior, update the relevant spec or runbook.
 
 ---
 
-## 4. What the owner controls
+## 4. End of every session
 
-- The contents of `docs/tasks/ROADMAP.md` (you may _suggest_ edits in chat
-  but do not silently rewrite it).
-- Final yes/no on ADRs explicitly marked `status: proposed` and flagged for
-  owner review.
-- Anything the owner asks you to do in chat trumps these defaults.
+Before handing back:
 
-## 5. What agents control
-
-Everything else: file layout under `src/`, dependencies, internal
-abstractions, tests, lint config, infra, and the contents of every doc
-under `docs/` except `ROADMAP.md`.
+1. Move completed active work out of `IN_PROGRESS.md`.
+2. Keep `BACKLOG.md` limited to unfinished work.
+3. Leave clear next steps in `IN_PROGRESS.md` if work remains.
+4. Append a dated `CHANGELOG.md` entry.
+5. Update `README.md` only when the public surface changes.
+6. In final chat, state what remains, why it remains, and the next command or
+   artifact the next agent should start from.
 
 ---
 
-## 6. Operating principles
+## 5. What the owner controls
 
-- **Critical thinking over agreement.** Ensemble trading systems break in
-  subtle ways. If you spot a flaw in a previous decision or in the owner's
-  ask, say so — don't politely paper over it.
-- **Flexible sandbox composition.** Prefer narrow, independently mountable
-  components over hard-coded all-or-nothing behavior. A component should be
-  configurable at the broadest useful scope and overridable or removable at a
-  narrower scope, with safe default-off behavior for new experiments. Keep
-  backtest and live decisions on the same pure function, preserve unrelated
-  signal/SL/risk behavior, and emit audit fields sufficient to reproduce the
-  mounted experiment. See `docs/architecture/flexible_sandbox.md`.
-- **MVP-first.** Prefer cutting scope over building optional features.
-- **Tests for every engine.** Synthetic-data unit tests are mandatory; the
-  ensemble result is meaningless if any individual engine is wrong.
-- **No look-ahead bias.** Indicators are always computed on **closed**
-  candles. Backtest and live pipelines must share the same code path.
-- **English in code & docs. Russian only in chat replies to the owner.**
-- **Owner chat uses the language of money.** In owner-facing chat, avoid
-  unnecessary English terms and research jargon. Explain results as an
-  investor would read them: dollars, percentages, month counts, drawdown, and
-  what happens to a `$10,000` account. If a technical term is unavoidable,
-  translate it immediately into its money impact.
+- Final direction in chat.
+- `docs/tasks/ROADMAP.md` substance. Agents may add a short current-reality
+  note when approved, but should not silently rewrite milestones.
+- Production selection of any strategy.
+- Final yes/no on ADRs explicitly marked `status: proposed`.
+
+---
+
+## 6. What agents control
+
+Everything else: file layout under `src/`, tests, lint/type config, internal
+abstractions, docs under `docs/`, task files, archive notes, README, AGENTS,
+and changelogs.
+
+---
+
+## 7. Operating principles
+
+- Critical thinking over agreement.
+- MVP-first; cut scope before adding optional systems.
+- No look-ahead bias: indicators and features use closed candles only.
+- Backtest and live behavior share the same pure decision code where possible.
+- Flexible sandbox composition: components should be configurable, default-off
+  for experiments, mountable at useful scopes, and auditable. See
+  `docs/architecture/flexible_sandbox.md`.
+- English in code and docs. Russian only in chat replies to the owner.
+- Owner chat uses the language of money: dollars, percentages, months,
+  drawdown, and what happens to a `$10,000` account.

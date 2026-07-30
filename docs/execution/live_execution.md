@@ -1,10 +1,19 @@
-# Live execution module (M4)
+# Live execution module
 
 Spec for `src/crypt/execution/` — the component that turns backtester strategy
 signals into real OKX orders.
 
+Live execution is a normal project mode. The owner may run a production
+strategy that does not pass `docs/strategy_benchmark.md`; the benchmark remains
+the main comparison target, not a hard runtime gate.
+
 Read ADR-0033 before this document. The ADR records architectural decisions;
 this document records the runtime contract.
+
+For the active live strategy, the source of truth is the runtime environment
+and the JSON actually loaded by the executor, especially
+`EXECUTION_STRATEGY_CONFIG`. If this document and runtime config disagree,
+stop and ask the owner.
 
 ---
 
@@ -65,7 +74,7 @@ Loaded from `.env` via `pydantic-settings`. All keys prefixed `EXECUTION_`.
 | `EXECUTION_ENABLED` | `false` | Must be set to `true` to activate |
 | `EXECUTION_DRY_RUN` | `true` | Log orders without placing them |
 | `EXECUTION_DRY_RUN_CAPITAL` | `0.0` | Optional dry-run-only sizing capital; `0` uses real OKX balance |
-| `EXECUTION_STRATEGY_CONFIG` | `strategies/live/active.json` | Generic library default; the Railway start script explicitly overrides this to the production archived v6 JSON |
+| `EXECUTION_STRATEGY_CONFIG` | `strategies/live/active.json` | Runtime strategy source of truth; Railway start script supplies the owner-selected production JSON unless explicitly overridden |
 | `EXECUTION_DATA_DIR` | `data` | Root Parquet directory |
 | `EXECUTION_STATE_PATH` | `data/live_positions.json` | State file |
 | `EXECUTION_RISK_BASE_CHECKPOINT_DIR` | `<EXECUTION_DATA_DIR>/risk_base_checkpoints` | Immutable monthly risk anchors |

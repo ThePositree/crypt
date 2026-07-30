@@ -1,10 +1,12 @@
-# Mandate reporting
+# Benchmark reporting
 
 ## Purpose
 
 Automate ADR-0025 candidate-gate interpretation for donor backtest artifacts.
 Candidate search must not rely on ad hoc CSV reading when deciding whether a
-full-year run is promoted, archived, discarded, or eligible for full Optuna.
+full-year run is benchmark-quality, archived, discarded, or eligible for more
+optimization. The owner may still production-promote a strategy outside this
+benchmark; reporting must make that override explicit when relevant.
 
 ## Inputs
 

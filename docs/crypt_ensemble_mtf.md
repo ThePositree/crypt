@@ -342,7 +342,7 @@ Owner direction on 2026-06-08 resets the H1 search workflow:
 Win rate is not a final promotion metric; it is a diagnostic for discovering
 whether an entry trigger has a measurable edge before execution geometry is
 optimized. Mandate compliance still uses the accepted investment gates in
-`docs/investment_mandate.md`.
+`docs/strategy_benchmark.md`.
 
 ### Raw H1 diagnostic mode
 

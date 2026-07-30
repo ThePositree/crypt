@@ -3,7 +3,8 @@
 This document is both the analysis contract and the contract for the optional
 runtime policy. The policy changes only take-profit geometry: it never removes
 the signal, changes the structural SL, or changes risk-based position sizing.
-It is disabled unless the portfolio explicitly supplies a `tp_policy` object.
+It is disabled unless the portfolio explicitly mounts the component at
+`params.components.distant_tp` or uses the older `params.tp_policy` alias.
 
 ## Inputs
 
@@ -73,5 +74,20 @@ The event and trade audit expose `original_rrr`, `effective_rrr`,
 `tp_last_touch_bars`. The live position keeps the same values in its
 `signal_event` payload, and the entry notification explains an adjustment in
 plain language. The default-disabled setting keeps old strategy files and
-deployments behavior-compatible until an owner-approved comparison promotes a
+deployments behavior-compatible until an owner-approved comparison selects a
 policy configuration.
+
+## Current owner-selected narrow mount
+
+The current owner-selected production v6 portfolio keeps the component
+disabled globally and mounts it only on donor
+`freq_4pw_r03_catcma_011465`:
+
+- `min_original_rrr = 4.0`
+- `min_tp_distance_pct = 0.06`
+- `min_last_touch_bars = null` / disabled
+- `adjusted_rrr = 3.0`
+
+This is an owner-selected production mount, not proof that the component is
+globally useful. Do not widen it to other donors without a new comparison
+showing better dollars and drawdown.

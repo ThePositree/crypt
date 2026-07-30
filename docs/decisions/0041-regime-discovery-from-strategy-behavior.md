@@ -7,16 +7,16 @@
 
 ## Context
 
-Current strategy search is optimized around finding a candidate that can pass
-the investment mandate. This remains necessary for auto-trading, but recent
-DSS results show that useful signal families may be temporary or
+Current strategy search is optimized around finding candidates that score well
+against the strategy benchmark. This remains the main quality target, but
+recent DSS results show that useful signal families may be temporary or
 regime-specific rather than universally robust.
 
 The owner clarified a broader direction:
 
 - keep running strategy searches in parallel with feature work;
 - archive strategies that are economically or diagnostically useful even if
-  they do not pass the full mandate;
+  they do not pass the full benchmark;
 - later use the archived strategy set to discover market regimes and train a
   detector/router layer.
 
@@ -52,7 +52,7 @@ ADR remains accepted.
 ## Consequences
 
 - Positive: strategy searches can produce value even when no candidate passes
-  the mandate.
+  the benchmark.
 - Positive: the archive becomes training material for regime detection and
   portfolio routing.
 - Positive: the system can aim for fast adaptation instead of searching only
@@ -74,7 +74,7 @@ clustering assignment, or neural networks, but only after the MVP labeler and
 portfolio-utility scoring loop exists.
 
 Archived strategies can be stored even if they are below the production
-mandate, provided the archive entry states why the strategy is useful for
+benchmark, provided the archive entry states why the strategy is useful for
 research: positive return, regime-specific behavior, diversified signal
 family, high signal quality, or useful failure mode.
 

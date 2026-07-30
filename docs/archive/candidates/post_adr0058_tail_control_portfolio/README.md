@@ -2,7 +2,7 @@
 
 **Candidate id:** `post_adr0058_tail_control_portfolio`  
 **Archived:** 2026-07-13  
-**Status:** research lineage, not promoted  
+**Status:** research lineage; v6 is currently owner-selected for production via runtime config  
 **Symbol:** `SOL-USDT-SWAP`  
 **Range:** `2021-12-18T00:00:00Z` to `2026-06-29T14:00:00Z`  
 **Execution:** H1 signals with 1m last/mark execution, OKX SOL-USDT-SWAP precision and margin settings.
@@ -13,7 +13,10 @@ This archive preserves the decision-critical v1-v7 research branch created after
 
 Large run artifacts are intentionally not stored here. Full `signals.csv`, `ohlcv.csv`, `trades.csv`, `equity_curve.csv`, `trade_chart.html`, and per-trade candle reports are reproducible outputs, not durable archive inputs.
 
-The best risk-quality version so far is v7. It is not promoted: the full-period result is strong, but filters were researched on the same history and require train/validation or walk-forward confirmation before any mandate or live decision.
+The owner-selected production branch is v6, resolved at runtime from
+`EXECUTION_STRATEGY_CONFIG`. v7 remains the cleaner lower-DD research branch,
+but it is not the active production config unless the runtime environment is
+changed.
 
 ## Version summary
 
@@ -53,8 +56,14 @@ Historical run-output directory paths are not part of this archive's provenance.
 - v5 maximized full-history final account value (`$1.36M`) with PF 1.39 and peak DD around -39%.
 - v6 improved cleanliness versus v5 by removing two net-negative filtered donors, but final account fell to `$1.10M` and DD stayed near -39%.
 - v7 traded fewer times but improved PF to 1.90, peak DD to -32.33%, liquidations to five, and no unsafe liquidation-buffer exits.
-- v7 is the current lower-DD branch; v5/v6 remain useful if the next goal prioritizes higher trade density or final account value.
+- v6 is currently owner-selected for production; v7 is the lower-DD research
+  branch. If docs and runtime config disagree, stop and ask the owner.
+- The current v6 production config includes the narrow distant-TP mount only on
+  `freq_4pw_r03_catcma_011465` (`TP distance >=6%`, original RRR `>=4`,
+  effective RRR `3.0`). Do not widen it without longer forward evidence.
 
 ## Reproduction
 
-Run the exact commands in `commands.sh` from the repository root. Backtests are owner-run by policy; do not rerun automatically unless explicitly requested.
+Run the exact commands in `commands.sh` from the repository root. Long commands
+must show progress and ETA; if ETA exceeds three minutes, stop and hand the
+command to the owner.

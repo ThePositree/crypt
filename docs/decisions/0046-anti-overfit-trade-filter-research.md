@@ -50,7 +50,7 @@ reports train, validation, and stress performance side by side.
 ## References
 
 - `docs/trade_filter_research.md`
-- `docs/investment_mandate.md`
+- `docs/strategy_benchmark.md`
 - ADR-0025
 - ADR-0043
 - ADR-0045

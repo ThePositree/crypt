@@ -6,9 +6,11 @@
 
 ## Context
 
-The investment mandate (ADR-0025) prohibits live order routing until a candidate
-is promoted. NR4 is currently **archive** (mandate §5.2). The owner has explicitly
-overridden this gate in chat and requested M4 auto-execution to begin now.
+ADR-0025 originally framed the benchmark as a gate before live order routing.
+The owner explicitly overrode that gate in chat and requested M4 auto-execution
+to begin before a benchmark-quality candidate existed. Current project docs
+therefore treat `docs/strategy_benchmark.md` as an optimization/reporting
+target, while owner production selection remains authoritative.
 
 This ADR records the architectural decisions for the live execution module so that
 future agents can understand the design rationale and constraints.
@@ -21,7 +23,7 @@ The live execution module does **not** use `Verdict` objects from the M1 alert
 pipeline. Instead, it loads the same OHLCV Parquet files that the backtester
 uses and calls `crypt_ensemble.generate()` directly on that data at each H1 close.
 
-**Rationale**: the mandate result was evaluated using this exact code path.
+**Rationale**: the benchmark result was evaluated using this exact code path.
 Any deviation — even using a different signal format — would mean trading a
 different strategy than the one that was backtested. The only accepted coupling
 point between backtest and live trading is the `StrategyData → crypt_ensemble →
@@ -30,7 +32,7 @@ signal_row` interface.
 ### 2. Risk model parity: `BasicRiskModel` with identical params
 
 Position sizing uses `backtester.risk_model.BasicRiskModel` with the same
-execution parameters as the backtest run that was evaluated against the mandate.
+execution parameters as the backtest run that was evaluated against the benchmark.
 The `risk_base_period = "monthly"` logic is replicated exactly: at the start of
 each calendar month, the current OKX USDT equity is recorded as the monthly base
 and used for all risk calculations that month.

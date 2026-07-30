@@ -76,7 +76,7 @@ Mixed-Variable Black-Box Optimization, arXiv:2504.07884.
 
 ## 2026-06-03 — Cap outsized monthly backtest profits for calibration
 
-**Status:** **approved** — moved to `docs/investment_mandate.md` §4 and
+**Status:** **approved** — moved to `docs/strategy_benchmark.md` and
 ADR-0025 (2026-06-05).
 
 **Policy:** `capped_monthly_return_pct = min(raw, 20%)` for ranking; pass/fail

@@ -43,7 +43,7 @@ historical data
 ```
 
 Strategy search continues in parallel with feature work. Candidates do not
-need to pass the full investment mandate to be useful for the regime layer.
+need to pass the full strategy benchmark to be useful for the regime layer.
 Profitable, weakly profitable, regime-specific, or otherwise interpretable
 strategies should be archived when they add evidence about which market
 conditions favor which strategy families.

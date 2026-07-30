@@ -6,7 +6,7 @@
 
 ## Context
 
-`docs/investment_mandate.md` already required a **full-year continuous backtest**,
+`docs/strategy_benchmark.md` preserves the requirement for a **full-year continuous backtest**,
 but `compare-fixed` defaulted to **12 isolated monthly runs** — each window
 reset capital to $10k and dropped open positions at month boundaries.
 

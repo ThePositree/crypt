@@ -6,7 +6,7 @@ Convert a router's daily single-strategy selections into one continuous
 portfolio built from the archived strategy trade exports.
 
 This is the validation layer between rolling-label router search and the
-investment mandate. Rolling-label returns are research scores; only routed
+strategy benchmark. Rolling-label returns are research scores; only routed
 trade execution can produce mandate-style monthly rows.
 
 ## Inputs
