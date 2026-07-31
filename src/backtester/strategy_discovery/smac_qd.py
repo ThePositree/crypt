@@ -12,7 +12,11 @@ import numpy as np
 from sklearn.ensemble import RandomForestRegressor
 
 from backtester.data_contracts import StrategyData
-from backtester.strategy_discovery.catcma_qd import _WeightedModel
+from backtester.strategy_discovery.catcma_qd import (
+    _NOVELTY_MUTATION_INTERVAL,
+    _mutate_candidate,
+    _WeightedModel,
+)
 from backtester.strategy_discovery.dss_archive import DSSArchive
 from backtester.strategy_discovery.dss_config import (
     CategoricalParam,
@@ -24,27 +28,24 @@ from backtester.strategy_discovery.dss_config import (
     ParamDef,
     ParamValue,
 )
-from backtester.strategy_discovery.dss_objective import _EMPTY_SIGNAL_PENALTY
-from backtester.strategy_discovery.dss_v2 import (
-    DSSV2Result,
+from backtester.strategy_discovery.dss_directional_search import (
+    DirectionalResult,
+    DSSDirectionalResult,
     _append_csv_row,
-    _append_jsonl,
-    _append_score_history,
-    _append_stage1,
-    _append_stage_score,
+    _count_csv_rows,
+    _count_directional_survivors,
+    _evaluate_directional_candidate,
     _guard_output_dir,
-    _proxy_windows,
-    _read_completed_ids,
-    _read_stage0_candidates,
-    _should_promote_to_stage3,
-    _write_archive,
+    _instance_base_name,
+    _read_candidate_rows,
+    _read_directional_candidate_ids,
+    _refresh_directional_reports,
     _write_state,
     _write_summary,
-    evaluate_stage1,
-    evaluate_stage_scores,
-    export_stage1_candidates,
-    export_stage4_candidates,
-    write_stage1_ranked,
+)
+from backtester.strategy_discovery.dss_runtime import (
+    DSSSearchRuntime,
+    should_use_random_injection,
 )
 from backtester.strategy_discovery.signal_composer import SignalComposer
 
@@ -53,6 +54,7 @@ _EVALUATION_BATCH_SIZE = 16
 _PROPOSAL_POOL_SIZE = 512
 _RF_TREES = 96
 _ACQUISITION_STD_WEIGHT = 0.75
+_DIRECTIONAL_REJECT_PENALTY = -10_000.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,8 +81,9 @@ class _CandidateEncoder:
 
     def encode(self, candidate: DSSCandidate) -> list[float]:
         values: list[float] = []
+        trigger_label = _candidate_trigger_label(candidate, self._search_space)
         values.extend(
-            1.0 if candidate.trigger_name == name else 0.0
+            1.0 if trigger_label == name else 0.0
             for name in self._search_space.trigger_names
         )
         values.extend(
@@ -92,9 +95,9 @@ class _CandidateEncoder:
         )
 
         for trigger in self._search_space.trigger_names:
-            params = candidate.trigger_params if candidate.trigger_name == trigger else {}
+            params = candidate.trigger_params if trigger_label == trigger else {}
             for name, param_def in sorted(
-                self._search_space.trigger_param_bounds.get(trigger, {}).items()
+                self._search_space.trigger_param_bounds.get(_instance_base_name(trigger), {}).items()
             ):
                 values.append(_normalize_param(params.get(name), param_def))
 
@@ -105,7 +108,9 @@ class _CandidateEncoder:
                 else {}
             )
             for name, param_def in sorted(
-                self._search_space.filter_param_bounds.get(filter_name, {}).items()
+                self._search_space.filter_param_bounds.get(
+                    _instance_base_name(filter_name), {}
+                ).items()
             ):
                 values.append(_normalize_param(params.get(name), param_def))
         return values
@@ -116,10 +121,10 @@ class _CandidateEncoder:
         names.extend(f"filter={name}" for name in search_space.filter_names)
         names.append("filter_depth")
         for trigger in search_space.trigger_names:
-            for name in sorted(search_space.trigger_param_bounds.get(trigger, {})):
+            for name in sorted(search_space.trigger_param_bounds.get(_instance_base_name(trigger), {})):
                 names.append(f"trigger_param={trigger}.{name}")
         for filter_name in search_space.filter_names:
-            for name in sorted(search_space.filter_param_bounds.get(filter_name, {})):
+            for name in sorted(search_space.filter_param_bounds.get(_instance_base_name(filter_name), {})):
                 names.append(f"filter_param={filter_name}.{name}")
         return names
 
@@ -168,150 +173,169 @@ def run_smac_qd_search(
     search_space: DSSSearchSpace,
     window_data: dict[str, StrategyData],
     progress_callback: Callable[[int], None] | None = None,
-) -> DSSV2Result:
+) -> DSSDirectionalResult:
     """Run SMAC-style random-forest infill search with DSS-compatible outputs."""
     output = config.output
     output.mkdir(parents=True, exist_ok=True)
     _guard_output_dir(output)
     _write_state(output, config)
 
-    completed_stage3 = _read_completed_ids(output / "stage3_full_scores.csv")
-    existing_stage0 = _read_stage0_candidates(output / "stage0_candidates.jsonl")
-    stage0_by_id = {candidate.candidate_id: candidate for candidate in existing_stage0}
+    existing_candidates = _read_candidate_rows(output / "candidates.jsonl")
+    candidates_by_id = {candidate.candidate_id: candidate for candidate in existing_candidates}
     encoder = _CandidateEncoder(search_space)
     sampler = _WeightedModel(search_space, seed=config.seed)
     surrogate = _RandomForestSurrogate(seed=config.seed)
-    observations = _read_observations(output / "smac_qd_observations.csv", stage0_by_id)
+    observations = _read_observations(output / "smac_qd_observations.csv", candidates_by_id)
     _fit_surrogate(surrogate, encoder, observations)
 
     composer = SignalComposer()
     archive = DSSArchive()
-    generated = min(len(existing_stage0), config.n_trials)
-    if generated and progress_callback is not None:
-        progress_callback(generated)
-    stage1_survivors = 0
-    stage2_survivors = 0
-    stage3_evaluations = 0
+    generated = len(existing_candidates)
+    attempted = len(existing_candidates)
+    viability_path = output / "directional_viability.csv"
+    evaluated_ids = _read_directional_candidate_ids(viability_path)
+    evaluated_count = _count_csv_rows(viability_path)
+    novelty_parents: list[DSSCandidate] = []
+    if evaluated_count and progress_callback is not None:
+        progress_callback(evaluated_count)
+    directional_survivors = _count_directional_survivors(viability_path)
     generation = generated // _EVALUATION_BATCH_SIZE
 
-    while generated < config.n_trials:
-        batch_size = min(_EVALUATION_BATCH_SIZE, config.n_trials - generated)
-        proposals = _next_proposals(
-            sampler=sampler,
-            surrogate=surrogate,
-            encoder=encoder,
-            generated=generated,
-            batch_size=batch_size,
-            generation=generation,
-            existing_keys={candidate.candidate_key for candidate in stage0_by_id.values()},
-            observations=len(observations),
-        )
+    with DSSSearchRuntime(config=config) as runtime:
+        for candidate in existing_candidates:
+            runtime.record_candidate(candidate, source="resume")
 
-        for proposal in proposals:
-            generated += 1
-            candidate = proposal.candidate
-            candidate = DSSCandidate(
-                candidate_id=f"smac_{generated:06d}",
-                trigger_name=candidate.trigger_name,
-                trigger_params=candidate.trigger_params,
-                filter_names=candidate.filter_names,
-                filter_params=candidate.filter_params,
-                generation=generation,
+        for candidate in (
+            item for item in existing_candidates if item.candidate_id not in evaluated_ids
+        ):
+            if not runtime.should_continue(evaluated_count):
+                break
+            directional = _evaluate_directional_candidate(
+                output=output,
+                candidate=candidate,
+                window_data=window_data,
+                config=config,
+                composer=composer,
+                runtime=runtime,
+                append_candidate=False,
             )
-            stage0_by_id[candidate.candidate_id] = candidate
-            try:
-                _append_jsonl(output / "stage0_candidates.jsonl", candidate.to_dict())
-                _append_proposal(output, proposal, candidate)
-                if candidate.candidate_id in completed_stage3:
-                    continue
-                stage1 = evaluate_stage1(candidate, window_data, config, composer)
-                _append_stage1(output, candidate, stage1, config.windows)
-                if not stage1.should_promote:
-                    observation = _SMACObservation(
-                        candidate=candidate,
-                        target_score=_EMPTY_SIGNAL_PENALTY,
-                        fidelity="stage1_reject",
+            evaluated_count += 1
+            observation = _directional_observation(candidate, directional)
+            observations.append(observation)
+            _append_observation(output, observation)
+            if directional.should_promote:
+                directional_survivors += 1
+                novelty_parents.append(candidate)
+            runtime.write_progress(generated=generated, evaluated=evaluated_count)
+            if progress_callback is not None:
+                progress_callback(1)
+        _fit_surrogate(surrogate, encoder, observations)
+
+        while runtime.should_continue(evaluated_count):
+            batch_size = runtime.remaining_batch(evaluated_count, _EVALUATION_BATCH_SIZE)
+            evaluated_before_batch = evaluated_count
+            proposals = _next_proposals(
+                sampler=sampler,
+                surrogate=surrogate,
+                encoder=encoder,
+                generated=generated,
+                batch_size=batch_size,
+                generation=generation,
+                existing_keys={candidate.candidate_key for candidate in candidates_by_id.values()},
+                observations=len(observations),
+            )
+            if not proposals:
+                break
+
+            for proposal in proposals:
+                attempted += 1
+                source = "smac_qd"
+                candidate = proposal.candidate
+                if attempted % _NOVELTY_MUTATION_INTERVAL == 0 and novelty_parents:
+                    source = "novelty_mutation"
+                    candidate = _mutate_candidate(
+                        novelty_parents[-1],
+                        search_space,
+                        candidate_id=f"smac_{attempted:06d}",
+                        generation=generation,
+                        seed=config.seed + attempted,
                     )
-                    observations.append(observation)
-                    _append_observation(output, observation)
-                    continue
-                stage1_survivors += 1
-                if config.stage_mode == "stage1":
-                    continue
-                behavior = stage1.behavior
-                assert behavior is not None
-
-                stage2 = evaluate_stage_scores(
-                    candidate=candidate,
-                    behavior=behavior,
-                    windows=_proxy_windows(config.windows),
-                    window_data=window_data,
-                    config=config,
-                    composer=composer,
-                    novelty_bonus=10.0 if archive.occupied_cells == 0 else 0.0,
+                candidate = DSSCandidate(
+                    candidate_id=f"smac_{attempted:06d}",
+                    trigger_name=candidate.trigger_name,
+                    trigger_timeframe=candidate.trigger_timeframe,
+                    trigger_params=candidate.trigger_params,
+                    filter_names=candidate.filter_names,
+                    filter_timeframes=candidate.filter_timeframes,
+                    filter_params=candidate.filter_params,
+                    generation=generation,
                 )
-                _append_stage_score(output / "stage2_proxy.csv", stage2, config.windows)
-                archive.consider(stage2.candidate, behavior, stage2.score)
-                target_score = stage2.score.robust_score
-                fidelity = "stage2_proxy"
-
-                if _should_promote_to_stage3(stage2, archive, config):
-                    stage2_survivors += 1
-                    stage3 = evaluate_stage_scores(
+                if source != "novelty_mutation":
+                    source = "random_unseen" if should_use_random_injection(attempted) else "smac_qd"
+                if not runtime.record_candidate(candidate, source=source):
+                    runtime.write_progress(generated=generated, evaluated=evaluated_count)
+                    continue
+                generated += 1
+                candidates_by_id[candidate.candidate_id] = candidate
+                try:
+                    _append_proposal(output, proposal, candidate)
+                    directional = _evaluate_directional_candidate(
+                        output=output,
                         candidate=candidate,
-                        behavior=behavior,
-                        windows=config.windows,
                         window_data=window_data,
                         config=config,
                         composer=composer,
-                        novelty_bonus=0.0,
+                        runtime=runtime,
+                        append_candidate=True,
                     )
-                    _append_stage_score(output / "stage3_full_scores.csv", stage3, config.windows)
-                    _append_score_history(output / "score_history.csv", stage3)
-                    archive.consider(stage3.candidate, behavior, stage3.score)
-                    completed_stage3.add(candidate.candidate_id)
-                    stage3_evaluations += 1
-                    target_score = stage3.score.robust_score
-                    fidelity = "stage3_full"
+                    evaluated_count += 1
+                    observation = _directional_observation(candidate, directional)
+                    observations.append(observation)
+                    _append_observation(output, observation)
+                    if not directional.should_promote:
+                        continue
+                    directional_survivors += 1
+                    novelty_parents.append(candidate)
+                finally:
+                    runtime.write_progress(generated=generated, evaluated=evaluated_count)
+                    if progress_callback is not None:
+                        progress_callback(1)
 
-                observation = _SMACObservation(
-                    candidate=candidate,
-                    target_score=target_score,
-                    fidelity=fidelity,
+            if evaluated_count == evaluated_before_batch:
+                runtime.write_progress(generated=generated, evaluated=evaluated_count)
+                break
+            _fit_surrogate(surrogate, encoder, observations)
+            generation += 1
+            if config.n_trials is None:
+                _refresh_directional_reports(
+                    output=output,
+                    config=config,
+                    runtime=runtime,
+                    generated=generated,
+                    evaluated=evaluated_count,
                 )
-                observations.append(observation)
-                _append_observation(output, observation)
-            finally:
-                if progress_callback is not None:
-                    progress_callback(1)
 
-        _fit_surrogate(surrogate, encoder, observations)
-        generation += 1
-
-    _write_smac_state(output / "smac_qd_state.csv", encoder, observations)
-    stage1_ranked = write_stage1_ranked(output, config)
-    if config.stage_mode == "stage1":
-        exported = export_stage1_candidates(stage1_ranked, output, config)
-    else:
-        _write_archive(output, archive)
-        exported = export_stage4_candidates(archive, config)
+        _write_smac_state(output / "backend_state" / "smac_qd_state.csv", encoder, observations)
+        directional_ranked, exported = _refresh_directional_reports(
+            output=output,
+            config=config,
+            runtime=runtime,
+            generated=generated,
+            evaluated=evaluated_count,
+        )
     _write_summary(
         output=output,
         config=config,
         generated=generated,
-        stage1_survivors=stage1_survivors,
-        stage2_survivors=stage2_survivors,
-        stage3_evaluations=stage3_evaluations,
+        directional_survivors=directional_survivors,
         exported=exported,
         archive=archive,
-        stage1_ranked=len(stage1_ranked),
+        directional_ranked=len(directional_ranked),
     )
-    return DSSV2Result(
+    return DSSDirectionalResult(
         output=output,
         generated=generated,
-        stage1_survivors=stage1_survivors,
-        stage2_survivors=stage2_survivors,
-        stage3_evaluations=stage3_evaluations,
+        directional_survivors=directional_survivors,
         exported_candidates=exported,
         archive=archive,
     )
@@ -368,10 +392,10 @@ def _next_proposals(
         reverse=True,
     )
     selected: list[_SMACProposal] = []
-    seen_shapes: set[tuple[str, tuple[str, ...], float, int]] = set()
+    seen_shapes: set[tuple[str, tuple[str, ...]]] = set()
     for proposal in ranked:
         shape = (
-            proposal.candidate.trigger_name,
+            _candidate_trigger_label(proposal.candidate, encoder._search_space),
             proposal.candidate.filter_names,
         )
         if shape in seen_shapes:
@@ -393,6 +417,29 @@ def _fit_surrogate(
     surrogate.fit(
         [encoder.encode(observation.candidate) for observation in observations],
         [observation.target_score for observation in observations],
+    )
+
+
+def _candidate_trigger_label(candidate: DSSCandidate, search_space: DSSSearchSpace) -> str:
+    label = f"{candidate.trigger_name}@{candidate.trigger_timeframe}"
+    if label in search_space.trigger_names:
+        return label
+    if candidate.trigger_name in search_space.trigger_names:
+        return candidate.trigger_name
+    return label
+
+
+def _directional_observation(candidate: DSSCandidate, result: DirectionalResult) -> _SMACObservation:
+    if not result.should_promote:
+        return _SMACObservation(
+            candidate=candidate,
+            target_score=_DIRECTIONAL_REJECT_PENALTY,
+            fidelity="directional_reject",
+        )
+    return _SMACObservation(
+        candidate=candidate,
+        target_score=float(result.advisory_score) if result.advisory_score is not None else 0.0,
+        fidelity="directional_pass",
     )
 
 
@@ -437,7 +484,7 @@ def _read_observations(path: Path, candidates: dict[str, DSSCandidate]) -> list[
             observations.append(
                 _SMACObservation(
                     candidate=candidate,
-                    target_score=float(row.get("target_score", _EMPTY_SIGNAL_PENALTY)),
+                    target_score=float(row.get("target_score", _DIRECTIONAL_REJECT_PENALTY)),
                     fidelity=row.get("fidelity", ""),
                 )
             )

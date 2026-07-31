@@ -183,6 +183,7 @@ class LiveSignalRunner:
                     self._store.save_candles_with_policy(
                         closed,
                         allow_ohlc_rewrite=True,
+                        validate_h1_from_1m=False,
                     )
                 except Exception as exc:
                     logger.exception("Failed to save candles for %s %s", symbol, tf.value)

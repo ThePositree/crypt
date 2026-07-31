@@ -8,7 +8,7 @@ declared search bounds.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 
@@ -31,7 +31,7 @@ TriggerFactory = Callable[[TriggerParams], TriggerFn]
 
 
 def parameterized_trigger_catalog() -> dict[str, TriggerFactory]:
-    return {
+    return cast(dict[str, TriggerFactory], {
         "pt_sweep_reversal": pt_sweep_reversal_factory,
         "pt_structure_break": pt_structure_break_factory,
         "pt_range_breakout": pt_range_breakout_factory,
@@ -52,7 +52,7 @@ def parameterized_trigger_catalog() -> dict[str, TriggerFactory]:
         "pt_candle_confirm": pt_candle_confirm_factory,
         "pt_order_block_retest": pt_order_block_retest_factory,
         "pt_double_bottom_sweep": pt_double_bottom_sweep_factory,
-    }
+    })
 
 
 def parameterized_trigger_param_space() -> dict[str, dict[str, ParamDef]]:
@@ -81,7 +81,7 @@ def parameterized_trigger_param_space() -> dict[str, dict[str, ParamDef]]:
         "pt_double_bottom_sweep": pt_double_bottom_sweep_factory,
     }
     for name, factory in factories.items():
-        catalog[name] = factory.param_space()  # type: ignore[attr-defined]
+        catalog[name] = factory.param_space()
     return catalog
 
 
@@ -160,18 +160,20 @@ def _safe_float(value: object) -> float | None:
     if value is None:
         return None
     try:
-        v = float(value)  # type: ignore[arg-type]
+        v = float(cast(Any, value))
         return None if pd.isna(v) else v
     except (TypeError, ValueError):
         return None
 
 
 def _clamp_int(value: object, low: int, high: int) -> int:
-    return max(low, min(high, int(value)))  # type: ignore[arg-type]
+    coerced = int(cast(Any, value))
+    return max(low, min(high, coerced))
 
 
 def _clamp_float(value: object, low: float, high: float) -> float:
-    return max(low, min(high, float(value)))  # type: ignore[arg-type]
+    coerced = float(cast(Any, value))
+    return max(low, min(high, coerced))
 
 
 # ---------------------------------------------------------------------------
@@ -184,7 +186,7 @@ class pt_sweep_reversal_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"window": IntParam(low=6, high=24, step=2)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         window = _clamp_int(params.get("window", 12), 4, 48)
         min_p = max(3, window // 2)
 
@@ -204,7 +206,7 @@ class pt_structure_break_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"window": IntParam(low=8, high=40, step=4)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         window = _clamp_int(params.get("window", 20), 4, 80)
         min_p = max(4, window // 2)
 
@@ -224,7 +226,7 @@ class pt_range_breakout_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"window": IntParam(low=8, high=48, step=4)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         window = _clamp_int(params.get("window", 24), 4, 96)
         min_p = max(4, window // 2)
 
@@ -244,7 +246,7 @@ class pt_momentum_burst_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"threshold": FloatParam(low=1.0, high=4.0)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         threshold = _clamp_float(params.get("threshold", 1.5), 0.3, 8.0)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
@@ -268,7 +270,7 @@ class pt_mean_revert_wick_factory:
             "threshold": FloatParam(low=0.3, high=2.0),
         }
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         threshold = _clamp_float(params.get("threshold", 2.0), 0.1, 5.0)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
@@ -293,7 +295,7 @@ class pt_ema_cross_factory:
             "slow": IntParam(low=20, high=100, step=5),
         }
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         fast = _clamp_int(params.get("fast", 9), 2, 50)
         slow = _clamp_int(params.get("slow", 21), fast + 2, 200)
 
@@ -319,7 +321,7 @@ class pt_rsi_reversal_factory:
             "overbought": IntParam(low=60, high=80, step=5),
         }
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         period = _clamp_int(params.get("period", 14), 4, 50)
         oversold = _clamp_int(params.get("oversold", 35), 10, 45)
         overbought = _clamp_int(params.get("overbought", 65), 55, 90)
@@ -355,7 +357,7 @@ class pt_bb_rejection_factory:
             "std": FloatParam(low=1.5, high=2.5),
         }
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         period = _clamp_int(params.get("period", 20), 5, 60)
         std_mult = _clamp_float(params.get("std", 2.0), 0.5, 4.0)
 
@@ -379,7 +381,7 @@ class pt_engulfing_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"body_ratio": FloatParam(low=0.6, high=1.0)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         body_ratio = _clamp_float(params.get("body_ratio", 0.8), 0.0, 2.0)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
@@ -416,7 +418,7 @@ class pt_nr4_breakout_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"lookback": IntParam(low=3, high=8, step=1)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         lookback = _clamp_int(params.get("lookback", 4), 2, 20)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
@@ -437,7 +439,7 @@ class pt_nr14_breakout_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"lookback": IntParam(low=8, high=20, step=2)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         lookback = _clamp_int(params.get("lookback", 14), 4, 40)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
@@ -458,7 +460,7 @@ class pt_vwap_reclaim_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"tolerance": FloatParam(low=0.001, high=0.02)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         tolerance = _clamp_float(params.get("tolerance", 0.005), 0.0, 0.1)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
@@ -483,7 +485,7 @@ class pt_compression_breakout_factory:
             "threshold": FloatParam(low=0.3, high=1.5),
         }
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         window = _clamp_int(params.get("window", 12), 4, 48)
         threshold = _clamp_float(params.get("threshold", 0.6), 0.1, 3.0)
 
@@ -507,7 +509,7 @@ class pt_pivot_reclaim_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"window": IntParam(low=12, high=48, step=4)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         window = _clamp_int(params.get("window", 20), 4, 100)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
@@ -528,7 +530,7 @@ class pt_volume_spike_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"mult": FloatParam(low=1.5, high=5.0)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         mult = _clamp_float(params.get("mult", 2.0), 0.5, 10.0)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
@@ -552,7 +554,7 @@ class pt_hammer_factory:
             "body_ratio": FloatParam(low=0.05, high=0.3),
         }
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         shadow_ratio = _clamp_float(params.get("shadow_ratio", 2.0), 0.5, 8.0)
         body_ratio_max = _clamp_float(params.get("body_ratio", 0.3), 0.01, 0.8)
 
@@ -580,7 +582,7 @@ class pt_pin_bar_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"shadow_ratio": FloatParam(low=2.0, high=5.0)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         shadow_ratio = _clamp_float(params.get("shadow_ratio", 3.0), 0.5, 10.0)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
@@ -602,7 +604,7 @@ class pt_candle_confirm_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"body_ratio": FloatParam(low=0.1, high=0.8)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         body_ratio_min = _clamp_float(params.get("body_ratio", 0.3), 0.0, 1.0)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
@@ -625,7 +627,7 @@ class pt_order_block_retest_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"tolerance": FloatParam(low=0.3, high=1.0)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         tolerance_atr = _clamp_float(params.get("tolerance", 0.5), 0.0, 3.0)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
@@ -653,7 +655,7 @@ class pt_double_bottom_sweep_factory:
             "tolerance": FloatParam(low=0.1, high=0.5),
         }
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         window = _clamp_int(params.get("window", 8), 2, 40)
         tolerance_atr = _clamp_float(params.get("tolerance", 0.2), 0.0, 2.0)
 

@@ -33,6 +33,7 @@ or `--data-dir`).
 
 | File | Columns | Used by |
 |------|---------|---------|
+| `ohlcv_15m.parquet` | `open_time, o, h, l, c, volume, closed` | DSS v3 multi-timeframe search / short trigger research |
 | `ohlcv_4h.parquet` | `open_time, o, h, l, c, volume, closed` | Trend, MeanRev, Regime, Volatility |
 | `ohlcv_1h.parquet` | same | Context / warm-up |
 | `ohlcv_1d.parquet` | same | Trend, Regime |
@@ -78,6 +79,28 @@ PYTHONPATH=src uv run python -m crypt.backfill \
 
 Exit `0` on success; `1` on bad args or precondition failure.
 
+### 3.2 Missing-candle UX contract
+
+Processes that require candles before expensive research or live order logic
+must check availability before starting that work.
+
+Research and backtest CLIs are non-interactive by default: when required
+candles are missing, they should fail fast and print a concrete command like:
+
+```bash
+MPLCONFIGDIR=/tmp/matplotlib-cache UV_CACHE_DIR=/tmp/uv-cache PYTHONPATH=src \
+uv run python -m crypt.backfill \
+    --symbol SOL-USDT-SWAP \
+    --from 2024-01-01 \
+    --to 2024-02-01 \
+    --data-types ohlcv \
+    --data-dir data
+```
+
+Production runtime must not prompt for confirmation because no human may be
+attached. It should use env-configured bootstrap auto-backfill when enabled
+or fail fast in preflight when required data cannot be prepared.
+
 ---
 
 ## 4. OKX endpoints used
@@ -104,7 +127,7 @@ Retries on `50030` abort immediately (`no_retry_on` in `retry_with_backoff`).
 
 | `--data-types` value | Source | Approximate depth |
 |----------------------|--------|-------------------|
-| `ohlcv` | OKX | 2+ years |
+| `ohlcv` | OKX | 2+ years; writes 15m/1h/4h/1d |
 | `execution_1m` | OKX | Recent years; last + mark series |
 | `last_1m` | OKX | Last-trade half of minute execution; safe parallel job |
 | `mark_1m` | OKX | Mark-price half of minute execution; safe parallel job |

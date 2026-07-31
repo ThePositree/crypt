@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -52,6 +52,30 @@ IntRange = tuple[int, int, int]
 
 
 @dataclass(frozen=True, slots=True)
+class DSSInstance:
+    """One timeframe-aware trigger or filter instance."""
+
+    name: str
+    timeframe: str = "H1"
+    params: dict[str, ParamValue] = field(default_factory=dict)
+
+    @property
+    def label(self) -> str:
+        return f"{self.name}@{self.timeframe}"
+
+    @property
+    def identity(self) -> tuple[str, str, tuple[tuple[str, ParamValue], ...]]:
+        return (self.name, self.timeframe, tuple(sorted(self.params.items())))
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "name": self.name,
+            "timeframe": self.timeframe,
+            "params": dict(self.params),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class TrialConfig:
     """Immutable snapshot of everything needed to reproduce one DSS trial."""
 
@@ -59,17 +83,40 @@ class TrialConfig:
     trigger_params: dict[str, ParamValue]
     filter_names: tuple[str, ...]
     filter_params: dict[str, dict[str, ParamValue]]
+    trigger_timeframe: str = "H1"
+    filter_timeframes: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def trigger_instance(self) -> DSSInstance:
+        name, embedded_timeframe = _split_instance_name(self.trigger_name)
+        timeframe = embedded_timeframe if "@" in self.trigger_name else self.trigger_timeframe
+        return DSSInstance(name=name, timeframe=timeframe, params=dict(self.trigger_params))
+
+    @property
+    def filter_instances(self) -> tuple[DSSInstance, ...]:
+        instances: list[DSSInstance] = []
+        seen: set[tuple[str, str, tuple[tuple[str, ParamValue], ...]]] = set()
+        for raw_name in self.filter_names:
+            name, embedded_timeframe = _split_instance_name(raw_name)
+            timeframe = self.filter_timeframes.get(raw_name) or self.filter_timeframes.get(name)
+            params = self.filter_params.get(raw_name) or self.filter_params.get(name) or {}
+            instance = DSSInstance(
+                name=name,
+                timeframe=timeframe or embedded_timeframe,
+                params=dict(params),
+            )
+            if instance.identity in seen:
+                raise ValueError(f"Duplicate DSS filter instance: {instance.label}")
+            seen.add(instance.identity)
+            instances.append(instance)
+        return tuple(instances)
 
     @property
     def signal_cache_key(self) -> str:
         """Hash covering signal shape only."""
         payload = {
-            "trigger": self.trigger_name,
-            "trigger_params": dict(sorted(self.trigger_params.items())),
-            "filters": sorted(self.filter_names),
-            "filter_params": {
-                k: dict(sorted(v.items())) for k, v in sorted(self.filter_params.items())
-            },
+            "trigger": self.trigger_instance.to_dict(),
+            "filters": [instance.to_dict() for instance in sorted(self.filter_instances, key=lambda i: i.label)],
         }
         return hashlib.sha1(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
@@ -77,9 +124,16 @@ class TrialConfig:
         """Serialize for JSON export."""
         return {
             "trigger_name": self.trigger_name,
+            "trigger_timeframe": self.trigger_instance.timeframe,
             "trigger_params": dict(self.trigger_params),
             "filter_names": list(self.filter_names),
+            "filter_timeframes": {
+                raw_name: instance.timeframe
+                for raw_name, instance in zip(self.filter_names, self.filter_instances, strict=True)
+            },
             "filter_params": {k: dict(v) for k, v in self.filter_params.items()},
+            "trigger_instance": self.trigger_instance.to_dict(),
+            "filter_instances": [instance.to_dict() for instance in self.filter_instances],
         }
 
     @classmethod
@@ -91,10 +145,13 @@ class TrialConfig:
             dict[str, dict[str, ParamValue]],
             d.get("filter_params") or {},
         )
+        filter_timeframes_raw = cast(dict[str, str], d.get("filter_timeframes") or {})
         return cls(
             trigger_name=str(d["trigger_name"]),
+            trigger_timeframe=str(d.get("trigger_timeframe") or "H1"),
             trigger_params=dict(trigger_params_raw),
             filter_names=tuple(str(n) for n in filter_names_raw),
+            filter_timeframes={str(k): str(v) for k, v in filter_timeframes_raw.items()},
             filter_params={k: dict(v) for k, v in filter_params_raw.items()},
         )
 
@@ -110,13 +167,17 @@ class DSSCandidate:
     filter_params: dict[str, dict[str, float | int | str]]
     generation: int
     parent_ids: tuple[str, ...] = ()
+    trigger_timeframe: str = "H1"
+    filter_timeframes: dict[str, str] = field(default_factory=dict)
 
     @property
     def trial_config(self) -> TrialConfig:
         return TrialConfig(
             trigger_name=self.trigger_name,
+            trigger_timeframe=self.trigger_timeframe,
             trigger_params=dict(self.trigger_params),
             filter_names=self.filter_names,
+            filter_timeframes=dict(self.filter_timeframes),
             filter_params={name: dict(params) for name, params in self.filter_params.items()},
         )
 
@@ -126,7 +187,7 @@ class DSSCandidate:
 
     @property
     def execution_key(self) -> str:
-        return "stage1_directional_only"
+        return "directional_labeling_only"
 
     @property
     def candidate_key(self) -> str:
@@ -136,9 +197,18 @@ class DSSCandidate:
         return {
             "candidate_id": self.candidate_id,
             "trigger_name": self.trigger_name,
+            "trigger_timeframe": self.trial_config.trigger_instance.timeframe,
             "trigger_params": dict(self.trigger_params),
             "filter_names": list(self.filter_names),
+            "filter_timeframes": {
+                raw_name: instance.timeframe
+                for raw_name, instance in zip(self.filter_names, self.trial_config.filter_instances, strict=True)
+            },
             "filter_params": {k: dict(v) for k, v in self.filter_params.items()},
+            "trigger_instance": self.trial_config.trigger_instance.to_dict(),
+            "filter_instances": [
+                instance.to_dict() for instance in self.trial_config.filter_instances
+            ],
             "generation": self.generation,
             "parent_ids": list(self.parent_ids),
         }
@@ -151,12 +221,18 @@ class DSSCandidate:
             dict[str, dict[str, ParamValue]],
             data.get("filter_params") or {},
         )
+        filter_timeframes_raw = cast(dict[str, str], data.get("filter_timeframes") or {})
+        filter_timeframes = {str(k): str(v) for k, v in filter_timeframes_raw.items()}
+        if filter_timeframes and all(value == "H1" for value in filter_timeframes.values()):
+            filter_timeframes = {}
         parent_ids_raw = cast(list[object], data.get("parent_ids") or [])
         return cls(
             candidate_id=str(data["candidate_id"]),
             trigger_name=str(data["trigger_name"]),
+            trigger_timeframe=str(data.get("trigger_timeframe") or "H1"),
             trigger_params=dict(trigger_params_raw),
             filter_names=tuple(str(v) for v in filter_names_raw),
+            filter_timeframes=filter_timeframes,
             filter_params={str(k): dict(v) for k, v in filter_params_raw.items()},
             generation=int(cast(Any, data.get("generation", 0))),
             parent_ids=tuple(str(v) for v in parent_ids_raw),
@@ -183,6 +259,13 @@ class DSSBehavior:
 
     def to_label(self) -> str:
         return "|".join(self.cell_key)
+
+
+def _split_instance_name(raw_name: str) -> tuple[str, str]:
+    if "@" not in raw_name:
+        return raw_name, "H1"
+    name, timeframe = raw_name.rsplit("@", 1)
+    return name, timeframe or "H1"
 
 
 # ---------------------------------------------------------------------------
@@ -253,6 +336,8 @@ class DSSSearchSpace:
     trigger_param_bounds: dict[str, dict[str, ParamDef]]
     filter_param_bounds: dict[str, dict[str, ParamDef]]
     max_filters: int = 4
+    trigger_timeframes: tuple[str, ...] = ("H1",)
+    filter_timeframes: tuple[str, ...] = ("H1",)
 
 
 # ---------------------------------------------------------------------------
@@ -266,7 +351,7 @@ class DSSConfig:
 
     output: Path
     windows: list[DSSWindowSpec]
-    n_trials: int = 50_000
+    n_trials: int | None = 50_000
     n_jobs: int = 1
     max_filters: int = 4
     min_trades_per_window: int = 20
@@ -281,13 +366,12 @@ class DSSConfig:
     max_positions: int = 1
     risk_base_period: str = "monthly"
     signal_cache_max_entries: int = 2_000
-    algorithm: Literal["staged", "catcma_qd", "island_qd", "hyperband_qd", "smac_qd"] = "staged"
+    algorithm: Literal["directional", "catcma_qd", "island_qd", "hyperband_qd", "smac_qd"] = "directional"
     catalog: Literal["legacy", "pinescript_v1", "all"] = "legacy"
-    stage_mode: Literal["full", "stage1"] = "stage1"
     seed: int = 36
-    stage1_tp_move_pct: float = 0.007
-    stage1_sl_move_pct: float = 0.004
-    stage1_reference_atr_pct: float = 0.007
+    directional_tp_move_pct: float = 0.007
+    directional_sl_move_pct: float = 0.004
+    directional_reference_atr_pct: float = 0.007
     min_barrier_tp_first_rate: float = 0.05
-    min_barrier_win_rate: float = 0.55
+    min_barrier_win_rate: float = 0.45
     specialist_windows: tuple[str, ...] = ()

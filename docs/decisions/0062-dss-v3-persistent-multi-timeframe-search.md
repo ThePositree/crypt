@@ -21,10 +21,10 @@ long periods alongside live execution.
 The owner clarified that DSS must remain a fast directional candidate search:
 it should not optimize or score trading geometry such as RRR, risk percent,
 TTL, ATR stop multiplier, trailing stops, or portfolio sizing. Candidate
-quality is checked by Stage 1 labeling only.
+quality is checked by directional labeling only.
 
 The owner also approved breaking DSS v2. DSS v3 does not need compatibility
-with DSS v2 candidate JSONs, Stage 2/3 artifacts, state files, journals,
+with DSS v2 candidate JSONs, replay backtest artifacts, state files, journals,
 candidate ids, reports, or backend state.
 
 The current DSS controls also make it difficult to search for both frequent
@@ -51,14 +51,14 @@ DSS v3 may replace DSS v2 internals in place. Old DSS v2 artifacts remain
 historical research evidence only and are not required to resume or replay
 through the DSS v3 search command.
 
-DSS v3 removes the DSS v2 Stage 2/3 proxy/full backtest pipeline from DSS
-search. Stage 1 directional labeling is the only DSS evaluator. Full backtests,
+DSS v3 removes the DSS v2 proxy/full backtest pipeline from DSS search.
+Directional labeling is the only DSS evaluator. Full backtests,
 mandate reports, optimizer runs, RRR/TTL/risk searches, donor portfolio
 assembly, and live promotion are downstream workflows outside DSS.
 
 DSS v3 will replace the single global min-trade gate with frequency classes.
 At minimum, the quality-diversity archive must distinguish sparse, medium,
-frequent, and overactive candidates. Sparse candidates may pass Stage 1 with
+frequent, and overactive candidates. Sparse candidates may pass labeling with
 far fewer events than frequent candidates when their directional labels are
 strong enough, and reports must show the class explicitly.
 
@@ -91,14 +91,14 @@ owner decision.
   contain signal logic, not trade geometry.
 - Sparse and frequent candidates can be found in the same run instead of
   needing separate command configurations.
-- Stage 1 reports become more portfolio-aware because candidate frequency is a
+- Directional reports become more portfolio-aware because candidate frequency is a
   behavior descriptor rather than only a hard rejection gate.
 - Implementation can remove DSS v2 compatibility code instead of carrying
   migration adapters.
 - The search space grows substantially, so caching, stable hashing, duplicate
-  prevention, and staged budget allocation become mandatory infrastructure.
+  prevention, and incremental budget allocation become mandatory infrastructure.
 - `hyperband_qd` should be the first backend updated for v3 because it is a
-  good fit for allocating Stage 1 labeling attention over huge candidate
+  good fit for allocating directional labeling attention over huge candidate
   spaces without running full backtests.
 - `smac_qd` needs a v3 conditional encoder before its surrogate can model
   timeframe-aware repeated filter instances correctly.

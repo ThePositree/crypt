@@ -20,6 +20,100 @@ class DiscoveryDataset:
     features: pd.DataFrame
 
 
+def build_timeframe_discovery_dataset(
+    *,
+    data: StrategyInput,
+    timeframe: str,
+    window_label: str,
+    symbol: str,
+) -> DiscoveryDataset:
+    """Build features on a requested timeframe from StrategyData candles."""
+
+    primary = select_timeframe_frame(data, timeframe)
+    candles = data.candles if isinstance(data, StrategyData) else {}
+    dataset_data = StrategyData(
+        primary=primary,
+        candles=candles,
+        extras=data.extras if isinstance(data, StrategyData) else {},
+        metadata=dict(data.metadata) if isinstance(data, StrategyData) else {},
+        execution=data.execution if isinstance(data, StrategyData) else None,
+    )
+    return build_discovery_dataset(data=dataset_data, window_label=window_label, symbol=symbol)
+
+
+def align_discovery_dataset_asof(
+    dataset: DiscoveryDataset, target_index: pd.DatetimeIndex
+) -> DiscoveryDataset:
+    """As-of align a dataset to target timestamps using already-closed candles."""
+
+    if dataset.primary.empty or dataset.features.empty:
+        return DiscoveryDataset(
+            window_label=dataset.window_label,
+            symbol=dataset.symbol,
+            primary=dataset.primary,
+            features=dataset.features,
+        )
+    target = pd.DatetimeIndex(pd.to_datetime(target_index, utc=True)).sort_values()
+    source_index = dataset.primary.sort_index().index
+    target_delta = _median_index_delta(target)
+    source_delta = _median_index_delta(source_index)
+    available_index = source_index
+    if source_delta is not None and target_delta is not None and source_delta > target_delta:
+        available_index = source_index + source_delta
+    primary_source = dataset.primary.sort_index().copy()
+    features_source = dataset.features.sort_index().copy()
+    primary_source.index = available_index
+    features_source.index = available_index
+    primary = primary_source.reindex(target, method="ffill")
+    features = features_source.reindex(target, method="ffill")
+    return DiscoveryDataset(
+        window_label=dataset.window_label,
+        symbol=dataset.symbol,
+        primary=primary,
+        features=features,
+    )
+
+
+def select_timeframe_frame(data: StrategyInput, timeframe: str) -> pd.DataFrame:
+    """Return the OHLCV frame for timeframe or raise an explicit data error."""
+
+    normalized = _normalize_timeframe_key(timeframe)
+    if isinstance(data, StrategyData):
+        primary_key = _normalize_timeframe_key(str(data.metadata.get("primary_timeframe", "")))
+        if primary_key == normalized or (not primary_key and normalized == "1h"):
+            return data.primary
+        for key, frame in data.candles.items():
+            if _normalize_timeframe_key(key) == normalized:
+                if frame.empty:
+                    raise ValueError(f"DSS timeframe {timeframe!r} has no candles")
+                return frame
+        if normalized == "1m" and data.execution is not None and not data.execution.last_1m.empty:
+            return data.execution.last_1m
+        raise ValueError(f"DSS timeframe {timeframe!r} is not loaded")
+    if normalized not in {"", "h1", "1h"}:
+        raise ValueError(f"DSS timeframe {timeframe!r} requires StrategyData candles")
+    return data
+
+
+def _normalize_timeframe_key(timeframe: str) -> str:
+    value = timeframe.strip().lower()
+    aliases = {
+        "h1": "1h",
+        "1h": "1h",
+        "h4": "4h",
+        "4h": "4h",
+        "d1": "1d",
+        "1d": "1d",
+        "m1": "1m",
+        "1m": "1m",
+        "m5": "5m",
+        "5m": "5m",
+        "m15": "15m",
+        "15m": "15m",
+    }
+    return aliases.get(value, value)
+
+
 def build_donor_discovery_features(
     *,
     primary: pd.DataFrame,
@@ -666,12 +760,19 @@ def _aligned_context_direction(
 
 
 def _available_after_close_index(index: pd.DatetimeIndex) -> pd.DatetimeIndex:
-    if len(index) < 2:
+    delta = _median_index_delta(index)
+    if delta is None:
         return index
+    return index + delta
+
+
+def _median_index_delta(index: pd.DatetimeIndex) -> pd.Timedelta | None:
+    if len(index) < 2:
+        return None
     deltas = index.to_series().diff().dropna()
     if deltas.empty:
-        return index
-    return index + deltas.median()
+        return None
+    return deltas.median()
 
 
 def _to_numeric(series: pd.Series) -> pd.Series:

@@ -17,7 +17,7 @@ from typing import Any
 import optuna
 import pandas as pd
 
-from backtester.strategy_discovery.dss_config import DSSConfig, TrialConfig
+from backtester.strategy_discovery.dss_config import DSSConfig, ParamValue, TrialConfig
 
 logger = logging.getLogger(__name__)
 
@@ -53,17 +53,17 @@ def _extract_pareto_front(
     ]
     pareto: list[optuna.trial.FrozenTrial] = []
     for candidate in complete:
-        scores_c = list(candidate.values)  # type: ignore[arg-type]
+        scores_c = list(candidate.values)
         dominated = False
         for other in complete:
             if other.number == candidate.number:
                 continue
-            if _is_dominated(scores_c, list(other.values)):  # type: ignore[arg-type]
+            if _is_dominated(scores_c, list(other.values)):
                 dominated = True
                 break
         if not dominated:
             pareto.append(candidate)
-    return sorted(pareto, key=lambda t: sum(t.values or []), reverse=True)  # type: ignore[arg-type]
+    return sorted(pareto, key=lambda t: sum(t.values or []), reverse=True)
 
 
 # ---------------------------------------------------------------------------
@@ -78,8 +78,8 @@ def _trial_to_trial_config(trial: optuna.trial.FrozenTrial) -> TrialConfig | Non
     if trigger_name is None:
         return None
 
-    trigger_params: dict[str, float | int] = {}
-    filter_params: dict[str, dict[str, float | int]] = {}
+    trigger_params: dict[str, ParamValue] = {}
+    filter_params: dict[str, dict[str, ParamValue]] = {}
 
     trigger_prefix = f"tp_{trigger_name}_"
     for k, v in params.items():
@@ -99,7 +99,7 @@ def _trial_to_trial_config(trial: optuna.trial.FrozenTrial) -> TrialConfig | Non
     filter_names = tuple(sorted(set(filter_names_raw)))
 
     for fn in filter_names:
-        fp: dict[str, float | int] = {}
+        fp: dict[str, ParamValue] = {}
         prefix = f"fp_{fn}_"
         for k, v in params.items():
             if k.startswith(prefix):
@@ -180,7 +180,7 @@ def write_dss_report(
     threshold = dss_config.accept_min_score_per_window
     accepted = [
         t for t in pareto
-        if t.values and all(v >= threshold for v in t.values)  # type: ignore[misc]
+        if t.values and all(v >= threshold for v in t.values)
     ]
     logger.info(
         "%d solutions pass accept_min_score_per_window=%.0f", len(accepted), threshold

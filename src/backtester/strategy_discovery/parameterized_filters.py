@@ -7,6 +7,7 @@ Every factory exposes a ``param_space()`` static function.
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Any, cast
 
 from backtester.strategy_discovery.dss_config import (
     CategoricalParam,
@@ -28,7 +29,7 @@ FilterFactory = Callable[[FilterParams], FilterFn]
 
 
 def parameterized_filter_catalog() -> dict[str, FilterFactory]:
-    return {
+    return cast(dict[str, FilterFactory], {
         "pf_atr_distance_band": pf_atr_distance_band_factory,
         "pf_body_to_range_min": pf_body_to_range_min_factory,
         "pf_trend_strength": pf_trend_strength_factory,
@@ -45,15 +46,15 @@ def parameterized_filter_catalog() -> dict[str, FilterFactory]:
         "pf_no_liquidity_sweep": pf_no_liquidity_sweep_factory,
         "pf_side_long_only": pf_side_long_only_factory,
         "pf_side_short_only": pf_side_short_only_factory,
-    }
+    })
 
 
 def parameterized_filter_param_space() -> dict[str, dict[str, ParamDef]]:
     """Per-filter parameter spaces. Used to build DSSSearchSpace."""
     catalog: dict[str, dict[str, ParamDef]] = {}
-    factories = parameterized_filter_catalog()
+    factories: dict[str, Any] = cast(dict[str, Any], parameterized_filter_catalog())
     for name, factory in factories.items():
-        catalog[name] = factory.param_space()  # type: ignore[attr-defined]
+        catalog[name] = factory.param_space()
     return catalog
 
 
@@ -76,18 +77,20 @@ def _safe_float(value: object) -> float | None:
     if value is None:
         return None
     try:
-        v = float(value)  # type: ignore[arg-type]
+        v = float(cast(Any, value))
         return None if pd.isna(v) else v
     except (TypeError, ValueError):
         return None
 
 
 def _clamp_float(value: object, low: float, high: float) -> float:
-    return max(low, min(high, float(value)))  # type: ignore[arg-type]
+    coerced = float(cast(Any, value))
+    return max(low, min(high, coerced))
 
 
 def _clamp_int(value: object, low: int, high: int) -> int:
-    return max(low, min(high, int(value)))  # type: ignore[arg-type]
+    coerced = int(cast(Any, value))
+    return max(low, min(high, coerced))
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +106,7 @@ class pf_atr_distance_band_factory:
             "high_mult": FloatParam(low=0.5, high=6.0),
         }
 
-    def __new__(cls, params: FilterParams) -> FilterFn:
+    def __new__(cls, params: FilterParams) -> FilterFn:  # type: ignore[misc]
         low_mult = _clamp_float(params.get("low_mult", 0.0), 0.0, 10.0)
         high_mult = _clamp_float(params.get("high_mult", 3.0), low_mult + 0.01, 20.0)
 
@@ -126,7 +129,7 @@ class pf_body_to_range_min_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"ratio": FloatParam(low=0.05, high=0.7)}
 
-    def __new__(cls, params: FilterParams) -> FilterFn:
+    def __new__(cls, params: FilterParams) -> FilterFn:  # type: ignore[misc]
         ratio_min = _clamp_float(params.get("ratio", 0.3), 0.0, 1.0)
 
         def _filter(event: DiscoveryEvent, _dataset: DiscoveryDataset) -> FilterResult:
@@ -145,7 +148,7 @@ class pf_trend_strength_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"min_atr": FloatParam(low=0.2, high=2.0)}
 
-    def __new__(cls, params: FilterParams) -> FilterFn:
+    def __new__(cls, params: FilterParams) -> FilterFn:  # type: ignore[misc]
         min_atr = _clamp_float(params.get("min_atr", 0.5), 0.0, 5.0)
 
         def _filter(event: DiscoveryEvent, _dataset: DiscoveryDataset) -> FilterResult:
@@ -167,7 +170,7 @@ class pf_rsi_zone_factory:
             "high": IntParam(low=40, high=80, step=5),
         }
 
-    def __new__(cls, params: FilterParams) -> FilterFn:
+    def __new__(cls, params: FilterParams) -> FilterFn:  # type: ignore[misc]
         low = _clamp_float(params.get("low", 30.0), 0.0, 100.0)
         high = _clamp_float(params.get("high", 70.0), low + 1.0, 100.0)
 
@@ -187,7 +190,7 @@ class pf_volume_ratio_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"min_ratio": FloatParam(low=0.5, high=3.0)}
 
-    def __new__(cls, params: FilterParams) -> FilterFn:
+    def __new__(cls, params: FilterParams) -> FilterFn:  # type: ignore[misc]
         min_ratio = _clamp_float(params.get("min_ratio", 1.0), 0.0, 10.0)
 
         def _filter(event: DiscoveryEvent, _dataset: DiscoveryDataset) -> FilterResult:
@@ -208,7 +211,7 @@ class pf_bb_width_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"max_width_pct": FloatParam(low=0.01, high=0.08)}
 
-    def __new__(cls, params: FilterParams) -> FilterFn:
+    def __new__(cls, params: FilterParams) -> FilterFn:  # type: ignore[misc]
         max_width = _clamp_float(params.get("max_width_pct", 0.04), 0.001, 0.5)
 
         def _filter(event: DiscoveryEvent, _dataset: DiscoveryDataset) -> FilterResult:
@@ -227,7 +230,7 @@ class pf_vwap_proximity_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"max_dist_pct": FloatParam(low=0.003, high=0.05)}
 
-    def __new__(cls, params: FilterParams) -> FilterFn:
+    def __new__(cls, params: FilterParams) -> FilterFn:  # type: ignore[misc]
         max_dist = _clamp_float(params.get("max_dist_pct", 0.01), 0.0, 0.5)
 
         def _filter(event: DiscoveryEvent, _dataset: DiscoveryDataset) -> FilterResult:
@@ -246,7 +249,7 @@ class pf_context_aligned_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"timeframe": CategoricalParam(choices=("h4", "d1"))}
 
-    def __new__(cls, params: FilterParams) -> FilterFn:
+    def __new__(cls, params: FilterParams) -> FilterFn:  # type: ignore[misc]
         tf = str(params.get("timeframe", "h4"))
 
         def _filter(event: DiscoveryEvent, _dataset: DiscoveryDataset) -> FilterResult:
@@ -266,7 +269,7 @@ class pf_session_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"session": CategoricalParam(choices=("london", "ny", "asia"))}
 
-    def __new__(cls, params: FilterParams) -> FilterFn:
+    def __new__(cls, params: FilterParams) -> FilterFn:  # type: ignore[misc]
         session = str(params.get("session", "london"))
         _SESSION_HOURS: dict[str, tuple[int, int]] = {
             "london": (7, 15),
@@ -291,7 +294,7 @@ class pf_anchor_age_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"max_hours": IntParam(low=4, high=120, step=4)}
 
-    def __new__(cls, params: FilterParams) -> FilterFn:
+    def __new__(cls, params: FilterParams) -> FilterFn:  # type: ignore[misc]
         max_hours = _clamp_float(params.get("max_hours", 48.0), 1.0, 10_000.0)
 
         def _filter(event: DiscoveryEvent, _dataset: DiscoveryDataset) -> FilterResult:
@@ -310,7 +313,7 @@ class pf_avoid_large_move_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"threshold_atr": FloatParam(low=1.5, high=5.0)}
 
-    def __new__(cls, params: FilterParams) -> FilterFn:
+    def __new__(cls, params: FilterParams) -> FilterFn:  # type: ignore[misc]
         threshold = _clamp_float(params.get("threshold_atr", 3.0), 0.1, 20.0)
 
         def _filter(event: DiscoveryEvent, _dataset: DiscoveryDataset) -> FilterResult:
@@ -333,7 +336,7 @@ class pf_trend_ema_stack_factory:
             "slow": IntParam(low=50, high=200, step=10),
         }
 
-    def __new__(cls, _params: FilterParams) -> FilterFn:
+    def __new__(cls, _params: FilterParams) -> FilterFn:  # type: ignore[misc]
         def _filter(event: DiscoveryEvent, _dataset: DiscoveryDataset) -> FilterResult:
             if event.side == "long":
                 passed = bool(event.metadata.get("ema_stack_long", False))
@@ -350,7 +353,7 @@ class pf_bar_range_min_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"min_atr_mult": FloatParam(low=0.2, high=1.5)}
 
-    def __new__(cls, params: FilterParams) -> FilterFn:
+    def __new__(cls, params: FilterParams) -> FilterFn:  # type: ignore[misc]
         min_mult = _clamp_float(params.get("min_atr_mult", 0.5), 0.0, 5.0)
 
         def _filter(event: DiscoveryEvent, _dataset: DiscoveryDataset) -> FilterResult:
@@ -369,7 +372,7 @@ class pf_no_liquidity_sweep_factory:
     def param_space() -> dict[str, ParamDef]:
         return {}
 
-    def __new__(cls, _params: FilterParams) -> FilterFn:
+    def __new__(cls, _params: FilterParams) -> FilterFn:  # type: ignore[misc]
         def _filter(event: DiscoveryEvent, _dataset: DiscoveryDataset) -> FilterResult:
             anchor_type = event.metadata.get("anchor_type")
             if anchor_type is None:
@@ -386,7 +389,7 @@ class pf_side_long_only_factory:
     def param_space() -> dict[str, ParamDef]:
         return {}
 
-    def __new__(cls, _params: FilterParams) -> FilterFn:
+    def __new__(cls, _params: FilterParams) -> FilterFn:  # type: ignore[misc]
         def _filter(event: DiscoveryEvent, _dataset: DiscoveryDataset) -> FilterResult:
             passed = event.side == "long"
             return _ok("pf_side_long_only", "long") if passed else _fail("pf_side_long_only", "not_long")
@@ -399,7 +402,7 @@ class pf_side_short_only_factory:
     def param_space() -> dict[str, ParamDef]:
         return {}
 
-    def __new__(cls, _params: FilterParams) -> FilterFn:
+    def __new__(cls, _params: FilterParams) -> FilterFn:  # type: ignore[misc]
         def _filter(event: DiscoveryEvent, _dataset: DiscoveryDataset) -> FilterResult:
             passed = event.side == "short"
             return _ok("pf_side_short_only", "short") if passed else _fail("pf_side_short_only", "not_short")

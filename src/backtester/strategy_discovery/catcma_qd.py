@@ -1,13 +1,16 @@
-"""Experimental CatCMA-inspired quality-diversity DSS backend."""
+"""CatCMAwM quality-diversity DSS backend."""
 
 from __future__ import annotations
 
 import csv
 import random
-from collections.abc import Callable, Hashable, Mapping
+from collections.abc import Callable, Hashable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypeVar
+from typing import Any
+
+import numpy as np
+from cmaes import CatCMAwM
 
 from backtester.data_contracts import StrategyData
 from backtester.strategy_discovery.dss_archive import DSSArchive
@@ -21,149 +24,395 @@ from backtester.strategy_discovery.dss_config import (
     ParamDef,
     ParamValue,
 )
-from backtester.strategy_discovery.dss_stage1 import stage1_advisory_score
-from backtester.strategy_discovery.dss_v2 import (
-    DSSV2Result,
-    Stage1Result,
-    _append_jsonl,
-    _append_score_history,
-    _append_stage1,
-    _append_stage_score,
+from backtester.strategy_discovery.dss_directional import directional_advisory_score
+from backtester.strategy_discovery.dss_directional_search import (
+    DirectionalResult,
+    DSSDirectionalResult,
+    _count_csv_rows,
+    _count_directional_survivors,
+    _evaluate_directional_candidate,
     _guard_output_dir,
-    _proxy_windows,
-    _read_completed_ids,
-    _read_stage0_candidates,
-    _should_promote_to_stage3,
-    _write_archive,
+    _instance_base_name,
+    _instance_timeframe,
+    _read_candidate_rows,
+    _read_directional_candidate_ids,
+    _refresh_directional_reports,
     _write_state,
     _write_summary,
-    evaluate_stage1,
-    evaluate_stage_scores,
-    export_stage1_candidates,
-    export_stage4_candidates,
-    write_stage1_ranked,
+)
+from backtester.strategy_discovery.dss_runtime import (
+    DSSSearchRuntime,
+    should_use_random_injection,
 )
 from backtester.strategy_discovery.signal_composer import SignalComposer
 
-_PARAM_FLOOR = 0.03
-_ELITE_FRACTION = 0.25
 _DEFAULT_POPULATION_SIZE = 48
 _STAGE2_BATCH_FRACTION = 0.12
-_T = TypeVar("_T", bound=Hashable)
+_NOVELTY_MUTATION_INTERVAL = 10
 
 
 @dataclass(frozen=True, slots=True)
 class _EvaluatedCandidate:
     candidate: DSSCandidate
     robust_score: float
-    promoted_to_stage3: bool
 
 
 @dataclass(frozen=True, slots=True)
-class _Stage1Candidate:
+class _DirectionalCandidate:
     candidate: DSSCandidate
-    result: Stage1Result
+    result: DirectionalResult
     cheap_score: float
 
 
+@dataclass(frozen=True, slots=True)
+class _CategoricalSlot:
+    namespace: str
+    owner: str
+    name: str
+    choices: tuple[Hashable, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _NumericSlot:
+    namespace: str
+    owner: str
+    name: str
+    choices: tuple[int | float, ...] | None
+    low: float | None = None
+    high: float | None = None
+
+
 class _WeightedModel:
-    """Small mixed-variable distribution model inspired by CatCMAwM."""
+    """DSS candidate sampler backed by cmaes.CatCMAwM."""
 
     def __init__(self, search_space: DSSSearchSpace, *, seed: int) -> None:
         self._search_space = search_space
-        self._rng = random.Random(seed)
-        self._trigger_weights = _uniform_weights(search_space.trigger_names)
-        self._filter_weights = _uniform_weights(search_space.filter_names)
-        self._depth_weights = _uniform_weights(tuple(range(search_space.max_filters + 1)))
-        self._param_weights: dict[tuple[str, str, str], dict[Hashable, float]] = {}
-        self._init_param_weights("trigger", search_space.trigger_param_bounds)
-        self._init_param_weights("filter", search_space.filter_param_bounds)
+        self._seed = seed
+        self._x_slots: list[_NumericSlot] = []
+        self._z_slots: list[_NumericSlot] = []
+        self._c_slots: list[_CategoricalSlot] = []
+        self._asked: dict[str, Any] = {}
+        self._feedback: list[tuple[Any, float]] = []
+        self._tell_count = 0
+        self._init_schema()
+        self._optimizer = self._new_optimizer()
+
+    @property
+    def backend_name(self) -> str:
+        return "cmaes.CatCMAwM"
 
     def sample(self, candidate_id: str, *, generation: int) -> DSSCandidate:
-        trigger = str(_weighted_choice(self._trigger_weights, self._rng))
-        depth = int(_weighted_choice(self._depth_weights, self._rng))
-        depth = min(depth, self._search_space.max_filters, len(self._search_space.filter_names))
-        filters = tuple(sorted(self._sample_filters(depth)))
-        return DSSCandidate(
-            candidate_id=candidate_id,
-            trigger_name=trigger,
-            trigger_params=self._sample_param_group("trigger", trigger),
-            filter_names=filters,
-            filter_params={name: self._sample_param_group("filter", name) for name in filters},
-            generation=generation,
-        )
+        solution = self._optimizer.ask()
+        self._asked[candidate_id] = solution
+        return self._decode_solution(candidate_id, solution, generation=generation)
 
     def update(self, evaluated: list[_EvaluatedCandidate]) -> None:
         if not evaluated:
             return
-        ranked = sorted(evaluated, key=lambda item: item.robust_score, reverse=True)
-        elite_count = max(1, int(len(ranked) * _ELITE_FRACTION))
-        elites = ranked[:elite_count]
-        self._trigger_weights = _update_weights(
-            self._trigger_weights,
-            [elite.candidate.trigger_name for elite in elites],
-        )
-        self._filter_weights = _update_weights(
-            self._filter_weights,
-            [filter_name for elite in elites for filter_name in elite.candidate.filter_names],
-        )
-        self._depth_weights = _update_weights(
-            self._depth_weights,
-            [len(elite.candidate.filter_names) for elite in elites],
-        )
-        for elite in elites:
-            self._update_param_group(
-                "trigger", elite.candidate.trigger_name, elite.candidate.trigger_params
-            )
-            for filter_name, params in elite.candidate.filter_params.items():
-                self._update_param_group("filter", filter_name, params)
+        for item in evaluated:
+            solution = self._asked.pop(item.candidate.candidate_id, None)
+            if solution is None:
+                continue
+            self._feedback.append((solution, -item.robust_score))
 
-    def _init_param_weights(
+        while len(self._feedback) >= self._optimizer.population_size:
+            batch = self._feedback[: self._optimizer.population_size]
+            del self._feedback[: self._optimizer.population_size]
+            self._optimizer.tell(batch)
+            self._tell_count += 1
+            if self._optimizer.should_stop():
+                self._optimizer = self._new_optimizer(seed_offset=self._tell_count)
+                self._feedback.clear()
+                self._asked.clear()
+
+    def _init_schema(self) -> None:
+        trigger_choices: tuple[Hashable, ...] = tuple(self._search_space.trigger_names)
+        if not trigger_choices:
+            raise ValueError("CatCMAwM DSS search requires at least one trigger")
+        if len(trigger_choices) >= 2:
+            self._c_slots.append(_CategoricalSlot("structure", "", "trigger", trigger_choices))
+
+        depth_choices: tuple[Hashable, ...] = tuple(range(self._search_space.max_filters + 1))
+        if len(depth_choices) >= 2:
+            self._c_slots.append(
+                _CategoricalSlot(
+                    "structure",
+                    "",
+                    "depth",
+                    depth_choices,
+                )
+            )
+
+        filter_choices: tuple[Hashable, ...] = ("", *self._search_space.filter_names)
+        if len(filter_choices) >= 2:
+            for slot_idx in range(self._search_space.max_filters):
+                self._c_slots.append(
+                    _CategoricalSlot("structure", "", f"filter_slot_{slot_idx}", filter_choices)
+                )
+
+        self._init_param_slots("trigger", self._search_space.trigger_param_bounds)
+        self._init_param_slots("filter", self._search_space.filter_param_bounds)
+        if not self._x_slots and not self._z_slots and not self._c_slots:
+            self._c_slots.append(_CategoricalSlot("internal", "", "noop", (0, 1)))
+
+    def _init_param_slots(
         self,
         namespace: str,
         bounds: dict[str, dict[str, ParamDef]],
     ) -> None:
-        for owner, params in bounds.items():
-            for param_name, param_def in params.items():
-                self._param_weights[(namespace, owner, param_name)] = _uniform_weights(
-                    tuple(_param_choices(param_def))
-                )
+        for owner, params in sorted(bounds.items()):
+            for param_name, param_def in sorted(params.items()):
+                if isinstance(param_def, CategoricalParam):
+                    choices = tuple(param_def.choices)
+                    if len(choices) >= 2:
+                        self._c_slots.append(
+                            _CategoricalSlot(
+                                namespace,
+                                owner,
+                                param_name,
+                                choices,
+                            )
+                        )
+                elif isinstance(param_def, IntParam):
+                    int_choices: tuple[int | float, ...] = tuple(
+                        _int_grid((param_def.low, param_def.high, param_def.step))
+                    )
+                    if len(int_choices) >= 2:
+                        self._z_slots.append(
+                            _NumericSlot(
+                                namespace,
+                                owner,
+                                param_name,
+                                int_choices,
+                            )
+                        )
+                elif isinstance(param_def, FloatParam) and param_def.step is not None:
+                    float_choices: tuple[int | float, ...] = tuple(
+                        _float_grid((param_def.low, param_def.high, param_def.step))
+                    )
+                    if len(float_choices) >= 2:
+                        self._z_slots.append(
+                            _NumericSlot(
+                                namespace,
+                                owner,
+                                param_name,
+                                float_choices,
+                            )
+                        )
+                elif isinstance(param_def, FloatParam) and param_def.low != param_def.high:
+                    self._x_slots.append(
+                        _NumericSlot(
+                            namespace,
+                            owner,
+                            param_name,
+                            None,
+                            low=param_def.low,
+                            high=param_def.high,
+                        )
+                    )
+                else:
+                    raise TypeError(f"Unsupported param definition: {param_def!r}")
 
-    def _sample_filters(self, depth: int) -> list[str]:
+    def _new_optimizer(self, *, seed_offset: int = 0) -> CatCMAwM:
+        x_space = [[slot.low, slot.high] for slot in self._x_slots]
+        z_space = [list(slot.choices or ()) for slot in self._z_slots]
+        c_space = [len(slot.choices) for slot in self._c_slots]
+        return CatCMAwM(
+            x_space=x_space or None,
+            z_space=z_space or None,
+            c_space=c_space or None,
+            population_size=_DEFAULT_POPULATION_SIZE,
+            seed=self._seed + seed_offset,
+        )
+
+    def _decode_solution(
+        self,
+        candidate_id: str,
+        solution: Any,
+        *,
+        generation: int,
+    ) -> DSSCandidate:
+        c_values = self._categorical_values(solution)
+        z_values = self._numeric_values(solution.z)
+        x_values = self._numeric_values(solution.x)
+
+        trigger = str(
+            self._choice_from_c_values(
+                c_values,
+                namespace="structure",
+                owner="",
+                name="trigger",
+                default=self._search_space.trigger_names[0],
+            )
+        )
+        depth_value = self._choice_from_c_values(
+            c_values,
+            namespace="structure",
+            owner="",
+            name="depth",
+            default=0,
+        )
+        if not isinstance(depth_value, (int, float)):
+            raise TypeError(f"Unsupported CatCMAwM depth value: {depth_value!r}")
+        depth = int(depth_value)
+        selected_filters = self._decode_filter_slots(c_values)
+        filters = tuple(sorted(selected_filters[:depth]))
+        trigger_name = _instance_base_name(trigger)
+
+        trigger_params: dict[str, ParamValue] = {}
+        filter_params: dict[str, dict[str, ParamValue]] = {name: {} for name in filters}
+        self._decode_params(
+            c_values=c_values,
+            z_values=z_values,
+            x_values=x_values,
+            trigger_name=trigger_name,
+            filter_names=filters,
+            trigger_params=trigger_params,
+            filter_params=filter_params,
+        )
+        return DSSCandidate(
+            candidate_id=candidate_id,
+            trigger_name=trigger_name,
+            trigger_timeframe=_instance_timeframe(trigger),
+            trigger_params=trigger_params,
+            filter_names=filters,
+            filter_timeframes={
+                name: _instance_timeframe(name)
+                for name in filters
+                if _instance_timeframe(name) != "H1"
+            },
+            filter_params=filter_params,
+            generation=generation,
+        )
+
+    def _decode_filter_slots(self, c_values: dict[tuple[str, str, str], Hashable]) -> list[str]:
         selected: list[str] = []
-        available = dict(self._filter_weights)
-        for _ in range(depth):
-            if not available:
-                break
-            picked = str(_weighted_choice(available, self._rng))
-            selected.append(picked)
-            available.pop(picked, None)
+        for slot_idx in range(self._search_space.max_filters):
+            picked = str(
+                self._choice_from_c_values(
+                    c_values,
+                    namespace="structure",
+                    owner="",
+                    name=f"filter_slot_{slot_idx}",
+                    default="",
+                )
+            )
+            if picked and picked not in selected:
+                selected.append(picked)
         return selected
 
-    def _sample_param_group(self, namespace: str, owner: str) -> dict[str, ParamValue]:
-        out: dict[str, ParamValue] = {}
-        bounds = (
-            self._search_space.trigger_param_bounds
-            if namespace == "trigger"
-            else self._search_space.filter_param_bounds
-        )
-        for param_name in bounds.get(owner, {}):
-            value = _weighted_choice(self._param_weights[(namespace, owner, param_name)], self._rng)
-            if not isinstance(value, (str, int, float)):
-                raise TypeError(f"Unsupported sampled parameter value: {value!r}")
-            out[param_name] = value
-        return out
-
-    def _update_param_group(
+    def _decode_params(
         self,
-        namespace: str,
-        owner: str,
+        *,
+        c_values: dict[tuple[str, str, str], Hashable],
+        z_values: list[float],
+        x_values: list[float],
+        trigger_name: str,
+        filter_names: tuple[str, ...],
+        trigger_params: dict[str, ParamValue],
+        filter_params: dict[str, dict[str, ParamValue]],
+    ) -> None:
+        active_filters = {_instance_base_name(name): name for name in filter_names}
+        for c_slot in self._c_slots:
+            if c_slot.namespace == "structure":
+                continue
+            value = c_values[(c_slot.namespace, c_slot.owner, c_slot.name)]
+            self._assign_param(
+                c_slot, value, trigger_name, active_filters, trigger_params, filter_params
+            )
+        for z_slot, value in zip(self._z_slots, z_values, strict=True):
+            self._assign_param(
+                z_slot, value, trigger_name, active_filters, trigger_params, filter_params
+            )
+        for x_slot, value in zip(self._x_slots, x_values, strict=True):
+            self._assign_param(
+                x_slot,
+                round(value, 6),
+                trigger_name,
+                active_filters,
+                trigger_params,
+                filter_params,
+            )
+        self._assign_deterministic_params(
+            trigger_name=trigger_name,
+            active_filters=active_filters,
+            trigger_params=trigger_params,
+            filter_params=filter_params,
+        )
+
+    def _assign_param(
+        self,
+        slot: _CategoricalSlot | _NumericSlot,
+        value: Hashable | float,
+        trigger_name: str,
+        active_filters: dict[str, str],
+        trigger_params: dict[str, ParamValue],
+        filter_params: dict[str, dict[str, ParamValue]],
+    ) -> None:
+        if not isinstance(value, (str, int, float)):
+            raise TypeError(f"Unsupported CatCMAwM parameter value: {value!r}")
+        if slot.namespace == "trigger" and slot.owner == trigger_name:
+            trigger_params[slot.name] = value
+        elif slot.namespace == "filter" and slot.owner in active_filters:
+            filter_params.setdefault(active_filters[slot.owner], {})[slot.name] = value
+
+    def _assign_deterministic_params(
+        self,
+        *,
+        trigger_name: str,
+        active_filters: dict[str, str],
+        trigger_params: dict[str, ParamValue],
+        filter_params: dict[str, dict[str, ParamValue]],
+    ) -> None:
+        self._assign_deterministic_param_group(
+            self._search_space.trigger_param_bounds.get(trigger_name, {}),
+            trigger_params,
+        )
+        for base_name, instance_name in active_filters.items():
+            self._assign_deterministic_param_group(
+                self._search_space.filter_param_bounds.get(base_name, {}),
+                filter_params.setdefault(instance_name, {}),
+            )
+
+    def _assign_deterministic_param_group(
+        self,
+        bounds: dict[str, ParamDef],
         params: dict[str, ParamValue],
     ) -> None:
-        for param_name, value in params.items():
-            key = (namespace, owner, param_name)
-            if key in self._param_weights:
-                self._param_weights[key] = _update_weights(self._param_weights[key], [value])
+        for param_name, param_def in bounds.items():
+            if param_name in params:
+                continue
+            choices = _param_choices(param_def)
+            if len(choices) == 1:
+                value = choices[0]
+                if not isinstance(value, (str, int, float)):
+                    raise TypeError(f"Unsupported CatCMAwM parameter value: {value!r}")
+                params[param_name] = value
+
+    def _categorical_values(self, solution: Any) -> dict[tuple[str, str, str], Hashable]:
+        if solution.c is None:
+            return {}
+        out: dict[tuple[str, str, str], Hashable] = {}
+        for row, slot in zip(solution.c, self._c_slots, strict=True):
+            idx = int(np.asarray(row[: len(slot.choices)]).argmax())
+            out[(slot.namespace, slot.owner, slot.name)] = slot.choices[idx]
+        return out
+
+    def _choice_from_c_values(
+        self,
+        c_values: dict[tuple[str, str, str], Hashable],
+        *,
+        namespace: str,
+        owner: str,
+        name: str,
+        default: Hashable,
+    ) -> Hashable:
+        return c_values.get((namespace, owner, name), default)
+
+    def _numeric_values(self, values: np.ndarray[Any, Any] | None) -> list[float]:
+        if values is None:
+            return []
+        return [float(value) for value in values.tolist()]
 
 
 def run_catcma_qd_search(
@@ -172,149 +421,183 @@ def run_catcma_qd_search(
     search_space: DSSSearchSpace,
     window_data: dict[str, StrategyData],
     progress_callback: Callable[[int], None] | None = None,
-) -> DSSV2Result:
+) -> DSSDirectionalResult:
     """Run the experimental CatCMA-QD backend with DSS-compatible artifacts."""
     output = config.output
     output.mkdir(parents=True, exist_ok=True)
     _guard_output_dir(output)
     _write_state(output, config)
 
-    completed_stage3 = _read_completed_ids(output / "stage3_full_scores.csv")
-    existing_stage0 = _read_stage0_candidates(output / "stage0_candidates.jsonl")
     model = _WeightedModel(search_space, seed=config.seed)
     composer = SignalComposer()
     archive = DSSArchive()
-    stage1_survivors = 0
-    stage2_survivors = 0
-    stage3_evaluations = 0
-    generated = min(len(existing_stage0), config.n_trials)
-    if generated and progress_callback is not None:
-        progress_callback(generated)
+    viability_path = output / "directional_viability.csv"
+    evaluated_ids = _read_directional_candidate_ids(viability_path)
+    directional_survivors = _count_directional_survivors(viability_path)
+    existing_candidates = _read_candidate_rows(output / "candidates.jsonl")
+    generated = len(existing_candidates)
+    attempted = len(existing_candidates)
+    evaluated_count = _count_csv_rows(viability_path)
+    novelty_parents: list[DSSCandidate] = []
+    if evaluated_count and progress_callback is not None:
+        progress_callback(evaluated_count)
     generation = generated // _DEFAULT_POPULATION_SIZE
 
-    while generated < config.n_trials:
-        batch_size = min(_DEFAULT_POPULATION_SIZE, config.n_trials - generated)
-        stage1_passed: list[_Stage1Candidate] = []
-        evaluated: list[_EvaluatedCandidate] = []
-        for _ in range(batch_size):
-            generated += 1
-            candidate = model.sample(f"catcma_{generated:06d}", generation=generation)
-            try:
-                _append_jsonl(output / "stage0_candidates.jsonl", candidate.to_dict())
-                if candidate.candidate_id in completed_stage3:
-                    continue
-                stage1 = evaluate_stage1(candidate, window_data, config, composer)
-                _append_stage1(output, candidate, stage1, config.windows)
-                if not stage1.should_promote:
-                    continue
-                stage1_survivors += 1
-                stage1_passed.append(
-                    _Stage1Candidate(
+    with DSSSearchRuntime(config=config) as runtime:
+        for candidate in existing_candidates:
+            runtime.record_candidate(candidate, source="resume")
+
+        pending_candidates = [
+            candidate
+            for candidate in existing_candidates
+            if candidate.candidate_id not in evaluated_ids
+        ]
+        pending_evaluated: list[_EvaluatedCandidate] = []
+        for candidate in pending_candidates:
+            if not runtime.should_continue(evaluated_count):
+                break
+            directional = _evaluate_directional_candidate(
+                output=output,
+                candidate=candidate,
+                window_data=window_data,
+                config=config,
+                composer=composer,
+                runtime=runtime,
+                append_candidate=False,
+            )
+            evaluated_count += 1
+            if directional.should_promote:
+                directional_survivors += 1
+                novelty_parents.append(candidate)
+                pending_evaluated.append(
+                    _EvaluatedCandidate(
                         candidate=candidate,
-                        result=stage1,
-                        cheap_score=_stage1_cheap_score(stage1),
+                        robust_score=_directional_cheap_score(directional),
                     )
                 )
-            finally:
-                if progress_callback is not None:
-                    progress_callback(1)
+            runtime.write_progress(generated=generated, evaluated=evaluated_count)
+            if progress_callback is not None:
+                progress_callback(1)
+        model.update(pending_evaluated)
 
-        if config.stage_mode == "stage1":
+        while runtime.should_continue(evaluated_count):
+            batch_size = runtime.remaining_batch(evaluated_count, _DEFAULT_POPULATION_SIZE)
+            evaluated_before_batch = evaluated_count
+            directional_passed: list[_DirectionalCandidate] = []
+            evaluated: list[_EvaluatedCandidate] = []
+            for _ in range(batch_size):
+                attempted += 1
+                source = "catcma_qd"
+                if attempted % _NOVELTY_MUTATION_INTERVAL == 0 and novelty_parents:
+                    source = "novelty_mutation"
+                    candidate = _mutate_candidate(
+                        novelty_parents[-1],
+                        search_space,
+                        candidate_id=f"catcma_{attempted:06d}",
+                        generation=generation,
+                        seed=config.seed + attempted,
+                    )
+                else:
+                    source = (
+                        "random_unseen"
+                        if should_use_random_injection(attempted)
+                        else "catcma_qd"
+                    )
+                    candidate = model.sample(f"catcma_{attempted:06d}", generation=generation)
+                if not runtime.record_candidate(candidate, source=source):
+                    runtime.write_progress(generated=generated, evaluated=evaluated_count)
+                    continue
+                generated += 1
+                try:
+                    directional = _evaluate_directional_candidate(
+                        output=output,
+                        candidate=candidate,
+                        window_data=window_data,
+                        config=config,
+                        composer=composer,
+                        runtime=runtime,
+                        append_candidate=True,
+                    )
+                    evaluated_count += 1
+                    if not directional.should_promote:
+                        evaluated.append(
+                            _EvaluatedCandidate(
+                                candidate=candidate,
+                                robust_score=_directional_cheap_score(directional),
+                            )
+                        )
+                        continue
+                    directional_survivors += 1
+                    novelty_parents.append(candidate)
+                    directional_passed.append(
+                        _DirectionalCandidate(
+                            candidate=candidate,
+                            result=directional,
+                            cheap_score=_directional_cheap_score(directional),
+                        )
+                    )
+                    evaluated.append(
+                        _EvaluatedCandidate(
+                            candidate=candidate,
+                            robust_score=_directional_cheap_score(directional),
+                        )
+                    )
+                finally:
+                    runtime.write_progress(generated=generated, evaluated=evaluated_count)
+                    if progress_callback is not None:
+                        progress_callback(1)
+
+            if evaluated_count == evaluated_before_batch:
+                runtime.write_progress(generated=generated, evaluated=evaluated_count)
+                break
+            model.update(evaluated)
             generation += 1
-            continue
-
-        stage2_candidates = _select_stage2_candidates(stage1_passed, batch_size=batch_size)
-        for item in stage2_candidates:
-            if item.result.behavior is None:
-                continue
-            candidate = item.candidate
-            stage2 = evaluate_stage_scores(
-                candidate=candidate,
-                behavior=item.result.behavior,
-                windows=_proxy_windows(config.windows),
-                window_data=window_data,
-                config=config,
-                composer=composer,
-                novelty_bonus=10.0 if archive.occupied_cells == 0 else 0.0,
-            )
-            _append_stage_score(output / "stage2_proxy.csv", stage2, config.windows)
-            archive.consider(stage2.candidate, stage2.behavior, stage2.score)
-            evaluated.append(
-                _EvaluatedCandidate(
-                    candidate=candidate,
-                    robust_score=stage2.score.robust_score,
-                    promoted_to_stage3=False,
+            if config.n_trials is None:
+                _refresh_directional_reports(
+                    output=output,
+                    config=config,
+                    runtime=runtime,
+                    generated=generated,
+                    evaluated=evaluated_count,
                 )
-            )
 
-            if not _should_promote_to_stage3(stage2, archive, config):
-                continue
-            stage2_survivors += 1
-
-            stage3 = evaluate_stage_scores(
-                candidate=candidate,
-                behavior=item.result.behavior,
-                windows=config.windows,
-                window_data=window_data,
-                config=config,
-                composer=composer,
-                novelty_bonus=0.0,
-            )
-            _append_stage_score(output / "stage3_full_scores.csv", stage3, config.windows)
-            _append_score_history(output / "score_history.csv", stage3)
-            archive.consider(stage3.candidate, stage3.behavior, stage3.score)
-            completed_stage3.add(candidate.candidate_id)
-            stage3_evaluations += 1
-            evaluated.append(
-                _EvaluatedCandidate(
-                    candidate=candidate,
-                    robust_score=stage3.score.robust_score,
-                    promoted_to_stage3=True,
-                )
-            )
-        model.update(evaluated)
-        generation += 1
-
-    _write_model_summary(output / "catcma_qd_state.csv", model)
-    stage1_ranked = write_stage1_ranked(output, config)
-    if config.stage_mode == "stage1":
-        exported = export_stage1_candidates(stage1_ranked, output, config)
-    else:
-        _write_archive(output, archive)
-        exported = export_stage4_candidates(archive, config)
+        _write_model_summary(output / "backend_state" / "catcma_qd_state.csv", model)
+        directional_ranked, exported = _refresh_directional_reports(
+            output=output,
+            config=config,
+            runtime=runtime,
+            generated=generated,
+            evaluated=evaluated_count,
+        )
     _write_summary(
         output=output,
         config=config,
         generated=generated,
-        stage1_survivors=stage1_survivors,
-        stage2_survivors=stage2_survivors,
-        stage3_evaluations=stage3_evaluations,
+        directional_survivors=directional_survivors,
         exported=exported,
         archive=archive,
-        stage1_ranked=len(stage1_ranked),
+        directional_ranked=len(directional_ranked),
     )
-    return DSSV2Result(
+    return DSSDirectionalResult(
         output=output,
         generated=generated,
-        stage1_survivors=stage1_survivors,
-        stage2_survivors=stage2_survivors,
-        stage3_evaluations=stage3_evaluations,
+        directional_survivors=directional_survivors,
         exported_candidates=exported,
         archive=archive,
     )
 
 
-def _select_stage2_candidates(
-    candidates: list[_Stage1Candidate],
+def _select_directional_feedback_candidates(
+    candidates: list[_DirectionalCandidate],
     *,
     batch_size: int,
-) -> list[_Stage1Candidate]:
+) -> list[_DirectionalCandidate]:
     if not candidates:
         return []
     budget = max(3, int(batch_size * _STAGE2_BATCH_FRACTION))
     budget = min(budget, len(candidates))
     ranked = sorted(candidates, key=lambda item: item.cheap_score, reverse=True)
-    selected: list[_Stage1Candidate] = []
+    selected: list[_DirectionalCandidate] = []
     seen_cells: set[tuple[str, str, str, str, str]] = set()
 
     for item in ranked:
@@ -336,65 +619,119 @@ def _select_stage2_candidates(
     return selected
 
 
-def _stage1_cheap_score(result: Stage1Result) -> float:
+def _directional_cheap_score(result: DirectionalResult) -> float:
     if result.advisory_score is not None:
         return result.advisory_score
-    return stage1_advisory_score(result)
+    return directional_advisory_score(result)
+
+
+def _mutate_candidate(
+    parent: DSSCandidate,
+    search_space: DSSSearchSpace,
+    *,
+    candidate_id: str,
+    generation: int,
+    seed: int,
+) -> DSSCandidate:
+    rng = random.Random(seed)
+    trigger_name = parent.trigger_name
+    trigger_timeframe = parent.trigger_timeframe
+    trigger_params = dict(parent.trigger_params)
+    filter_names = list(parent.filter_names)
+    filter_params = {name: dict(params) for name, params in parent.filter_params.items()}
+
+    operation = rng.choice(["trigger", "add_filter", "drop_filter", "param"])
+    if operation == "trigger" and search_space.trigger_names:
+        picked_trigger = str(rng.choice(search_space.trigger_names))
+        trigger_name = _instance_base_name(picked_trigger)
+        trigger_timeframe = _instance_timeframe(picked_trigger)
+        trigger_params = {
+            name: _sample_param_choice(param_def, rng)
+            for name, param_def in search_space.trigger_param_bounds.get(
+                _instance_base_name(picked_trigger), {}
+            ).items()
+        }
+    elif operation == "add_filter" and len(filter_names) < search_space.max_filters:
+        choices = [name for name in search_space.filter_names if name not in filter_names]
+        if choices:
+            picked = str(rng.choice(choices))
+            filter_names.append(picked)
+            filter_params[picked] = {
+                name: _sample_param_choice(param_def, rng)
+                for name, param_def in search_space.filter_param_bounds.get(
+                    _instance_base_name(picked), {}
+                ).items()
+            }
+    elif operation == "drop_filter" and filter_names:
+        dropped = str(rng.choice(filter_names))
+        filter_names.remove(dropped)
+        filter_params.pop(dropped, None)
+    else:
+        owners = [("trigger", trigger_name)] + [("filter", name) for name in filter_names]
+        namespace, owner = rng.choice(owners)
+        bounds = (
+            search_space.trigger_param_bounds
+            if namespace == "trigger"
+            else search_space.filter_param_bounds
+        )
+        params = trigger_params if namespace == "trigger" else filter_params.setdefault(owner, {})
+        base_owner = _instance_base_name(owner)
+        if bounds.get(base_owner):
+            param_name = rng.choice(tuple(bounds[base_owner]))
+            params[param_name] = _sample_param_choice(bounds[base_owner][param_name], rng)
+
+    return DSSCandidate(
+        candidate_id=candidate_id,
+        trigger_name=trigger_name,
+        trigger_timeframe=trigger_timeframe,
+        trigger_params=trigger_params,
+        filter_names=tuple(sorted(filter_names)),
+        filter_timeframes={
+            name: _instance_timeframe(name)
+            for name in filter_names
+            if _instance_timeframe(name) != "H1"
+        },
+        filter_params={name: filter_params.get(name, {}) for name in filter_names},
+        generation=generation,
+        parent_ids=(parent.candidate_id,),
+    )
+
+
+def _sample_param_choice(param_def: ParamDef, rng: random.Random) -> ParamValue:
+    value = rng.choice(_param_choices(param_def))
+    if not isinstance(value, (float, int, str)):
+        raise TypeError(f"Unsupported mutation parameter value: {value!r}")
+    return value
 
 
 def _write_model_summary(path: Path, model: _WeightedModel) -> None:
     rows: list[dict[str, object]] = []
-    _extend_weight_rows(rows, "trigger", model._trigger_weights)
-    _extend_weight_rows(rows, "filter", model._filter_weights)
-    _extend_weight_rows(rows, "depth", model._depth_weights)
+    rows.append({"namespace": "backend", "value": model.backend_name, "weight": 1.0})
+    rows.append(
+        {
+            "namespace": "population_size",
+            "value": model._optimizer.population_size,
+            "weight": 1.0,
+        }
+    )
+    rows.append({"namespace": "tell_count", "value": model._tell_count, "weight": 1.0})
+    rows.append({"namespace": "pending_feedback", "value": len(model._feedback), "weight": 1.0})
+    if model._c_slots and hasattr(model._optimizer, "_q"):
+        optimizer: Any = model._optimizer
+        cat_probabilities = optimizer._q
+        for slot, row in zip(model._c_slots, cat_probabilities, strict=True):
+            for idx, value in enumerate(slot.choices):
+                rows.append(
+                    {
+                        "namespace": f"{slot.namespace}:{slot.owner}:{slot.name}",
+                        "value": value,
+                        "weight": float(row[idx]),
+                    }
+                )
     with path.open("w", encoding="utf-8", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=["namespace", "value", "weight"])
         writer.writeheader()
         writer.writerows(rows)
-
-
-def _extend_weight_rows(
-    rows: list[dict[str, object]],
-    namespace: str,
-    weights: Mapping[_T, float],
-) -> None:
-    for value, weight in weights.items():
-        rows.append({"namespace": namespace, "value": value, "weight": weight})
-
-
-def _uniform_weights(values: tuple[_T, ...]) -> dict[_T, float]:
-    if not values:
-        return {}
-    weight = 1.0 / len(values)
-    return dict.fromkeys(values, weight)
-
-
-def _update_weights(
-    current: dict[_T, float],
-    observed: list[_T],
-) -> dict[_T, float]:
-    if not current or not observed:
-        return current
-    counts = dict.fromkeys(current, _PARAM_FLOOR)
-    for value in observed:
-        if value in counts:
-            counts[value] += 1.0
-    total = sum(counts.values())
-    return {key: value / total for key, value in counts.items()}
-
-
-def _weighted_choice(weights: dict[_T, float], rng: random.Random) -> _T:
-    if not weights:
-        raise ValueError("Cannot sample from empty weights")
-    items = list(weights.items())
-    total = sum(weight for _, weight in items)
-    threshold = rng.random() * total
-    cumulative = 0.0
-    for value, weight in items:
-        cumulative += weight
-        if cumulative >= threshold:
-            return value
-    return items[-1][0]
 
 
 def _float_grid(spec: tuple[float, float, float]) -> tuple[float, ...]:

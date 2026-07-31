@@ -88,6 +88,11 @@ closed candles. Add `execution_1m` only when the Railway volume should also
 build minute replay data for later investigation. That can make the first
 deploy much slower.
 
+Startup is intentionally non-interactive. Railway must not wait for a human
+confirmation when candles are missing: with bootstrap enabled it attempts the
+configured backfill, and with bootstrap disabled any missing required data is
+an operator configuration error to fix before live order logic starts.
+
 Examples:
 
 ```text

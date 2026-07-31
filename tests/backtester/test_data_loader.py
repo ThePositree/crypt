@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from backtester.data_contracts import StrategyData
 from backtester.data_loader import (
@@ -34,7 +35,7 @@ def test_csv_data_loader_roundtrip(tmp_path):
     result = loader.load()
 
     assert isinstance(result.index, pd.DatetimeIndex)
-    assert set(["open", "high", "low", "close", "volume"]).issubset(result.columns)
+    assert {"open", "high", "low", "close", "volume"}.issubset(result.columns)
 
 
 def test_dataframe_data_loader_roundtrip():
@@ -56,7 +57,7 @@ def test_dataframe_data_loader_roundtrip():
     result = loader.load()
 
     assert isinstance(result.index, pd.DatetimeIndex)
-    assert set(["open", "high", "low", "close", "volume"]).issubset(result.columns)
+    assert {"open", "high", "low", "close", "volume"}.issubset(result.columns)
 
 
 def test_facade_data_loader_from_csv(tmp_path):
@@ -80,7 +81,7 @@ def test_facade_data_loader_from_csv(tmp_path):
     result = loader.from_csv(str(path))
 
     assert isinstance(result.index, pd.DatetimeIndex)
-    assert set(["open", "high", "low", "close", "volume"]).issubset(result.columns)
+    assert {"open", "high", "low", "close", "volume"}.issubset(result.columns)
 
 
 def test_facade_data_loader_from_dataframe():
@@ -102,7 +103,7 @@ def test_facade_data_loader_from_dataframe():
     result = loader.from_dataframe(df)
 
     assert isinstance(result.index, pd.DatetimeIndex)
-    assert set(["open", "high", "low", "close", "volume"]).issubset(result.columns)
+    assert {"open", "high", "low", "close", "volume"}.issubset(result.columns)
 
 
 def test_create_data_loader_factory():
@@ -329,6 +330,78 @@ def test_crypt_parquet_loader_can_use_h1_as_primary(monkeypatch):
     assert not result.candles["H4"].empty
 
 
+def test_crypt_parquet_loader_missing_primary_suggests_backfill(monkeypatch):
+    import sys
+    import types
+
+    symbol = "SOL-USDT-SWAP"
+    h4 = pd.DataFrame(
+        {
+            "open_time": [pd.Timestamp("2024-01-01 00:00:00", tz="UTC")],
+            "o": [1.0],
+            "h": [1.5],
+            "l": [0.5],
+            "c": [1.2],
+            "volume": [10.0],
+        }
+    )
+
+    class FakeTimeframe:
+        H4 = "H4"
+        H1 = "H1"
+        D1 = "D1"
+
+    class FakeParquetStore:
+        def __init__(self, data_dir):
+            self.data_dir = data_dir
+
+        def load_candles(self, loaded_symbol, timeframe):
+            assert loaded_symbol == symbol
+            if timeframe == FakeTimeframe.H4:
+                return h4
+            return pd.DataFrame(columns=["open_time", "o", "h", "l", "c", "volume"])
+
+        def load_oi(self, loaded_symbol):
+            assert loaded_symbol == symbol
+            return pd.DataFrame(columns=["ts", "oi"])
+
+        def load_ls_ratio(self, loaded_symbol):
+            assert loaded_symbol == symbol
+            return pd.DataFrame(columns=["ts", "long_ratio", "short_ratio"])
+
+        def load_taker_volume(self, loaded_symbol):
+            assert loaded_symbol == symbol
+            return pd.DataFrame(columns=["ts", "buy_vol"])
+
+    crypt_mod = types.ModuleType("crypt")
+    crypt_data_mod = types.ModuleType("crypt.data")
+    crypt_store_mod = types.ModuleType("crypt.data.store")
+    crypt_models_mod = types.ModuleType("crypt.models")
+    crypt_store_mod.ParquetStore = FakeParquetStore
+    crypt_models_mod.Timeframe = FakeTimeframe
+    monkeypatch.setitem(sys.modules, "crypt", crypt_mod)
+    monkeypatch.setitem(sys.modules, "crypt.data", crypt_data_mod)
+    monkeypatch.setitem(sys.modules, "crypt.data.store", crypt_store_mod)
+    monkeypatch.setitem(sys.modules, "crypt.models", crypt_models_mod)
+
+    loader = CryptParquetDataLoader(
+        data_dir="/tmp/data",
+        symbol=symbol,
+        primary_timeframe="1h",
+        start="2024-01-01",
+        end="2024-01-05",
+    )
+
+    with pytest.raises(ValueError, match=r"python -m crypt\.backfill") as exc_info:
+        loader.load()
+
+    message = str(exc_info.value)
+    assert "--symbol SOL-USDT-SWAP" in message
+    assert "--from 2024-01-01" in message
+    assert "--to 2024-01-06" in message
+    assert "--data-types ohlcv" in message
+
+
 def test_crypt_parquet_loader_filters_candles_by_date_range(monkeypatch):
     import sys
     import types
@@ -417,10 +490,10 @@ def test_crypt_parquet_loader_filters_candles_by_date_range(monkeypatch):
         pd.date_range("2024-01-01 02:00:00", periods=5, freq="1h", tz="UTC")
     )
     assert list(result.candles["H1"].index) == list(
-        pd.date_range("2024-01-01 00:00:00", periods=7, freq="1h", tz="UTC")
+        pd.date_range("2024-01-01 02:00:00", periods=5, freq="1h", tz="UTC")
     )
     assert list(result.candles["H4"].index) == list(
-        pd.date_range("2024-01-01 00:00:00", periods=2, freq="4h", tz="UTC")
+        pd.date_range("2024-01-01 04:00:00", periods=1, freq="4h", tz="UTC")
     )
 
 
@@ -460,7 +533,7 @@ def test_bingx_loader_uses_file_cache(tmp_path, monkeypatch):
 
     calls = {"count": 0}
 
-    def fake_get(*args, **kwargs):
+    def fake_get(*_args, **_kwargs):
         calls["count"] += 1
         return DummyResponse({"code": 0, "data": fake_rows})
 
@@ -526,7 +599,7 @@ def test_bingx_loader_without_cache_dir_does_not_touch_fs(monkeypatch):
 
     calls = {"count": 0}
 
-    def fake_get(*args, **kwargs):
+    def fake_get(*_args, **_kwargs):
         calls["count"] += 1
         return DummyResponse({"code": 0, "data": fake_rows})
 

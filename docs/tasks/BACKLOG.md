@@ -105,51 +105,6 @@ dollars, trade count, win rate, profit factor, and both drawdown measures.
 **Links:** `docs/tasks/IN_PROGRESS.md`,
 `docs/backtester/tp_reachability_diagnostics.md`.
 
-## P1 — Implement DSS v3 persistent multi-timeframe search
-
-**What:** evolve DSS without renaming it: make timeframe a first-class part of
-every trigger/filter instance, allow repeated filter names on different
-timeframes, add shared random unseen/novelty injection to all search backends,
-remove DSS v2 Stage 2/3 backtests from DSS v3, keep Stage 1 directional
-labeling as the only evaluator, replace the single min-trade gate with
-frequency-class-aware archives so sparse and frequent candidates can be found
-in one run, break DSS v2 compatibility where useful, and add resumable endless
-search when `--n-trials` is omitted.
-
-**Why now:** the current active strategy and catalog search are effectively
-single-primary-timeframe. Useful edge may live in combinations such as
-`trigger@5m`, local filter `@5m`, setup filter `@H1`, and regime filter `@H4`.
-Large search space is intentional, but it needs persistent journals, stable
-candidate hashes, feature caching, and forced exploration so long searches can
-run continuously beside live execution. The final product is a portfolio, so
-DSS must preserve both frequent candidates and rare high-quality candidates for
-downstream combination tests.
-
-**Expected gain:** a research engine that keeps looking for new strategy
-families over large multi-timeframe spaces instead of only optimizing current
-H1-style families, while staying fast because DSS v3 does not optimize trading
-geometry.
-
-**Acceptance:** DSS v3 candidate schema is implemented; exact duplicate
-instances are rejected while same filter name on different timeframes is
-allowed; seen-candidate registry prevents repeat evaluations; every backend
-periodically injects valid random unseen candidates; DSS v3 candidates contain
-no `rrr`, `risk_percent`, `position_ttl_bars`, `atr_sl_mult`, trailing, or
-portfolio sizing fields; DSS v3 does not run Stage 2/3 backtests; endless mode
-resumes from an existing output directory with durable journal/archive/backend
-state; Stage 1 reports and archive cells distinguish sparse, medium, frequent,
-and overactive candidates; a bounded smoke run can preserve both a `20-30`
-signals/year candidate and a frequent candidate without separate command
-profiles; archive/export ranking uses per-frequency-class quotas so sparse
-high-win-rate candidates cannot fill the entire shortlist and frequent
-candidates cannot erase sparse candidates through a global floor; old DSS v2
-state/candidate/export artifacts are not required to resume through DSS v3;
-bounded smoke searches prove no look-ahead in lower-timeframe trigger plus
-higher-timeframe filter alignment.
-
-**Links:** ADR-0062, `docs/discovery/direct_signal_search_v3.md`,
-`src/backtester/strategy_discovery/`.
-
 ## P1 — Revalidate or retire legacy SOM/Forest strategy families
 
 **What:** decide whether legacy `som` and `forest` ML strategies should be
@@ -167,6 +122,69 @@ benchmark verdict.
 
 **Links:** `src/backtester/strategies/som.py`,
 `src/backtester/strategies/forest.py`, `tests/backtester/test_som_features.py`.
+
+## P1 — Remove primary-timeframe semantics from project contracts
+
+**What:** migrate the project away from the idea that a data bundle has one
+privileged `primary` timeframe. Timeframes should be equal data channels. A
+component means any unit with an input/output contract: loaders, strategies,
+indicators, individual DSS triggers, individual DSS filters, feature builders,
+evaluators, backtest runners, live executors, report writers, and similar
+modules. Every component must either declare the exact timeframe(s) it
+requires, accept the frame supplied by its caller without knowing the
+timeframe, or accept an explicit multi-timeframe bundle.
+
+**Why now:** DSS v3 already searches `trigger@timeframe` and
+`filter@timeframe` candidates, so a public `--primary-timeframe` knob is now a
+legacy compatibility leak. Keeping `StrategyData.primary` as a privileged
+frame makes future agents confuse compatibility plumbing with search logic and
+risks reintroducing hidden single-timeframe behavior.
+
+**Expected gain:** cleaner multi-timeframe architecture across research,
+backtests, reports, and live execution. Components become explicit about their
+data needs, DSS can treat `15m`, `H1`, `H4`, and `D1` as equal channels, and
+new strategies cannot accidentally read a default frame just because it was
+called `primary`.
+
+**Migration plan:**
+
+1. Inventory every `StrategyData.primary`, `primary_timeframe`, and bare
+   `pd.DataFrame` strategy entrypoint usage across `src/` and `tests/`.
+2. Introduce a timeframe-neutral data contract, e.g. `StrategyData.frames` or
+   `candles_by_timeframe`, plus a single accessor that raises when a required
+   timeframe is absent.
+3. Define component contracts:
+   - frame-agnostic components receive one OHLCV frame from the caller and do
+     not inspect timeframe metadata;
+   - single-timeframe components declare one required timeframe or receive it
+     as an explicit argument;
+   - multi-timeframe components declare all required frames and never fall back
+     to a privileged default.
+   Treat each concrete DSS trigger and filter as its own component for this
+   contract audit.
+4. Migrate DSS loaders/composer/evaluators first so DSS CLI no longer exposes
+   `--primary-timeframe`; keep an internal H1 compatibility frame only while
+   old APIs still require it.
+5. Migrate backtester strategies, indicators, reports, and live/execution
+   inputs to explicit frame access or caller-supplied single-frame contracts.
+6. Deprecate and then remove `StrategyData.primary`,
+   `metadata["primary_timeframe"]`, and CLI options that imply a privileged
+   timeframe.
+7. Update docs, ADRs, changelog, and tests so `primary timeframe` means only
+   historical context, not an active project concept.
+
+**Acceptance:** grep over active `src/` and `tests/` has no
+`StrategyData.primary`, `primary_timeframe`, or CLI `--primary-timeframe`
+usage except explicitly marked historical/compatibility tests during the
+transition. All runtime components either declare required timeframe(s) or
+consume caller-supplied frames. DSS matrix/search commands run without a
+primary-timeframe option and still discover sparse, medium, and frequent
+candidate classes.
+
+**Links:** `src/backtester/data_contracts.py`,
+`src/backtester/data_loader.py`, `src/backtester/strategy_discovery/`,
+`src/backtester/strategies/`, `src/crypt/execution/`,
+`docs/discovery/direct_signal_search_v3.md`.
 
 ## P1 — Calibrate H1 execution and mark-price liquidation realism
 

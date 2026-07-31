@@ -23,6 +23,7 @@ from backtester.strategy_discovery.dss_config import (
     DSSConfig,
     DSSSearchSpace,
     DSSWindowSpec,
+    ParamValue,
     TrialConfig,
 )
 from backtester.strategy_discovery.signal_composer import SignalComposer, signal_df_to_ohlcv_aligned
@@ -165,7 +166,7 @@ def _sample_trial_config(trial: optuna.Trial, search_space: DSSSearchSpace) -> T
         filter_names_raw.append(str(fn))
     filter_names = tuple(sorted(set(filter_names_raw)))
 
-    trigger_params: dict[str, float | int] = {}
+    trigger_params: dict[str, ParamValue] = {}
     trigger_bounds = search_space.trigger_param_bounds
     trigger_name_str = str(trigger_name)
     for pname, pdef in trigger_bounds.get(trigger_name_str, {}).items():
@@ -192,10 +193,10 @@ def _sample_trial_config(trial: optuna.Trial, search_space: DSSSearchSpace) -> T
                 trial.suggest_categorical(param_key, list(pdef.choices))
             )
 
-    filter_params: dict[str, dict[str, float | int]] = {}
+    filter_params: dict[str, dict[str, ParamValue]] = {}
     filter_bounds = search_space.filter_param_bounds
     for fn in filter_names:
-        fp: dict[str, float | int] = {}
+        fp: dict[str, ParamValue] = {}
         for pname, pdef in filter_bounds.get(fn, {}).items():
             from backtester.strategy_discovery.dss_config import (
                 CategoricalParam,

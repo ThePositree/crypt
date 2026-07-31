@@ -62,6 +62,8 @@ non-trivial work, keep the todo-list tool updated.
 Agents may run any in-scope command they need, including `backtester` and
 optimizer commands, but long work must be controlled by visible progress:
 
+- always set `UV_CACHE_DIR=/tmp/uv-cache` for `uv` commands so dependency
+  cache writes stay sandbox-writable;
 - commands expected to take more than roughly one minute must show completed
   work, elapsed time, rate, and ETA;
 - launch the command and immediately inspect progress/ETA;
@@ -73,6 +75,21 @@ optimizer commands, but long work must be controlled by visible progress:
 - independent owner-run jobs should default to parallel commands when safe.
 
 Do not let silent multi-hour jobs run inside the agent session.
+
+### Dependencies before custom implementations
+
+For any non-trivial code, prefer a maintained dependency over reimplementing
+the same thing locally when that dependency materially reduces risk,
+complexity, or maintenance cost. This applies broadly: algorithms, parsers,
+serializers, file formats, protocols, exchange/API clients, optimizers,
+statistics, ML, UI/runtime utilities, and infrastructure plumbing are examples,
+not a closed list.
+
+Before writing custom logic, search for an appropriate library, check current
+docs, and add the dependency when it is a better engineering choice. Do not
+avoid a dependency just to keep the dependency list short. Use local code only
+when no suitable maintained package exists, the required behavior is
+project-specific, or the dependency would create a clear operational risk.
 
 ### Owner-run process visibility
 
@@ -129,6 +146,14 @@ APIs. If Context7 is unavailable, warn the owner and proceed cautiously.
 Never assume exchange/data availability. Missing data should degrade to neutral
 signals, blocked entries, or explicit operator errors as appropriate; it must
 not silently create false confidence.
+
+For any process that requires historical candles before expensive work or live
+order logic, check candle availability before starting the work. Research and
+backtest CLIs should fail fast with an explicit `python -m crypt.backfill`
+command covering the missing symbol/date range/timeframe family. Production
+runtime must never ask an interactive `y/n` question: it should either
+auto-backfill through the configured bootstrap path or fail fast from
+configuration/preflight.
 
 ---
 

@@ -3,9 +3,9 @@ import logging
 import os
 import subprocess
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import IO, Literal, cast
+from typing import IO, Any, Literal, cast
 
 _SRC_ROOT = Path(__file__).resolve().parents[1]
 _SRC_ROOT_STR = str(_SRC_ROOT)
@@ -91,13 +91,17 @@ from backtester.strategy_discovery import (  # noqa: E402
     pinescript_trigger_catalog,
     pinescript_trigger_param_space,
     run_catcma_qd_search,
-    run_dss_v2_search,
+    run_dss_directional_search,
     run_hyperband_qd_search,
     run_island_qd_search,
     run_smac_qd_search,
     run_strategy_discovery,
 )
+from backtester.strategy_discovery.catalog_timeframes import (  # noqa: E402
+    dss_instance_labels,
+)
 from backtester.strategy_discovery.dss_config import ParamDef  # noqa: E402
+from backtester.strategy_discovery.features import select_timeframe_frame  # noqa: E402
 from backtester.strategy_discovery.filters import filter_catalog  # noqa: E402
 from backtester.strategy_discovery.parameterized_filters import (  # noqa: E402
     FilterFactory,
@@ -127,7 +131,7 @@ logging.basicConfig(level=log_level, format="%(asctime)s - %(levelname)s - %(mes
 logger = logging.getLogger("backtester")
 
 _DSS_MATRIX_DEFAULT_SEEDS = {
-    "staged": 73023,
+    "directional": 73023,
     "catcma_qd": 777,
     "island_qd": 2026,
     "hyperband_qd": 4242,
@@ -1041,7 +1045,7 @@ def router_search_matrix(
             ]
             if validation_end is not None:
                 command.extend(["--validation-end", validation_end])
-            log_file = log_path.open("wb")
+            log_file: IO[bytes] = log_path.open("wb")
             process = subprocess.Popen(command, stdout=log_file)
             processes.append((algorithm, log_path, process, log_file))
             click.echo(f"Started {algorithm} pid={process.pid} output={output}")
@@ -2812,6 +2816,130 @@ def _parse_dss_matrix_algorithms(raw: str) -> list[str]:
     return algorithms
 
 
+def _dss_required_timeframes(search_space: DSSSearchSpace) -> tuple[str, ...]:
+    required: set[str] = set()
+    for label in (*search_space.trigger_names, *search_space.filter_names):
+        if "@" in label:
+            required.add(label.rsplit("@", 1)[1])
+    return tuple(sorted(required))
+
+
+def _validate_dss_required_candles(
+    *,
+    search_space: DSSSearchSpace,
+    window_data: dict[str, StrategyData],
+    windows: list[DSSWindowSpec],
+    data_dir: str,
+) -> None:
+    missing: list[str] = []
+    for timeframe in _dss_required_timeframes(search_space):
+        for window_label, data in window_data.items():
+            try:
+                select_timeframe_frame(data, timeframe)
+            except ValueError as exc:
+                missing.append(f"{window_label}:{timeframe} ({exc})")
+    if missing:
+        backfill_hint = _dss_backfill_hint(data_dir=data_dir, windows=windows)
+        raise click.ClickException(
+            "DSS search space requires candle timeframes that are not loaded: "
+            + "; ".join(missing)
+            + ". Backfill the missing OHLCV candles before launching, or restrict the DSS "
+            "timeframe search space.\n"
+            + backfill_hint
+        )
+
+
+def _dss_backfill_hint(*, data_dir: str, windows: list[DSSWindowSpec]) -> str:
+    by_symbol: dict[str, list[DSSWindowSpec]] = {}
+    for window in windows:
+        by_symbol.setdefault(window.symbol, []).append(window)
+
+    commands: list[str] = ["Suggested non-interactive backfill command(s):"]
+    for symbol, symbol_windows in sorted(by_symbol.items()):
+        start = min(pd.Timestamp(window.start).date() for window in symbol_windows)
+        end = max(pd.Timestamp(window.end).date() for window in symbol_windows) + timedelta(days=1)
+        commands.append(
+            "MPLCONFIGDIR=/tmp/matplotlib-cache UV_CACHE_DIR=/tmp/uv-cache "
+            "PYTHONPATH=src uv run python -m crypt.backfill "
+            f"--symbol {symbol} "
+            f"--from {start.isoformat()} "
+            f"--to {end.isoformat()} "
+            "--data-types ohlcv "
+            f"--data-dir {data_dir}"
+        )
+    return "\n".join(commands)
+
+
+def _build_dss_search_space(catalog: str) -> DSSSearchSpace:
+    t_catalog, f_catalog, t_param_space, f_param_space = _dss_catalogs(catalog.lower())
+    dss_timeframes = ("15m", "H1", "H4", "D1")
+    return DSSSearchSpace(
+        trigger_names=dss_instance_labels(
+            tuple(sorted(t_catalog.keys())), dss_timeframes, role="trigger"
+        ),
+        filter_names=dss_instance_labels(tuple(sorted(f_catalog.keys())), dss_timeframes, role="filter"),
+        trigger_param_bounds=dict(t_param_space),
+        filter_param_bounds=dict(f_param_space),
+        max_filters=4,
+        trigger_timeframes=dss_timeframes,
+        filter_timeframes=dss_timeframes,
+    )
+
+
+def _preflight_dss_matrix_candles(
+    *,
+    data_dir: str,
+    symbols: tuple[str, ...],
+    windows_spec: str,
+    primary_timeframe: str,
+    catalog: str,
+) -> None:
+    search_space = _build_dss_search_space(catalog)
+    all_windows: list[DSSWindowSpec] = []
+    window_data: dict[str, StrategyData] = {}
+    raw_specs = [s.strip() for s in windows_spec.split(",") if s.strip()]
+    for symbol in symbols:
+        for raw in raw_specs:
+            try:
+                spec = DSSWindowSpec.parse(raw, symbol)
+            except (ValueError, TypeError) as exc:
+                raise click.ClickException(f"Invalid window spec {raw!r}: {exc}") from exc
+            all_windows.append(spec)
+            try:
+                data_input = _load_discovery_window(
+                    data_dir=data_dir,
+                    primary_timeframe=primary_timeframe,
+                    symbol=spec.symbol,
+                    start=spec.start,
+                    end=spec.end,
+                )
+            except (ValueError, FileNotFoundError) as exc:
+                raise click.ClickException(f"Failed to load window {spec.label}: {exc}") from exc
+            key = f"{spec.symbol}:{spec.label}"
+            if isinstance(data_input, StrategyData):
+                window_data[key] = StrategyData(
+                    primary=data_input.primary,
+                    candles=data_input.candles,
+                    extras=data_input.extras,
+                    metadata={**data_input.metadata, "symbol": spec.symbol},
+                )
+            else:
+                window_data[key] = StrategyData(
+                    primary=data_input,
+                    candles={},
+                    extras={},
+                    metadata={"symbol": spec.symbol},
+                )
+    if not all_windows:
+        raise click.ClickException(f"No windows parsed from --windows {windows_spec!r}")
+    _validate_dss_required_candles(
+        search_space=search_space,
+        window_data=window_data,
+        windows=all_windows,
+        data_dir=data_dir,
+    )
+
+
 @cli.command("search-signals-matrix")
 @click.option("--data-dir", required=True, help="Project data directory (crypt-parquet layout).")
 @click.option(
@@ -2830,12 +2958,17 @@ def _parse_dss_matrix_algorithms(raw: str) -> list[str]:
 )
 @click.option(
     "--primary-timeframe",
-    type=click.Choice(["1h", "4h"], case_sensitive=False),
+    type=click.Choice(["15m", "1h", "4h"], case_sensitive=False),
     default="1h",
     show_default=True,
     help="Primary execution timeframe.",
 )
-@click.option("--n-trials", type=int, default=50_000, show_default=True)
+@click.option(
+    "--n-trials",
+    type=int,
+    default=None,
+    help="Per-algorithm candidate budget. Omit for endless resumable DSS matrix search.",
+)
 @click.option(
     "--n-jobs-per-algorithm",
     type=click.IntRange(min=1),
@@ -2845,7 +2978,7 @@ def _parse_dss_matrix_algorithms(raw: str) -> list[str]:
 )
 @click.option(
     "--algorithms",
-    default="staged,catcma_qd,island_qd,hyperband_qd,smac_qd",
+    default="directional,catcma_qd,island_qd,hyperband_qd,smac_qd",
     show_default=True,
     help="Comma-separated DSS algorithms to launch in parallel.",
 )
@@ -2856,23 +2989,17 @@ def _parse_dss_matrix_algorithms(raw: str) -> list[str]:
     show_default=True,
     help="Trigger/filter catalog to search.",
 )
-@click.option(
-    "--stage-mode",
-    type=click.Choice(["full", "stage1"], case_sensitive=False),
-    default="stage1",
-    show_default=True,
-    help="Stage mode passed to each child search.",
-)
 @click.option("--output-root", default=None, help="Root directory for per-algorithm outputs.")
 @click.option("--top-n", type=int, default=20, show_default=True)
 @click.option("--min-trades", type=int, default=20, show_default=True)
-@click.option("--min-signals-per-week", type=float, default=4.0, show_default=True)
+@click.option("--min-signals-per-week", type=float, default=0.0, show_default=True)
 @click.option(
-    "--stage1-min-wr",
+    "--directional-min-wr",
+    "directional_min_wr",
     type=click.FloatRange(min=0.0, max=1.0),
-    default=0.55,
+    default=0.45,
     show_default=True,
-    help="Minimum Stage 1 barrier win rate required in each window.",
+    help="Minimum directional barrier win rate required in each window.",
 )
 @click.option("--capital", type=float, default=10_000.0, show_default=True)
 @click.option("--risk-base-period", default="monthly", show_default=True)
@@ -2882,32 +3009,39 @@ def search_signals_matrix(
     symbols: tuple[str, ...],
     windows_spec: str,
     primary_timeframe: str,
-    n_trials: int,
+    n_trials: int | None,
     n_jobs_per_algorithm: int,
     algorithms: str,
     catalog: str,
-    stage_mode: str,
     output_root: str | None,
     top_n: int,
     min_trades: int,
     min_signals_per_week: float,
-    stage1_min_wr: float,
+    directional_min_wr: float,
     capital: float,
     risk_base_period: str,
     specialist_windows: str,
 ) -> None:
     """Launch several DSS search-signals algorithms concurrently."""
     parsed_algorithms = _parse_dss_matrix_algorithms(algorithms)
+    _preflight_dss_matrix_candles(
+        data_dir=data_dir,
+        symbols=symbols,
+        windows_spec=windows_spec,
+        primary_timeframe=primary_timeframe,
+        catalog=catalog,
+    )
     if output_root is None:
         ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        output_root = f"results/dss_matrix_{catalog.lower()}_{stage_mode.lower()}_{ts}"
+        output_root = f"results/dss_matrix_{catalog.lower()}_directional_{ts}"
     root = Path(output_root)
     root.mkdir(parents=True, exist_ok=True)
 
     click.echo(
         "Launching DSS matrix: "
         f"{len(parsed_algorithms)} algorithms x {n_jobs_per_algorithm} jobs each "
-        f"({len(parsed_algorithms) * n_jobs_per_algorithm} workers requested)"
+        f"({len(parsed_algorithms) * n_jobs_per_algorithm} workers requested), "
+        f"mode={'endless' if n_trials is None else f'bounded:{n_trials}'}"
     )
     click.echo(f"Output root: {root}")
 
@@ -2929,16 +3063,12 @@ def search_signals_matrix(
                 windows_spec,
                 "--primary-timeframe",
                 primary_timeframe,
-                "--n-trials",
-                str(n_trials),
                 "--n-jobs",
                 str(n_jobs_per_algorithm),
                 "--algorithm",
                 algorithm,
                 "--catalog",
                 catalog.lower(),
-                "--stage-mode",
-                stage_mode.lower(),
                 "--seed",
                 str(seed),
                 "--output",
@@ -2949,8 +3079,8 @@ def search_signals_matrix(
                 str(min_trades),
                 "--min-signals-per-week",
                 str(min_signals_per_week),
-                "--stage1-min-wr",
-                str(stage1_min_wr),
+                "--directional-min-wr",
+                str(directional_min_wr),
                 "--capital",
                 str(capital),
                 "--risk-base-period",
@@ -2958,10 +3088,12 @@ def search_signals_matrix(
                 "--specialist-windows",
                 specialist_windows,
             ]
+            if n_trials is not None:
+                cmd.extend(["--n-trials", str(n_trials)])
             for symbol in symbols:
                 cmd.extend(["--symbol", symbol])
 
-            log_file = log_path.open("wb")
+            log_file: IO[bytes] = log_path.open("wb")
             process = subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT)
             processes.append((algorithm, log_path, process, log_file))
             click.echo(f"Started {algorithm} pid={process.pid} output={output_dir}")
@@ -3011,7 +3143,7 @@ def search_signals_matrix(
 )
 @click.option(
     "--primary-timeframe",
-    type=click.Choice(["1h", "4h"], case_sensitive=False),
+    type=click.Choice(["15m", "1h", "4h"], case_sensitive=False),
     default="1h",
     show_default=True,
     help="Primary execution timeframe.",
@@ -3019,9 +3151,8 @@ def search_signals_matrix(
 @click.option(
     "--n-trials",
     type=int,
-    default=50_000,
-    show_default=True,
-    help="Total candidate-generation budget.",
+    default=None,
+    help="Total candidate-generation budget. Omit for endless resumable search.",
 )
 @click.option(
     "--n-jobs", type=int, default=1, show_default=True, help="Parallel workers where safe."
@@ -3046,11 +3177,11 @@ def search_signals_matrix(
 @click.option(
     "--algorithm",
     type=click.Choice(
-        ["staged", "catcma_qd", "island_qd", "hyperband_qd", "smac_qd"], case_sensitive=False
+        ["directional", "catcma_qd", "island_qd", "hyperband_qd", "smac_qd"], case_sensitive=False
     ),
-    default="staged",
+    default="directional",
     show_default=True,
-    help="DSS backend: staged, CatCMA-QD, Island-QD, Hyperband-QD, or SMAC-QD.",
+    help="DSS backend: directional, CatCMA-QD, Island-QD, Hyperband-QD, or SMAC-QD.",
 )
 @click.option(
     "--catalog",
@@ -3071,28 +3202,22 @@ def search_signals_matrix(
     type=int,
     default=20,
     show_default=True,
-    help="Absolute min signals per window; effective Stage 1 threshold also uses --min-signals-per-week.",
+    help="Absolute min resolved directional signals per window; effective threshold also uses --min-signals-per-week.",
 )
 @click.option(
     "--min-signals-per-week",
     type=float,
     default=0.0,
     show_default=True,
-    help="Min Stage 1 signal frequency per week in each window.",
+    help="Min directional signal frequency per week in each window.",
 )
 @click.option(
-    "--stage1-min-wr",
+    "--directional-min-wr",
+    "directional_min_wr",
     type=click.FloatRange(min=0.0, max=1.0),
-    default=0.55,
+    default=None,
     show_default=True,
-    help="Minimum Stage 1 barrier win rate required in each window.",
-)
-@click.option(
-    "--stage-mode",
-    type=click.Choice(["full", "stage1"], case_sensitive=False),
-    default="stage1",
-    show_default=True,
-    help="Use stage1 to stop after signal/barrier ranking without backtests.",
+    help="Minimum directional barrier win rate required in each window.",
 )
 @click.option(
     "--capital",
@@ -3116,7 +3241,7 @@ def search_signals(
     symbols: tuple[str, ...],
     windows_spec: str,
     primary_timeframe: str,
-    n_trials: int,
+    n_trials: int | None,
     n_jobs: int,
     max_filters: str | None,
     sampler: str | None,
@@ -3129,16 +3254,14 @@ def search_signals(
     seed: int,
     min_trades: int,
     min_signals_per_week: float,
-    stage1_min_wr: float,
-    stage_mode: str,
+    directional_min_wr: float | None,
     capital: float,
     risk_base_period: str,
     specialist_windows: str,
 ) -> None:
-    """Direct Signal Search v2: staged quality-diversity strategy discovery.
+    """Direct Signal Search v3: directional quality-diversity discovery.
 
-    Searches trigger + filter + execution parameters through staged viability,
-    proxy, full-score, and archive/export phases.
+    Searches trigger + filter signal candidates with directional labeling only.
 
     Example:
 
@@ -3158,7 +3281,7 @@ def search_signals(
     used_removed = [name for name, value in removed_options.items() if value is not None]
     if used_removed:
         raise click.ClickException(
-            "DSS v2 replaced the old Optuna sampler path; removed option(s): "
+            "DSS directional search removed the old Optuna sampler path; removed option(s): "
             f"{', '.join(used_removed)}. Use the simplified search-signals command."
         )
 
@@ -3224,14 +3347,12 @@ def search_signals(
                     metadata={"symbol": symbol},
                 )
 
-        t_catalog, f_catalog, t_param_space, f_param_space = _dss_catalogs(catalog.lower())
-
-        search_space = DSSSearchSpace(
-            trigger_names=tuple(sorted(t_catalog.keys())),
-            filter_names=tuple(sorted(f_catalog.keys())),
-            trigger_param_bounds=dict(t_param_space),
-            filter_param_bounds=dict(f_param_space),
-            max_filters=4,
+        search_space = _build_dss_search_space(catalog.lower())
+        _validate_dss_required_candles(
+            search_space=search_space,
+            window_data=window_data,
+            windows=dss_windows,
+            data_dir=data_dir,
         )
 
         dss_config = DSSConfig(
@@ -3242,16 +3363,15 @@ def search_signals(
             max_filters=4,
             min_trades_per_window=min_trades,
             min_signals_per_week=min_signals_per_week,
-            min_barrier_win_rate=stage1_min_wr,
+            min_barrier_win_rate=directional_min_wr if directional_min_wr is not None else 0.45,
             top_n_candidates=top_n,
             initial_capital=capital,
             max_positions=0,
             risk_base_period=risk_base_period,
             specialist_windows=specialist_window_labels,
             catalog=cast(Literal["legacy", "pinescript_v1", "all"], catalog.lower()),
-            stage_mode=cast(Literal["full", "stage1"], stage_mode.lower()),
             algorithm=cast(
-                Literal["staged", "catcma_qd", "island_qd", "hyperband_qd", "smac_qd"],
+                Literal["directional", "catcma_qd", "island_qd", "hyperband_qd", "smac_qd"],
                 algorithm.lower(),
             ),
             seed=seed,
@@ -3270,18 +3390,31 @@ def search_signals(
             runner = run_smac_qd_search
             label = "DSS SMAC-QD"
         else:
-            runner = run_dss_v2_search
-            label = "DSS v2"
-        with click.progressbar(length=n_trials, label=label, show_pos=True) as bar:
+            runner = run_dss_directional_search
+            label = "DSS directional"
+        if n_trials is None:
+            click.echo(f"{label} endless mode; progress: {output_path / 'progress.json'}")
             try:
                 runner(
                     config=dss_config,
                     search_space=search_space,
                     window_data=window_data,
-                    progress_callback=bar.update,
+                    progress_callback=None,
                 )
             except ValueError as exc:
                 raise click.ClickException(str(exc)) from exc
+        else:
+            progress_bar: Any = click.progressbar(length=n_trials, label=label, show_pos=True)
+            with progress_bar as bar:
+                try:
+                    runner(
+                        config=dss_config,
+                        search_space=search_space,
+                        window_data=window_data,
+                        progress_callback=bar.update,
+                    )
+                except ValueError as exc:
+                    raise click.ClickException(str(exc)) from exc
     finally:
         logging.disable(previous_disable)
 
