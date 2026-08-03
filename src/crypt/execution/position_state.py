@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-_SCHEMA_VERSION = 12
+_SCHEMA_VERSION = 13
 _RISK_BASE_CHECKPOINT_SCHEMA_VERSION = 1
 
 
@@ -469,6 +469,8 @@ def _migrate_state(raw: dict[str, Any]) -> dict[str, Any]:
         raw.setdefault("generation", 0)
         raw.setdefault("state_recovered_from_previous_snapshot", False)
         for pos in raw.get("positions", []):
+            if version < 13 and "ttl_bars" in pos:
+                pos["ttl_bars"] = int(pos["ttl_bars"]) * 60
             pos.setdefault("selected_strategy", "")
             pos.setdefault("position_group", "")
             pos.setdefault("signal_event", {})

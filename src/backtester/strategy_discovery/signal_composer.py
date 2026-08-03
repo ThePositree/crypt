@@ -264,10 +264,10 @@ def _apply_filters(
 def _event_with_dataset_metadata(
     event: DiscoveryEvent, dataset: DiscoveryDataset
 ) -> DiscoveryEvent:
-    if event.event_time not in dataset.primary.index or event.event_time not in dataset.features.index:
+    if event.event_time not in dataset.ohlcv.index or event.event_time not in dataset.features.index:
         return event
     metadata = dict(event.metadata)
-    primary_row = dataset.primary.loc[event.event_time]
+    primary_row = dataset.ohlcv.loc[event.event_time]
     feature_row = dataset.features.loc[event.event_time]
     metadata.update(
         {
@@ -294,7 +294,7 @@ def _align_filter_datasets(
         if source is None:
             aligned[label] = dataset
             continue
-        aligned[label] = align_discovery_dataset_asof(source, pd.DatetimeIndex(dataset.primary.index))
+        aligned[label] = align_discovery_dataset_asof(source, pd.DatetimeIndex(dataset.ohlcv.index))
     return aligned
 
 

@@ -74,12 +74,13 @@ class FilteredDonorPortfolioStrategy(BaseStrategy):
             raise ValueError(f"filters reference unknown strategies: {sorted(unknown)}")
         self._progress = bool(params.get("progress", True))
         self._portfolio_id = str(params.get("portfolio_id", "filtered_donor_portfolio"))
+        self._candle_timeframe = str(params.get("candle_timeframe", "H1"))
         self._cached_specs: tuple[ArchivedStrategySpec, ...] | None = None
         self._live_cached_primary: pd.DataFrame | None = None
         self._live_cached_frames: dict[str, pd.DataFrame] | None = None
 
     def generate(self, data: StrategyInput) -> pd.DataFrame:
-        primary = data.primary if isinstance(data, StrategyData) else data
+        primary = data.require_timeframe(self._candle_timeframe) if isinstance(data, StrategyData) else data
         specs = list(self._get_specs())
         logger.info("Filtered donor portfolio signal preparation starting")
         frames = self._controlled_frames(data=data, primary=primary, specs=specs)
@@ -114,14 +115,14 @@ class FilteredDonorPortfolioStrategy(BaseStrategy):
 
     def generate_latest(self, data: StrategyInput) -> pd.DataFrame:
         """Build only the latest portfolio row with a validated donor-frame cache."""
-        primary = data.primary if isinstance(data, StrategyData) else data
+        primary = data.require_timeframe(self._candle_timeframe) if isinstance(data, StrategyData) else data
         if primary.empty:
             return primary.copy()
 
         specs = list(self._get_specs())
         symbol = str(data.metadata.get("symbol", "")) if isinstance(data, StrategyData) else ""
         dataset = build_discovery_dataset(
-            data=data,
+            data=primary,
             window_label="filtered_donor_portfolio_live",
             symbol=symbol,
         )
@@ -215,7 +216,12 @@ class FilteredDonorPortfolioStrategy(BaseStrategy):
         specs: list[ArchivedStrategySpec],
         dataset: DiscoveryDataset | None = None,
     ) -> dict[str, pd.DataFrame]:
-        frames = build_archived_signal_frames(data=data, specs=specs, dataset=dataset)
+        frames = build_archived_signal_frames(
+            data=data,
+            specs=specs,
+            ohlcv=primary,
+            dataset=dataset,
+        )
         return {
             spec.strategy_id: _apply_nested_replay_controls(
                 frame=frames[spec.strategy_id],
@@ -268,7 +274,7 @@ class FilteredDonorPortfolioStrategy(BaseStrategy):
         tail_dataset = DiscoveryDataset(
             window_label=dataset.window_label,
             symbol=dataset.symbol,
-            primary=dataset.primary.loc[tail_index],
+            ohlcv=dataset.ohlcv.loc[tail_index],
             features=dataset.features.loc[tail_index],
         )
         tail_frames = self._controlled_frames(
@@ -448,13 +454,13 @@ def _slice_strategy_input(
         return data.loc[index]
     candles = {
         key: (frame.loc[frame.index.intersection(index)] if key == "H1" else frame)
-        for key, frame in data.candles.items()
+        for key, frame in data.candles_by_timeframe.items()
     }
     return StrategyData(
-        primary=data.primary.loc[index],
-        candles=candles,
+        candles_by_timeframe=candles,
         extras=data.extras,
         metadata=data.metadata,
+        execution=data.execution,
     )
 
 
@@ -634,7 +640,8 @@ def _last_tp_touch_bars(
     if not touched.any():
         return None
     last_touch = history.index[touched][-1]
-    return max(len(history) - 1 - history.index.get_loc(last_touch), 0)
+    touch_pos = int(history.index.get_loc(last_touch))
+    return max(len(history) - 1 - touch_pos, 0)
 
 
 def _compare_filter_value(value: Any, op: str, expected: float | str | bool) -> bool:

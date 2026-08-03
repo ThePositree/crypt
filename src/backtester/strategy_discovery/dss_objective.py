@@ -26,6 +26,7 @@ from backtester.strategy_discovery.dss_config import (
     ParamValue,
     TrialConfig,
 )
+from backtester.strategy_discovery.features import select_timeframe_frame
 from backtester.strategy_discovery.signal_composer import SignalComposer, signal_df_to_ohlcv_aligned
 from backtester.tester import Backtester
 
@@ -105,7 +106,7 @@ def compute_mandate_score(
 
 def run_dss_backtest(
     signal_df: pd.DataFrame,
-    config: TrialConfig,  # noqa: ARG001 - legacy downstream helper, outside DSS v3 search.
+    config: TrialConfig,
     window_data: StrategyData,
     *,
     initial_capital: float = 10_000.0,
@@ -121,18 +122,18 @@ def run_dss_backtest(
     signal_df:
         SignalRow DataFrame from SignalComposer.
     config:
-        TrialConfig with rrr, risk_percent, position_ttl_bars.
+        TrialConfig plus downstream execution defaults.
     window_data:
         StrategyData for the window.
     """
-    primary = window_data.primary
+    primary = select_timeframe_frame(window_data, config.trigger_instance.timeframe)
 
     aligned = signal_df_to_ohlcv_aligned(signal_df, primary)
 
     def _strategy(_data: Any) -> pd.DataFrame:
         return aligned
 
-    bt = Backtester(window_data, _strategy)
+    bt = Backtester(window_data, _strategy, ohlcv=primary)
     results = bt.run(
         initial_capital=initial_capital,
         taker_fee=taker_fee,

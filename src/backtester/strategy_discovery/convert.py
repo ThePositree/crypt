@@ -85,7 +85,7 @@ _UNSUPPORTED_FILTERS = frozenset(
 )
 
 _DEFAULT_BACKTEST_ARGS: dict[str, Any] = {
-    "ttl": 36,
+    "ttl_minutes": 36 * 60,
     "rrr": 1.25,
     "risk_percent": 1.0,
     "risk_base_period": "monthly",

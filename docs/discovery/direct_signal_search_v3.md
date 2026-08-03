@@ -9,10 +9,9 @@
 
 ## 1. Purpose
 
-DSS remains the project name for automated signal discovery. DSS v3 extends
-DSS v2 from a single-primary-timeframe search into a persistent
-multi-timeframe research engine, and narrows DSS evaluation back to directional
-labeling only.
+DSS remains the project name for automated signal discovery. DSS v3 replaces
+DSS v2's single-timeframe search shape with a persistent multi-timeframe
+research engine, and narrows DSS evaluation back to directional labeling only.
 
 The goal is to search for strategies where each trigger and filter can live on
 the timeframe where it has edge:
@@ -68,7 +67,7 @@ DSS v3 candidates do not contain trading geometry fields such as:
 
 - `rrr`;
 - `risk_percent`;
-- `position_ttl_bars`;
+- `position_ttl_minutes`;
 - `atr_sl_mult`;
 - trailing-stop parameters;
 - portfolio sizing parameters.
@@ -90,10 +89,10 @@ explicitly loaded into `StrategyData`. `5m` must fail as missing data until a
 real source or resampling policy is added; DSS must not silently fall back to a
 different timeframe.
 
-Crypt-parquet start/end bounds apply to every loaded DSS candle frame, not only
-the primary frame. Context loaders may read pre-window history internally, but
-`StrategyData.candles` exposed to DSS search must not contain triggerable bars
-outside the requested search window.
+Crypt-parquet start/end bounds apply to every loaded DSS candle frame. Context
+loaders may read pre-window history internally, but
+`StrategyData.candles_by_timeframe` exposed to DSS search must not contain
+triggerable bars outside the requested search window.
 
 Each catalog block must declare:
 
@@ -160,14 +159,37 @@ For every candidate and window, directional labeling:
 
 Signal counts, overtrading checks, minimum-count checks, window duration, and
 barrier labels are evaluated on the trigger timeframe frame. A `trigger@15m`
-candidate must label against `15m` next-open/next-bars, even when the run's
-primary timeframe is `H1` or `H4`.
+candidate must label against `15m` next-open/next-bars, regardless of which
+other candle frames are loaded in the same run.
 
-The directional barriers are labeling tools, not proposed live SL/TP geometry.
-They must not be exported as production stops or take-profits.
+The directional barriers are labeling tools, not a final production SL/TP/TTL
+selection. DSS v3 exported candidates are still made executable for downstream
+backtest/optimizer workflows with conservative defaults:
 
-Full backtests, mandate reports, optimizer runs, RRR/TTL/risk searches, donor
-portfolio assembly, and live promotion are downstream workflows outside DSS v3.
+- `rrr=2.0`;
+- `risk_percent=1.0`;
+- `position_ttl_minutes=720`;
+- stop distance from the next open equals `directional_sl_move_pct`
+  (default `0.004`, or `0.4%`).
+
+The default stop is derived from the same adverse barrier DSS used for
+directional labeling. The take-profit is produced downstream from `rrr`, so
+with the default stop it is `0.8%` from entry. Promotion-quality strategies may
+still be re-optimized later. DSS does not search or judge TTL; exported
+`position_ttl_minutes` is only a runnable default so candidates can go directly
+into Optuna.
+
+Full backtests, mandate reports, optimizer runs, RRR/TTL-minutes/risk searches,
+donor portfolio assembly, and live promotion are downstream workflows outside
+DSS v3. The normal path is: DSS shortlist -> Optuna geometry search -> full
+backtest/portfolio review.
+
+Downstream replay commands must not ask the operator to choose a candle
+timeframe for DSS v3 candidates. `backtester run` and `backtester optimize`
+derive the replay candle timeframe from the candidate trigger timeframe
+(`params.trigger_instance.timeframe`, legacy `params.trigger_timeframe`, or a
+`trigger_name@timeframe` suffix). This keeps the search output as the source of
+truth and prevents accidental H4-signals-on-H1-candles replays.
 
 ## 6. Frequency classes
 

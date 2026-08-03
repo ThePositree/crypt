@@ -203,7 +203,7 @@ class CryptEnsembleStrategy(BaseStrategy):
     def generate(self, data: StrategyInput) -> pd.DataFrame:
         strategy_data = _coerce_strategy_data(data)
         execution_context = read_execution_context(data)
-        primary = strategy_data.primary.sort_index().copy()
+        primary = strategy_data.require_timeframe(self.timeframes.execution.value).sort_index().copy()
         out = primary.copy()
         tick_index = _tick_index_from_open_index(primary.index, self.timeframes.execution)
         out.index = tick_index
@@ -794,8 +794,7 @@ def _coerce_strategy_data(data: StrategyInput) -> StrategyData:
     if execution_context is not None:
         metadata[EXECUTION_CONTEXT_METADATA_KEY] = execution_context
     return StrategyData(
-        primary=data,
-        candles={Timeframe.H4.name: data},
+        candles_by_timeframe={Timeframe.H4.name: data},
         extras={},
         metadata=metadata,
     )
@@ -824,7 +823,7 @@ def _tp_pct_placeholder_stop(*, signal: int, entry: float, atr: float) -> _StopP
 
 
 def _candle_frame(data: StrategyData, timeframe: Timeframe) -> pd.DataFrame:
-    return data.candles.get(timeframe.name, data.candles.get(timeframe.value, pd.DataFrame()))
+    return data.candles_by_timeframe.get(timeframe.name, data.candles_by_timeframe.get(timeframe.value, pd.DataFrame()))
 
 
 def _tick_index_from_open_index(index: pd.Index, timeframe: Timeframe) -> pd.DatetimeIndex:

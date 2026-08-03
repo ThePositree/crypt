@@ -96,7 +96,7 @@ class ContextBuilder:
         return EvaluationContext(
             symbol=symbol,
             tick_time=tick_time,
-            candles=candles,
+            candles_by_timeframe=candles,
             oi=_df_to_oi(oi_df, symbol),
             ls_ratio=_df_to_ls_ratio(ls_df, symbol),
             taker_volume=_df_to_taker_volume(taker_df, symbol),

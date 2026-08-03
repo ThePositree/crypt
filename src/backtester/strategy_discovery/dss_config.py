@@ -45,6 +45,11 @@ FilterParams = dict[str, ParamValue]
 FloatRange = tuple[float, float, float]
 IntRange = tuple[int, int, int]
 
+DSS_DEFAULT_EXECUTION_RRR = 2.0
+DSS_DEFAULT_EXECUTION_RISK_PERCENT = 1.0
+DSS_DEFAULT_EXECUTION_TTL_MINUTES = 720
+DSS_DEFAULT_DIRECTIONAL_SL_MOVE_PCT = 0.004
+
 
 # ---------------------------------------------------------------------------
 # Trial configuration
@@ -370,7 +375,7 @@ class DSSConfig:
     catalog: Literal["legacy", "pinescript_v1", "all"] = "legacy"
     seed: int = 36
     directional_tp_move_pct: float = 0.007
-    directional_sl_move_pct: float = 0.004
+    directional_sl_move_pct: float = DSS_DEFAULT_DIRECTIONAL_SL_MOVE_PCT
     directional_reference_atr_pct: float = 0.007
     min_barrier_tp_first_rate: float = 0.05
     min_barrier_win_rate: float = 0.45

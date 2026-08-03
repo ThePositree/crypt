@@ -104,7 +104,7 @@ class TestStatePersistence:
         save_state(state, path)
 
         loaded = load_state(path)
-        assert loaded.schema_version == 12
+        assert loaded.schema_version == 13
         assert loaded.monthly_risk_base == pytest.approx(10_000.0)
         assert loaded.risk_window_month == (2026, 6)
         assert loaded.blocked_signal_events_total == 7
@@ -144,7 +144,7 @@ class TestStatePersistence:
         )
         save_state(state, path)
         raw = json.loads(path.read_text())
-        assert raw["schema_version"] == 12
+        assert raw["schema_version"] == 13
         assert isinstance(raw["state_checksum"], str)
         assert len(raw["positions"]) == 1
         assert raw["positions"][0]["symbol"] == "SOL-USDT-SWAP"

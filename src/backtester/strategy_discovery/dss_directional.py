@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 from dataclasses import dataclass, field
 from typing import Any, Protocol, cast
@@ -98,6 +99,7 @@ def evaluate_directional_viability(
     total_days = 0.0
     first_rejection_reason = ""
     passing_windows: list[str] = []
+    signal_identity_rows: list[tuple[str, str, str]] = []
 
     for window in config.windows:
         data = window_data[window.label]
@@ -110,6 +112,7 @@ def evaluate_directional_viability(
         except Exception as exc:
             return _directional_reject(candidate, f"signal_generation_error:{type(exc).__name__}")
         count = len(signals)
+        signal_identity_rows.extend(_signal_identity_rows(window.label, signals))
         signal_counts[window.label] = count
         total_signals += count
         total_days += _window_days(trigger_primary)
@@ -125,6 +128,7 @@ def evaluate_directional_viability(
                     median_stop_atr=median_stop_atr,
                     barrier_metrics=barrier_metrics,
                     behavior=None,
+                    metadata=_signal_metadata(signal_identity_rows),
                 )
             continue
         long_ratios[window.label] = _long_ratio(signals)
@@ -152,6 +156,7 @@ def evaluate_directional_viability(
                     median_stop_atr=median_stop_atr,
                     barrier_metrics=barrier_metrics,
                     behavior=None,
+                    metadata=_signal_metadata(signal_identity_rows),
                 )
             continue
         if metrics.tp_first_rate < config.min_barrier_tp_first_rate:
@@ -166,6 +171,7 @@ def evaluate_directional_viability(
                     median_stop_atr=median_stop_atr,
                     barrier_metrics=barrier_metrics,
                     behavior=None,
+                    metadata=_signal_metadata(signal_identity_rows),
                 )
             continue
         if metrics.win_rate < config.min_barrier_win_rate:
@@ -182,6 +188,7 @@ def evaluate_directional_viability(
                     median_stop_atr=median_stop_atr,
                     barrier_metrics=barrier_metrics,
                     behavior=None,
+                    metadata=_signal_metadata(signal_identity_rows),
                 )
             continue
         passing_windows.append(window.label)
@@ -204,6 +211,7 @@ def evaluate_directional_viability(
             barrier_metrics=barrier_metrics,
             behavior=behavior,
             candidate_class="balanced",
+            metadata=_signal_metadata(signal_identity_rows),
         )
 
     specialist_passing_windows = [
@@ -230,6 +238,7 @@ def evaluate_directional_viability(
             behavior=behavior,
             candidate_class=f"specialist:{target_window}",
             target_window=target_window,
+            metadata=_signal_metadata(signal_identity_rows),
         )
 
     return _directional_result(
@@ -241,6 +250,7 @@ def evaluate_directional_viability(
         median_stop_atr=median_stop_atr,
         barrier_metrics=barrier_metrics,
         behavior=None,
+        metadata=_signal_metadata(signal_identity_rows),
     )
 
 
@@ -250,15 +260,13 @@ def directional_advisory_score(result: DirectionalResult) -> float:
     total_signals = sum(result.signal_counts.values())
     windows = max(len(result.signal_counts), 1)
     avg_signals = total_signals / windows
-    count_score = 100.0 - abs(avg_signals - 180.0) * 0.25
+    count_score = 100.0 - abs(avg_signals - 220.0) * 0.20
     bucket_bonus = {
-        "low": 25.0,
         "medium": 35.0,
-        "high": 5.0,
-        "too_high": -80.0,
-        "sparse": 20.0,
-        "frequent": 20.0,
-        "overactive": -80.0,
+        "sparse": 5.0,
+        "frequent": 45.0,
+        "too_sparse": -35.0,
+        "overactive": -60.0,
     }.get(result.behavior.frequency_class, 0.0)
     long_ratio_values = list(result.long_ratios.values())
     if long_ratio_values:
@@ -298,14 +306,28 @@ def directional_rank_score(row: dict[str, object], windows: list[DSSWindowSpec])
         if unresolved_rate == 0.0:
             unresolved_rate = _row_float(row, f"barrier_timeout_rate_{label}")
         signals = max(0.0, _row_float(row, f"signals_{label}"))
+        frequency_bonus = _directional_rank_frequency_bonus(signals)
         parts.append(
             win_rate * 100.0
             + tp_rate * 50.0
             + math.log1p(signals) * 5.0
+            + frequency_bonus
             - sl_rate * 25.0
             - unresolved_rate * 10.0
         )
     return float(sum(parts) / max(len(parts), 1))
+
+
+def _directional_rank_frequency_bonus(signals: float) -> float:
+    if signals < 20.0:
+        return -25.0
+    if signals < 60.0:
+        return 0.0
+    if signals < 180.0:
+        return 18.0
+    if signals <= 520.0:
+        return 30.0
+    return -35.0
 
 
 def _directional_result(
@@ -320,6 +342,7 @@ def _directional_result(
     behavior: DSSBehavior | None,
     candidate_class: str = "rejected",
     target_window: str = "",
+    metadata: dict[str, object] | None = None,
 ) -> DirectionalResult:
     base = DirectionalResult(
         candidate_id=candidate.candidate_id,
@@ -345,6 +368,7 @@ def _directional_result(
         candidate_class=base.candidate_class,
         target_window=base.target_window,
         advisory_score=directional_advisory_score(base),
+        metadata=dict(metadata or {}),
     )
 
 
@@ -372,6 +396,25 @@ def _best_specialist_window(
             barrier_metrics[label].total,
         ),
     )
+
+
+def _signal_identity_rows(window_label: str, signals: pd.DataFrame) -> list[tuple[str, str, str]]:
+    if signals.empty or not {"bar_time", "side"}.issubset(signals.columns):
+        return []
+    rows: list[tuple[str, str, str]] = []
+    for bar_time, side in signals[["bar_time", "side"]].itertuples(index=False):
+        rows.append((window_label, pd.Timestamp(bar_time).isoformat(), str(side)))
+    return rows
+
+
+def _signal_metadata(signal_identity_rows: list[tuple[str, str, str]]) -> dict[str, object]:
+    signal_identity_keys = ["|".join(row) for row in sorted(set(signal_identity_rows))]
+    payload = "\n".join(signal_identity_keys)
+    return {
+        "signal_fingerprint": hashlib.sha1(payload.encode()).hexdigest(),
+        "signal_identity_keys": signal_identity_keys,
+        "signal_set_size": len(signal_identity_keys),
+    }
 
 
 def _balanced_behavior(

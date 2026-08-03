@@ -105,19 +105,19 @@ def test_build_cli_data_loader_crypt_parquet():
     assert isinstance(loader, CryptParquetDataLoader)
     assert loader.data_dir == "/tmp/data"
     assert loader.symbol == "SOL-USDT-SWAP"
-    assert loader.primary_timeframe == "4h"
+    assert loader.candle_timeframe is None
 
 
-def test_build_cli_data_loader_crypt_parquet_primary_timeframe():
+def test_build_cli_data_loader_crypt_parquet_candle_timeframe():
     loader = build_cli_data_loader(
         "crypt-parquet",
         data_dir="/tmp/data",
         symbol="SOL-USDT-SWAP",
-        primary_timeframe="1h",
+        candle_timeframe="1h",
     )
 
     assert isinstance(loader, CryptParquetDataLoader)
-    assert loader.primary_timeframe == "1h"
+    assert loader.candle_timeframe == "1h"
 
 
 def test_build_cli_data_loader_crypt_parquet_date_range():
@@ -132,6 +132,20 @@ def test_build_cli_data_loader_crypt_parquet_date_range():
     assert isinstance(loader, CryptParquetDataLoader)
     assert loader.start == pd.Timestamp("2024-01-01 00:00:00", tz="UTC")
     assert loader.end == pd.Timestamp("2024-01-31 23:00:00", tz="UTC")
+
+
+def test_build_cli_data_loader_crypt_parquet_full_aliases():
+    loader = build_cli_data_loader(
+        "crypt-parquet",
+        data_dir="/tmp/data",
+        symbol="SOL-USDT-SWAP",
+        start="full",
+        end="all",
+    )
+
+    assert isinstance(loader, CryptParquetDataLoader)
+    assert loader.start is None
+    assert loader.end is None
 
 
 def test_build_cli_data_loader_crypt_parquet_missing_params_raises():

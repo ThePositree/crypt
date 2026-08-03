@@ -79,10 +79,10 @@ def attach_execution_context(
         metadata = dict(data.metadata)
         metadata[EXECUTION_CONTEXT_METADATA_KEY] = context
         return StrategyData(
-            primary=data.primary,
-            candles=data.candles,
+            candles_by_timeframe=data.candles_by_timeframe,
             extras=data.extras,
             metadata=metadata,
+            execution=data.execution,
         )
     frame = data.copy()
     frame.attrs[EXECUTION_CONTEXT_METADATA_KEY] = context

@@ -493,7 +493,7 @@ async def test_try_open_signal_batch_processes_all_events_in_order(tmp_path: Pat
         "donor_short",
     ]
     assert [pos.entry_price for pos in manager._state.positions] == [100.0, 100.0]
-    assert [pos.ttl_bars for pos in manager._state.positions] == [24, 32]
+    assert [pos.ttl_bars for pos in manager._state.positions] == [24 * 60, 32 * 60]
     assert len(manager._trading_client.opened) == 2
 
 

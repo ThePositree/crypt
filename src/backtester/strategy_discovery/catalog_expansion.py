@@ -156,7 +156,7 @@ def _atr_ratio_bounds(threshold: float, label: str) -> tuple[str, Callable[[floa
 
 
 def _masks(dataset: DiscoveryDataset) -> tuple[pd.DataFrame, pd.DataFrame]:
-    return dataset.primary, dataset.features
+    return dataset.ohlcv, dataset.features
 
 
 def _emit(

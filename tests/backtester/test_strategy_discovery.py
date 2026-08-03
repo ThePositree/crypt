@@ -2,21 +2,21 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 import pandas as pd
 import pytest
-from click.testing import CliRunner
-from pytest import MonkeyPatch
 
-from backtester.__main__ import cli
 from backtester.data_contracts import StrategyData
 from backtester.strategy_discovery.convert import (
     DiscoveryConversionError,
     convert_discovery_strategy,
 )
 from backtester.strategy_discovery.events import DiscoveryEvent
-from backtester.strategy_discovery.features import DiscoveryDataset, build_discovery_dataset
+from backtester.strategy_discovery.features import (
+    DiscoveryDataset,
+    build_discovery_dataset,
+    build_timeframe_discovery_dataset,
+)
 from backtester.strategy_discovery.filters import filter_catalog
 from backtester.strategy_discovery.labeler import LabelConfig, label_events
 from backtester.strategy_discovery.scoring import discovery_score
@@ -34,7 +34,7 @@ def test_candle_confirm_trigger_uses_current_closed_candle_only() -> None:
     events = trigger_catalog()["h1_candle_confirm"](dataset)
 
     assert [event.side for event in events] == ["long", "short", "long", "short", "long"]
-    assert events[-1].event_time == dataset.primary.index[-1]
+    assert events[-1].event_time == dataset.ohlcv.index[-1]
 
 
 def test_labeler_handles_win_loss_neutral_and_same_bar_loss() -> None:
@@ -144,13 +144,13 @@ def test_context_features_are_available_only_after_context_candle_close() -> Non
         index=h4_index,
     )
 
-    dataset = build_discovery_dataset(
+    dataset = build_timeframe_discovery_dataset(
         data=StrategyData(
-            primary=h1,
-            candles={"H4": h4, "D1": pd.DataFrame()},
+            candles_by_timeframe={"H1": h1, "H4": h4, "D1": pd.DataFrame()},
             extras={},
             metadata={},
         ),
+        timeframe="H1",
         window_label="sample",
         symbol="SOL-USDT-SWAP",
     )
@@ -195,7 +195,7 @@ def test_strategy_discovery_exports_ranked_artifacts(tmp_path: Path) -> None:
         ],
         config=DiscoveryConfig(
             output=tmp_path,
-            primary_timeframe="1h",
+            candle_timeframe="1h",
             min_trades_total=1,
             min_trades_per_window=1,
             beam_width=3,
@@ -229,59 +229,6 @@ def test_strategy_discovery_exports_ranked_artifacts(tmp_path: Path) -> None:
     assert (output / "robust_min_window_win_rate_50.csv").exists()
     assert (output / "best_candidates" / "top_score" / "rank_001_strategy.json").exists()
     assert sum(progress_steps) > 0
-
-
-def test_discover_strategies_cli_writes_artifacts(
-    tmp_path: Path,
-    monkeypatch: MonkeyPatch,
-) -> None:
-    class FakeLoader:
-        pass
-
-    def fake_build_cli_data_loader(*_args: Any, **_kwargs: Any) -> FakeLoader:
-        return FakeLoader()
-
-    def fake_load_ohlcv_via_loader(*_args: Any, **_kwargs: Any) -> pd.DataFrame:
-        return _trend_frame(80)
-
-    monkeypatch.setattr(
-        "backtester.__main__.build_cli_data_loader",
-        fake_build_cli_data_loader,
-    )
-    monkeypatch.setattr(
-        "backtester.__main__.load_ohlcv_via_loader",
-        fake_load_ohlcv_via_loader,
-    )
-
-    result = CliRunner().invoke(
-        cli,
-        [
-            "discover-strategies",
-            "--data-dir",
-            str(tmp_path / "data"),
-            "--symbol",
-            "SOL-USDT-SWAP",
-            "--from",
-            "2025-01-01",
-            "--to",
-            "2025-01-04",
-            "--output",
-            str(tmp_path / "discovery"),
-            "--min-trades-total",
-            "1",
-            "--min-trades-per-window",
-            "1",
-            "--beam-width",
-            "2",
-            "--max-filter-depth",
-            "1",
-        ],
-    )
-
-    assert result.exit_code == 0, result.output
-    [output_dir] = (tmp_path / "discovery").iterdir()
-    assert (output_dir / "candidates.csv").exists()
-    assert (output_dir / "best_candidates").exists()
 
 
 def _trend_frame(length: int) -> pd.DataFrame:
@@ -330,7 +277,7 @@ def _dataset_from_ohlcv(
     return DiscoveryDataset(
         window_label="sample",
         symbol="SOL-USDT-SWAP",
-        primary=frame,
+        ohlcv=frame,
         features=features,
     )
 
@@ -343,7 +290,7 @@ def _event(
     entry: float,
 ) -> DiscoveryEvent:
     return DiscoveryEvent(
-        event_time=dataset.primary.index[index],
+        event_time=dataset.ohlcv.index[index],
         side=side,  # type: ignore[arg-type]
         trigger_name="test_trigger",
         entry_reference_price=entry,

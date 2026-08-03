@@ -28,17 +28,20 @@ from backtester.strategy_discovery.dss_directional import directional_advisory_s
 from backtester.strategy_discovery.dss_directional_search import (
     DirectionalResult,
     DSSDirectionalResult,
+    DSSSignalNoveltyTracker,
     _count_csv_rows,
     _count_directional_survivors,
     _evaluate_directional_candidate,
     _guard_output_dir,
     _instance_base_name,
     _instance_timeframe,
+    _is_novel_directional,
     _read_candidate_rows,
     _read_directional_candidate_ids,
     _refresh_directional_reports,
     _write_state,
     _write_summary,
+    sample_random_directional_candidate,
 )
 from backtester.strategy_discovery.dss_runtime import (
     DSSSearchRuntime,
@@ -49,6 +52,7 @@ from backtester.strategy_discovery.signal_composer import SignalComposer
 _DEFAULT_POPULATION_SIZE = 48
 _STAGE2_BATCH_FRACTION = 0.12
 _NOVELTY_MUTATION_INTERVAL = 10
+_DUPLICATE_SIGNAL_FEEDBACK_SCORE = -10_000.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -433,6 +437,7 @@ def run_catcma_qd_search(
     archive = DSSArchive()
     viability_path = output / "directional_viability.csv"
     evaluated_ids = _read_directional_candidate_ids(viability_path)
+    signal_novelty = DSSSignalNoveltyTracker(viability_path)
     directional_survivors = _count_directional_survivors(viability_path)
     existing_candidates = _read_candidate_rows(output / "candidates.jsonl")
     generated = len(existing_candidates)
@@ -463,18 +468,21 @@ def run_catcma_qd_search(
                 config=config,
                 composer=composer,
                 runtime=runtime,
+                signal_novelty=signal_novelty,
                 append_candidate=False,
             )
             evaluated_count += 1
             if directional.should_promote:
-                directional_survivors += 1
-                novelty_parents.append(candidate)
+                is_novel_signal = _is_novel_directional(directional)
                 pending_evaluated.append(
                     _EvaluatedCandidate(
                         candidate=candidate,
-                        robust_score=_directional_cheap_score(directional),
+                        robust_score=_directional_feedback_score(directional, is_novel_signal),
                     )
                 )
+                if is_novel_signal:
+                    directional_survivors += 1
+                    novelty_parents.append(candidate)
             runtime.write_progress(generated=generated, evaluated=evaluated_count)
             if progress_callback is not None:
                 progress_callback(1)
@@ -503,7 +511,16 @@ def run_catcma_qd_search(
                         if should_use_random_injection(attempted)
                         else "catcma_qd"
                     )
-                    candidate = model.sample(f"catcma_{attempted:06d}", generation=generation)
+                    if source == "random_unseen":
+                        candidate = sample_random_directional_candidate(
+                            search_space=search_space,
+                            candidate_id=f"catcma_{attempted:06d}",
+                            generation=generation,
+                            max_filters=config.max_filters,
+                            seed=config.seed + attempted * 1009,
+                        )
+                    else:
+                        candidate = model.sample(f"catcma_{attempted:06d}", generation=generation)
                 if not runtime.record_candidate(candidate, source=source):
                     runtime.write_progress(generated=generated, evaluated=evaluated_count)
                     continue
@@ -516,16 +533,27 @@ def run_catcma_qd_search(
                         config=config,
                         composer=composer,
                         runtime=runtime,
+                        signal_novelty=signal_novelty,
                         append_candidate=True,
                     )
                     evaluated_count += 1
+                    is_novel_signal = _is_novel_directional(directional)
+                    feedback_score = _directional_feedback_score(directional, is_novel_signal)
                     if not directional.should_promote:
                         evaluated.append(
                             _EvaluatedCandidate(
                                 candidate=candidate,
-                                robust_score=_directional_cheap_score(directional),
+                                robust_score=feedback_score,
                             )
                         )
+                        continue
+                    evaluated.append(
+                        _EvaluatedCandidate(
+                            candidate=candidate,
+                            robust_score=feedback_score,
+                        )
+                    )
+                    if not is_novel_signal:
                         continue
                     directional_survivors += 1
                     novelty_parents.append(candidate)
@@ -533,13 +561,7 @@ def run_catcma_qd_search(
                         _DirectionalCandidate(
                             candidate=candidate,
                             result=directional,
-                            cheap_score=_directional_cheap_score(directional),
-                        )
-                    )
-                    evaluated.append(
-                        _EvaluatedCandidate(
-                            candidate=candidate,
-                            robust_score=_directional_cheap_score(directional),
+                            cheap_score=feedback_score,
                         )
                     )
                 finally:
@@ -623,6 +645,12 @@ def _directional_cheap_score(result: DirectionalResult) -> float:
     if result.advisory_score is not None:
         return result.advisory_score
     return directional_advisory_score(result)
+
+
+def _directional_feedback_score(result: DirectionalResult, is_novel_signal: bool) -> float:
+    if result.should_promote and not is_novel_signal:
+        return _DUPLICATE_SIGNAL_FEEDBACK_SCORE
+    return _directional_cheap_score(result)
 
 
 def _mutate_candidate(

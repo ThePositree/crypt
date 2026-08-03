@@ -19,6 +19,29 @@ from backtester.strategies.filtered_donor_portfolio import (
 from backtester.tester import Backtester
 
 
+def test_backtester_rejects_signal_index_mismatch() -> None:
+    ohlcv = pd.DataFrame(
+        {
+            "open": [100.0, 101.0, 102.0],
+            "high": [101.0, 102.0, 103.0],
+            "low": [99.0, 100.0, 101.0],
+            "close": [100.5, 101.5, 102.5],
+            "volume": [1.0, 1.0, 1.0],
+        },
+        index=pd.date_range("2026-01-01", periods=3, freq="1h", tz="UTC"),
+    )
+    signal_index = pd.date_range("2026-01-01", periods=3, freq="4h", tz="UTC")
+
+    def strategy(_frame: pd.DataFrame) -> pd.DataFrame:
+        return pd.DataFrame(
+            {"signal": [1, 0, 0], "sl_price": [99.0, 0.0, 0.0]},
+            index=signal_index,
+        )
+
+    with pytest.raises(ValueError, match="signal frame index"):
+        Backtester(ohlcv, strategy).run()
+
+
 def test_backtester_accepts_signal_events_without_scalar_signal_columns() -> None:
     data = pd.DataFrame(
         {
@@ -167,9 +190,12 @@ def test_filtered_portfolio_latest_cache_appends_only_validated_tail(
         *,
         data: pd.DataFrame | StrategyData,
         specs: list[ArchivedStrategySpec],
+        ohlcv: pd.DataFrame | None = None,
         dataset: object = None,  # noqa: ARG001
     ) -> dict[str, pd.DataFrame]:
-        frame = data.primary if isinstance(data, StrategyData) else data
+        frame = ohlcv if ohlcv is not None else data
+        if isinstance(frame, StrategyData):
+            frame = frame.require_timeframe("H1")
         calls.append(len(frame))
         output = frame.copy()
         output["signal"] = 1
@@ -196,14 +222,12 @@ def test_filtered_portfolio_latest_cache_appends_only_validated_tail(
     monkeypatch.setattr(strategy, "_get_specs", lambda: (spec,))
 
     first_data = StrategyData(
-        primary=primary.iloc[:600],
-        candles={"H1": primary.iloc[:600]},
+        candles_by_timeframe={"H1": primary.iloc[:600]},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )
     appended_data = StrategyData(
-        primary=primary,
-        candles={"H1": primary},
+        candles_by_timeframe={"H1": primary},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )
@@ -237,9 +261,12 @@ def test_filtered_portfolio_latest_cache_rebuilds_after_history_revision(
         *,
         data: pd.DataFrame | StrategyData,
         specs: list[ArchivedStrategySpec],
+        ohlcv: pd.DataFrame | None = None,
         dataset: object = None,  # noqa: ARG001
     ) -> dict[str, pd.DataFrame]:
-        frame = data.primary if isinstance(data, StrategyData) else data
+        frame = ohlcv if ohlcv is not None else data
+        if isinstance(frame, StrategyData):
+            frame = frame.require_timeframe("H1")
         calls.append(len(frame))
         output = frame.assign(signal=0, sl_price=0.0)
         return {specs[0].strategy_id: output}
@@ -264,16 +291,14 @@ def test_filtered_portfolio_latest_cache_rebuilds_after_history_revision(
     monkeypatch.setattr(strategy, "_get_specs", lambda: (spec,))
 
     initial = StrategyData(
-        primary=primary.iloc[:600],
-        candles={"H1": primary.iloc[:600]},
+        candles_by_timeframe={"H1": primary.iloc[:600]},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )
     revised_primary = primary.copy()
     revised_primary.iloc[100, revised_primary.columns.get_loc("close")] = 101.0
     revised = StrategyData(
-        primary=revised_primary,
-        candles={"H1": revised_primary},
+        candles_by_timeframe={"H1": revised_primary},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )

@@ -31,17 +31,20 @@ from backtester.strategy_discovery.dss_config import (
 from backtester.strategy_discovery.dss_directional_search import (
     DirectionalResult,
     DSSDirectionalResult,
+    DSSSignalNoveltyTracker,
     _append_csv_row,
     _count_csv_rows,
     _count_directional_survivors,
     _evaluate_directional_candidate,
     _guard_output_dir,
     _instance_base_name,
+    _is_novel_directional,
     _read_candidate_rows,
     _read_directional_candidate_ids,
     _refresh_directional_reports,
     _write_state,
     _write_summary,
+    sample_random_directional_candidate,
 )
 from backtester.strategy_discovery.dss_runtime import (
     DSSSearchRuntime,
@@ -53,6 +56,8 @@ _BOOTSTRAP_RANDOM_EVALUATIONS = 64
 _EVALUATION_BATCH_SIZE = 16
 _PROPOSAL_POOL_SIZE = 512
 _RF_TREES = 96
+_MAX_SURROGATE_TRAIN_ROWS = 5_000
+_SURROGATE_REFIT_INTERVAL = 512
 _ACQUISITION_STD_WEIGHT = 0.75
 _DIRECTIONAL_REJECT_PENALTY = -10_000.0
 
@@ -194,6 +199,7 @@ def run_smac_qd_search(
     attempted = len(existing_candidates)
     viability_path = output / "directional_viability.csv"
     evaluated_ids = _read_directional_candidate_ids(viability_path)
+    signal_novelty = DSSSignalNoveltyTracker(viability_path)
     evaluated_count = _count_csv_rows(viability_path)
     novelty_parents: list[DSSCandidate] = []
     if evaluated_count and progress_callback is not None:
@@ -217,13 +223,15 @@ def run_smac_qd_search(
                 config=config,
                 composer=composer,
                 runtime=runtime,
+                signal_novelty=signal_novelty,
                 append_candidate=False,
             )
             evaluated_count += 1
-            observation = _directional_observation(candidate, directional)
+            is_novel_signal = _is_novel_directional(directional)
+            observation = _directional_observation(candidate, directional, is_novel_signal)
             observations.append(observation)
             _append_observation(output, observation)
-            if directional.should_promote:
+            if is_novel_signal:
                 directional_survivors += 1
                 novelty_parents.append(candidate)
             runtime.write_progress(generated=generated, evaluated=evaluated_count)
@@ -260,6 +268,21 @@ def run_smac_qd_search(
                         generation=generation,
                         seed=config.seed + attempted,
                     )
+                elif should_use_random_injection(attempted):
+                    source = "random_unseen"
+                    candidate = sample_random_directional_candidate(
+                        search_space=search_space,
+                        candidate_id=f"smac_{attempted:06d}",
+                        generation=generation,
+                        max_filters=config.max_filters,
+                        seed=config.seed + attempted * 1009,
+                    )
+                    proposal = _SMACProposal(
+                        candidate=candidate,
+                        predicted_mean=0.0,
+                        predicted_std=0.0,
+                        acquisition=0.0,
+                    )
                 candidate = DSSCandidate(
                     candidate_id=f"smac_{attempted:06d}",
                     trigger_name=candidate.trigger_name,
@@ -270,8 +293,6 @@ def run_smac_qd_search(
                     filter_params=candidate.filter_params,
                     generation=generation,
                 )
-                if source != "novelty_mutation":
-                    source = "random_unseen" if should_use_random_injection(attempted) else "smac_qd"
                 if not runtime.record_candidate(candidate, source=source):
                     runtime.write_progress(generated=generated, evaluated=evaluated_count)
                     continue
@@ -286,13 +307,15 @@ def run_smac_qd_search(
                         config=config,
                         composer=composer,
                         runtime=runtime,
+                        signal_novelty=signal_novelty,
                         append_candidate=True,
                     )
                     evaluated_count += 1
-                    observation = _directional_observation(candidate, directional)
+                    is_novel_signal = _is_novel_directional(directional)
+                    observation = _directional_observation(candidate, directional, is_novel_signal)
                     observations.append(observation)
                     _append_observation(output, observation)
-                    if not directional.should_promote:
+                    if not is_novel_signal:
                         continue
                     directional_survivors += 1
                     novelty_parents.append(candidate)
@@ -304,7 +327,8 @@ def run_smac_qd_search(
             if evaluated_count == evaluated_before_batch:
                 runtime.write_progress(generated=generated, evaluated=evaluated_count)
                 break
-            _fit_surrogate(surrogate, encoder, observations)
+            if _should_refit_surrogate(surrogate, evaluated_count):
+                _fit_surrogate(surrogate, encoder, observations)
             generation += 1
             if config.n_trials is None:
                 _refresh_directional_reports(
@@ -414,10 +438,15 @@ def _fit_surrogate(
 ) -> None:
     if len(observations) < 2:
         return
+    train_observations = observations[-_MAX_SURROGATE_TRAIN_ROWS:]
     surrogate.fit(
-        [encoder.encode(observation.candidate) for observation in observations],
-        [observation.target_score for observation in observations],
+        [encoder.encode(observation.candidate) for observation in train_observations],
+        [observation.target_score for observation in train_observations],
     )
+
+
+def _should_refit_surrogate(surrogate: _RandomForestSurrogate, evaluated_count: int) -> bool:
+    return not surrogate.fitted or evaluated_count % _SURROGATE_REFIT_INTERVAL < _EVALUATION_BATCH_SIZE
 
 
 def _candidate_trigger_label(candidate: DSSCandidate, search_space: DSSSearchSpace) -> str:
@@ -429,12 +458,20 @@ def _candidate_trigger_label(candidate: DSSCandidate, search_space: DSSSearchSpa
     return label
 
 
-def _directional_observation(candidate: DSSCandidate, result: DirectionalResult) -> _SMACObservation:
+def _directional_observation(
+    candidate: DSSCandidate, result: DirectionalResult, is_novel_signal: bool = True
+) -> _SMACObservation:
     if not result.should_promote:
         return _SMACObservation(
             candidate=candidate,
             target_score=_DIRECTIONAL_REJECT_PENALTY,
             fidelity="directional_reject",
+        )
+    if not is_novel_signal:
+        return _SMACObservation(
+            candidate=candidate,
+            target_score=_DIRECTIONAL_REJECT_PENALTY,
+            fidelity="duplicate_signal",
         )
     return _SMACObservation(
         candidate=candidate,
@@ -501,6 +538,8 @@ def _write_smac_state(
         {"metric": "features", "value": len(encoder.feature_names)},
         {"metric": "bootstrap_random_evaluations", "value": _BOOTSTRAP_RANDOM_EVALUATIONS},
         {"metric": "rf_trees", "value": _RF_TREES},
+        {"metric": "max_surrogate_train_rows", "value": _MAX_SURROGATE_TRAIN_ROWS},
+        {"metric": "surrogate_refit_interval", "value": _SURROGATE_REFIT_INTERVAL},
         {"metric": "acquisition_std_weight", "value": _ACQUISITION_STD_WEIGHT},
     ]
     if observations:

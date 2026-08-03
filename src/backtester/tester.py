@@ -12,6 +12,29 @@ from backtester.execution_sim import ExecutionSim
 from backtester.results_analyzer import ResultsAnalyzer
 
 
+def _utc_timestamp(value: str | pd.Timestamp | None) -> pd.Timestamp | None:
+    if value is None:
+        return None
+    ts = pd.Timestamp(value)
+    if ts.tzinfo is None:
+        return ts.tz_localize("UTC")
+    return ts.tz_convert("UTC")
+
+
+def _slice_execution_window(
+    frame: pd.DataFrame,
+    *,
+    start: pd.Timestamp | None,
+    end: pd.Timestamp | None,
+) -> pd.DataFrame:
+    sliced = frame
+    if start is not None:
+        sliced = sliced.loc[sliced.index >= start]
+    if end is not None:
+        sliced = sliced.loc[sliced.index <= end]
+    return sliced
+
+
 class Backtester:
     """
     Unified interface for backtesting trading strategies with risk-based position sizing.
@@ -67,15 +90,20 @@ class Backtester:
         self,
         df: StrategyInput,
         strategy: Callable[[StrategyInput], pd.DataFrame],
+        *,
+        ohlcv: pd.DataFrame | None = None,
     ):
         """
         Backtester initialization.
 
         Parameters:
         ----------
-        df : pd.DataFrame
-            OHLCV DataFrame with DatetimeIndex for a single asset.
-            Required columns: ['open', 'high', 'low', 'close', 'volume']
+        df : StrategyInput
+            Plain OHLCV DataFrame, or a StrategyData bundle passed through to
+            the strategy.
+        ohlcv : pd.DataFrame, optional
+            Explicit OHLCV frame used by the simulator when ``df`` is a
+            StrategyData bundle.
 
         strategy : Callable[[pd.DataFrame] -> pd.DataFrame]
             Function that takes a DataFrame and returns it with
@@ -106,7 +134,12 @@ class Backtester:
         - No look-ahead bias checks are performed - this is your responsibility.
         """
         self.data = df
-        self.df = df.primary if isinstance(df, StrategyData) else df
+        if isinstance(df, StrategyData):
+            if ohlcv is None:
+                raise ValueError("Backtester requires explicit ohlcv when input is StrategyData")
+            self.df = ohlcv
+        else:
+            self.df = df if ohlcv is None else ohlcv
         self.strategy = strategy
         self._logger = logging.getLogger(__name__)
 
@@ -141,6 +174,8 @@ class Backtester:
         instrument_precision_policy: str | None = None,
         intrabar_execution_timeframe: str | None = None,
         risk_free_rate_annual: float = 0.02,
+        execution_start: str | pd.Timestamp | None = None,
+        execution_end: str | pd.Timestamp | None = None,
     ) -> ResultsAnalyzer:
         """
         Runs backtest for a single trading instrument using risk-based position sizing.
@@ -240,7 +275,7 @@ class Backtester:
             ("Risk Base Period", risk_base_period),
             ("Capital Sweep", capital_sweep),
             ("Instrument Precision", instrument_precision_policy or "continuous"),
-            ("Intrabar Execution", intrabar_execution_timeframe or "primary"),
+            ("Intrabar Execution", intrabar_execution_timeframe or "bar-close"),
         ]:
             self._logger.info("  %s: %s", param, value)
         if max_daily_profit is not None:
@@ -297,6 +332,22 @@ class Backtester:
             else:
                 strategy_input = attach_execution_context(self.df.copy(), execution_context)
             signaled_df = self.strategy(strategy_input)
+            sim_df = self.df
+            execution_start_ts = _utc_timestamp(execution_start)
+            execution_end_ts = _utc_timestamp(execution_end)
+            if execution_start_ts is not None or execution_end_ts is not None:
+                sim_df = _slice_execution_window(
+                    sim_df,
+                    start=execution_start_ts,
+                    end=execution_end_ts,
+                )
+                signaled_df = _slice_execution_window(
+                    signaled_df,
+                    start=execution_start_ts,
+                    end=execution_end_ts,
+                )
+                if sim_df.empty:
+                    raise ValueError("execution window has no OHLCV candles after warmup trim")
 
             has_signal_events = "signal_events" in signaled_df.columns
             if "signal" not in signaled_df.columns and not has_signal_events:
@@ -306,6 +357,10 @@ class Backtester:
                 self._logger.error("🚨 Strategy did not generate 'sl_price' column.")
                 trades_df = pd.DataFrame()
             else:
+                if len(signaled_df) != len(sim_df) or not signaled_df.index.equals(sim_df.index):
+                    raise ValueError(
+                        "strategy signal frame index must exactly match simulator OHLCV index"
+                    )
                 intrabar_data: IntrabarExecutionData | None = None
                 if intrabar_execution_timeframe is not None:
                     if not isinstance(self.data, StrategyData):
@@ -319,6 +374,8 @@ class Backtester:
                 else:
                     self._logger.info("  📊 Trades: %d", len(trades_df))
 
+        except ValueError:
+            raise
         except Exception:
             self._logger.exception("🚨 Error during backtest execution")
             trades_df = pd.DataFrame()

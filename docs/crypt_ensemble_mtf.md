@@ -17,18 +17,14 @@ quickly without rewriting the strategy again.
 
 ## Current behaviour
 
-Implementation status as of 2026-06-02 session 24: the first additive MTF
-slice is implemented, but H1 full-history smoke is not accepted yet. H4 remains
-the default mode. H1 can be selected through `--primary-timeframe 1h` plus
-`strategies/backtester/crypt_ensemble_h1.json`; it uses D1 context filtering,
-the H4 ensemble verdict as setup, and structural H1 trigger rules. The
-attempted SOL H1 smoke loaded 21517 H1 bars and started correctly but did not
-reach export before the session process ended, so diagnostics from a completed
-run are still missing.
+Implementation note: this document predates the DSS v3 timeframe cleanup. The
+current code no longer has a privileged project-level primary timeframe.
+Strategies declare/request their own execution and context timeframes; the CLI
+derives the execution candle stream from the strategy config.
 
 The current donor `crypt_ensemble` is not a true D1 -> H4 -> H1 model.
 
-- Primary execution timeframe is effectively H4.
+- The original execution timeframe was effectively H4.
 - `CryptEnsembleStrategy.generate()` builds `tick_time` as H4
   `open_time + 4h`.
 - Engines evaluate closed H4 slices, with D1 as partial confluence in some
@@ -173,14 +169,10 @@ Current project data already has H1/H4/D1 Parquet for SOL and TON. XPL has a
 shorter H1 window and must be treated as insufficient for long H1 experiments
 until backfilled.
 
-Required next changes:
-
-- allow `crypt-parquet` to choose `primary_timeframe`;
-- when `primary_timeframe = "1h"`, set `StrategyData.primary` to H1 and keep
-  H4/D1 under `candles`;
-- preserve the existing H4 mode as the default until the H1 smoke is accepted;
-- eventually support lower timeframes such as `15m` by using the same contract,
-  not by adding a special-case strategy branch.
+Required next changes are obsolete. The active contract is
+`StrategyData.candles_by_timeframe`; components call `require_timeframe()`
+for the exact candle stream they need. No timeframe is privileged by the data
+container.
 
 Expected config shape:
 
@@ -256,9 +248,9 @@ until it is retuned.
 
 Keep the first slice intentionally narrow.
 
-1. Add `primary_timeframe` and `timeframes` params to `crypt_ensemble`.
-2. Make `crypt-parquet` load H1 as `StrategyData.primary` when requested.
-3. Preserve current H4 mode as the default.
+1. Add strategy-owned `timeframes` params to `crypt_ensemble`.
+2. Make `crypt-parquet` load the required timeframe bundle.
+3. Preserve current H4 behavior until an H1 strategy config is accepted.
 4. Build closed-candle contexts for D1/H4/H1 at each H1 tick.
 5. Compute SMC state separately for H4 and H1.
 6. Gate entries:
@@ -445,10 +437,6 @@ Current operator command for bounded execution-only H1 tuning:
 MPLCONFIGDIR=/tmp/matplotlib \
 UV_CACHE_DIR=/tmp/uv-cache \
 uv run backtester optimize \
-    --data-source crypt-parquet \
-    --data-dir data \
-    --primary-timeframe 1h \
-    --symbol SOL-USDT-SWAP \
     --from 2025-01-01 \
     --to 2025-02-01 \
     --strategy strategies/backtester/crypt_ensemble_h1.json \
@@ -619,10 +607,6 @@ First smoke:
 
 ```bash
 uv run backtester run \
-    --data-source crypt-parquet \
-    --data-dir data \
-    --primary-timeframe 1h \
-    --symbol SOL-USDT-SWAP \
     --from 2025-01-01 \
     --to 2025-02-01 \
     --strategy strategies/backtester/crypt_ensemble_h1.json \
@@ -632,8 +616,8 @@ uv run backtester run \
 After the bounded smoke exports clean diagnostics, run the same command without
 `--from` / `--to` for full-history acceptance.
 
-Implementation note: `--from` / `--to` should bound the primary/output frame
-only. Context/setup candle frames must retain pre-start history up to `--to`,
+Implementation note: `--from` / `--to` bound the execution/output frame only.
+Context/setup candle frames must retain pre-start history up to `--to`,
 otherwise H4/D1 engines lose warmup and the bounded smoke degenerates into
 all-HOLD setup rows.
 

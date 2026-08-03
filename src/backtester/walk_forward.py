@@ -26,6 +26,8 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
+
 from backtester.cli_runner import (
     BacktestArgs,
     OptimizerSearchArgs,
@@ -35,7 +37,7 @@ from backtester.cli_runner import (
     _target_function,
     backtest_run_kwargs,
 )
-from backtester.data_contracts import StrategyData, StrategyInput
+from backtester.data_contracts import StrategyData, StrategyInput, select_candle_frame
 from backtester.optimizer import ParameterOptimizer
 from backtester.registry import STRATEGIES
 from backtester.tester import Backtester
@@ -187,16 +189,13 @@ def _slice_df_by_date(df: Any, start: str, end: str) -> Any:
 def _slice_strategy_input(data: StrategyInput, start: str, end: str) -> StrategyInput:
     """Return a date-bounded slice of a StrategyInput without copying the full set."""
     if isinstance(data, StrategyData):
-        p = data.primary
-        mask = (p.index >= start) & (p.index <= end)
-        sliced_primary = p.loc[mask]
-        sliced_candles = {k: _slice_df_by_date(v, start, end) for k, v in data.candles.items()}
+        sliced_candles = {k: _slice_df_by_date(v, start, end) for k, v in data.candles_by_timeframe.items()}
         sliced_extras = {k: _slice_df_by_date(v, start, end) for k, v in data.extras.items()}
         return StrategyData(
-            primary=sliced_primary,
-            candles=sliced_candles,
+            candles_by_timeframe=sliced_candles,
             extras=sliced_extras,
             metadata=data.metadata,
+            execution=data.execution,
         )
     # Plain DataFrame
     import pandas as pd
@@ -206,14 +205,14 @@ def _slice_strategy_input(data: StrategyInput, start: str, end: str) -> Strategy
     return data
 
 
-def _input_is_empty(data: StrategyInput) -> bool:
-    primary = data.primary if isinstance(data, StrategyData) else data
-    return bool(primary.empty)
+def _input_is_empty(data: StrategyInput, candle_timeframe: str) -> bool:
+    frame = select_candle_frame(data, candle_timeframe)
+    return bool(frame.empty)
 
 
-def _bar_count(data: StrategyInput) -> int:
-    primary = data.primary if isinstance(data, StrategyData) else data
-    return len(primary)
+def _bar_count(data: StrategyInput, candle_timeframe: str) -> int:
+    frame = select_candle_frame(data, candle_timeframe)
+    return len(frame)
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +236,7 @@ def _extract_metrics(results: Any) -> WindowMetrics:
 
 def _run_single_backtest(
     data: StrategyInput,
+    ohlcv: pd.DataFrame,
     cfg: StrategyConfig,
     args: BacktestArgs,
     strategy_params: dict[str, Any],
@@ -244,7 +244,7 @@ def _run_single_backtest(
     """Run one backtest and return extracted metrics."""
     strategy_cls = STRATEGIES[cfg.name]
     strategy_instance = strategy_cls(strategy_params)
-    bt = Backtester(data, strategy_instance.generate)
+    bt = Backtester(data, strategy_instance.generate, ohlcv=ohlcv)
     results = bt.run(**backtest_run_kwargs(args))
     return _extract_metrics(results)
 
@@ -261,6 +261,7 @@ def run_walk_forward(
     base_args: BacktestArgs,
     optimizer_args: OptimizerSearchArgs,
     full_data: StrategyInput,
+    candle_timeframe: str,
     output_folder: Path,
     logger: logging.Logger | None = None,
 ) -> list[WalkForwardWindowResult]:
@@ -319,8 +320,10 @@ def run_walk_forward(
         is_data = _slice_strategy_input(full_data, window.is_start, window.is_end)
         oos_data = _slice_strategy_input(full_data, window.oos_start, window.oos_end)
 
-        is_bars = _bar_count(is_data)
-        oos_bars = _bar_count(oos_data)
+        is_ohlcv = select_candle_frame(is_data, candle_timeframe)
+        oos_ohlcv = select_candle_frame(oos_data, candle_timeframe)
+        is_bars = _bar_count(is_data, candle_timeframe)
+        oos_bars = _bar_count(oos_data, candle_timeframe)
         min_bars = 100
 
         if is_bars < min_bars or oos_bars < min_bars:
@@ -340,19 +343,22 @@ def run_walk_forward(
             # Evaluation-only mode: use base strategy config params.
             best_params: dict[str, Any] = {}
             strategy_params = dict(cfg.params)
-            is_metrics = _run_single_backtest(is_data, cfg, base_args, strategy_params)
+            is_metrics = _run_single_backtest(is_data, is_ohlcv, cfg, base_args, strategy_params)
             logger.info("IS (eval-only): return=%.1f%% trades=%d", is_metrics.total_return_pct, is_metrics.trades)
         else:
             # Optimize on IS window.
             logger.info("  Optimizing on IS (%d bars)…", is_bars)
             optimizer = ParameterOptimizer(
                 df=is_data,
+                ohlcv=is_ohlcv,
                 strategy_class=strategy_cls,
                 target=target,
                 initial_capital=base_args.capital,
                 taker_fee=base_args.taker_fee,
                 maker_fee=base_args.maker_fee,
                 position_ttl_bars=base_args.ttl,
+                position_ttl_minutes=base_args.ttl_minutes,
+                candle_timeframe=candle_timeframe,
                 max_allowed_margin=base_args.max_allowed_margin,
                 risk_base_period=base_args.risk_base_period,
                 strategy_params=cfg.params,
@@ -363,7 +369,7 @@ def run_walk_forward(
                 trail_activation_rrr=base_args.trail_activation_rrr,
                 trail_distance_atr=base_args.trail_distance_atr,
                 trail_distance_atr_range=optimizer_args.trail_distance_atr_range,
-                position_ttl_bars_range=optimizer_args.position_ttl_bars_range,
+                position_ttl_minutes_range=optimizer_args.position_ttl_minutes_range,
                 tp_move_pct_range=optimizer_args.tp_move_pct_range,
                 exit_geometry=base_args.exit_geometry,
                 tp_move_pct=base_args.tp_move_pct,
@@ -397,13 +403,17 @@ def run_walk_forward(
             )
 
             strategy_params = _best_strategy_params(cfg=cfg, best_params=best_params)
-            is_args = _best_backtest_args(base=base_args, best_params=best_params)
-            is_metrics = _run_single_backtest(is_data, cfg, is_args, strategy_params)
+            is_args = _best_backtest_args(
+                base=base_args,
+                best_params=best_params,
+                candle_timeframe=candle_timeframe,
+            )
+            is_metrics = _run_single_backtest(is_data, is_ohlcv, cfg, is_args, strategy_params)
             logger.info(
                 "  IS best: return=%.1f%% trades=%d  params=%s",
                 is_metrics.total_return_pct,
                 is_metrics.trades,
-                {k: v for k, v in best_params.items() if k in ("rrr", "risk_percent", "position_ttl_bars")},
+                {k: v for k, v in best_params.items() if k in ("rrr", "risk_percent", "position_ttl_minutes")},
             )
 
         # Evaluate on OOS window.
@@ -411,8 +421,12 @@ def run_walk_forward(
         if eval_only:
             oos_args = base_args
         else:
-            oos_args = _best_backtest_args(base=base_args, best_params=best_params)
-        oos_metrics = _run_single_backtest(oos_data, cfg, oos_args, strategy_params)
+            oos_args = _best_backtest_args(
+                base=base_args,
+                best_params=best_params,
+                candle_timeframe=candle_timeframe,
+            )
+        oos_metrics = _run_single_backtest(oos_data, oos_ohlcv, cfg, oos_args, strategy_params)
 
         logger.info(
             "  OOS:  return=%.1f%%  trades=%d  win=%.1f%%  dd=%.1f%%",

@@ -121,7 +121,7 @@ class DerivativesEngine(BaseEngine):
 
         delta_oi_pct = oi_now / oi_4h_ago - 1.0
 
-        h4 = ctx.candles.get(Timeframe.H4)
+        h4 = ctx.candles_by_timeframe.get(Timeframe.H4)
         if h4 is not None and len(h4) >= 2:
             close_change = float(h4["c"].iloc[-1]) - float(h4["c"].iloc[-2])
             price_sign = float(np.sign(close_change))

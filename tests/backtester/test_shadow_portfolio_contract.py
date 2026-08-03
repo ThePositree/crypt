@@ -38,6 +38,7 @@ def test_incremental_shadow_execution_matches_external_simulator(
         maker_fee=0.0002,
         taker_fee=0.0005,
         ttl=24,
+        ttl_minutes=24 * 60,
         max_positions=0,
         max_allowed_leverage=25.0,
         max_allowed_margin=1.0,

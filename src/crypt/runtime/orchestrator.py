@@ -162,8 +162,8 @@ class Orchestrator:
         try:
             tick_time = datetime.now(tz=UTC)
             ctx = self._ctx_builder.build(symbol, tick_time)
-            h4 = ctx.candles.get(Timeframe.H4)
-            d1 = ctx.candles.get(Timeframe.D1)
+            h4 = ctx.candles_by_timeframe.get(Timeframe.H4)
+            d1 = ctx.candles_by_timeframe.get(Timeframe.D1)
             is_partial = (h4 is None or h4.empty) or (d1 is None or d1.empty)
             await self._run_engines_and_dispatch(ctx)
             return "partial" if is_partial else "ok"

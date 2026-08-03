@@ -5,7 +5,8 @@ JSON references ``"name": "dss_strategy"``.
 
 Params dict (from candidate JSON ``params`` key) must contain all fields of
 TrialConfig: trigger_name, trigger_params, filter_names, filter_params,
-rrr, risk_percent, position_ttl_bars, atr_sl_mult.
+plus downstream execution defaults such as rrr, risk_percent, and
+position_ttl_minutes when present.
 """
 
 from __future__ import annotations
@@ -18,7 +19,10 @@ import pandas as pd
 
 from backtester.data_contracts import StrategyInput
 from backtester.strategy import BaseStrategy
-from backtester.strategy_discovery.dss_config import TrialConfig
+from backtester.strategy_discovery.dss_config import (
+    DSS_DEFAULT_DIRECTIONAL_SL_MOVE_PCT,
+    TrialConfig,
+)
 from backtester.strategy_discovery.signal_composer import (
     SignalComposer,
     signal_df_to_ohlcv_aligned,
@@ -28,6 +32,67 @@ logger = logging.getLogger(__name__)
 
 _ENTRY_SKIP_FEATURES = {"entry_dayofweek", "stop_distance_pct"}
 _ENTRY_SKIP_OPS = {"<", "<=", ">", ">=", "==", "!="}
+
+
+def apply_default_dss_execution_stops(
+    aligned: pd.DataFrame,
+    primary: pd.DataFrame,
+    fallback_stop_pct: float,
+    atr_sl_mult: float | None = None,
+) -> None:
+    """Make directional-only DSS signals executable by adding a default SL."""
+
+    if aligned.empty:
+        return
+
+    signals = pd.to_numeric(aligned["signal"], errors="coerce").fillna(0).astype(int)
+    stops = pd.to_numeric(aligned["sl_price"], errors="coerce")
+    entry_basis = pd.to_numeric(primary["open"].shift(-1), errors="coerce")
+    close_fallback = pd.to_numeric(primary["close"], errors="coerce")
+    entry_basis = entry_basis.where(entry_basis > 0, close_fallback)
+
+    actionable = signals != 0
+    valid_entry = entry_basis.notna() & (entry_basis > 0)
+    invalid_stop = stops.isna() | (stops <= 0)
+    invalid_stop |= ((signals == 1) & (stops >= entry_basis)).fillna(False)
+    invalid_stop |= ((signals == -1) & (stops <= entry_basis)).fillna(False)
+    fallback_mask = actionable & valid_entry & invalid_stop
+    if not bool(fallback_mask.any()):
+        return
+
+    long_mask = fallback_mask & (signals == 1)
+    short_mask = fallback_mask & (signals == -1)
+    if atr_sl_mult is not None and atr_sl_mult > 0:
+        atr_distance = _closed_atr14(primary) * atr_sl_mult
+        valid_atr = atr_distance.notna() & (atr_distance > 0)
+        atr_long_mask = long_mask & valid_atr
+        atr_short_mask = short_mask & valid_atr
+        aligned.loc[atr_long_mask, "sl_price"] = (
+            entry_basis.loc[atr_long_mask] - atr_distance.loc[atr_long_mask]
+        )
+        aligned.loc[atr_short_mask, "sl_price"] = (
+            entry_basis.loc[atr_short_mask] + atr_distance.loc[atr_short_mask]
+        )
+        long_mask &= ~valid_atr
+        short_mask &= ~valid_atr
+    aligned.loc[long_mask, "sl_price"] = entry_basis.loc[long_mask] * (1.0 - fallback_stop_pct)
+    aligned.loc[short_mask, "sl_price"] = entry_basis.loc[short_mask] * (1.0 + fallback_stop_pct)
+
+
+def _closed_atr14(primary: pd.DataFrame) -> pd.Series:
+    high = primary["high"].astype(float)
+    low = primary["low"].astype(float)
+    close = primary["close"].astype(float)
+    previous_close = close.shift(1)
+    true_range = pd.concat(
+        [
+            high - low,
+            (high - previous_close).abs(),
+            (low - previous_close).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
+    return true_range.rolling(14, min_periods=1).mean()
 
 
 class DSSStrategy(BaseStrategy):
@@ -48,12 +113,26 @@ class DSSStrategy(BaseStrategy):
         if self._allowed_signal not in (None, -1, 1):
             raise ValueError("allowed_signal must be -1, 1, or omitted")
         self._entry_skip_rules = list(params.get("entry_skip_rules") or [])
+        self._fallback_stop_pct = float(
+            params.get(
+                "directional_sl_move_pct",
+                params.get("sl_pct", DSS_DEFAULT_DIRECTIONAL_SL_MOVE_PCT),
+            )
+        )
+        raw_atr_sl_mult = params.get("atr_sl_mult")
+        self._atr_sl_mult = float(raw_atr_sl_mult) if raw_atr_sl_mult is not None else None
+        if self._fallback_stop_pct <= 0:
+            raise ValueError("directional_sl_move_pct/sl_pct must be positive")
         self._validate_entry_skip_rules()
 
     def generate(self, data: StrategyInput) -> pd.DataFrame:
         from backtester.data_contracts import StrategyData
 
-        primary = data.primary if isinstance(data, StrategyData) else data
+        primary = (
+            data.require_timeframe(self._config.trigger_instance.timeframe)
+            if isinstance(data, StrategyData)
+            else data
+        )
 
         try:
             signal_df = self._generate_fn(data)
@@ -69,8 +148,19 @@ class DSSStrategy(BaseStrategy):
             rejected = aligned["signal"] != self._allowed_signal
             aligned.loc[rejected, "signal"] = 0
             aligned.loc[rejected, "sl_price"] = 0.0
+        self._apply_default_execution_stops(aligned, primary)
         self._apply_entry_skip_rules(aligned, primary)
         return aligned
+
+    def _apply_default_execution_stops(
+        self, aligned: pd.DataFrame, primary: pd.DataFrame
+    ) -> None:
+        apply_default_dss_execution_stops(
+            aligned,
+            primary,
+            self._fallback_stop_pct,
+            atr_sl_mult=self._atr_sl_mult,
+        )
 
     def _validate_entry_skip_rules(self) -> None:
         for rule in self._entry_skip_rules:

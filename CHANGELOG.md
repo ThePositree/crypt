@@ -6,6 +6,182 @@ Format: newest on top, date in `YYYY-MM-DD`.
 
 ---
 
+## 2026-08-03 — Production v6 regression audit
+
+- Re-ran and fixed the current production strategy regression for
+  `strategies/archive/filtered_donor_portfolio_post_adr0058_tail_control_v6_drop_negative_v5.json`
+- Root cause: old promoted DSS donor JSONs carry legacy `atr_sl_mult`, but the
+  new DSS v3 executable-stop fallback used only `directional_sl_move_pct=0.004`.
+  That made old production stops roughly half as wide and broke exit timing.
+- Restored legacy DSS stop semantics: `dss_strategy` and `dss_incremental` now
+  use `atr_sl_mult` when present, falling back to `directional_sl_move_pct` only
+  for newer directional-only candidates.
+- Added internal backtest/optimizer warmup loading: `--from/--to` remain the
+  execution/reporting window, while crypt-parquet candle loading starts 30 days
+  earlier for indicator context. Exported `ohlcv.csv` is trimmed back to the
+  execution window.
+- Phase B live/backtest reconciliation is restored on current code/data:
+  `17` rows, `16/1` closed/open, exit distribution
+  `10 stop_loss / 4 take_profit / 2 ttl_expired / 1 open`, closed PnL
+  `-$0.85356390` versus archived `-$0.84001035`.
+- Full archived-period v6 no longer shows the regression loss. Current repaired
+  local data gives `$1,194,926.04` final capital, `11849.26%` return, `1544`
+  trades, and `1.37` profit factor; the archived snapshot remains
+  `$1,098,402.88`, `10884.03%`, `1515` trades, and `1.48` profit factor.
+- Fixed a discovery dataset regression where callers that explicitly supplied
+  an execution OHLCV frame no longer passed the remaining candle frames as
+  H4/D1 context features.
+- Fixed DSS matrix report refresh crashes on large `signal_identity_keys`
+  CSV fields by raising the Python CSV field-size limit before reading DSS
+  viability/ranked files. Verified a bounded all-backend matrix smoke.
+
+## 2026-08-03 — DSS v3 audit fixes
+
+- Fixed `search-signals` multi-symbol execution so repeated `--symbol` values
+  produce distinct symbol-scoped windows instead of silently scanning only the
+  first symbol.
+- Made DSS signal-overlap novelty durable across resume/migrated journals by
+  persisting and restoring `signal_identity_keys` from viability rows.
+- Changed Island-QD and Hyperband-QD feedback loops to train on rejected and
+  duplicate candidates, not only promoted candidates.
+- Made adaptive backend `random_unseen` injections use an independent random
+  DSS candidate sampler instead of only relabeling model proposals.
+- Kept DSS missing-candle backfill hints owner-facing by removing agent-only
+  `MPLCONFIGDIR` / `UV_CACHE_DIR` env prefixes from generated commands.
+
+## 2026-08-03 — Default Optuna exit-family search
+
+- Changed `backtester optimize` defaults into a post-DSS geometry search:
+  one run now searches `exit_family`, `rrr`, `position_ttl_minutes`,
+  `risk_percent`, `trail_distance_atr` for trailing exits, and `tp_move_pct`
+  for TP-percent exits while keeping strategy parameter search disabled.
+- Set default optimizer ranges to `rrr=1..10`, `risk_percent=0.25..3.0`,
+  `position_ttl_minutes=60..10080`, `trail_distance_atr=0.5..10`, and
+  `tp_move_pct=0.004..0.14`.
+- Added `best_geometry_summary.txt` beside `best_trial.json` so the winning
+  exit family and money parameters are readable without raw Optuna parsing.
+
+## 2026-08-03 — TTL minutes source of truth
+
+- Moved backtester/Optuna TTL search to `position_ttl_minutes`; simulator
+  `position_ttl_bars` is now derived from the strategy execution timeframe.
+- Updated DSS v3 exports so TTL is only a runnable downstream default
+  (`position_ttl_minutes=720`), not a DSS search/evaluation parameter.
+- Updated live execution TTL handling to expire by wall-clock minutes and
+  migrate legacy open-position state from hour-like `ttl_bars` values to
+  minute values.
+- Updated owner CLI docs to prefer `--ttl-minutes*` overrides and keep old
+  bar-based `--ttl*` flags as legacy reproduction inputs.
+
+## 2026-08-03 — DSS signal-overlap novelty guard
+
+- Fixed DSS backend novelty handling so promoted candidates are checked before
+  viability rows are written, preventing duplicate signal sets from remaining
+  exportable.
+- Added signal identity keys to directional metadata and reject high-overlap
+  promoted signal sets as `duplicate_signal_set`, not only exact fingerprint
+  duplicates.
+- Updated CatCMA-QD, Hyperband-QD, Island-QD, SMAC-QD, and directional search
+  loops to use the shared pre-write novelty decision.
+
+## 2026-08-03 — Backtester CLI surface pruning
+
+- Removed dead owner-facing `backtester` Click commands from the product
+  surface. The remaining backtester commands are only `run`, `optimize`,
+  `search-signals`, and `search-signals-matrix`.
+- Kept `python -m crypt` and `python -m crypt.backfill` as runtime/data module
+  entrypoints.
+- Removed obsolete help tests for the deleted commands and updated DSS reports
+  to point validation toward `backtester run` / `backtester optimize`.
+- Updated `docs/cli.md` with the complete current command list.
+
+## 2026-08-03 — Compact owner CLI defaults
+
+- Simplified owner-facing `backtester run`, `backtester optimize`,
+  `search-signals`, and `search-signals-matrix` defaults: `data/`,
+  `SOL-USDT-SWAP`, full available history, and `$10,000` capital are now the
+  normal path.
+- Hid rarely used technical flags from the main Click help while keeping them
+  accepted for advanced/reproduction cases.
+- Changed default Optuna trials from smoke-sized `25` to `50,000`.
+- Added `full` / `all` aliases for omitted crypt-parquet date bounds.
+- Added `docs/cli.md` as the compact command runbook and updated README/archive
+  reproduction commands away from old manual timeframe/data-source flags.
+- Replaced obsolete active DSS v2/PineScript multi-step wording with current
+  DSS v3 directional search references.
+
+## 2026-08-03 — DSS v3 endless runtime fixes
+
+- Removed the old privileged timeframe semantics from the backtester/DSS/live
+  code path: `StrategyData` now carries `candles_by_timeframe`, components use
+  explicit timeframe accessors, and crypt-parquet loads all candle channels as
+  equal bundle entries.
+- Renamed discovery datasets from `primary` to `ohlcv` and migrated DSS
+  feature builders, signal composer alignment, directional evaluation,
+  backtester runners, optimizer/walk-forward adapters, live signal runner, and
+  focused tests off `.primary` access.
+- Updated the timeframe cleanup backlog: the remaining hard migration
+  is the runner-selected `execution_timeframe`/`execution_frame()` surface, not
+  the old privileged-frame contract.
+- Removed the runner-selected `StrategyData.execution_frame()` surface:
+  backtester, optimizer, walk-forward, fixed-candidate reports, regime matrix,
+  DSS objective, and live signal generation now receive an explicit OHLCV
+  frame from their caller or require a component-owned timeframe.
+- Renamed the public crypt-parquet runner option to `--candle-timeframe`; it is
+  now a CLI input-frame selector and is no longer stored in `StrategyData`
+  metadata.
+- Fixed DSS runtime progress so refreshed endless reports preserve the last
+  exported candidate count instead of resetting `exported` to zero on regular
+  per-candidate progress writes.
+- Fixed directional candidate export to replace stale
+  `directional_candidates/directional_*.json` files when the ranked top set
+  changes, keeping the export directory aligned with the current shortlist.
+- Fixed the default directional endless generator so adjacent batches no longer
+  reuse the same batch-local RNG stream and stop after duplicate-only batches.
+- Capped SMAC-QD surrogate training to the latest 5,000 observations and added
+  a 512-evaluation refit cadence so resumed endless searches do not spend
+  hours refitting the random forest on the full journal before updating
+  progress.
+- Updated `/tmp/dss_snapshot.py` to show stale backends and count exported
+  candidate JSONs when older progress files under-report exports.
+- Added DSS directional `signal_fingerprint`/`signal_set_size` audit fields and
+  made directional candidate export deduplicate shortlist entries by exact
+  `(window, bar_time, side)` signal sets, preventing multiple promoted JSONs
+  for candidates that would enter the market at the same times.
+- Added `/tmp/dss_candidate_audit.py` for top-candidate clone checks; it reports
+  exact config clones, exact money-vector clones, repeated trigger/filter
+  families, and optional recomputed signal timestamp overlap.
+- Added backend-level DSS signal novelty tracking: directional, CatCMA-QD,
+  Island-QD, Hyperband-QD, and SMAC-QD now distinguish new promoted signal sets
+  from promoted clones, avoid using cloned signal sets as novelty parents or
+  survivor increments, and feed duplicate promoted signals back to model-based
+  backends as negative examples.
+- Rebalanced DSS directional scoring/export toward active viable strategies:
+  sparse candidates remain eligible, but medium/frequent candidates now receive
+  stronger ranking and backend-feedback preference, and shortlist export
+  round-robins `frequent -> medium -> sparse` instead of filling from sparse
+  first. `/tmp/dss_snapshot.py` now shows the `freq` bucket explicitly.
+- Added default execution geometry for DSS v3 directional candidates:
+  exported JSONs now include `rrr=2.0`, `risk_percent=1.0`,
+  `position_ttl_minutes=720`, and `directional_sl_move_pct`; `DSSStrategy`
+  backfills missing/invalid directional stops from the next open with that
+  percentage so old directional-only candidates can run through the regular
+  backtester/optimizer.
+- Removed manual candle-timeframe selection from `backtester run` and
+  `backtester optimize`: both commands now derive the replay OHLCV timeframe
+  from DSS candidate trigger metadata and pass that exact frame into the
+  simulator/optimizer, preventing accidental mixed-timeframe replays.
+- Added `--algorithms all` as the default DSS matrix backend selector and
+  verified a bounded all-backend matrix smoke.
+- Fixed DSS bounded-run artifacts so `progress.json` is finalized to
+  `stopped`/`failed` instead of staying `running` after process exit.
+- Added `trigger_timeframe` and `filter_timeframes` columns to
+  `directional_viability.csv` so matrix/snapshot audits can inspect timeframe
+  behavior without opening candidate JSONs.
+- Moved strategy candle-timeframe resolution into shared CLI runner helpers and
+  updated live signal generation to use the strategy-owned execution timeframe
+  for candle freshness, loader selection, ATR context, and next-open tracking.
+
 ## 2026-07-31 — AI-first project template artifact
 
 - Added `ai-first-project-template/` as a temporary in-repo starter kit for

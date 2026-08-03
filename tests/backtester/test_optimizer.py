@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import optuna
 import pandas as pd
@@ -20,7 +20,7 @@ from backtester.strategy import BaseStrategy
 
 
 class _DummyStrategy(BaseStrategy):
-    seen_params: dict[str, Any] = {}
+    seen_params: ClassVar[dict[str, Any]] = {}
     generate_calls = 0
 
     def __init__(self, params: dict[str, Any]):
@@ -36,7 +36,7 @@ class _DummyStrategy(BaseStrategy):
 
 
 class _DummyResults:
-    metrics = {
+    metrics: ClassVar[dict[str, Any]] = {
         "total_return_pct": 1.5,
         "monthly_returns_pct": {"2025-01": {"ret": 1.5}},
         "max_drawdown": -2.0,
@@ -65,6 +65,7 @@ def test_build_backtest_args_accepts_position_ttl_bars_alias() -> None:
         maker_fee=0.0002,
         taker_fee=0.0005,
         ttl=0,
+        ttl_minutes=0,
         max_positions=3,
         max_allowed_leverage=25.0,
         max_allowed_margin=1.0,
@@ -72,6 +73,7 @@ def test_build_backtest_args_accepts_position_ttl_bars_alias() -> None:
     )
 
     assert args.ttl == 56
+    assert args.ttl_minutes == 56 * 60
     assert args.rrr == 2.0
     assert args.trail_distance_atr == 0.25
     assert args.trail_activation_rrr == 2.0
@@ -100,6 +102,7 @@ def test_build_backtest_args_uses_flat_dss_params_as_execution_defaults() -> Non
         maker_fee=0.0002,
         taker_fee=0.0005,
         ttl=0,
+        ttl_minutes=0,
         max_positions=3,
         max_allowed_leverage=25.0,
         max_allowed_margin=1.0,
@@ -111,6 +114,7 @@ def test_build_backtest_args_uses_flat_dss_params_as_execution_defaults() -> Non
     assert args.trail_distance_atr == 0.25
     assert args.trail_activation_rrr == 6.0
     assert args.ttl == 92
+    assert args.ttl_minutes == 92 * 60
     assert args.max_positions == 0
 
 
@@ -140,6 +144,7 @@ def test_build_backtest_args_backtest_args_override_flat_dss_params() -> None:
         maker_fee=0.0002,
         taker_fee=0.0005,
         ttl=0,
+        ttl_minutes=0,
         max_positions=3,
         max_allowed_leverage=25.0,
         max_allowed_margin=1.0,
@@ -151,6 +156,7 @@ def test_build_backtest_args_backtest_args_override_flat_dss_params() -> None:
     assert args.trail_distance_atr == 0.5
     assert args.trail_activation_rrr == 3.0
     assert args.ttl == 44
+    assert args.ttl_minutes == 44 * 60
 
 
 def test_parameter_optimizer_can_suggest_ttl_and_merge_base_strategy_params(
@@ -159,7 +165,7 @@ def test_parameter_optimizer_can_suggest_ttl_and_merge_base_strategy_params(
     captured: dict[str, Any] = {}
 
     class Backtester:
-        def __init__(self, df, strategy):
+        def __init__(self, df, strategy, **_kwargs):
             captured["df"] = df
             captured["strategy"] = strategy
 
@@ -182,6 +188,7 @@ def test_parameter_optimizer_can_suggest_ttl_and_merge_base_strategy_params(
     )
     optimizer = ParameterOptimizer(
         df=df,
+        ohlcv=df,
         strategy_class=_DummyStrategy,
         target=TargetFunction(
             fn=lambda results: float(results.metrics["total_return_pct"]),
@@ -191,20 +198,20 @@ def test_parameter_optimizer_can_suggest_ttl_and_merge_base_strategy_params(
         optimize_strategy_params=True,
         risk_percent_range=None,
         rrr_range=(1.0, 1.5, 0.25),
-        position_ttl_bars_range=(24, 48, 12),
+        position_ttl_minutes_range=(24 * 60, 48 * 60, 12 * 60),
         optimize_daily_limits=False,
         optimize_trading_window=False,
         risk_base_period="monthly",
     )
 
     _DummyStrategy.generate_calls = 0
-    value = optimizer._objective(  # noqa: SLF001
+    value = optimizer._objective(
         optuna.trial.FixedTrial(
             {
                 "suggested": 2,
                 "rrr": 1.25,
                 "max_positions": 2,
-                "position_ttl_bars": 36,
+                "position_ttl_minutes": 36 * 60,
             }
         )
     )
@@ -227,7 +234,7 @@ def test_parameter_optimizer_can_skip_strategy_param_search_and_reuse_signals(
     monkeypatch,
 ):
     class Backtester:
-        def __init__(self, df, strategy):
+        def __init__(self, df, strategy, **_kwargs):
             self.df = df
             self.strategy = strategy
 
@@ -249,6 +256,7 @@ def test_parameter_optimizer_can_skip_strategy_param_search_and_reuse_signals(
     )
     optimizer = ParameterOptimizer(
         df=df,
+        ohlcv=df,
         strategy_class=_DummyStrategy,
         target=TargetFunction(
             fn=lambda results: float(results.metrics["total_return_pct"]),
@@ -258,17 +266,17 @@ def test_parameter_optimizer_can_skip_strategy_param_search_and_reuse_signals(
         optimize_strategy_params=False,
         risk_percent_range=None,
         rrr_range=(1.0, 1.5, 0.25),
-        position_ttl_bars_range=(24, 48, 12),
+        position_ttl_minutes_range=(24 * 60, 48 * 60, 12 * 60),
         optimize_daily_limits=False,
         optimize_trading_window=False,
     )
 
     _DummyStrategy.generate_calls = 0
-    optimizer._objective(  # noqa: SLF001
-        optuna.trial.FixedTrial({"rrr": 1.25, "position_ttl_bars": 36})
+    optimizer._objective(
+        optuna.trial.FixedTrial({"rrr": 1.25, "position_ttl_minutes": 36 * 60})
     )
-    optimizer._objective(  # noqa: SLF001
-        optuna.trial.FixedTrial({"rrr": 1.5, "position_ttl_bars": 48})
+    optimizer._objective(
+        optuna.trial.FixedTrial({"rrr": 1.5, "position_ttl_minutes": 48 * 60})
     )
 
     assert _DummyStrategy.seen_params == {"baseline": True}
@@ -281,7 +289,7 @@ def test_parameter_optimizer_activates_trailing_at_selected_rrr(
     captured: dict[str, Any] = {}
 
     class Backtester:
-        def __init__(self, df, strategy):
+        def __init__(self, df, strategy, **_kwargs):
             captured["df"] = df
             captured["strategy"] = strategy
 
@@ -304,6 +312,7 @@ def test_parameter_optimizer_activates_trailing_at_selected_rrr(
     )
     optimizer = ParameterOptimizer(
         df=df,
+        ohlcv=df,
         strategy_class=_DummyStrategy,
         target=TargetFunction(
             fn=lambda results: float(results.metrics["total_return_pct"]),
@@ -335,7 +344,7 @@ def test_parameter_optimizer_disables_trailing_when_atr_distance_is_zero(
     captured: dict[str, Any] = {}
 
     class Backtester:
-        def __init__(self, df, strategy):
+        def __init__(self, df, strategy, **_kwargs):
             captured["df"] = df
             captured["strategy"] = strategy
 
@@ -358,6 +367,7 @@ def test_parameter_optimizer_disables_trailing_when_atr_distance_is_zero(
     )
     optimizer = ParameterOptimizer(
         df=df,
+        ohlcv=df,
         strategy_class=_DummyStrategy,
         target=TargetFunction(
             fn=lambda results: float(results.metrics["total_return_pct"]),
@@ -396,7 +406,7 @@ def test_run_parameter_optimization_exports_trials_and_best_run(
     class _FakeTrial:
         number = 7
         value = 1.25
-        user_attrs = {"total_trades": 4}
+        user_attrs: ClassVar[dict[str, Any]] = {"total_trades": 4}
 
     class _FakeStudy:
         best_trial = _FakeTrial()
@@ -414,7 +424,7 @@ def test_run_parameter_optimization_exports_trials_and_best_run(
                 "rrr": 1.5,
                 "trail_distance_atr": 1.5,
                 "max_positions": 3,
-                "position_ttl_bars": 30,
+                "position_ttl_minutes": 30 * 60,
                 "tp_move_pct": 0.012,
             }, _FakeStudy()
 
@@ -430,11 +440,11 @@ def test_run_parameter_optimization_exports_trials_and_best_run(
             path = tmp_path / "export_marker.txt"
             path.write_text(folder)
 
-    def fake_run_backtest(*, df, strategy, args):
+    def fake_run_backtest(**_kwargs):
         raise AssertionError("cached best-run export should not regenerate signals")
 
     class _FakeBacktester:
-        def __init__(self, df, strategy):
+        def __init__(self, df, strategy, **_kwargs):
             captured["best_df"] = df
             captured["best_strategy_fn"] = strategy
 
@@ -461,6 +471,7 @@ def test_run_parameter_optimization_exports_trials_and_best_run(
     )
     run_parameter_optimization(
         df=df,
+        ohlcv=df,
         cfg=StrategyConfig(
             name="dummy",
             version="test",
@@ -476,6 +487,7 @@ def test_run_parameter_optimization_exports_trials_and_best_run(
             maker_fee=0.0002,
             taker_fee=0.0005,
             ttl=24,
+            ttl_minutes=24 * 60,
             max_positions=0,
             max_allowed_leverage=25.0,
             max_allowed_margin=1.0,
@@ -492,8 +504,10 @@ def test_run_parameter_optimization_exports_trials_and_best_run(
             risk_percent_range=None,
             rrr_range=(1.0, 2.0, 0.25),
             trail_distance_atr_range=(1.0, 2.0, 0.5),
-            position_ttl_bars_range=(24, 48, 6),
+            position_ttl_minutes_range=(24 * 60, 48 * 60, 6 * 60),
             tp_move_pct_range=None,
+            exit_family_search=False,
+            exit_families=("sl_rrr", "sl_rrr_trailing", "tp_pct"),
             optimize_daily_limits=False,
             optimize_trading_window=False,
             export_best_run=True,
@@ -504,14 +518,15 @@ def test_run_parameter_optimization_exports_trials_and_best_run(
 
     assert (tmp_path / "trials.csv").exists()
     assert (tmp_path / "best_trial.json").exists()
+    assert (tmp_path / "best_geometry_summary.txt").exists()
     assert captured["optimizer_kwargs"]["strategy_params"] == {"baseline": True}
     assert captured["optimizer_kwargs"]["risk_percent"] == 0.75
     assert captured["optimizer_kwargs"]["trail_distance_atr_range"] == (1.0, 2.0, 0.5)
     assert captured["optimize_kwargs"]["n_trials"] == 3
     assert captured["cached_params"] == {"baseline": True}
     assert captured["best_run_kwargs"]["rrr"] == 1.5
-    assert captured["best_run_kwargs"]["trail_activation_rrr"] == 1.5
-    assert captured["best_run_kwargs"]["trail_distance_atr"] == 1.5
+    assert captured["best_run_kwargs"]["trail_activation_rrr"] == 0.0
+    assert captured["best_run_kwargs"]["trail_distance_atr"] == 0.0
     assert captured["best_run_kwargs"]["max_positions"] == 0
     assert captured["best_run_kwargs"]["position_ttl_bars"] == 30
     assert captured["best_run_kwargs"]["exit_geometry"] == "tp_pct"
@@ -528,7 +543,7 @@ def test_parameter_optimizer_suggests_tp_move_pct_when_range_enabled(monkeypatch
     captured: dict[str, Any] = {}
 
     class Backtester:
-        def __init__(self, df, strategy):
+        def __init__(self, _df, strategy, **_kwargs):
             captured["strategy"] = strategy
 
         def run(self, **kwargs):
@@ -549,6 +564,7 @@ def test_parameter_optimizer_suggests_tp_move_pct_when_range_enabled(monkeypatch
     )
     optimizer = ParameterOptimizer(
         df=df,
+        ohlcv=df,
         strategy_class=_DummyStrategy,
         target=TargetFunction(
             fn=lambda results: float(results.metrics["total_return_pct"]),
@@ -557,14 +573,14 @@ def test_parameter_optimizer_suggests_tp_move_pct_when_range_enabled(monkeypatch
         optimize_strategy_params=False,
         risk_percent_range=None,
         rrr_range=(1.0, 1.5, 0.25),
-        position_ttl_bars_range=None,
+        position_ttl_minutes_range=None,
         tp_move_pct_range=(0.008, 0.016, 0.004),
         exit_geometry="sl_rrr",
         optimize_daily_limits=False,
         optimize_trading_window=False,
     )
 
-    value = optimizer._objective(  # noqa: SLF001
+    value = optimizer._objective(
         optuna.trial.FixedTrial({"rrr": 1.25, "tp_move_pct": 0.012})
     )
 
@@ -573,9 +589,74 @@ def test_parameter_optimizer_suggests_tp_move_pct_when_range_enabled(monkeypatch
     assert captured["run_kwargs"]["tp_move_pct"] == pytest.approx(0.012)
 
 
+def test_parameter_optimizer_default_geometry_family_search(monkeypatch):
+    captured: dict[str, Any] = {}
+
+    class Backtester:
+        def __init__(self, _df, strategy, **_kwargs):
+            captured.setdefault("strategies", []).append(strategy)
+
+        def run(self, **kwargs):
+            captured["run_kwargs"] = kwargs
+            return _DummyResults()
+
+    monkeypatch.setattr(optimizer_mod, "Backtester", Backtester)
+
+    df = pd.DataFrame(
+        {
+            "open": [1.0],
+            "high": [1.0],
+            "low": [1.0],
+            "close": [1.0],
+            "volume": [1.0],
+        },
+        index=pd.to_datetime(["2025-01-01"], utc=True),
+    )
+    optimizer = ParameterOptimizer(
+        df=df,
+        ohlcv=df,
+        strategy_class=_DummyStrategy,
+        target=TargetFunction(
+            fn=lambda results: float(results.metrics["total_return_pct"]),
+            direction="maximize",
+        ),
+        optimize_strategy_params=False,
+        risk_percent_range=(0.25, 3.0, 0.25),
+        rrr_range=(1.0, 10.0, 0.25),
+        trail_distance_atr_range=(0.5, 10.0, 0.5),
+        position_ttl_minutes_range=(60, 10_080, 60),
+        tp_move_pct_range=(0.004, 0.14, 0.002),
+        exit_family_search=True,
+        optimize_daily_limits=False,
+        optimize_trading_window=False,
+    )
+
+    trial = optuna.trial.FixedTrial(
+        {
+            "exit_family": "tp_pct",
+            "risk_percent": 1.25,
+            "rrr": 4.5,
+            "position_ttl_minutes": 720,
+            "tp_move_pct": 0.028,
+        }
+    )
+
+    value = optimizer._objective(trial)
+
+    assert value == 1.5
+    assert captured["run_kwargs"]["exit_geometry"] == "tp_pct"
+    assert captured["run_kwargs"]["tp_move_pct"] == pytest.approx(0.028)
+    assert captured["run_kwargs"]["trail_distance_atr"] == 0.0
+    assert captured["run_kwargs"]["risk_percent"] == pytest.approx(1.25)
+    assert captured["run_kwargs"]["rrr"] == pytest.approx(4.5)
+    assert captured["run_kwargs"]["position_ttl_bars"] == 12
+    assert trial.user_attrs["exit_family"] == "tp_pct"
+    assert trial.user_attrs["position_ttl_minutes"] == 720
+
+
 def test_parameter_optimizer_mandate_score_uses_monthly_floor_and_dd(monkeypatch):
     class _MandateResults:
-        metrics = {
+        metrics: ClassVar[dict[str, Any]] = {
             "total_return_pct": 80.0,
             "monthly_returns_pct": {"2025-01": {"ret": 80.0}},
             "max_drawdown": -12.0,
@@ -600,7 +681,7 @@ def test_parameter_optimizer_mandate_score_uses_monthly_floor_and_dd(monkeypatch
         )
 
     class Backtester:
-        def __init__(self, df, strategy):
+        def __init__(self, df, strategy, **_kwargs):
             self.df = df
             self.strategy = strategy
 
@@ -623,6 +704,7 @@ def test_parameter_optimizer_mandate_score_uses_monthly_floor_and_dd(monkeypatch
     trial = optuna.trial.FixedTrial({"rrr": 1.25})
     optimizer = ParameterOptimizer(
         df=df,
+        ohlcv=df,
         strategy_class=_DummyStrategy,
         target=TargetFunction(
             fn=lambda _results: -999.0,
@@ -633,12 +715,12 @@ def test_parameter_optimizer_mandate_score_uses_monthly_floor_and_dd(monkeypatch
         optimize_strategy_params=False,
         risk_percent_range=None,
         rrr_range=(1.0, 1.5, 0.25),
-        position_ttl_bars_range=None,
+        position_ttl_minutes_range=None,
         optimize_daily_limits=False,
         optimize_trading_window=False,
     )
 
-    value = optimizer._objective(trial)  # noqa: SLF001
+    value = optimizer._objective(trial)
 
     assert value == pytest.approx(-512.0)
     assert trial.user_attrs["mandate_score"] == pytest.approx(-512.0)

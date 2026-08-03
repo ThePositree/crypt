@@ -88,7 +88,7 @@ def _events_from_masks(
     long_mask: pd.Series,
     short_mask: pd.Series,
 ) -> list[DiscoveryEvent]:
-    df = dataset.primary
+    df = dataset.ohlcv
     events: list[DiscoveryEvent] = []
     for side, mask in (("long", long_mask), ("short", short_mask)):
         selected = mask.fillna(False)
@@ -239,7 +239,7 @@ class pt_ps_ut_trail_cross_factory:
 
     def __new__(cls, _params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-            close = dataset.primary["close"]
+            close = dataset.ohlcv["close"]
             trail = dataset.features["ps_ut_trail"]
             long_mask = _crosses_above(close, trail)
             short_mask = _crosses_below(close, trail)
@@ -340,8 +340,8 @@ class pt_ps_vixfix_reversal_factory:
             spike = dataset.features["ps_vixfix_spike"].fillna(False)
             long_mask = spike
             if confirm_bull:
-                long_mask &= dataset.primary["close"] > dataset.primary["open"]
-            short_mask = pd.Series(False, index=dataset.primary.index)
+                long_mask &= dataset.ohlcv["close"] > dataset.ohlcv["open"]
+            short_mask = pd.Series(False, index=dataset.ohlcv.index)
             return _events_from_masks(dataset, "pt_ps_vixfix_reversal", long_mask, short_mask)
 
         return _trigger
@@ -356,7 +356,7 @@ class pt_ps_pivot_volume_break_factory:
         min_volume_osc = _clamp_float(params.get("min_volume_osc", 10.0), -100.0, 200.0)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-            close = dataset.primary["close"]
+            close = dataset.ohlcv["close"]
             volume_ok = dataset.features["ps_volume_osc"] >= min_volume_osc
             long_mask = _crosses_above(close, dataset.features["ps_pivot_high"]) & volume_ok
             short_mask = _crosses_below(close, dataset.features["ps_pivot_low"]) & volume_ok
@@ -377,7 +377,7 @@ class pt_ps_trendline_break_factory:
 
     def __new__(cls, _params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-            close = dataset.primary["close"]
+            close = dataset.ohlcv["close"]
             long_mask = _crosses_above(close, dataset.features["ps_trendline_upper"])
             short_mask = _crosses_below(close, dataset.features["ps_trendline_lower"])
             return _events_from_masks(dataset, "pt_ps_trendline_break", long_mask, short_mask)
@@ -403,8 +403,8 @@ class pt_ps_smc_structure_break_factory:
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
             prefix = f"ps_smc_{structure}"
-            long_mask = pd.Series(False, index=dataset.primary.index)
-            short_mask = pd.Series(False, index=dataset.primary.index)
+            long_mask = pd.Series(False, index=dataset.ohlcv.index)
+            short_mask = pd.Series(False, index=dataset.ohlcv.index)
             if event in {"all", "bos"}:
                 long_mask |= dataset.features[f"{prefix}_bullish_bos"].fillna(False)
                 short_mask |= dataset.features[f"{prefix}_bearish_bos"].fillna(False)
@@ -467,8 +467,8 @@ class pt_ps_smc_equal_sweep_factory:
             long_mask = dataset.features["ps_smc_equal_low"].fillna(False)
             short_mask = dataset.features["ps_smc_equal_high"].fillna(False)
             if confirm_candle:
-                long_mask &= dataset.primary["close"] > dataset.primary["open"]
-                short_mask &= dataset.primary["close"] < dataset.primary["open"]
+                long_mask &= dataset.ohlcv["close"] > dataset.ohlcv["open"]
+                short_mask &= dataset.ohlcv["close"] < dataset.ohlcv["open"]
             return _events_from_masks(
                 dataset,
                 "pt_ps_smc_equal_sweep",
@@ -494,8 +494,8 @@ class pt_ps_smc_premium_discount_reversal_factory:
             if include_equilibrium:
                 long_zone |= zone == "equilibrium"
                 short_zone |= zone == "equilibrium"
-            long_mask = long_zone & (dataset.primary["close"] > dataset.primary["open"])
-            short_mask = short_zone & (dataset.primary["close"] < dataset.primary["open"])
+            long_mask = long_zone & (dataset.ohlcv["close"] > dataset.ohlcv["open"])
+            short_mask = short_zone & (dataset.ohlcv["close"] < dataset.ohlcv["open"])
             return _events_from_masks(
                 dataset,
                 "pt_ps_smc_premium_discount_reversal",

@@ -12,6 +12,7 @@ from backtester.incremental_strategy import (
     IncrementalStrategyConfig,
     register_incremental_adapter,
 )
+from backtester.strategies.crypt_ensemble import CryptEnsembleStrategy
 from backtester.strategy_discovery.features import DiscoveryDataset
 
 
@@ -22,15 +23,16 @@ class CryptEnsembleIncrementalAdapter:
         self,
         *,
         data: StrategyInput,
-        dataset: DiscoveryDataset,
+        dataset: DiscoveryDataset,  # noqa: ARG002
         config: IncrementalStrategyConfig,
     ) -> pd.DataFrame:
-        primary = data.primary if isinstance(data, StrategyData) else data
-        return _signal_frame(
-            primary=primary,
-            dataset=dataset,
-            params=config.params,
-        )
+        primary = data.require_timeframe("H1") if isinstance(data, StrategyData) else data
+        frame = CryptEnsembleStrategy(config.params).generate(data)
+        if len(frame) != len(primary):
+            raise ValueError("canonical crypt_ensemble output length changed during replay")
+        output = frame.copy()
+        output.index = primary.index
+        return output
 
 
 def _signal_frame(

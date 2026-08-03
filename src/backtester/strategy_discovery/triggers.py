@@ -33,14 +33,14 @@ def trigger_catalog() -> dict[str, TriggerFn]:
 
 
 def _h1_candle_confirm(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-    df = dataset.primary
+    df = dataset.ohlcv
     long_mask = df["close"] > df["open"]
     short_mask = df["close"] < df["open"]
     return _events_from_masks(dataset, "h1_candle_confirm", long_mask, short_mask)
 
 
 def _h1_sweep_reversal(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-    df = dataset.primary
+    df = dataset.ohlcv
     prior_low = df["low"].rolling(12, min_periods=6).min().shift(1)
     prior_high = df["high"].rolling(12, min_periods=6).max().shift(1)
     long_mask = (df["low"] < prior_low) & (df["close"] > df["open"])
@@ -55,7 +55,7 @@ def _h1_sweep_reversal(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
 
 
 def _h1_structure_break(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-    df = dataset.primary
+    df = dataset.ohlcv
     prior_high = df["high"].rolling(20, min_periods=10).max().shift(1)
     prior_low = df["low"].rolling(20, min_periods=10).min().shift(1)
     long_mask = df["close"] > prior_high
@@ -70,7 +70,7 @@ def _h1_structure_break(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
 
 
 def _h1_order_block_retest(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-    df = dataset.primary
+    df = dataset.ohlcv
     previous_bearish = df["close"].shift(1) < df["open"].shift(1)
     previous_bullish = df["close"].shift(1) > df["open"].shift(1)
     previous_mid = (df["open"].shift(1) + df["close"].shift(1)) / 2
@@ -89,7 +89,7 @@ def _h1_order_block_retest(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
 
 
 def _h1_pivot_reclaim(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-    df = dataset.primary
+    df = dataset.ohlcv
     prior_low = df["low"].rolling(5, min_periods=5).min().shift(1)
     prior_high = df["high"].rolling(5, min_periods=5).max().shift(1)
     long_mask = (df["low"] <= prior_low) & (df["close"] > df["close"].shift(1))
@@ -109,7 +109,7 @@ def _h1_pivot_reclaim(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
 
 
 def _h1_range_breakout(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-    df = dataset.primary
+    df = dataset.ohlcv
     range_high = df["high"].rolling(24, min_periods=12).max().shift(1)
     range_low = df["low"].rolling(24, min_periods=12).min().shift(1)
     long_mask = df["close"] > range_high
@@ -129,7 +129,7 @@ def _h1_range_breakout(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
 
 
 def _h1_momentum_burst(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-    df = dataset.primary
+    df = dataset.ohlcv
     std = dataset.features["return_std20"]
     ret = dataset.features["return_1"]
     long_mask = (ret > std * 1.5) & (df["close"] > df["open"])
@@ -153,7 +153,7 @@ def _h1_ema_cross(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
 
 
 def _h1_rsi_reversal(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-    df = dataset.primary
+    df = dataset.ohlcv
     rsi = dataset.features["rsi14"]
     prev_rsi = rsi.shift(1)
     long_mask = (rsi < 35) & (df["close"] > df["open"]) & (rsi > prev_rsi)
@@ -162,7 +162,7 @@ def _h1_rsi_reversal(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
 
 
 def _h1_bb_rejection(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-    df = dataset.primary
+    df = dataset.ohlcv
     bb_lower = dataset.features["bb_lower"]
     bb_upper = dataset.features["bb_upper"]
     long_mask = (df["low"] <= bb_lower) & (df["close"] > df["open"])
@@ -177,7 +177,7 @@ def _h1_bb_rejection(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
 
 
 def _h1_engulfing(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-    df = dataset.primary
+    df = dataset.ohlcv
     prev_open = df["open"].shift(1)
     prev_close = df["close"].shift(1)
     prev_bear = prev_close < prev_open
@@ -198,7 +198,7 @@ def _h1_engulfing(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
 
 
 def _h1_inside_bar_breakout(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-    df = dataset.primary
+    df = dataset.ohlcv
     mother_high = df["high"].shift(2)
     mother_low = df["low"].shift(2)
     inside = (df["high"].shift(1) < mother_high) & (df["low"].shift(1) > mother_low)
@@ -219,7 +219,7 @@ def _h1_inside_bar_breakout(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
 
 
 def _h1_nr7_breakout(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-    df = dataset.primary
+    df = dataset.ohlcv
     bar_range = df["high"] - df["low"]
     is_nr7 = bar_range <= bar_range.rolling(7, min_periods=7).min()
     long_mask = is_nr7 & (df["close"] > df["open"])
@@ -234,7 +234,7 @@ def _h1_nr7_breakout(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
 
 
 def _h1_mean_revert_wick(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-    df = dataset.primary
+    df = dataset.ohlcv
     body = (df["close"] - df["open"]).abs()
     lower_wick = df[["open", "close"]].min(axis=1) - df["low"]
     upper_wick = df["high"] - df[["open", "close"]].max(axis=1)
@@ -259,7 +259,7 @@ def _events_from_masks(
     anchor_age_bars: int | None = None,
     anchor_price: pd.Series | None = None,
 ) -> list[DiscoveryEvent]:
-    df = dataset.primary
+    df = dataset.ohlcv
     events: list[DiscoveryEvent] = []
     for side, mask in (("long", long_mask), ("short", short_mask)):
         selected = mask.fillna(False)
@@ -296,7 +296,7 @@ def _events_from_masks(
 def _base_metadata(
     dataset: DiscoveryDataset, event_time: pd.Timestamp, side: str
 ) -> dict[str, object]:
-    row = dataset.primary.loc[event_time]
+    row = dataset.ohlcv.loc[event_time]
     features = dataset.features.loc[event_time]
     return {
         "rule_version": 1,

@@ -2225,11 +2225,11 @@ def _validate_minute_execution_data(
     """Return complete aligned minute frames for every simulated H1 interval."""
     primary_index = primary.index
     if not isinstance(primary_index, pd.DatetimeIndex):
-        raise TypeError("minute execution requires a DatetimeIndex primary frame")
+        raise TypeError("minute execution requires a DatetimeIndex 1h OHLCV frame")
     if len(primary_index) < 2:
         raise ValueError("minute execution requires at least two H1 bars")
     if not (primary_index[1:] - primary_index[:-1] == pd.Timedelta(hours=1)).all():
-        raise ValueError("minute execution requires a continuous 1h primary frame")
+        raise ValueError("minute execution requires a continuous 1h OHLCV frame")
 
     expected = pd.date_range(
         start=primary_index[0],
@@ -2281,7 +2281,7 @@ def _validate_minute_execution_data(
             if mismatch.any().any():
                 mismatch_time, mismatch_column = mismatch.stack().loc[lambda s: s].index[0]
                 raise ValueError(
-                    "last 1m candles do not aggregate to primary H1: "
+                    "last 1m candles do not aggregate to execution H1: "
                     f"timestamp={mismatch_time} column={mismatch_column} "
                     f"h1={expected_h1.at[mismatch_time, mismatch_column]} "
                     f"m1={aggregated.at[mismatch_time, mismatch_column]}"
@@ -2292,7 +2292,7 @@ def _validate_minute_execution_data(
             if minute_open_outside_h1.any():
                 mismatch_time = minute_open_outside_h1.loc[minute_open_outside_h1].index[0]
                 raise ValueError(
-                    "first last-price 1m open is outside primary H1 range: "
+                    "first last-price 1m open is outside execution H1 range: "
                     f"timestamp={mismatch_time} open={aggregated.at[mismatch_time, 'open']} "
                     f"low={expected_h1.at[mismatch_time, 'low']} "
                     f"high={expected_h1.at[mismatch_time, 'high']}"

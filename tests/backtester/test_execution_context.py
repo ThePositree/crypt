@@ -37,8 +37,7 @@ def test_attach_execution_context_round_trips_on_strategy_data():
         }
     )
     data = StrategyData(
-        primary=primary,
-        candles={},
+        candles_by_timeframe={"H1": primary},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )

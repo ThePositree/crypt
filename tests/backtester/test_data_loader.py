@@ -133,7 +133,7 @@ def test_create_data_loader_factory():
         symbol="SOL-USDT-SWAP",
     )
     assert isinstance(crypt_loader, CryptParquetDataLoader)
-    assert crypt_loader.primary_timeframe == "4h"
+    assert crypt_loader.candle_timeframe is None
 
 
 def test_parquet_data_loader_accepts_donor_columns(tmp_path):
@@ -244,13 +244,13 @@ def test_crypt_parquet_loader_uses_project_store_layout(monkeypatch):
     assert result.metadata == {
         "symbol": symbol,
         "exchange": "OKX",
-        "primary_timeframe": "H4",
     }
-    assert len(result.primary) == 1
-    assert list(result.primary.columns) == ["open", "high", "low", "close", "volume"]
-    assert result.candles["H4"].equals(result.primary)
-    assert result.candles["H1"].empty
-    assert result.candles["D1"].empty
+    h4_frame = result.require_timeframe("H4")
+    assert len(h4_frame) == 1
+    assert list(h4_frame.columns) == ["open", "high", "low", "close", "volume"]
+    assert result.candles_by_timeframe["H4"].equals(h4_frame)
+    assert result.candles_by_timeframe["H1"].empty
+    assert result.candles_by_timeframe["D1"].empty
 
 
 def test_crypt_parquet_loader_can_use_h1_as_primary(monkeypatch):
@@ -322,12 +322,11 @@ def test_crypt_parquet_loader_can_use_h1_as_primary(monkeypatch):
     result = CryptParquetDataLoader(
         data_dir="/tmp/data",
         symbol=symbol,
-        primary_timeframe="1h",
+        candle_timeframe="1h",
     ).load()
 
-    assert result.metadata["primary_timeframe"] == "H1"
-    assert result.primary.equals(result.candles["H1"])
-    assert not result.candles["H4"].empty
+    assert result.require_timeframe("H1").equals(result.candles_by_timeframe["H1"])
+    assert not result.candles_by_timeframe["H4"].empty
 
 
 def test_crypt_parquet_loader_missing_primary_suggests_backfill(monkeypatch):
@@ -387,7 +386,7 @@ def test_crypt_parquet_loader_missing_primary_suggests_backfill(monkeypatch):
     loader = CryptParquetDataLoader(
         data_dir="/tmp/data",
         symbol=symbol,
-        primary_timeframe="1h",
+        candle_timeframe="1h",
         start="2024-01-01",
         end="2024-01-05",
     )
@@ -481,18 +480,18 @@ def test_crypt_parquet_loader_filters_candles_by_date_range(monkeypatch):
     result = CryptParquetDataLoader(
         data_dir="/tmp/data",
         symbol=symbol,
-        primary_timeframe="1h",
+        candle_timeframe="1h",
         start="2024-01-01 02:00:00",
         end="2024-01-01 06:00:00",
     ).load()
 
-    assert list(result.primary.index) == list(
+    assert list(result.require_timeframe("H1").index) == list(
         pd.date_range("2024-01-01 02:00:00", periods=5, freq="1h", tz="UTC")
     )
-    assert list(result.candles["H1"].index) == list(
+    assert list(result.candles_by_timeframe["H1"].index) == list(
         pd.date_range("2024-01-01 02:00:00", periods=5, freq="1h", tz="UTC")
     )
-    assert list(result.candles["H4"].index) == list(
+    assert list(result.candles_by_timeframe["H4"].index) == list(
         pd.date_range("2024-01-01 04:00:00", periods=1, freq="4h", tz="UTC")
     )
 

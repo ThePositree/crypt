@@ -357,7 +357,7 @@ class H1WebSocketScheduler:
                     symbol: H1Boundary(
                         symbol=symbol,
                         boundary_time=boundary,
-                        closed_candles=tuple(
+                        closed_candles_by_timeframe=tuple(
                             closed[symbol][timeframe]
                             for timeframe in sorted(
                                 closed[symbol],

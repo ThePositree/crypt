@@ -8,7 +8,7 @@ from pathlib import Path
 from backtester.data_contracts import StrategyData
 from backtester.strategy_discovery.catcma_qd import (
     _NOVELTY_MUTATION_INTERVAL,
-    _directional_cheap_score,
+    _directional_feedback_score,
     _DirectionalCandidate,
     _EvaluatedCandidate,
     _mutate_candidate,
@@ -19,16 +19,19 @@ from backtester.strategy_discovery.dss_archive import DSSArchive
 from backtester.strategy_discovery.dss_config import DSSConfig, DSSSearchSpace
 from backtester.strategy_discovery.dss_directional_search import (
     DSSDirectionalResult,
+    DSSSignalNoveltyTracker,
     _append_csv_row,
     _count_csv_rows,
     _count_directional_survivors,
     _evaluate_directional_candidate,
     _guard_output_dir,
+    _is_novel_directional,
     _read_candidate_rows,
     _read_directional_candidate_ids,
     _refresh_directional_reports,
     _write_state,
     _write_summary,
+    sample_random_directional_candidate,
 )
 from backtester.strategy_discovery.dss_runtime import (
     DSSSearchRuntime,
@@ -66,6 +69,7 @@ def run_hyperband_qd_search(
     attempted = len(existing_candidates)
     viability_path = output / "directional_viability.csv"
     evaluated_ids = _read_directional_candidate_ids(viability_path)
+    signal_novelty = DSSSignalNoveltyTracker(viability_path)
     evaluated_count = _count_csv_rows(viability_path)
     novelty_parents: list[_DirectionalCandidate] = []
     if evaluated_count and progress_callback is not None:
@@ -90,23 +94,25 @@ def run_hyperband_qd_search(
                 config=config,
                 composer=composer,
                 runtime=runtime,
+                signal_novelty=signal_novelty,
                 append_candidate=False,
             )
             evaluated_count += 1
-            if directional.should_promote:
-                directional_survivors += 1
-                directional_item = _DirectionalCandidate(
+            is_novel_signal = _is_novel_directional(directional)
+            directional_item = _DirectionalCandidate(
+                candidate=candidate,
+                result=directional,
+                cheap_score=_directional_feedback_score(directional, is_novel_signal),
+            )
+            pending_evaluated.append(
+                _EvaluatedCandidate(
                     candidate=candidate,
-                    result=directional,
-                    cheap_score=_directional_cheap_score(directional),
+                    robust_score=directional_item.cheap_score,
                 )
+            )
+            if directional.should_promote and is_novel_signal:
+                directional_survivors += 1
                 novelty_parents.append(directional_item)
-                pending_evaluated.append(
-                    _EvaluatedCandidate(
-                        candidate=candidate,
-                        robust_score=directional_item.cheap_score,
-                    )
-                )
             runtime.write_progress(generated=generated, evaluated=evaluated_count)
             if progress_callback is not None:
                 progress_callback(1)
@@ -135,7 +141,19 @@ def run_hyperband_qd_search(
                         if should_use_random_injection(attempted)
                         else "hyperband_qd"
                     )
-                    candidate = model.sample(f"hyperband_{attempted:06d}", generation=batch_index)
+                    if source == "random_unseen":
+                        candidate = sample_random_directional_candidate(
+                            search_space=search_space,
+                            candidate_id=f"hyperband_{attempted:06d}",
+                            generation=batch_index,
+                            max_filters=config.max_filters,
+                            seed=config.seed + attempted * 1009,
+                        )
+                    else:
+                        candidate = model.sample(
+                            f"hyperband_{attempted:06d}",
+                            generation=batch_index,
+                        )
                 if not runtime.record_candidate(candidate, source=source):
                     runtime.write_progress(generated=generated, evaluated=evaluated_count)
                     continue
@@ -148,26 +166,27 @@ def run_hyperband_qd_search(
                         config=config,
                         composer=composer,
                         runtime=runtime,
+                        signal_novelty=signal_novelty,
                         append_candidate=True,
                     )
                     evaluated_count += 1
-                    if not directional.should_promote:
-                        continue
-                    directional_survivors += 1
-                    directional_passed.append(
-                        _DirectionalCandidate(
-                            candidate=candidate,
-                            result=directional,
-                            cheap_score=_directional_cheap_score(directional),
-                        )
+                    is_novel_signal = _is_novel_directional(directional)
+                    directional_item = _DirectionalCandidate(
+                        candidate=candidate,
+                        result=directional,
+                        cheap_score=_directional_feedback_score(directional, is_novel_signal),
                     )
-                    novelty_parents.append(directional_passed[-1])
                     evaluated_for_model.append(
                         _EvaluatedCandidate(
                             candidate=candidate,
-                            robust_score=_directional_cheap_score(directional),
+                            robust_score=directional_item.cheap_score,
                         )
                     )
+                    if not directional.should_promote or not is_novel_signal:
+                        continue
+                    directional_survivors += 1
+                    directional_passed.append(directional_item)
+                    novelty_parents.append(directional_item)
                 finally:
                     runtime.write_progress(generated=generated, evaluated=evaluated_count)
                     if progress_callback is not None:

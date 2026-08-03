@@ -34,7 +34,8 @@ class BaseDataLoader(ABC):
         pandas.DataFrame | StrategyData
             DataFrame with DatetimeIndex and at least the following
             columns: ``open``, ``high``, ``low``, ``close``, ``volume``; or a
-            StrategyData object whose primary frame follows the same contract.
+            StrategyData object whose selected runner frame follows the same
+            OHLCV index contract.
 
         Raises
         ------
@@ -296,6 +297,8 @@ def _parse_utc_bound(
 ) -> pd.Timestamp | None:
     if value is None:
         return None
+    if isinstance(value, str) and value.strip().lower() in {"full", "all"}:
+        return None
 
     try:
         ts = pd.Timestamp(value)
@@ -352,7 +355,7 @@ class CryptParquetDataLoader(BaseDataLoader):
         self,
         data_dir: str,
         symbol: str,
-        primary_timeframe: str = "4h",
+        candle_timeframe: str | None = None,
         start: str | datetime | pd.Timestamp | None = None,
         end: str | datetime | pd.Timestamp | None = None,
         load_execution_1m: bool = False,
@@ -360,7 +363,7 @@ class CryptParquetDataLoader(BaseDataLoader):
         super().__init__()
         self.data_dir = data_dir
         self.symbol = symbol
-        self.primary_timeframe = primary_timeframe
+        self.candle_timeframe = candle_timeframe
         self.start = _parse_utc_bound(start, name="start")
         self.end = _parse_utc_bound(end, name="end")
         self.load_execution_1m = load_execution_1m
@@ -441,18 +444,19 @@ class CryptParquetDataLoader(BaseDataLoader):
                 "D1": self._load_optional_candles(store, Timeframe, "D1"),
             }.items()
         }
-        primary_key = _timeframe_key(self.primary_timeframe)
-        if primary_key not in candles:
-            raise ValueError(
-                "crypt-parquet primary_timeframe must be one of: 15m, 1h, 4h, 1d"
-            )
-        primary = candles[primary_key]
-        primary = _filter_datetime_index(primary, start=self.start, end=self.end)
-        if primary.empty:
-            raise ValueError(
-                "crypt-parquet requires non-empty "
-                f"{primary_key} candles for primary_timeframe. {self._backfill_hint()}"
-            )
+        if self.candle_timeframe is not None:
+            candle_key = _timeframe_key(self.candle_timeframe)
+            if candle_key not in candles:
+                raise ValueError(
+                    "crypt-parquet candle_timeframe must be one of: 15m, 1h, 4h, 1d"
+                )
+            candle_frame = candles[candle_key]
+            candle_frame = _filter_datetime_index(candle_frame, start=self.start, end=self.end)
+            if candle_frame.empty:
+                raise ValueError(
+                    "crypt-parquet requires non-empty "
+                    f"{candle_key} candles for candle_timeframe. {self._backfill_hint()}"
+                )
 
         extras = {
             "oi": store.load_oi(self.symbol),
@@ -490,13 +494,11 @@ class CryptParquetDataLoader(BaseDataLoader):
                 )
 
         return StrategyData(
-            primary=primary,
-            candles=candles,
+            candles_by_timeframe=candles,
             extras=extras,
             metadata={
                 "symbol": self.symbol,
                 "exchange": "OKX",
-                "primary_timeframe": primary_key,
             },
             execution=execution,
         )

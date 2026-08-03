@@ -28,6 +28,7 @@ class DSSSearchRuntime:
         self.heartbeat_path = self.output / "heartbeat.json"
         self._lock_fd: int | None = None
         self._seen = self._load_seen()
+        self._last_exported = 0
 
     @property
     def endless(self) -> bool:
@@ -42,7 +43,9 @@ class DSSSearchRuntime:
         return self
 
     def __exit__(self, exc_type: object, _exc: object, _tb: object) -> None:
-        self.write_heartbeat(status="stopped" if exc_type is None else "failed")
+        status = "stopped" if exc_type is None else "failed"
+        self.finalize_progress(status=status)
+        self.write_heartbeat(status=status)
         self._release_lock()
 
     def should_continue(self, generated: int) -> bool:
@@ -102,12 +105,14 @@ class DSSSearchRuntime:
             },
         )
 
-    def write_progress(self, *, generated: int, evaluated: int, exported: int = 0) -> None:
+    def write_progress(self, *, generated: int, evaluated: int, exported: int | None = None) -> None:
+        if exported is not None:
+            self._last_exported = exported
         payload = {
             "status": "running",
             "generated": generated,
             "evaluated": evaluated,
-            "exported": exported,
+            "exported": self._last_exported,
             "target": self.config.n_trials,
             "endless": self.endless,
             "updated_at": _utc_now(),
@@ -123,6 +128,21 @@ class DSSSearchRuntime:
             "updated_at": _utc_now(),
         }
         self.heartbeat_path.write_text(
+            json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
+        )
+
+    def finalize_progress(self, *, status: str) -> None:
+        if not self.progress_path.exists():
+            return
+        try:
+            payload = json.loads(self.progress_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return
+        if not isinstance(payload, dict):
+            return
+        payload["status"] = status
+        payload["updated_at"] = _utc_now()
+        self.progress_path.write_text(
             json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
         )
 

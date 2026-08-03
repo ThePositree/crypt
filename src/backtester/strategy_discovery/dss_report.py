@@ -298,7 +298,7 @@ def _build_summary_md(
         lines.append("_No candidates passed the acceptance threshold._")
         return "\n".join(lines)
 
-    header_cols = ["#", "Trial", "Trigger", "Filters", "RRR", "TTL", "Risk%"]
+    header_cols = ["#", "Trial", "Trigger", "Filters", "RRR", "TTL min", "Risk%"]
     for label in window_labels:
         header_cols.append(label)
     header_cols.append("min_score")
@@ -310,7 +310,7 @@ def _build_summary_md(
         trigger = trial.params.get("trigger_name", "?")
         n_filters = trial.params.get("n_filters", 0)
         rrr = trial.params.get("rrr", 0.0)
-        ttl = trial.params.get("position_ttl_bars", 0)
+        ttl = trial.params.get("position_ttl_minutes", 0)
         risk = trial.params.get("risk_percent", 0.0)
         scores = [
             f"{float(v):.1f}" if trial.values and i < len(trial.values) else "—"
@@ -334,7 +334,7 @@ def _build_summary_md(
     lines.append("")
     lines.append(
         "> Candidates exported to `candidates/` directory. "
-        "Use `backtester compare-fixed` to validate top picks."
+        "Use `backtester run` for replay and `backtester optimize` for execution tuning."
     )
     lines.append("")
     return "\n".join(lines)

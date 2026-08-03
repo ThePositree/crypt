@@ -5,14 +5,18 @@ from __future__ import annotations
 import csv
 import json
 import random
+import sys
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
 
-from backtester.data_contracts import StrategyData
+from backtester.data_contracts import StrategyData, normalize_timeframe_key, ttl_minutes_to_bars
 from backtester.strategy_discovery.dss_archive import DSSArchive
 from backtester.strategy_discovery.dss_config import (
+    DSS_DEFAULT_EXECUTION_RISK_PERCENT,
+    DSS_DEFAULT_EXECUTION_RRR,
+    DSS_DEFAULT_EXECUTION_TTL_MINUTES,
     CategoricalParam,
     DSSCandidate,
     DSSConfig,
@@ -32,6 +36,21 @@ from backtester.strategy_discovery.dss_runtime import DSSSearchRuntime
 from backtester.strategy_discovery.signal_composer import SignalComposer
 
 _STATE_VERSION = 3
+_DUPLICATE_SIGNAL_OVERLAP_THRESHOLD = 0.80
+_DUPLICATE_SIGNAL_REJECT_SCORE = -10_000.0
+
+
+def _raise_csv_field_size_limit() -> None:
+    limit = sys.maxsize
+    while True:
+        try:
+            csv.field_size_limit(limit)
+            return
+        except OverflowError:
+            limit //= 10
+
+
+_raise_csv_field_size_limit()
 
 __all__ = [
     "BarrierMetrics",
@@ -51,6 +70,93 @@ class DSSDirectionalResult:
     directional_survivors: int
     exported_candidates: list[Path]
     archive: DSSArchive
+
+
+class DSSSignalNoveltyTracker:
+    """Tracks promoted signal sets so backend search can avoid cloning them."""
+
+    def __init__(self, viability_path: Path) -> None:
+        promoted = _read_promoted_signal_metadata(viability_path)
+        self._seen_fingerprints = {
+            fingerprint for fingerprint, _signal_set in promoted if fingerprint
+        }
+        self._seen_signal_sets = [
+            signal_set for _fingerprint, signal_set in promoted if signal_set
+        ]
+
+    def register(self, result: DirectionalResult) -> bool:
+        if not result.should_promote:
+            return False
+        fingerprint = str(result.metadata.get("signal_fingerprint", ""))
+        if fingerprint in self._seen_fingerprints:
+            return False
+        signal_set = _signal_identity_set(result)
+        if signal_set:
+            for seen_signal_set in self._seen_signal_sets:
+                if _signal_overlap(signal_set, seen_signal_set) >= _DUPLICATE_SIGNAL_OVERLAP_THRESHOLD:
+                    return False
+        if fingerprint:
+            self._seen_fingerprints.add(fingerprint)
+        if signal_set:
+            self._seen_signal_sets.append(signal_set)
+        return True
+
+
+def _signal_identity_set(result: DirectionalResult) -> set[str]:
+    raw = result.metadata.get("signal_identity_keys", [])
+    if not isinstance(raw, list):
+        return set()
+    return {str(item) for item in raw if str(item)}
+
+
+def _signal_overlap(left: set[str], right: set[str]) -> float:
+    if not left or not right:
+        return 0.0
+    intersection = len(left & right)
+    return intersection / float(min(len(left), len(right)))
+
+
+def _read_promoted_signal_metadata(path: Path) -> list[tuple[str, set[str]]]:
+    if not path.exists():
+        return []
+    rows: list[tuple[str, set[str]]] = []
+    with path.open(encoding="utf-8", newline="") as fh:
+        for row in csv.DictReader(fh):
+            if row.get("should_promote") != "True":
+                continue
+            fingerprint = str(row.get("signal_fingerprint", "") or "")
+            raw_signal_keys = row.get("signal_identity_keys", "") or ""
+            signal_set: set[str] = set()
+            if raw_signal_keys:
+                try:
+                    parsed = json.loads(raw_signal_keys)
+                except json.JSONDecodeError:
+                    parsed = []
+                if isinstance(parsed, list):
+                    signal_set = {str(item) for item in parsed if str(item)}
+            if fingerprint or signal_set:
+                rows.append((fingerprint, signal_set))
+    return rows
+
+
+def _directional_with_novelty(result: DirectionalResult, is_novel_signal: bool) -> DirectionalResult:
+    metadata = dict(result.metadata)
+    metadata["signal_novelty"] = is_novel_signal
+    if is_novel_signal or not result.should_promote:
+        return replace(result, metadata=metadata)
+    metadata["duplicate_signal_overlap_threshold"] = _DUPLICATE_SIGNAL_OVERLAP_THRESHOLD
+    return replace(
+        result,
+        passed=False,
+        rejection_reason="duplicate_signal_set",
+        candidate_class="duplicate_signal",
+        advisory_score=_DUPLICATE_SIGNAL_REJECT_SCORE,
+        metadata=metadata,
+    )
+
+
+def _is_novel_directional(result: DirectionalResult) -> bool:
+    return bool(result.metadata.get("signal_novelty", result.should_promote))
 
 
 def run_dss_directional_search(
@@ -73,6 +179,7 @@ def run_dss_directional_search(
     archive = DSSArchive()
     viability_path = output / "directional_viability.csv"
     evaluated_ids = _read_directional_candidate_ids(viability_path)
+    signal_novelty = DSSSignalNoveltyTracker(viability_path)
     directional_survivors = _count_directional_survivors(viability_path)
     generated = len(completed_candidates)
     attempted = len(completed_candidates)
@@ -99,10 +206,11 @@ def run_dss_directional_search(
                 config=config,
                 composer=composer,
                 runtime=runtime,
+                signal_novelty=signal_novelty,
                 append_candidate=False,
             )
             evaluated += 1
-            if directional.should_promote:
+            if _is_novel_directional(directional):
                 directional_survivors += 1
             runtime.write_progress(generated=generated, evaluated=evaluated)
             if progress_callback is not None:
@@ -132,10 +240,11 @@ def run_dss_directional_search(
                         config=config,
                         composer=composer,
                         runtime=runtime,
+                        signal_novelty=signal_novelty,
                         append_candidate=True,
                     )
                     evaluated += 1
-                    if directional.should_promote:
+                    if _is_novel_directional(directional):
                         directional_survivors += 1
                 finally:
                     runtime.write_progress(generated=generated, evaluated=evaluated)
@@ -202,11 +311,14 @@ def _evaluate_directional_candidate(
     config: DSSConfig,
     composer: SignalComposer,
     runtime: DSSSearchRuntime,
+    signal_novelty: DSSSignalNoveltyTracker | None,
     append_candidate: bool,
 ) -> DirectionalResult:
     if append_candidate:
         _append_jsonl(output / "candidates.jsonl", candidate.to_dict())
     result = evaluate_directional_viability(candidate, window_data, config, composer)
+    if signal_novelty is not None:
+        result = _directional_with_novelty(result, signal_novelty.register(result))
     _append_directional_result(output, candidate, result, config.windows)
     runtime.mark_evaluated(
         candidate,
@@ -268,6 +380,8 @@ def export_directional_candidates(
     }
     candidates_dir = output / "directional_candidates"
     candidates_dir.mkdir(exist_ok=True)
+    for stale_path in candidates_dir.glob("directional_*.json"):
+        stale_path.unlink()
     exports: list[Path] = []
     manifest_rows: list[dict[str, object]] = []
     selected_rows = _select_directional_export_rows(ranked_rows, config.top_n_candidates)
@@ -278,13 +392,28 @@ def export_directional_candidates(
         if candidate is None:
             continue
         path = candidates_dir / f"directional_{idx:03d}_{candidate_id}_{candidate.trigger_name}.json"
+        params = candidate.trial_config.to_dict()
+        trigger_timeframe = normalize_timeframe_key(candidate.trial_config.trigger_instance.timeframe)
+        position_ttl_minutes = DSS_DEFAULT_EXECUTION_TTL_MINUTES
+        params.update(
+            {
+                "rrr": DSS_DEFAULT_EXECUTION_RRR,
+                "risk_percent": DSS_DEFAULT_EXECUTION_RISK_PERCENT,
+                "position_ttl_minutes": position_ttl_minutes,
+                "position_ttl_bars": ttl_minutes_to_bars(
+                    position_ttl_minutes,
+                    trigger_timeframe,
+                ),
+                "directional_sl_move_pct": config.directional_sl_move_pct,
+            }
+        )
         payload = {
             "name": "dss_strategy",
             "version": "3.0-directional",
             "candidate_id": candidate.candidate_id,
             "directional_score": row["directional_score"],
             "directional_metrics": row,
-            "params": candidate.trial_config.to_dict(),
+            "params": params,
         }
         path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
         exports.append(path)
@@ -338,7 +467,8 @@ def _select_directional_export_rows(
 
     selected: list[dict[str, object]] = []
     seen: set[str] = set()
-    preferred_order = ["sparse", "medium", "frequent", "overactive", "too_sparse", "empty", ""]
+    seen_signal_fingerprints: set[str] = set()
+    preferred_order = ["frequent", "medium", "sparse", "overactive", "too_sparse", "empty", ""]
     while len(selected) < top_n:
         before = len(selected)
         for frequency_class in preferred_order:
@@ -346,10 +476,15 @@ def _select_directional_export_rows(
             while bucket:
                 row = bucket.pop(0)
                 candidate_id = str(row.get("candidate_id", ""))
+                signal_fingerprint = str(row.get("signal_fingerprint", ""))
                 if candidate_id in seen:
+                    continue
+                if signal_fingerprint and signal_fingerprint in seen_signal_fingerprints:
                     continue
                 selected.append(row)
                 seen.add(candidate_id)
+                if signal_fingerprint:
+                    seen_signal_fingerprints.add(signal_fingerprint)
                 break
             if len(selected) >= top_n:
                 break
@@ -359,6 +494,7 @@ def _select_directional_export_rows(
 
 
 def _write_frequency_archive(output: Path, ranked_rows: list[dict[str, object]]) -> None:
+    (output / "archive").mkdir(exist_ok=True)
     summary: dict[str, dict[str, object]] = {}
     for row in ranked_rows:
         frequency_class = str(row.get("frequency_class", ""))
@@ -381,12 +517,12 @@ def _generate_directional_candidates(
     limit: int,
     max_filters: int,
 ) -> list[DSSCandidate]:
-    rng = random.Random(36)
     triggers = list(search_space.trigger_names)
     filters = list(search_space.filter_names)
     out: list[DSSCandidate] = []
     filter_depths = [0, 1, 2, min(3, max_filters)]
     for idx in range(start, limit):
+        rng = random.Random(36 + idx)
         trigger = triggers[idx % len(triggers)]
         depth = filter_depths[(idx // max(len(triggers), 1)) % len(filter_depths)]
         depth = min(depth, max_filters, len(filters))
@@ -421,6 +557,49 @@ def _generate_directional_candidates(
             )
         )
     return out
+
+
+def sample_random_directional_candidate(
+    *,
+    search_space: DSSSearchSpace,
+    candidate_id: str,
+    generation: int,
+    max_filters: int,
+    seed: int,
+) -> DSSCandidate:
+    rng = random.Random(seed)
+    trigger = str(rng.choice(tuple(search_space.trigger_names)))
+    filters = tuple(search_space.filter_names)
+    max_depth = min(max_filters, len(filters))
+    depth = rng.randint(0, max_depth) if max_depth else 0
+    chosen_filters = tuple(sorted(rng.sample(filters, depth))) if depth else ()
+    return DSSCandidate(
+        candidate_id=candidate_id,
+        trigger_name=_instance_base_name(trigger),
+        trigger_params={
+            name: _sample_param(pdef, rng)
+            for name, pdef in search_space.trigger_param_bounds.get(
+                _instance_base_name(trigger), {}
+            ).items()
+        },
+        filter_names=chosen_filters,
+        filter_params={
+            name: {
+                pname: _sample_param(pdef, rng)
+                for pname, pdef in search_space.filter_param_bounds.get(
+                    _instance_base_name(name), {}
+                ).items()
+            }
+            for name in chosen_filters
+        },
+        generation=generation,
+        trigger_timeframe=_instance_timeframe(trigger),
+        filter_timeframes={
+            name: _instance_timeframe(name)
+            for name in chosen_filters
+            if _instance_timeframe(name) != "H1"
+        },
+    )
 
 
 def _instance_base_name(raw_name: str) -> str:
@@ -504,7 +683,9 @@ def _append_directional_result(
     row: dict[str, object] = {
         "candidate_id": candidate.candidate_id,
         "trigger_name": candidate.trigger_name,
+        "trigger_timeframe": candidate.trigger_timeframe,
         "filter_names": "+".join(candidate.filter_names),
+        "filter_timeframes": json.dumps(candidate.filter_timeframes, sort_keys=True),
         "frequency_class": result.behavior.frequency_class if result.behavior else "",
         "passed": result.passed,
         "should_promote": result.should_promote,
@@ -512,6 +693,11 @@ def _append_directional_result(
         "candidate_class": result.candidate_class,
         "target_window": result.target_window,
         "rejection_reason": result.rejection_reason,
+        "signal_fingerprint": result.metadata.get("signal_fingerprint", ""),
+        "signal_identity_keys": json.dumps(
+            result.metadata.get("signal_identity_keys", []), sort_keys=True
+        ),
+        "signal_set_size": result.metadata.get("signal_set_size", ""),
     }
     for window in windows:
         label = window.label
@@ -640,7 +826,23 @@ def _count_directional_survivors(path: Path) -> int:
     if not path.exists() or path.stat().st_size == 0:
         return 0
     with path.open(encoding="utf-8", newline="") as fh:
-        return sum(1 for row in csv.DictReader(fh) if str(row.get("should_promote", "")).lower() == "true")
+        rows = [
+            row for row in csv.DictReader(fh) if str(row.get("should_promote", "")).lower() == "true"
+        ]
+    fingerprints = {str(row.get("signal_fingerprint", "")) for row in rows if row.get("signal_fingerprint")}
+    return len(fingerprints) if fingerprints else len(rows)
+
+
+def _read_promoted_signal_fingerprints(path: Path) -> set[str]:
+    if not path.exists() or path.stat().st_size == 0:
+        return set()
+    with path.open(encoding="utf-8", newline="") as fh:
+        return {
+            str(row["signal_fingerprint"])
+            for row in csv.DictReader(fh)
+            if str(row.get("should_promote", "")).lower() == "true"
+            and row.get("signal_fingerprint")
+        }
 
 
 def _read_directional_candidate_ids(path: Path) -> set[str]:

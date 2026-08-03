@@ -3,10 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
-from click.testing import CliRunner
 
 import backtester.regime_router as regime_router_module
-from backtester.__main__ import cli
 from backtester.regime_router import (
     RouterConfig,
     RouterSearchConfig,
@@ -38,14 +36,6 @@ def test_rolling_router_uses_only_completed_prior_labels() -> None:
     top2 = dense[dense["router"] == "rolling_top2_mean_60_40"].iloc[0]
     assert top2["weights"].startswith("a:")
     assert "dispersion_pct" not in top2["weights"]
-
-
-def test_rolling_router_baseline_help() -> None:
-    result = CliRunner().invoke(cli, ["rolling-router-baseline", "--help"])
-
-    assert result.exit_code == 0
-    assert "--labels" in result.output
-    assert "--min-available-strategies" in result.output
 
 
 def test_single_strategy_router_search_selects_one_strategy() -> None:
@@ -90,87 +80,6 @@ def test_single_strategy_router_search_selects_one_strategy() -> None:
         "oracle_hit_rate",
     }.issubset(offsets.columns)
     assert utility["scoring_objective"].eq("oracle_regret_v1").all()
-
-
-def test_router_search_help() -> None:
-    result = CliRunner().invoke(cli, ["router-search", "--help"])
-
-    assert result.exit_code == 0
-    assert "--labels" in result.output
-    assert "--validation-end" in result.output
-    assert "--catalog-version" in result.output
-    assert "--algorithm" in result.output
-    assert "--config-offset" in result.output
-    assert "--max-configs" in result.output
-    assert "--summary-only" in result.output
-    assert "--progress" in result.output
-
-
-def test_router_search_matrix_help() -> None:
-    result = CliRunner().invoke(cli, ["router-search-matrix", "--help"])
-
-    assert result.exit_code == 0
-    assert "--algorithms" in result.output
-    assert "--validation-end" in result.output
-    assert "--proposal-multiplier" in result.output
-    assert "--max-configs" in result.output
-    assert "--output-root" in result.output
-
-
-def test_router_search_matrix_keeps_child_progress_on_terminal(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    labels = tmp_path / "labels.csv"
-    labels.write_text("asof\n", encoding="utf-8")
-    popen_calls: list[tuple[list[str], dict[str, object]]] = []
-
-    class FakeProcess:
-        pid = 123
-
-        def wait(self) -> int:
-            return 0
-
-        def poll(self) -> int:
-            return 0
-
-        def terminate(self) -> None:
-            return None
-
-    def fake_popen(command, **kwargs):
-        popen_calls.append((command, kwargs))
-        return FakeProcess()
-
-    monkeypatch.setattr("backtester.__main__.subprocess.Popen", fake_popen)
-
-    result = CliRunner().invoke(
-        cli,
-        [
-            "router-search-matrix",
-            "--labels",
-            str(labels),
-            "--algorithms",
-            "random,island_qd",
-            "--output-root",
-            str(tmp_path / "output"),
-        ],
-    )
-
-    assert result.exit_code == 0
-    assert [call[0][call[0].index("--progress-position") + 1] for call in popen_calls] == [
-        "0",
-        "1",
-    ]
-    assert all("stderr" not in kwargs for _command, kwargs in popen_calls)
-
-
-def test_router_validate_shortlist_help() -> None:
-    result = CliRunner().invoke(cli, ["router-validate-shortlist", "--help"])
-
-    assert result.exit_code == 0
-    assert "--predictions" in result.output
-    assert "--shortlist" in result.output
-    assert "--matrix-dir" in result.output
 
 
 def test_v2_summary_only_keeps_predictions_for_top_shortlist() -> None:

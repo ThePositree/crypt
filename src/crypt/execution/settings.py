@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from backtester.instrument_precision import instrument_precision_from_name
@@ -88,7 +88,8 @@ class ExecutionSettings(BaseSettings):
     structural_sl_mode: str = Field(default="cap")
     min_tp_move_pct: float = Field(default=0.004, gt=0.0)
     rrr: float = Field(default=2.0, gt=0.0)
-    ttl_bars: int = Field(default=0, ge=0)
+    ttl_minutes: int = Field(default=0, ge=0)
+    ttl_bars: int = Field(default=0, ge=0, exclude=True)
     risk_percent: float = Field(default=1.0, gt=0.0)
     trail_activation_rrr: float = Field(default=0.0, ge=0.0)
     trail_distance_atr: float = Field(default=0.0, ge=0.0)
@@ -137,6 +138,12 @@ class ExecutionSettings(BaseSettings):
         if not isinstance(v, list):
             raise TypeError(f"symbols must be a list or comma-separated string, got {type(v)}")
         return [str(item) for item in v]
+
+    @model_validator(mode="after")
+    def _migrate_legacy_ttl_bars(self) -> ExecutionSettings:
+        if self.ttl_minutes == 0 and self.ttl_bars > 0:
+            self.ttl_minutes = self.ttl_bars * 60
+        return self
 
     @field_validator("exit_geometry")
     @classmethod

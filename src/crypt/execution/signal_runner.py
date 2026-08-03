@@ -16,7 +16,11 @@ from typing import Any
 
 import pandas as pd
 
-from backtester.cli_runner import build_strategy_instance, load_strategy_config
+from backtester.cli_runner import (
+    build_strategy_instance,
+    load_strategy_config,
+    strategy_config_candle_timeframe,
+)
 from backtester.data_loader import CryptParquetDataLoader
 from backtester.strategy import BaseStrategy
 from backtester.trailing_policy import latest_entry_atr14
@@ -30,6 +34,7 @@ logger = logging.getLogger(__name__)
 _MAX_DATA_STALENESS = timedelta(hours=3)
 _REFRESH_TIMEFRAMES = (Timeframe.H1, Timeframe.H4, Timeframe.D1)
 _TIMEFRAME_DELTA = {
+    Timeframe.M15: timedelta(minutes=15),
     Timeframe.H1: timedelta(hours=1),
     Timeframe.H4: timedelta(hours=4),
     Timeframe.D1: timedelta(days=1),
@@ -58,6 +63,15 @@ class SignalEvent:
     raw_event: dict[str, Any]
     drain_on_group_change: bool = False
     trail_entry_atr: float | None = None
+
+    @property
+    def position_ttl_minutes(self) -> int | None:
+        value = self.raw_event.get("position_ttl_minutes")
+        if value is not None and not pd.isna(value):
+            return int(value)
+        if self.position_ttl_bars is None:
+            return None
+        return self.position_ttl_bars * 60
 
 
 @dataclass(frozen=True)
@@ -97,11 +111,13 @@ class LiveSignalRunner:
         self._strategy: BaseStrategy = strategy
         self._strategy_name = cfg.name
         self._strategy_version = cfg.version
+        self._execution_timeframe = Timeframe(strategy_config_candle_timeframe(cfg))
 
         logger.info(
-            "LiveSignalRunner initialized with strategy %s version '%s'",
+            "LiveSignalRunner initialized with strategy %s version '%s' execution_timeframe=%s",
             self._strategy_name,
             self._strategy_version,
+            self._execution_timeframe.value,
         )
 
     async def refresh_candles(
@@ -132,16 +148,21 @@ class LiveSignalRunner:
                         exc,
                     )
                     await self._refresh_timeframe(symbol, tf)
-            self._next_open_by_symbol[symbol] = (
-                websocket_boundary.boundary_time,
-                websocket_boundary.next_open,
-            )
-            for tf in _REFRESH_TIMEFRAMES:
+            execution_timeframe = getattr(self, "_execution_timeframe", Timeframe.H1)
+            if execution_timeframe is Timeframe.H1:
+                self._next_open_by_symbol[symbol] = (
+                    websocket_boundary.boundary_time,
+                    websocket_boundary.next_open,
+                )
+            for tf in self._refresh_timeframes():
+                if tf is execution_timeframe and tf not in closed_by_timeframe:
+                    await self._refresh_timeframe(symbol, tf)
                 await self._validate_or_repair_continuity(symbol, tf)
-            self._next_open_by_symbol[symbol] = (
-                websocket_boundary.boundary_time,
-                websocket_boundary.next_open,
-            )
+            if execution_timeframe is Timeframe.H1:
+                self._next_open_by_symbol[symbol] = (
+                    websocket_boundary.boundary_time,
+                    websocket_boundary.next_open,
+                )
             logger.info(
                 "Ingested OKX WebSocket boundary for %s at %s: closed=%s next_open=%.4f",
                 symbol,
@@ -150,9 +171,16 @@ class LiveSignalRunner:
                 websocket_boundary.next_open,
             )
             return
-        for tf in _REFRESH_TIMEFRAMES:
+        for tf in self._refresh_timeframes():
             await self._refresh_timeframe(symbol, tf)
             self._validate_continuity(symbol, tf)
+
+    def _refresh_timeframes(self) -> tuple[Timeframe, ...]:
+        execution_timeframe = getattr(self, "_execution_timeframe", Timeframe.H1)
+        frames = list(_REFRESH_TIMEFRAMES)
+        if execution_timeframe not in frames:
+            frames.insert(0, execution_timeframe)
+        return tuple(frames)
 
     async def _refresh_timeframe(self, symbol: str, tf: Timeframe) -> None:
         stored = self._store.load_candles(symbol, tf)
@@ -192,7 +220,7 @@ class LiveSignalRunner:
                     ) from exc
                 total_closed += len(closed)
 
-            if tf == Timeframe.H1 and forming:
+            if tf == getattr(self, "_execution_timeframe", Timeframe.H1) and forming:
                 first_forming = min(forming, key=lambda candle: candle.open_time)
                 self._next_open_by_symbol[symbol] = (
                     first_forming.open_time.astimezone(UTC),
@@ -247,13 +275,15 @@ class LiveSignalRunner:
     def get_latest_signal_batch(self, symbol: str) -> SignalBatch | None:
         """Return latest closed-bar events using backtester next-open semantics."""
         if not self._check_data_freshness(symbol):
-            raise RuntimeError(f"H1 data for {symbol} is missing or stale")
+            raise RuntimeError(
+                f"{self._execution_timeframe.value} data for {symbol} is missing or stale"
+            )
 
         try:
             loader = CryptParquetDataLoader(
                 data_dir=str(self._data_dir),
                 symbol=symbol,
-                primary_timeframe="1h",
+                candle_timeframe=self._execution_timeframe.value,
             )
             strategy_data = loader.load()
         except Exception as exc:
@@ -291,9 +321,11 @@ class LiveSignalRunner:
 
         row = signal_df.iloc[-1]
         bar_time = _timestamp_to_utc(signal_df.index[-1])
-        primary = strategy_data.primary
-        primary_through_signal = primary.loc[primary.index <= pd.Timestamp(bar_time)]
-        trail_entry_atr = latest_entry_atr14(primary_through_signal)
+        execution_frame = strategy_data.require_timeframe(self._execution_timeframe.value)
+        execution_through_signal = execution_frame.loc[
+            execution_frame.index <= pd.Timestamp(bar_time)
+        ]
+        trail_entry_atr = latest_entry_atr14(execution_through_signal)
         next_open_info = self._next_open_by_symbol.get(symbol)
         if next_open_info is None:
             logger.warning(
@@ -356,19 +388,26 @@ class LiveSignalRunner:
         return batch.events[0] if batch.events else None
 
     def _check_data_freshness(self, symbol: str) -> bool:
-        h1_df = self._store.load_candles(symbol, Timeframe.H1, limit=1)
-        if h1_df.empty:
-            logger.warning("No H1 data for %s — skipping signal generation", symbol)
+        execution_timeframe = getattr(self, "_execution_timeframe", Timeframe.H1)
+        frame = self._store.load_candles(symbol, execution_timeframe, limit=1)
+        if frame.empty:
+            logger.warning(
+                "No %s data for %s — skipping signal generation",
+                execution_timeframe.value,
+                symbol,
+            )
             return False
 
-        last_bar_time = _timestamp_to_utc(h1_df["open_time"].iloc[-1])
+        last_bar_time = _timestamp_to_utc(frame["open_time"].iloc[-1])
         age = datetime.now(UTC) - last_bar_time
-        if age > _MAX_DATA_STALENESS:
+        max_staleness = max(_MAX_DATA_STALENESS, _TIMEFRAME_DELTA[execution_timeframe] * 3)
+        if age > max_staleness:
             logger.warning(
-                "H1 data for %s is %.1f hours old (max %.0f h) — skipping",
+                "%s data for %s is %.1f hours old (max %.0f h) — skipping",
+                execution_timeframe.value,
                 symbol,
                 age.total_seconds() / 3600,
-                _MAX_DATA_STALENESS.total_seconds() / 3600,
+                max_staleness.total_seconds() / 3600,
             )
             return False
         return True
@@ -422,6 +461,7 @@ def _events_from_row(row: pd.Series) -> list[dict[str, Any]]:
     for key in (
         "rrr",
         "risk_percent",
+        "position_ttl_minutes",
         "position_ttl_bars",
         "trail_activation_rrr",
         "trail_distance_atr",

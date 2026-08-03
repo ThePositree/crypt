@@ -10,7 +10,7 @@ import pandas as pd
 from optuna.storages import JournalStorage
 from optuna.storages.journal import JournalFileBackend
 
-from backtester.data_contracts import StrategyData, StrategyInput
+from backtester.data_contracts import StrategyInput, timeframe_minutes, ttl_minutes_to_bars
 from backtester.execution_context import (
     StrategyExecutionContext,
     attach_execution_context,
@@ -23,6 +23,7 @@ from backtester.tester import Backtester
 
 FloatRange = tuple[float, float, float]
 IntRange = tuple[int, int, int]
+ExitFamily = Literal["sl_rrr", "sl_rrr_trailing", "tp_pct"]
 
 
 def _mandate_score(
@@ -77,12 +78,15 @@ class ParameterOptimizer:
     def __init__(
         self,
         df: StrategyInput,
+        ohlcv: pd.DataFrame,
         strategy_class: type[BaseStrategy],
         target: TargetFunction,
         initial_capital: float = 1000.0,
         taker_fee: float = 0.001,
         maker_fee: float = 0.0002,
         position_ttl_bars: int = 20,
+        position_ttl_minutes: int | None = None,
+        candle_timeframe: str = "1h",
         min_net_exposure: float = 0.01,
         max_allowed_margin: float = 1.0,
         risk_base_period: str = "trade",
@@ -96,7 +100,10 @@ class ParameterOptimizer:
         trail_distance_atr: float = 0.0,
         trail_distance_atr_range: FloatRange | None = None,
         position_ttl_bars_range: IntRange | None = None,
+        position_ttl_minutes_range: IntRange | None = None,
         tp_move_pct_range: FloatRange | None = None,
+        exit_family_search: bool = False,
+        exit_families: tuple[ExitFamily, ...] = ("sl_rrr", "sl_rrr_trailing", "tp_pct"),
         exit_geometry: str = "sl_rrr",
         tp_move_pct: float | None = None,
         structural_sl_mode: str = "cap",
@@ -105,12 +112,19 @@ class ParameterOptimizer:
         optimize_trading_window: bool = True,
     ):
         self.df = df
+        self.ohlcv = ohlcv
         self.strategy_class = strategy_class
         self.target = target
         self.initial_capital = initial_capital
         self.taker_fee = taker_fee
         self.maker_fee = maker_fee
         self.position_ttl_bars = position_ttl_bars
+        self.candle_timeframe = candle_timeframe
+        self.position_ttl_minutes = (
+            int(position_ttl_minutes)
+            if position_ttl_minutes is not None
+            else int(position_ttl_bars) * timeframe_minutes(candle_timeframe)
+        )
         self.min_net_exposure = min_net_exposure
         self.max_allowed_margin = max_allowed_margin
         self.risk_base_period = risk_base_period
@@ -124,7 +138,18 @@ class ParameterOptimizer:
         self.trail_distance_atr = trail_distance_atr
         self.trail_distance_atr_range = trail_distance_atr_range
         self.position_ttl_bars_range = position_ttl_bars_range
+        self.position_ttl_minutes_range: IntRange | None
+        if position_ttl_minutes_range is not None:
+            self.position_ttl_minutes_range = position_ttl_minutes_range
+        elif position_ttl_bars_range is not None:
+            minutes = timeframe_minutes(candle_timeframe)
+            low, high, step = position_ttl_bars_range
+            self.position_ttl_minutes_range = (low * minutes, high * minutes, step * minutes)
+        else:
+            self.position_ttl_minutes_range = None
         self.tp_move_pct_range = tp_move_pct_range
+        self.exit_family_search = exit_family_search
+        self.exit_families = exit_families
         self.exit_geometry = exit_geometry
         self.tp_move_pct = tp_move_pct
         self.structural_sl_mode = structural_sl_mode
@@ -155,23 +180,27 @@ class ParameterOptimizer:
                 self.risk_percent,
             )
             rrr = self._suggest_float_or_fixed(trial, "rrr", self.rrr_range, 2.0)
-            trail_distance_atr = self._suggest_float_or_fixed(
-                trial,
-                "trail_distance_atr",
-                self.trail_distance_atr_range,
-                self.trail_distance_atr,
-            )
+            exit_family = self._suggest_exit_family(trial)
+            trail_distance_atr = 0.0
+            if exit_family == "sl_rrr_trailing" or not self.exit_family_search:
+                trail_distance_atr = self._suggest_float_or_fixed(
+                    trial,
+                    "trail_distance_atr",
+                    self.trail_distance_atr_range,
+                    self.trail_distance_atr,
+                )
             trail_activation_rrr = rrr if trail_distance_atr > 0 else 0.0
             max_positions = 0
-            position_ttl_bars = self._suggest_int_or_fixed(
+            position_ttl_minutes = self._suggest_int_or_fixed(
                 trial,
-                "position_ttl_bars",
-                self.position_ttl_bars_range,
-                self.position_ttl_bars,
+                "position_ttl_minutes",
+                self.position_ttl_minutes_range,
+                self.position_ttl_minutes,
             )
+            position_ttl_bars = ttl_minutes_to_bars(position_ttl_minutes, self.candle_timeframe)
             tp_move_pct: float | None = None
-            exit_geometry = self.exit_geometry
-            if self.tp_move_pct_range is not None or self.exit_geometry == "tp_pct":
+            exit_geometry = "tp_pct" if exit_family == "tp_pct" else "sl_rrr"
+            if exit_family == "tp_pct":
                 fixed_tp = self.tp_move_pct if self.tp_move_pct is not None else 0.015
                 tp_move_pct = self._suggest_float_or_fixed(
                     trial,
@@ -220,7 +249,7 @@ class ParameterOptimizer:
                 trading_end = trial.suggest_int("trading_end", trading_begin + 3, 24)
 
             # 4. Запускаем бэктест
-            bt = Backtester(self.df, strategy)
+            bt = Backtester(self.df, strategy, ohlcv=self.ohlcv)
             results = bt.run(
                 initial_capital=self.initial_capital,
                 taker_fee=self.taker_fee,
@@ -251,9 +280,11 @@ class ParameterOptimizer:
             trial.set_user_attr("trail_activation_rrr", trail_activation_rrr)
             trial.set_user_attr("trail_distance_atr", trail_distance_atr)
             trial.set_user_attr("max_positions", 0)
+            trial.set_user_attr("position_ttl_minutes", position_ttl_minutes)
             trial.set_user_attr("position_ttl_bars", position_ttl_bars)
             if tp_move_pct is not None:
                 trial.set_user_attr("tp_move_pct", tp_move_pct)
+            trial.set_user_attr("exit_family", exit_family)
             trial.set_user_attr("exit_geometry", exit_geometry)
             trial.set_user_attr("signal_cache_size", len(self._signal_cache))
             for name, value in mandate_attrs.items():
@@ -269,8 +300,17 @@ class ParameterOptimizer:
             self._logger.debug(f"Ошибка в итерации: {e}")
             return -float("inf")
 
+    def _suggest_exit_family(self, trial: optuna.Trial) -> ExitFamily:
+        if self.exit_family_search:
+            return trial.suggest_categorical("exit_family", list(self.exit_families))  # type: ignore[return-value]
+        if self.exit_geometry == "tp_pct" or self.tp_move_pct_range is not None:
+            return "tp_pct"
+        if self.trail_distance_atr_range is not None or self.trail_distance_atr > 0:
+            return "sl_rrr_trailing"
+        return "sl_rrr"
+
     def _mandate_trial_attrs(self, results: ResultsAnalyzer) -> dict[str, Any]:
-        primary = self._primary_frame()
+        primary = self.ohlcv
         if primary.empty:
             return _empty_mandate_attrs()
 
@@ -338,11 +378,6 @@ class ParameterOptimizer:
             ),
             "mandate_verdict": str(summary.get("verdict", "discard")),
         }
-
-    def _primary_frame(self) -> pd.DataFrame:
-        if isinstance(self.df, StrategyData):
-            return self.df.primary
-        return self.df
 
     @staticmethod
     def _suggest_float_or_fixed(

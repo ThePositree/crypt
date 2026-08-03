@@ -7,7 +7,7 @@ from collections.abc import Callable
 from backtester.data_contracts import StrategyData
 from backtester.strategy_discovery.catcma_qd import (
     _NOVELTY_MUTATION_INTERVAL,
-    _directional_cheap_score,
+    _directional_feedback_score,
     _EvaluatedCandidate,
     _mutate_candidate,
     _WeightedModel,
@@ -17,15 +17,18 @@ from backtester.strategy_discovery.dss_archive import DSSArchive
 from backtester.strategy_discovery.dss_config import DSSCandidate, DSSConfig, DSSSearchSpace
 from backtester.strategy_discovery.dss_directional_search import (
     DSSDirectionalResult,
+    DSSSignalNoveltyTracker,
     _count_csv_rows,
     _count_directional_survivors,
     _evaluate_directional_candidate,
     _guard_output_dir,
+    _is_novel_directional,
     _read_candidate_rows,
     _read_directional_candidate_ids,
     _refresh_directional_reports,
     _write_state,
     _write_summary,
+    sample_random_directional_candidate,
 )
 from backtester.strategy_discovery.dss_runtime import (
     DSSSearchRuntime,
@@ -60,6 +63,7 @@ def run_island_qd_search(
     attempted = len(existing_candidates)
     viability_path = output / "directional_viability.csv"
     evaluated_ids = _read_directional_candidate_ids(viability_path)
+    signal_novelty = DSSSignalNoveltyTracker(viability_path)
     evaluated_count = _count_csv_rows(viability_path)
     novelty_parents: list[DSSCandidate] = []
     if evaluated_count and progress_callback is not None:
@@ -86,18 +90,20 @@ def run_island_qd_search(
                 config=config,
                 composer=composer,
                 runtime=runtime,
+                signal_novelty=signal_novelty,
                 append_candidate=False,
             )
             evaluated_count += 1
-            if directional.should_promote:
+            is_novel_signal = _is_novel_directional(directional)
+            evaluated_item = _EvaluatedCandidate(
+                candidate=candidate,
+                robust_score=_directional_feedback_score(directional, is_novel_signal),
+            )
+            for model in model_by_window.values():
+                model.update([evaluated_item])
+            if directional.should_promote and is_novel_signal:
                 directional_survivors += 1
                 novelty_parents.append(candidate)
-                evaluated_item = _EvaluatedCandidate(
-                    candidate=candidate,
-                    robust_score=_directional_cheap_score(directional),
-                )
-                for model in model_by_window.values():
-                    model.update([evaluated_item])
             runtime.write_progress(generated=generated, evaluated=evaluated_count)
             if progress_callback is not None:
                 progress_callback(1)
@@ -124,10 +130,19 @@ def run_island_qd_search(
                     source = (
                         "random_unseen" if should_use_random_injection(attempted) else "island_qd"
                     )
-                    candidate = model.sample(
-                        f"island_{target.label}_{attempted:06d}",
-                        generation=batch_index,
-                    )
+                    if source == "random_unseen":
+                        candidate = sample_random_directional_candidate(
+                            search_space=search_space,
+                            candidate_id=f"island_{target.label}_{attempted:06d}",
+                            generation=batch_index,
+                            max_filters=config.max_filters,
+                            seed=config.seed + attempted * 1009,
+                        )
+                    else:
+                        candidate = model.sample(
+                            f"island_{target.label}_{attempted:06d}",
+                            generation=batch_index,
+                        )
                 if not runtime.record_candidate(candidate, source=source):
                     runtime.write_progress(generated=generated, evaluated=evaluated_count)
                     continue
@@ -140,19 +155,21 @@ def run_island_qd_search(
                         config=config,
                         composer=composer,
                         runtime=runtime,
+                        signal_novelty=signal_novelty,
                         append_candidate=True,
                     )
                     evaluated_count += 1
-                    if not directional.should_promote:
-                        continue
-                    directional_survivors += 1
-                    novelty_parents.append(candidate)
+                    is_novel_signal = _is_novel_directional(directional)
                     evaluated.append(
                         _EvaluatedCandidate(
                             candidate=candidate,
-                            robust_score=_directional_cheap_score(directional),
+                            robust_score=_directional_feedback_score(directional, is_novel_signal),
                         )
                     )
+                    if not directional.should_promote or not is_novel_signal:
+                        continue
+                    directional_survivors += 1
+                    novelty_parents.append(candidate)
                 finally:
                     runtime.write_progress(generated=generated, evaluated=evaluated_count)
                     if progress_callback is not None:

@@ -20,7 +20,7 @@ from backtester.cli_runner import (
     load_strategy_config,
     run_backtest,
 )
-from backtester.data_contracts import StrategyInput
+from backtester.data_contracts import StrategyInput, select_candle_frame
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,6 +134,7 @@ def run_archived_performance_matrix(
     *,
     paths: list[Path],
     data: StrategyInput,
+    candle_timeframe: str,
     output: Path,
     bucket: str,
     from_date: str | None,
@@ -168,6 +169,7 @@ def run_archived_performance_matrix(
                 on_strategy_start(work.strategy_id, work.strategy_path)
             result = _run_matrix_strategy_worker(
                 data=data,
+                candle_timeframe=candle_timeframe,
                 work=work,
                 bucket=bucket,
                 start=from_date,
@@ -186,6 +188,7 @@ def run_archived_performance_matrix(
             executor.submit(
                 _run_matrix_strategy_worker,
                 data=data,
+                candle_timeframe=candle_timeframe,
                 work=work,
                 bucket=bucket,
                 start=from_date,
@@ -520,6 +523,7 @@ def _write_summary(path: Path, *, manifest: pd.DataFrame, bucket_metrics: pd.Dat
 def _run_matrix_strategy_worker(
     *,
     data: StrategyInput,
+    candle_timeframe: str,
     work: MatrixStrategyWorkItem,
     bucket: str,
     start: str | None,
@@ -534,7 +538,8 @@ def _run_matrix_strategy_worker(
     if strategy_instance is None:
         raise ValueError(f"Could not build strategy: {work.strategy_path}")
 
-    results = run_backtest(df=data, strategy=strategy_instance, args=work.args)
+    ohlcv = select_candle_frame(data, candle_timeframe)
+    results = run_backtest(df=data, strategy=strategy_instance, args=work.args, ohlcv=ohlcv)
     trades = results.trades if results.trades is not None else pd.DataFrame()
     bucket_metrics = aggregate_strategy_buckets(
         trades,

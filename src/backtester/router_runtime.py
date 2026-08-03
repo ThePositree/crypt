@@ -42,7 +42,7 @@ class ArchivedStrategySpec:
 
 @dataclass(frozen=True, slots=True)
 class RouterBarDecision:
-    """Composite signal selected for one closed primary bar."""
+    """Composite signal selected for one closed OHLCV bar."""
 
     timestamp: pd.Timestamp
     selected_strategy: str
@@ -149,16 +149,23 @@ def build_archived_signal_frames(
     *,
     data: StrategyInput,
     specs: list[ArchivedStrategySpec],
+    ohlcv: pd.DataFrame | None = None,
     dataset: DiscoveryDataset | None = None,
 ) -> dict[str, pd.DataFrame]:
     """Build all six archived signal streams from one shared feature dataset."""
 
     symbol = str(data.metadata.get("symbol", "")) if isinstance(data, StrategyData) else ""
     if dataset is None:
+        if ohlcv is None:
+            if isinstance(data, StrategyData):
+                raise ValueError("build_archived_signal_frames requires explicit ohlcv")
+            ohlcv = data
+        candles = data.candles_by_timeframe if isinstance(data, StrategyData) else None
         dataset = build_discovery_dataset(
-            data=data,
+            data=ohlcv,
             window_label="promoted_router",
             symbol=symbol,
+            candles_by_timeframe=candles,
         )
     output: dict[str, pd.DataFrame] = {}
     for spec in specs:

@@ -90,7 +90,7 @@ def test_minute_execution_rejects_h1_aggregation_mismatch() -> None:
     mismatched_last = data.last_1m.copy()
     mismatched_last.loc[mismatched_last.index[5], "high"] = 999.0
 
-    with pytest.raises(ValueError, match="do not aggregate to primary H1"):
+    with pytest.raises(ValueError, match="do not aggregate to execution H1"):
         _sim().run(
             _h1_signal_frame(),
             intrabar_data=IntrabarExecutionData(

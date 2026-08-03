@@ -26,7 +26,7 @@ class SMCLiquidityEngine(BaseEngine):
         return "smc_liquidity"
 
     def evaluate(self, ctx: EvaluationContext) -> Signal:
-        h4 = ctx.candles.get(Timeframe.H4)
+        h4 = ctx.candles_by_timeframe.get(Timeframe.H4)
         if h4 is None or len(h4) < _MIN_H4:
             return self._neutral(
                 ctx,

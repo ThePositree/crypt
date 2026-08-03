@@ -14,11 +14,11 @@ Build a self-contained trigger/filter discovery engine that:
 1. Generates strategy candidates from exactly one trigger plus zero or more
    filters.
 2. Labels each candidate event with a standardized forward outcome.
-3. Runs staged / beam search in code, without asking the owner which
+3. Runs beam/progressive search in code, without asking the owner which
    candidate to try next.
 4. Writes ranked reports and best candidate configs.
 5. Leaves risk management, leverage, margin, SL/TP optimization, RRR, TTL, and
-   trailing-stop tuning for a later Optuna stage.
+   trailing-stop tuning for Optuna.
 
 The immediate purpose is to answer:
 
@@ -165,8 +165,8 @@ Hard gates:
 
 ## 6. Search algorithm
 
-The code must perform staged / beam search. Do not require the owner or Codex
-to manually choose the next candidate between rounds.
+The code must perform beam/progressive search. Do not require the owner or
+Codex to manually choose the next candidate between rounds.
 
 Algorithm:
 
@@ -319,7 +319,6 @@ Add a root backtester CLI command:
 ```bash
 uv run backtester discover-strategies \
     --data-dir data \
-    --primary-timeframe 1h \
     --symbol SOL-USDT-SWAP \
     --from 2025-01-01 \
     --to 2025-04-01 \

@@ -12,6 +12,35 @@ Priority labels:
 Read `docs/strategy_benchmark.md` before strategy evaluation. The benchmark is
 the main optimization target, not a hard limit on owner production selection.
 
+## P1 — Promote stop-loss selection into explicit post-DSS SL families
+
+**What:** make stop-loss placement an explicit execution-geometry family
+searched after DSS, instead of a hidden fallback split between
+`directional_sl_move_pct`, legacy `atr_sl_mult`, and strategy-provided
+`sl_price`.
+
+**Why now:** DSS v3 intentionally searches entry logic first, then sends
+leaders to Optuna for money geometry. SL distance controls position size,
+TP distance, liquidation exposure, and exit timing, so it must be a first-class
+Optuna choice alongside `exit_family`, `rrr`, `position_ttl_minutes`, and
+`risk_percent`.
+
+**Expected gain:** new DSS candidates can fairly compare fixed-percent,
+ATR-based, and structural stop families; old archive/prod candidates remain
+replayable through their saved legacy geometry.
+
+**Acceptance:** strategy/backtest/optimizer config has an explicit `sl_family`
+field; Optuna can search `fixed_pct` (`directional_sl_move_pct`) and `atr`
+(`atr_sl_mult`) at minimum; existing `structural` strategy stops are preserved
+as their own family/mode; exported best-trial summaries state the winning SL
+family and parameters in money-readable terms; legacy candidates with
+`atr_sl_mult` reproduce old behavior.
+
+**Links:** `src/backtester/strategies/dss_strategy.py`,
+`src/backtester/strategies/dss_incremental.py`,
+`src/backtester/optimizer.py`, `docs/backtester/exit_geometry.md`,
+`docs/discovery/direct_signal_search_v3.md`.
+
 ## P0 — Archive exact live entry snapshots for replay
 
 **What:** persist an immutable replay packet for every live entry: emitted
@@ -122,69 +151,6 @@ benchmark verdict.
 
 **Links:** `src/backtester/strategies/som.py`,
 `src/backtester/strategies/forest.py`, `tests/backtester/test_som_features.py`.
-
-## P1 — Remove primary-timeframe semantics from project contracts
-
-**What:** migrate the project away from the idea that a data bundle has one
-privileged `primary` timeframe. Timeframes should be equal data channels. A
-component means any unit with an input/output contract: loaders, strategies,
-indicators, individual DSS triggers, individual DSS filters, feature builders,
-evaluators, backtest runners, live executors, report writers, and similar
-modules. Every component must either declare the exact timeframe(s) it
-requires, accept the frame supplied by its caller without knowing the
-timeframe, or accept an explicit multi-timeframe bundle.
-
-**Why now:** DSS v3 already searches `trigger@timeframe` and
-`filter@timeframe` candidates, so a public `--primary-timeframe` knob is now a
-legacy compatibility leak. Keeping `StrategyData.primary` as a privileged
-frame makes future agents confuse compatibility plumbing with search logic and
-risks reintroducing hidden single-timeframe behavior.
-
-**Expected gain:** cleaner multi-timeframe architecture across research,
-backtests, reports, and live execution. Components become explicit about their
-data needs, DSS can treat `15m`, `H1`, `H4`, and `D1` as equal channels, and
-new strategies cannot accidentally read a default frame just because it was
-called `primary`.
-
-**Migration plan:**
-
-1. Inventory every `StrategyData.primary`, `primary_timeframe`, and bare
-   `pd.DataFrame` strategy entrypoint usage across `src/` and `tests/`.
-2. Introduce a timeframe-neutral data contract, e.g. `StrategyData.frames` or
-   `candles_by_timeframe`, plus a single accessor that raises when a required
-   timeframe is absent.
-3. Define component contracts:
-   - frame-agnostic components receive one OHLCV frame from the caller and do
-     not inspect timeframe metadata;
-   - single-timeframe components declare one required timeframe or receive it
-     as an explicit argument;
-   - multi-timeframe components declare all required frames and never fall back
-     to a privileged default.
-   Treat each concrete DSS trigger and filter as its own component for this
-   contract audit.
-4. Migrate DSS loaders/composer/evaluators first so DSS CLI no longer exposes
-   `--primary-timeframe`; keep an internal H1 compatibility frame only while
-   old APIs still require it.
-5. Migrate backtester strategies, indicators, reports, and live/execution
-   inputs to explicit frame access or caller-supplied single-frame contracts.
-6. Deprecate and then remove `StrategyData.primary`,
-   `metadata["primary_timeframe"]`, and CLI options that imply a privileged
-   timeframe.
-7. Update docs, ADRs, changelog, and tests so `primary timeframe` means only
-   historical context, not an active project concept.
-
-**Acceptance:** grep over active `src/` and `tests/` has no
-`StrategyData.primary`, `primary_timeframe`, or CLI `--primary-timeframe`
-usage except explicitly marked historical/compatibility tests during the
-transition. All runtime components either declare required timeframe(s) or
-consume caller-supplied frames. DSS matrix/search commands run without a
-primary-timeframe option and still discover sparse, medium, and frequent
-candidate classes.
-
-**Links:** `src/backtester/data_contracts.py`,
-`src/backtester/data_loader.py`, `src/backtester/strategy_discovery/`,
-`src/backtester/strategies/`, `src/crypt/execution/`,
-`docs/discovery/direct_signal_search_v3.md`.
 
 ## P1 — Calibrate H1 execution and mark-price liquidation realism
 
