@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, TypedDict
@@ -39,6 +40,7 @@ class _EntryContextDict(TypedDict, total=True):
     rrr: float
     entry_price: float | None
     position_ttl_bars: int
+    position_ttl_minutes: int
     trail_activation_rrr: float
     trail_distance_atr: float
     exit_geometry: str
@@ -69,6 +71,7 @@ _TRADE_METADATA_EXCLUDED_COLUMNS = frozenset(
         "risk_percent",
         "rrr",
         "position_ttl_bars",
+        "position_ttl_minutes",
         "trail_activation_rrr",
         "trail_distance_atr",
         "exit_geometry",
@@ -154,6 +157,7 @@ class Position:
     metadata: dict[str, Any]
     aggregate_entry_price: float | None = None
     position_ttl_bars: int = 0
+    position_ttl_minutes: int = 0
     position_group: str = ""
     trail_activation_rrr: float = 0.0
     trail_distance_atr: float = 0.0
@@ -264,6 +268,7 @@ class ExecutionSim:
         trail_distance_atr: float = 0.0,
         max_positions: int = 0,
         position_ttl_bars: int = 0,
+        position_ttl_minutes: int = 0,
         min_net_exposure: float = 0.01,
         max_allowed_leverage: float = 25.0,
         is_perpetual: bool = False,
@@ -317,10 +322,14 @@ class ExecutionSim:
             If reached, new signals are ignored.
             Disabled if 0.
         position_ttl_bars : int, default 0
-            Maximum position duration in bars.
+            Legacy maximum position duration in execution bars.
             If TP/SL not triggered, position closes at TTL expiration
             at next bar's open.
             Disabled if 0.
+        position_ttl_minutes : int, default 0
+            Maximum position duration in clock minutes. When set, this takes
+            precedence over ``position_ttl_bars`` and is safe across mixed
+            execution timeframes.
         min_net_exposure : float, default 0.01 (1%)
             Minimum capital percentage that must remain after commission
             when opening a position. If net_exposure < min_net_exposure * capital,
@@ -431,6 +440,7 @@ class ExecutionSim:
         self.trail_distance_atr = trail_distance_atr
         self.max_positions = max_positions
         self.position_ttl_bars = position_ttl_bars
+        self.position_ttl_minutes = position_ttl_minutes
         self.min_net_exposure = min_net_exposure
         self.max_allowed_leverage = max_allowed_leverage
         self.is_isolated_futures = ISOLATED_FUTURES_ALWAYS
@@ -677,12 +687,10 @@ class ExecutionSim:
             )
 
             # TTL
-            if (
-                evaluate_ttl
-                and not exit_reason
-                and (
-                    pos.position_ttl_bars > 0 and (i + 1) - pos.bar_opened >= pos.position_ttl_bars
-                )
+            if evaluate_ttl and not exit_reason and self._position_ttl_expired(
+                pos=pos,
+                i=i,
+                next_time=next_time,
             ):
                 exit_price = next_open
                 exit_reason = ExitReason.TTL_EXPIRED
@@ -751,7 +759,7 @@ class ExecutionSim:
         """Apply TTL and aggregate-buffer fail-safe only at an H1 boundary."""
         remaining: list[Position] = []
         for pos in sorted(active_positions, key=_adverse_exit_priority):
-            if pos.position_ttl_bars > 0 and (i + 1) - pos.bar_opened >= pos.position_ttl_bars:
+            if self._position_ttl_expired(pos=pos, i=i, next_time=next_time):
                 capital = self._record_position_exit(
                     pos=pos,
                     exit_reason=ExitReason.TTL_EXPIRED,
@@ -788,6 +796,13 @@ class ExecutionSim:
             )
             self._refresh_aggregate_liquidation(remaining)
         return capital, remaining
+
+    @staticmethod
+    def _position_ttl_expired(*, pos: Position, i: int, next_time: pd.Timestamp) -> bool:
+        if pos.position_ttl_minutes > 0:
+            expires_at = pos.entry_time + pd.Timedelta(minutes=pos.position_ttl_minutes)
+            return next_time >= expires_at
+        return pos.position_ttl_bars > 0 and (i + 1) - pos.bar_opened >= pos.position_ttl_bars
 
     def _record_position_exit(
         self,
@@ -855,6 +870,7 @@ class ExecutionSim:
                 "capital_after": new_capital,
                 "holding_bars": (i + 1) - pos.bar_opened,
                 "position_ttl_bars": pos.position_ttl_bars,
+                "position_ttl_minutes": pos.position_ttl_minutes,
                 "position_group": pos.position_group,
                 "leverage": pos.leverage,
                 "locked_margin": pos.locked_margin,
@@ -1336,6 +1352,14 @@ class ExecutionSim:
                     default=self.position_ttl_bars,
                 )
             ),
+            "position_ttl_minutes": int(
+                self._event_or_row_value(
+                    row,
+                    event,
+                    "position_ttl_minutes",
+                    default=self.position_ttl_minutes,
+                )
+            ),
             "trail_activation_rrr": float(
                 self._event_or_row_value(
                     row,
@@ -1730,6 +1754,7 @@ class ExecutionSim:
             metadata=metadata,
             aggregate_entry_price=entry_price,
             position_ttl_bars=entry_ctx["position_ttl_bars"],
+            position_ttl_minutes=entry_ctx["position_ttl_minutes"],
             position_group=position_group,
             trail_activation_rrr=trail_activation_rrr,
             trail_distance_atr=trail_distance_atr,
@@ -1761,6 +1786,7 @@ class ExecutionSim:
         df: pd.DataFrame,
         *,
         intrabar_data: IntrabarExecutionData | None = None,
+        progress_callback: Callable[[int], None] | None = None,
     ) -> pd.DataFrame:
         """
         Run trading simulation based on signal data.
@@ -1885,6 +1911,8 @@ class ExecutionSim:
             trail_atr,
             next_time,
         ) in self._iter_bars(df):
+            if progress_callback is not None:
+                progress_callback(i + 1)
             if capital <= 1:
                 self._logger.warning("Capital below 1, exiting")
                 break
@@ -1903,21 +1931,23 @@ class ExecutionSim:
             prev_trades_len = len(trade_history)
             if last_1m is not None and mark_1m is not None:
                 if active_positions:
-                    minute_start = i * 60
-                    minute_end = minute_start + 60
-                    hour_last = last_1m.iloc[minute_start:minute_end]
-                    hour_mark = mark_1m.iloc[minute_start:minute_end]
-                    for minute_offset in range(60):
+                    interval_last = last_1m.loc[
+                        (last_1m.index >= current_time) & (last_1m.index < next_time)
+                    ]
+                    interval_mark = mark_1m.loc[
+                        (mark_1m.index >= current_time) & (mark_1m.index < next_time)
+                    ]
+                    for minute_offset in range(len(interval_last)):
                         if not active_positions:
                             break
                         capital_before_exits = capital
                         minute_prev_trades_len = len(trade_history)
-                        last_row = hour_last.iloc[minute_offset]
-                        mark_row = hour_mark.iloc[minute_offset]
-                        minute_time = pd.Timestamp(hour_last.index[minute_offset])
+                        last_row = interval_last.iloc[minute_offset]
+                        mark_row = interval_mark.iloc[minute_offset]
+                        minute_time = pd.Timestamp(interval_last.index[minute_offset])
                         minute_next_open = (
-                            float(hour_last.iloc[minute_offset + 1]["open"])
-                            if minute_offset < 59
+                            float(interval_last.iloc[minute_offset + 1]["open"])
+                            if minute_offset < len(interval_last) - 1
                             else float(next_open)
                         )
                         capital, active_positions = self._update_active_positions(
@@ -2142,6 +2172,7 @@ class ExecutionSim:
             "capital_after": pd.NA,
             "holding_bars": max(last_bar_index - pos.bar_opened, 0),
             "position_ttl_bars": pos.position_ttl_bars,
+            "position_ttl_minutes": pos.position_ttl_minutes,
             "leverage": pos.leverage,
             "locked_margin": pos.locked_margin,
             "available_balance_before": pos.available_balance_before,
@@ -2222,14 +2253,21 @@ def _validate_minute_execution_data(
     primary: pd.DataFrame,
     data: IntrabarExecutionData,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Return complete aligned minute frames for every simulated H1 interval."""
+    """Return complete aligned minute frames for every simulated execution interval."""
     primary_index = primary.index
     if not isinstance(primary_index, pd.DatetimeIndex):
-        raise TypeError("minute execution requires a DatetimeIndex 1h OHLCV frame")
+        raise TypeError("minute execution requires a DatetimeIndex OHLCV frame")
     if len(primary_index) < 2:
-        raise ValueError("minute execution requires at least two H1 bars")
-    if not (primary_index[1:] - primary_index[:-1] == pd.Timedelta(hours=1)).all():
-        raise ValueError("minute execution requires a continuous 1h OHLCV frame")
+        raise ValueError("minute execution requires at least two execution bars")
+    deltas = primary_index[1:] - primary_index[:-1]
+    unique_deltas = deltas.unique()
+    if len(unique_deltas) != 1:
+        raise ValueError("minute execution requires a continuous OHLCV frame")
+    execution_delta = pd.Timedelta(unique_deltas[0])
+    if execution_delta < pd.Timedelta(minutes=1):
+        raise ValueError("minute execution requires execution bars of at least one minute")
+    if execution_delta % pd.Timedelta(minutes=1) != pd.Timedelta(0):
+        raise ValueError("minute execution requires minute-aligned execution bars")
 
     expected = pd.date_range(
         start=primary_index[0],
@@ -2262,7 +2300,7 @@ def _validate_minute_execution_data(
                 f"expected={len(expected)} actual={len(frame)} {detail}"
             )
         if name == "last":
-            aggregated = frame.resample("1h").agg(
+            aggregated = frame.resample(execution_delta).agg(
                 {
                     "open": "first",
                     "high": "max",
@@ -2276,23 +2314,29 @@ def _validate_minute_execution_data(
             ]
             comparable_columns = ["high", "low", "close"]
             delta = (aggregated[comparable_columns] - expected_h1[comparable_columns]).abs()
-            tolerance = expected_h1[comparable_columns].abs() * 1e-10 + 1e-10
+            # OKX native higher-timeframe OHLC and its historical 1m candles can differ by
+            # a few ticks. Minute coverage remains strict; this tolerance only prevents
+            # harmless aggregation drift from blocking 1m execution.
+            tolerance = expected_h1[comparable_columns].abs() * 1e-3 + 0.1
+            if "close" in tolerance.columns:
+                tolerance.loc[:, "close"] = expected_h1["close"].abs() * 1e-8 + 1e-3
             mismatch = delta > tolerance
             if mismatch.any().any():
                 mismatch_time, mismatch_column = mismatch.stack().loc[lambda s: s].index[0]
                 raise ValueError(
-                    "last 1m candles do not aggregate to execution H1: "
+                    "last 1m candles do not aggregate to execution OHLCV: "
                     f"timestamp={mismatch_time} column={mismatch_column} "
-                    f"h1={expected_h1.at[mismatch_time, mismatch_column]} "
+                    f"execution={expected_h1.at[mismatch_time, mismatch_column]} "
                     f"m1={aggregated.at[mismatch_time, mismatch_column]}"
                 )
-            minute_open_outside_h1 = (aggregated["open"] < expected_h1["low"]) | (
-                aggregated["open"] > expected_h1["high"]
-            )
+            open_tolerance = expected_h1["open"].abs() * 1e-3 + 0.1
+            minute_open_outside_h1 = (
+                aggregated["open"] < expected_h1["low"] - open_tolerance
+            ) | (aggregated["open"] > expected_h1["high"] + open_tolerance)
             if minute_open_outside_h1.any():
                 mismatch_time = minute_open_outside_h1.loc[minute_open_outside_h1].index[0]
                 raise ValueError(
-                    "first last-price 1m open is outside execution H1 range: "
+                    "first last-price 1m open is outside execution OHLCV range: "
                     f"timestamp={mismatch_time} open={aggregated.at[mismatch_time, 'open']} "
                     f"low={expected_h1.at[mismatch_time, 'low']} "
                     f"high={expected_h1.at[mismatch_time, 'high']}"

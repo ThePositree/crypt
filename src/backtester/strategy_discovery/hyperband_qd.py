@@ -194,7 +194,17 @@ def run_hyperband_qd_search(
 
             if evaluated_count == evaluated_before_batch:
                 runtime.write_progress(generated=generated, evaluated=evaluated_count)
-                break
+                if config.n_trials is not None:
+                    break
+                batch_index += 1
+                _refresh_directional_reports(
+                    output=output,
+                    config=config,
+                    runtime=runtime,
+                    generated=generated,
+                    evaluated=evaluated_count,
+                )
+                continue
             rung1_items = _select_rung_promotions(
                 [_RungCandidate(item) for item in directional_passed],
                 fraction=_RUNG1_FRACTION,

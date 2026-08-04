@@ -49,6 +49,7 @@ _SIGNAL_ROW_COLUMNS = [
 ]
 
 GenerateFn = Callable[["StrategyInput"], pd.DataFrame]
+ProgressCallback = Callable[[str, int, int], None]
 SignalRow = dict[str, object]
 
 _CONTEXT_CONFIDENCE_BONUS: dict[str, float] = {
@@ -72,6 +73,12 @@ class SignalComposer:
             **pinescript_filter_catalog(),
         }
         self._dataset_cache: dict[tuple[int, str, str, str], DiscoveryDataset] = {}
+        self._progress_callback: ProgressCallback | None = None
+
+    def set_progress_callback(self, callback: ProgressCallback | None) -> None:
+        """Attach an optional progress callback for owner-facing CLI runs."""
+
+        self._progress_callback = callback
 
     # ------------------------------------------------------------------
     # Public API
@@ -94,22 +101,41 @@ class SignalComposer:
             if isinstance(data, StrategyData):
                 symbol = str(data.metadata.get("symbol", ""))
             window_label = str(getattr(data, "metadata", {}).get("window_label", "dss"))
+            required_timeframes = _required_timeframes(config)
+            total_steps = len(required_timeframes) + 3
+            done = 0
             dataset = self._cached_dataset(
                 data=data,
                 timeframe=config.trigger_instance.timeframe,
                 window_label=window_label,
                 symbol=symbol,
             )
-            filter_datasets = {
-                instance.label: self._cached_dataset(
+            done += 1
+            self._report_progress(
+                f"features {config.trigger_instance.timeframe}",
+                done,
+                total_steps,
+            )
+            filter_datasets: dict[str, DiscoveryDataset] = {}
+            reported_timeframes = {config.trigger_instance.timeframe}
+            for instance in config.filter_instances:
+                filter_datasets[instance.label] = self._cached_dataset(
                     data=data,
                     timeframe=instance.timeframe,
                     window_label=window_label,
                     symbol=symbol,
                 )
-                for instance in config.filter_instances
-            }
-            return self.generate_from_dataset(config, dataset, filter_datasets=filter_datasets)
+                if instance.timeframe not in reported_timeframes:
+                    reported_timeframes.add(instance.timeframe)
+                    done += 1
+                    self._report_progress(f"features {instance.timeframe}", done, total_steps)
+            return self.generate_from_dataset(
+                config,
+                dataset,
+                filter_datasets=filter_datasets,
+                progress_done=done,
+                progress_total=total_steps,
+            )
 
         return generate
 
@@ -131,6 +157,8 @@ class SignalComposer:
         dataset: DiscoveryDataset,
         *,
         filter_datasets: dict[str, DiscoveryDataset] | None = None,
+        progress_done: int = 0,
+        progress_total: int = 0,
     ) -> pd.DataFrame:
         """Generate one DSS signal frame from an already-built shared dataset."""
 
@@ -167,12 +195,16 @@ class SignalComposer:
                 exc_info=True,
             )
             return _empty_signal_df()
+        progress_done += 1
+        self._report_progress("trigger", progress_done, progress_total)
 
         aligned_filter_datasets = _align_filter_datasets(
             dataset=dataset,
             filter_instances=filter_instances,
             filter_datasets=filter_datasets or {},
         )
+        progress_done += 1
+        self._report_progress("filter alignment", progress_done, progress_total)
         surviving: list[SignalRow] = []
         for event in raw_events:
             if not _apply_filters(event, dataset, filter_fns, aligned_filter_datasets):
@@ -190,6 +222,8 @@ class SignalComposer:
                     "tp_price": 0.0,
                 }
             )
+        progress_done += 1
+        self._report_progress("filters", progress_done, progress_total)
 
         if not surviving:
             return _empty_signal_df()
@@ -234,10 +268,28 @@ class SignalComposer:
         self._dataset_cache[key] = dataset
         return dataset
 
+    def _report_progress(self, label: str, done: int, total: int) -> None:
+        if self._progress_callback is not None and total > 0:
+            self._progress_callback(label, done, total)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _required_timeframes(config: TrialConfig) -> tuple[str, ...]:
+    labels: list[str] = []
+    seen: set[str] = set()
+    for timeframe in (
+        config.trigger_instance.timeframe,
+        *(instance.timeframe for instance in config.filter_instances),
+    ):
+        if timeframe in seen:
+            continue
+        seen.add(timeframe)
+        labels.append(timeframe)
+    return tuple(labels)
 
 
 def _apply_filters(

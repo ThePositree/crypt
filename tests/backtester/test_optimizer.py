@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any, ClassVar
 
 import optuna
@@ -12,10 +13,12 @@ from backtester.cli_runner import (
     BacktestArgs,
     OptimizerSearchArgs,
     StrategyConfig,
+    backtest_run_kwargs,
     build_backtest_args,
     run_parameter_optimization,
 )
-from backtester.optimizer import ParameterOptimizer, TargetFunction
+from backtester.fast_exit_optimizer import FastExitGeometryEvaluator
+from backtester.optimizer import ParameterOptimizer, TargetFunction, _mandate_score
 from backtester.strategy import BaseStrategy
 
 
@@ -43,6 +46,86 @@ class _DummyResults:
         "total_trades": 3,
         "sharpe_ratio": 0.1,
     }
+
+
+def test_fast_exit_evaluator_honors_monthly_risk_base_period() -> None:
+    df = pd.DataFrame(
+        {
+            "open": [100.0, 100.0, 100.0, 100.0, 100.0],
+            "high": [101.0, 101.0, 101.0, 101.0, 101.0],
+            "low": [89.0, 89.0, 89.0, 89.0, 89.0],
+            "close": [100.0, 100.0, 100.0, 100.0, 100.0],
+            "signal": [1, 0, 1, 0, 0],
+            "sl_price": [90.0, None, 90.0, None, None],
+        },
+        index=pd.date_range("2025-01-01", periods=5, freq="h", tz="UTC"),
+    )
+    common_kwargs = {
+        "signal_df": df,
+        "initial_capital": 1000.0,
+        "taker_fee": 0.0,
+        "candle_timeframe": "1h",
+        "risk_free_rate_annual": 0.0,
+    }
+
+    monthly = FastExitGeometryEvaluator(
+        **common_kwargs,
+        risk_base_period="monthly",
+    ).evaluate(
+        risk_percent=10.0,
+        rrr=1.0,
+        exit_family="sl_rrr",
+        position_ttl_bars=1,
+        trail_distance_atr=0.0,
+        tp_move_pct=None,
+    )
+    trade = FastExitGeometryEvaluator(
+        **common_kwargs,
+        risk_base_period="trade",
+    ).evaluate(
+        risk_percent=10.0,
+        rrr=1.0,
+        exit_family="sl_rrr",
+        position_ttl_bars=1,
+        trail_distance_atr=0.0,
+        tp_move_pct=None,
+    )
+
+    assert monthly.metrics["final_capital"] == pytest.approx(800.0)
+    assert trade.metrics["final_capital"] == pytest.approx(810.0)
+
+
+def test_fast_exit_evaluator_trailing_activation_is_not_take_profit() -> None:
+    df = pd.DataFrame(
+        {
+            "open": [100.0, 100.0, 110.0, 110.0],
+            "high": [100.0, 110.0, 112.0, 110.0],
+            "low": [100.0, 109.0, 106.0, 110.0],
+            "close": [100.0, 110.0, 107.0, 110.0],
+            "signal": [1, 0, 0, 0],
+            "sl_price": [90.0, None, None, None],
+            "trail_atr": [5.0, 5.0, 5.0, 5.0],
+        },
+        index=pd.date_range("2025-01-01", periods=4, freq="h", tz="UTC"),
+    )
+
+    result = FastExitGeometryEvaluator(
+        signal_df=df,
+        initial_capital=1000.0,
+        taker_fee=0.0,
+        candle_timeframe="1h",
+        risk_base_period="trade",
+        risk_free_rate_annual=0.0,
+    ).evaluate(
+        risk_percent=10.0,
+        rrr=1.0,
+        exit_family="sl_rrr_trailing",
+        position_ttl_bars=3,
+        trail_distance_atr=1.0,
+        tp_move_pct=None,
+    )
+
+    assert result.metrics["final_capital"] == pytest.approx(1070.0)
 
 
 def test_build_backtest_args_accepts_position_ttl_bars_alias() -> None:
@@ -78,6 +161,63 @@ def test_build_backtest_args_accepts_position_ttl_bars_alias() -> None:
     assert args.trail_distance_atr == 0.25
     assert args.trail_activation_rrr == 2.0
     assert args.max_positions == 0
+
+
+def test_backtest_run_kwargs_preserve_ttl_minutes() -> None:
+    args = build_backtest_args(
+        None,
+        candle_timeframe="4h",
+        capital=10_000.0,
+        risk_percent=1.0,
+        rrr=2.0,
+        trail_activation_rrr=0.0,
+        trail_distance_atr=0.0,
+        maker_fee=0.0002,
+        taker_fee=0.0005,
+        ttl=32,
+        ttl_minutes=7_560,
+        max_positions=0,
+        max_allowed_leverage=25.0,
+        max_allowed_margin=1.0,
+        risk_base_period="monthly",
+    )
+
+    kwargs = backtest_run_kwargs(args)
+
+    assert kwargs["position_ttl_bars"] == 32
+    assert kwargs["position_ttl_minutes"] == 7_560
+
+
+def test_build_backtest_args_ignores_null_strategy_file_window_over_cli_window() -> None:
+    args = build_backtest_args(
+        StrategyConfig(
+            name="dummy",
+            version="test",
+            params={},
+            backtest_args={
+                "execution_start": None,
+                "execution_end": None,
+            },
+        ),
+        capital=10_000.0,
+        risk_percent=1.0,
+        rrr=2.0,
+        trail_activation_rrr=0.0,
+        trail_distance_atr=0.0,
+        maker_fee=0.0002,
+        taker_fee=0.0005,
+        ttl=0,
+        ttl_minutes=0,
+        max_positions=0,
+        max_allowed_leverage=25.0,
+        max_allowed_margin=1.0,
+        risk_base_period="monthly",
+        execution_start="2021-12-18T00:00:00Z",
+        execution_end="2026-06-29T14:00:00Z",
+    )
+
+    assert args.execution_start == "2021-12-18T00:00:00Z"
+    assert args.execution_end == "2026-06-29T14:00:00Z"
 
 
 def test_build_backtest_args_uses_flat_dss_params_as_execution_defaults() -> None:
@@ -519,6 +659,16 @@ def test_run_parameter_optimization_exports_trials_and_best_run(
     assert (tmp_path / "trials.csv").exists()
     assert (tmp_path / "best_trial.json").exists()
     assert (tmp_path / "best_geometry_summary.txt").exists()
+    optimized_strategy = json.loads((tmp_path / "optimized_strategy.json").read_text())
+    assert optimized_strategy["name"] == "dummy"
+    assert optimized_strategy["params"] == {"baseline": True}
+    assert optimized_strategy["backtest_args"]["risk_percent"] == pytest.approx(0.75)
+    assert optimized_strategy["backtest_args"]["rrr"] == pytest.approx(1.5)
+    assert optimized_strategy["backtest_args"]["ttl_minutes"] == 30 * 60
+    assert optimized_strategy["backtest_args"]["position_ttl_bars"] == 30
+    assert optimized_strategy["backtest_args"]["exit_geometry"] == "tp_pct"
+    assert optimized_strategy["backtest_args"]["tp_move_pct"] == pytest.approx(0.012)
+    assert optimized_strategy["optuna_source"]["best_trial"] == str(tmp_path / "best_trial.json")
     assert captured["optimizer_kwargs"]["strategy_params"] == {"baseline": True}
     assert captured["optimizer_kwargs"]["risk_percent"] == 0.75
     assert captured["optimizer_kwargs"]["trail_distance_atr_range"] == (1.0, 2.0, 0.5)
@@ -722,10 +872,37 @@ def test_parameter_optimizer_mandate_score_uses_monthly_floor_and_dd(monkeypatch
 
     value = optimizer._objective(trial)
 
-    assert value == pytest.approx(-512.0)
-    assert trial.user_attrs["mandate_score"] == pytest.approx(-512.0)
+    assert value == pytest.approx(-4420.5)
+    assert trial.user_attrs["mandate_score"] == pytest.approx(-4420.5)
     assert trial.user_attrs["mandate_months_passing_floor"] == 1
     assert trial.user_attrs["mandate_months_below_floor"] == 1
     assert trial.user_attrs["mandate_dd_breach_months"] == 1
     assert trial.user_attrs["mandate_sum_capped_monthly_return_pct"] == pytest.approx(8.0)
     assert trial.user_attrs["min_monthly_return"] == pytest.approx(-12.0)
+
+
+def test_mandate_score_prefers_lower_drawdown_when_money_is_still_good() -> None:
+    higher_return_higher_dd = _mandate_score(
+        total_return_pct=67.16,
+        max_drawdown_pct=-6.45,
+        peak_to_trough_drawdown_pct=-24.55,
+        sum_capped_monthly_return_pct=51.79,
+        monthly_shortfall_pct=807.55,
+        dd_excess_pct=0.0,
+        months_below_floor=48,
+        dd_breach_months=4,
+        worst_consecutive_losing_months=3,
+    )
+    lower_return_lower_dd = _mandate_score(
+        total_return_pct=55.0,
+        max_drawdown_pct=-3.5,
+        peak_to_trough_drawdown_pct=-14.0,
+        sum_capped_monthly_return_pct=45.0,
+        monthly_shortfall_pct=850.0,
+        dd_excess_pct=0.0,
+        months_below_floor=48,
+        dd_breach_months=2,
+        worst_consecutive_losing_months=3,
+    )
+
+    assert lower_return_lower_dd > higher_return_higher_dd

@@ -23,6 +23,22 @@ def _h1_signal_frame() -> pd.DataFrame:
     )
 
 
+def _m15_signal_frame() -> pd.DataFrame:
+    index = pd.date_range("2026-01-01", periods=3, freq="15min", tz="UTC")
+    return pd.DataFrame(
+        {
+            "open": [100.0, 100.0, 100.0],
+            "high": [101.0, 125.0, 101.0],
+            "low": [99.0, 85.0, 99.0],
+            "close": [100.0, 100.0, 100.0],
+            "volume": [1.0, 1.0, 1.0],
+            "signal": [1, 0, 0],
+            "sl_price": [90.0, 0.0, 0.0],
+        },
+        index=index,
+    )
+
+
 def _minute_data(*, mark_liquidation: bool = False) -> IntrabarExecutionData:
     index = pd.date_range("2026-01-01", periods=120, freq="1min", tz="UTC")
     last = pd.DataFrame(
@@ -46,6 +62,24 @@ def _minute_data(*, mark_liquidation: bool = False) -> IntrabarExecutionData:
     return IntrabarExecutionData(last_1m=last, mark_1m=mark)
 
 
+def _m15_minute_data() -> IntrabarExecutionData:
+    index = pd.date_range("2026-01-01", periods=30, freq="1min", tz="UTC")
+    last = pd.DataFrame(
+        {
+            "open": 100.0,
+            "high": 101.0,
+            "low": 99.0,
+            "close": 100.0,
+            "volume": 1.0,
+        },
+        index=index,
+    )
+    last.loc[index[15], "high"] = 121.0
+    last.loc[index[16], "low"] = 89.0
+    last.loc[index[17], ["high", "low"]] = [125.0, 85.0]
+    return IntrabarExecutionData(last_1m=last, mark_1m=last.copy())
+
+
 def _sim() -> ExecutionSim:
     return ExecutionSim(
         initial_capital=1_000.0,
@@ -63,6 +97,14 @@ def test_minute_path_resolves_take_profit_before_later_stop() -> None:
     assert trades.loc[0, "exit_reason"] == "take_profit"
     assert trades.loc[0, "exit_price"] == pytest.approx(120.0)
     assert trades.loc[0, "exit_time"] == pd.Timestamp("2026-01-01 01:00:00+00:00")
+
+
+def test_minute_path_supports_15m_execution_frame() -> None:
+    trades = _sim().run(_m15_signal_frame(), intrabar_data=_m15_minute_data())
+
+    assert trades.loc[0, "exit_reason"] == "take_profit"
+    assert trades.loc[0, "exit_price"] == pytest.approx(120.0)
+    assert trades.loc[0, "exit_time"] == pd.Timestamp("2026-01-01 00:15:00+00:00")
 
 
 def test_minute_mark_price_drives_liquidation() -> None:
@@ -90,7 +132,7 @@ def test_minute_execution_rejects_h1_aggregation_mismatch() -> None:
     mismatched_last = data.last_1m.copy()
     mismatched_last.loc[mismatched_last.index[5], "high"] = 999.0
 
-    with pytest.raises(ValueError, match="do not aggregate to execution H1"):
+    with pytest.raises(ValueError, match="do not aggregate to execution OHLCV"):
         _sim().run(
             _h1_signal_frame(),
             intrabar_data=IntrabarExecutionData(
@@ -109,6 +151,22 @@ def test_minute_execution_accepts_exchange_open_aggregation_difference() -> None
         _h1_signal_frame(),
         intrabar_data=IntrabarExecutionData(
             last_1m=different_open,
+            mark_1m=data.mark_1m,
+        ),
+    )
+
+    assert trades.loc[0, "exit_reason"] == "take_profit"
+
+
+def test_minute_execution_accepts_one_tick_high_aggregation_difference() -> None:
+    data = _minute_data()
+    one_tick_higher = data.last_1m.copy()
+    one_tick_higher.loc[one_tick_higher.index[62], "high"] = 125.001
+
+    trades = _sim().run(
+        _h1_signal_frame(),
+        intrabar_data=IntrabarExecutionData(
+            last_1m=one_tick_higher,
             mark_1m=data.mark_1m,
         ),
     )

@@ -12,6 +12,56 @@ Priority labels:
 Read `docs/strategy_benchmark.md` before strategy evaluation. The benchmark is
 the main optimization target, not a hard limit on owner production selection.
 
+## P0 — Make backfill fail when required downloads fail
+
+**What:** make `python -m crypt.backfill` return a non-zero exit code and a
+clear operator error when all required exchange fetches fail or when a requested
+timeframe remains missing after the run.
+
+**Why now:** during DSS v3 portfolio evaluation, a sandboxed backfill attempt
+printed `Backfill complete` after exchange fetch failures and did not populate
+the missing 15m candles. Research/backtest preflight must not treat this as a
+successful data repair.
+
+**Expected gain:** missing-candle recovery becomes trustworthy: expensive DSS,
+backtest, optimizer, and live bootstrap workflows either have the data or stop
+with an exact backfill/error message.
+
+**Acceptance:** failed exchange/network fetches produce a non-zero process
+exit when requested data remains unavailable; successful partial repairs report
+which timeframes were filled and which remain blocked; tests cover all-failed,
+partial-failed, and complete-success backfills.
+
+**Links:** `src/crypt/backfill/__main__.py`,
+`src/backtester/cli_runner.py`, `src/crypt/data/store.py`.
+
+## P1 — Add portfolio marginal-impact gate for DSS candidates
+
+**What:** add an explicit post-Optuna gate that tests promoted DSS candidates
+against the current production portfolio one-by-one and only marks candidates
+portfolio-ready when they improve money/risk metrics.
+
+**Why now:** DSS v3 candidates can pass standalone DSS criteria and Optuna
+replay while still being neutral or negative inside the current shared-capital
+portfolio. The first one-by-one comparison also exposed mixed-timeframe
+composition bugs, so portfolio promotion needs a reproducible current-code
+marginal check rather than trusting standalone edge.
+
+**Expected gain:** DSS can keep discovering standalone entries, while promotion
+decisions become aligned with the owner's actual portfolio account curve.
+
+**Acceptance:** candidate reports include standalone metrics, optimized exit
+geometry, portfolio delta in dollars, return, win rate, profit factor, trade
+count, and both drawdown measures; failing candidates remain archived but are
+not marked portfolio-ready; the gate is reproducible from saved configs and
+metrics.
+
+**Links:** `results/dss_v3_candidate_portfolio_eval_20260804/summary.md`,
+`results/recheck_v6_plus_dssv3_016949_after_event_schedule_fix/20260804_134940`,
+`results/recheck_v6_baseline_after_event_schedule_fix/20260804_135921`,
+`src/backtester/strategies/filtered_donor_portfolio.py`,
+`docs/discovery/direct_signal_search.md`.
+
 ## P1 — Promote stop-loss selection into explicit post-DSS SL families
 
 **What:** make stop-loss placement an explicit execution-geometry family

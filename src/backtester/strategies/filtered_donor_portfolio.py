@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -8,7 +9,6 @@ from typing import Any
 import optuna
 import pandas as pd
 from pandas.testing import assert_frame_equal
-from tqdm.auto import tqdm
 
 from backtester.data_contracts import StrategyData, StrategyInput
 from backtester.router_runtime import ArchivedStrategySpec, build_archived_signal_frames
@@ -74,21 +74,53 @@ class FilteredDonorPortfolioStrategy(BaseStrategy):
             raise ValueError(f"filters reference unknown strategies: {sorted(unknown)}")
         self._progress = bool(params.get("progress", True))
         self._portfolio_id = str(params.get("portfolio_id", "filtered_donor_portfolio"))
-        self._candle_timeframe = str(params.get("candle_timeframe", "H1"))
+        self._candle_timeframe = str(
+            params.get("candle_timeframe") or self._infer_candle_timeframe()
+        )
+        self._progress_callback: Callable[[str, int, int], None] | None = None
         self._cached_specs: tuple[ArchivedStrategySpec, ...] | None = None
         self._live_cached_primary: pd.DataFrame | None = None
         self._live_cached_frames: dict[str, pd.DataFrame] | None = None
 
+    def set_progress_callback(
+        self,
+        callback: Callable[[str, int, int], None] | None,
+    ) -> None:
+        self._progress_callback = callback
+
+    def _infer_candle_timeframe(self) -> str:
+        from backtester.cli_runner import load_strategy_config, strategy_config_candle_timeframe
+        from backtester.data_contracts import timeframe_minutes
+
+        fastest: str | None = None
+        fastest_minutes: int | None = None
+        for path in self._strategy_paths.values():
+            cfg = load_strategy_config(str(path), logger)
+            if cfg is None:
+                continue
+            timeframe = strategy_config_candle_timeframe(cfg)
+            minutes = timeframe_minutes(timeframe)
+            if fastest_minutes is None or minutes < fastest_minutes:
+                fastest = timeframe
+                fastest_minutes = minutes
+        return fastest or "H1"
+
     def generate(self, data: StrategyInput) -> pd.DataFrame:
         primary = data.require_timeframe(self._candle_timeframe) if isinstance(data, StrategyData) else data
+        total_events = len(primary)
+        event_base = 3
+        total_work = event_base + total_events
+        self._report_progress("load donor specs", 0, total_work)
         specs = list(self._get_specs())
         logger.info("Filtered donor portfolio signal preparation starting")
         frames = self._controlled_frames(data=data, primary=primary, specs=specs)
+        self._report_progress("donor signals", 1, total_work)
         catalog_features = _catalog_features(primary)
         frames = {
             strategy_id: frame.join(catalog_features, how="left")
             for strategy_id, frame in frames.items()
         }
+        self._report_progress("catalog features", 2, total_work)
         _validate_filter_features_available(frames, self._filters)
 
         output = primary.copy()
@@ -97,21 +129,20 @@ class FilteredDonorPortfolioStrategy(BaseStrategy):
         output["signal_events"] = [[] for _ in range(len(output))]
         output["portfolio_id"] = self._portfolio_id
 
-        iterator = tqdm(
-            output.index,
-            total=len(output),
-            desc="filtered_donor_portfolio events",
-            unit="bar",
-            disable=not self._progress,
-        )
-        for timestamp in iterator:
+        self._report_progress("portfolio events", event_base, total_work)
+        for offset, timestamp in enumerate(output.index, start=1):
             output.at[timestamp, "signal_events"] = self._events_at(
                 timestamp=timestamp,
                 specs=specs,
                 frames=frames,
                 primary=primary,
             )
+            self._report_progress("portfolio events", event_base + offset, total_work)
         return output
+
+    def _report_progress(self, label: str, done: int, total: int) -> None:
+        if self._progress and self._progress_callback is not None:
+            self._progress_callback(label, done, total)
 
     def generate_latest(self, data: StrategyInput) -> pd.DataFrame:
         """Build only the latest portfolio row with a validated donor-frame cache."""
@@ -133,12 +164,12 @@ class FilteredDonorPortfolioStrategy(BaseStrategy):
             specs=specs,
         )
         timestamp = primary.index[-1]
-        catalog_row = _catalog_features_from_primary_features(dataset.features).loc[[timestamp]]
-        latest_frames = {
-            strategy_id: frame.loc[[timestamp]].join(catalog_row, how="left")
+        catalog_features = _catalog_features_from_primary_features(dataset.features)
+        frames = {
+            strategy_id: frame.join(catalog_features, how="left")
             for strategy_id, frame in frames.items()
         }
-        _validate_filter_features_available(latest_frames, self._filters)
+        _validate_filter_features_available(frames, self._filters)
 
         output = primary.loc[[timestamp]].copy()
         output["signal"] = 0
@@ -148,8 +179,9 @@ class FilteredDonorPortfolioStrategy(BaseStrategy):
                 self._events_at(
                     timestamp=timestamp,
                     specs=specs,
-                    frames=latest_frames,
+                    frames=frames,
                     primary=primary,
+                    allow_future_entry=True,
                 )
             ],
             index=output.index,
@@ -159,7 +191,11 @@ class FilteredDonorPortfolioStrategy(BaseStrategy):
         return output
 
     def _get_specs(self) -> tuple[ArchivedStrategySpec, ...]:
-        from backtester.cli_runner import build_backtest_args, load_strategy_config
+        from backtester.cli_runner import (
+            build_backtest_args,
+            load_strategy_config,
+            strategy_config_candle_timeframe,
+        )
 
         if self._cached_specs is not None:
             return self._cached_specs
@@ -195,6 +231,7 @@ class FilteredDonorPortfolioStrategy(BaseStrategy):
             nested_defaults.update(self._nested_backtest_args)
             args = build_backtest_args(
                 cfg,
+                candle_timeframe=strategy_config_candle_timeframe(cfg),
                 **nested_defaults,
             )
             specs.append(
@@ -355,13 +392,20 @@ class FilteredDonorPortfolioStrategy(BaseStrategy):
         specs: list[ArchivedStrategySpec],
         frames: dict[str, pd.DataFrame],
         primary: pd.DataFrame,
+        allow_future_entry: bool = False,
     ) -> list[dict[str, Any]]:
         events: list[dict[str, Any]] = []
         for spec in specs:
             frame = frames[spec.strategy_id]
-            if timestamp not in frame.index:
+            donor_signal = _donor_signal_for_portfolio_emit(
+                frame=frame,
+                primary_index=primary.index,
+                emit_timestamp=timestamp,
+                allow_future_entry=allow_future_entry,
+            )
+            if donor_signal is None:
                 continue
-            row = frame.loc[timestamp]
+            donor_signal_time, row = donor_signal
             signal = int(row.get("signal", 0))
             if signal not in (1, -1):
                 continue
@@ -369,6 +413,8 @@ class FilteredDonorPortfolioStrategy(BaseStrategy):
                 continue
             policy = _tp_policy_for_strategy(self._tp_policy, spec.strategy_id)
             event = _event_from_signal_row(row, spec, tp_policy=policy)
+            event.pop("entry_price", None)
+            event["donor_signal_time"] = donor_signal_time.isoformat()
             event["tp_last_touch_bars"] = _last_tp_touch_bars(
                 primary=primary,
                 timestamp=timestamp,
@@ -562,6 +608,58 @@ def _validate_filter_features_available(
         )
 
 
+def _donor_signal_for_portfolio_emit(
+    *,
+    frame: pd.DataFrame,
+    primary_index: pd.Index,
+    emit_timestamp: pd.Timestamp,
+    allow_future_entry: bool = False,
+) -> tuple[pd.Timestamp, pd.Series] | None:
+    """Return the donor signal row whose standalone next-bar entry matches this emit bar."""
+
+    try:
+        emit_pos = primary_index.get_loc(emit_timestamp)
+    except KeyError:
+        return None
+    if isinstance(emit_pos, slice):
+        return None
+    if emit_pos + 1 < len(primary_index):
+        intended_entry_time = pd.Timestamp(primary_index[emit_pos + 1])
+    elif allow_future_entry:
+        primary_step = _infer_index_step(primary_index)
+        if primary_step is None:
+            return None
+        intended_entry_time = pd.Timestamp(emit_timestamp) + primary_step
+    else:
+        return None
+    try:
+        donor_entry_pos = frame.index.get_loc(intended_entry_time)
+    except KeyError:
+        if not allow_future_entry:
+            return None
+        donor_step = _infer_index_step(frame.index)
+        if donor_step is None:
+            return None
+        donor_signal_pos = int(frame.index.searchsorted(intended_entry_time, side="left")) - 1
+        if donor_signal_pos < 0:
+            return None
+        donor_signal_time = pd.Timestamp(frame.index[donor_signal_pos])
+        if donor_signal_time + donor_step != intended_entry_time:
+            return None
+        return donor_signal_time, frame.iloc[donor_signal_pos]
+    if isinstance(donor_entry_pos, slice) or donor_entry_pos <= 0:
+        return None
+    donor_signal_pos = int(donor_entry_pos) - 1
+    donor_signal_time = pd.Timestamp(frame.index[donor_signal_pos])
+    return donor_signal_time, frame.iloc[donor_signal_pos]
+
+
+def _infer_index_step(index: pd.Index) -> pd.Timedelta | None:
+    if len(index) < 2:
+        return None
+    return pd.Timestamp(index[-1]) - pd.Timestamp(index[-2])
+
+
 def _event_from_signal_row(
     row: pd.Series,
     spec: ArchivedStrategySpec,
@@ -577,6 +675,7 @@ def _event_from_signal_row(
         "risk_percent": float(getattr(spec.execution, "risk_percent", 1.0)),
         "rrr": float(getattr(spec.execution, "rrr", 2.0)),
         "position_ttl_bars": int(getattr(spec.execution, "ttl", 0)),
+        "position_ttl_minutes": int(getattr(spec.execution, "ttl_minutes", 0)),
         "trail_activation_rrr": float(getattr(spec.execution, "trail_activation_rrr", 0.0)),
         "trail_distance_atr": float(getattr(spec.execution, "trail_distance_atr", 0.0)),
         "exit_geometry": str(getattr(spec.execution, "exit_geometry", "sl_rrr")),

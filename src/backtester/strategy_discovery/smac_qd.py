@@ -253,7 +253,23 @@ def run_smac_qd_search(
                 observations=len(observations),
             )
             if not proposals:
-                break
+                if config.n_trials is not None:
+                    break
+                proposals = [
+                    _SMACProposal(
+                        candidate=sample_random_directional_candidate(
+                            search_space=search_space,
+                            candidate_id=f"smac_fallback_{attempted + idx + 1:06d}",
+                            generation=generation,
+                            max_filters=config.max_filters,
+                            seed=config.seed + (attempted + idx + 1) * 1009,
+                        ),
+                        predicted_mean=0.0,
+                        predicted_std=0.0,
+                        acquisition=0.0,
+                    )
+                    for idx in range(batch_size)
+                ]
 
             for proposal in proposals:
                 attempted += 1
@@ -326,7 +342,17 @@ def run_smac_qd_search(
 
             if evaluated_count == evaluated_before_batch:
                 runtime.write_progress(generated=generated, evaluated=evaluated_count)
-                break
+                if config.n_trials is not None:
+                    break
+                generation += 1
+                _refresh_directional_reports(
+                    output=output,
+                    config=config,
+                    runtime=runtime,
+                    generated=generated,
+                    evaluated=evaluated_count,
+                )
+                continue
             if _should_refit_surrogate(surrogate, evaluated_count):
                 _fit_surrogate(surrogate, encoder, observations)
             generation += 1

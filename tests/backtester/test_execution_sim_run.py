@@ -90,6 +90,29 @@ def test_per_signal_ttl_overrides_simulator_default() -> None:
     assert trades.iloc[0]["position_ttl_bars"] == 1
 
 
+def test_per_signal_ttl_minutes_take_precedence_over_legacy_bars() -> None:
+    df = _base_df(
+        opens=[100.0, 100.0, 100.0, 100.0, 100.0],
+        highs=[100.5, 100.5, 100.5, 100.5, 100.5],
+        lows=[99.5, 99.5, 99.5, 99.5, 99.5],
+        closes=[100.0, 100.0, 100.0, 100.0, 100.0],
+        signals=[1, 0, 0, 0, 0],
+        sl_prices=[90.0, 90.0, 90.0, 90.0, 90.0],
+        freq="h",
+    )
+    df["position_ttl_bars"] = 1
+    df["position_ttl_minutes"] = 180
+
+    trades = ExecutionSim(initial_capital=10_000.0).run(df)
+
+    assert len(trades) == 1
+    trade = trades.iloc[0]
+    assert trade["exit_reason"] == "ttl_expired"
+    assert trade["holding_bars"] == 3
+    assert trade["position_ttl_bars"] == 1
+    assert trade["position_ttl_minutes"] == 180
+
+
 def test_signal_events_open_multiple_positions_on_one_bar() -> None:
     idx = pd.date_range("2026-01-01", periods=3, freq="D")
     df = pd.DataFrame(
@@ -1284,6 +1307,7 @@ def test_trades_dataframe_columns_and_types():
         "capital_after",
         "holding_bars",
         "position_ttl_bars",
+        "position_ttl_minutes",
         "position_group",
         "leverage",
         "locked_margin",

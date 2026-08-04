@@ -6,6 +6,188 @@ Format: newest on top, date in `YYYY-MM-DD`.
 
 ---
 
+## 2026-08-04 — DSS v3 portfolio composition audit fixes
+
+- Investigated why DSS v3 candidates looked profitable standalone but hurt the
+  v6 filtered donor portfolio when mounted one by one.
+- Fixed `ExecutionSim` TTL semantics for mixed-timeframe strategy composition:
+  `position_ttl_minutes` is now a first-class execution field and takes
+  precedence over legacy `position_ttl_bars`; TTL expiry is evaluated by clock
+  time, not by the outer simulator bar count.
+- Propagated `position_ttl_minutes` through `Backtester.run`,
+  `backtest_run_kwargs`, filtered donor portfolio signal events, promoted
+  router replay rows, and shadow portfolio entry contexts.
+- Fixed `filtered_donor_portfolio` timeframe inference so an all-H4 portfolio
+  uses H4 instead of falling back to H1.
+- Fixed DSS incremental replay parity: nested DSS strategies now build
+  per-filter timeframe datasets before calling `SignalComposer`, matching the
+  standalone `DSSStrategy.generate()` path.
+- Fixed DSS incremental trigger replay parity: nested DSS strategies now also
+  build the trigger `DiscoveryDataset` on the trigger timeframe instead of
+  accidentally reusing the portfolio outer timeframe.
+- Fixed mixed-timeframe portfolio event scheduling. A slower donor signal is
+  now emitted on the outer bar immediately before the donor's own next-bar
+  entry time; for example, an H4 donor signal at `20:00` mounted into an H1
+  portfolio emits at `23:00` and enters at `00:00`, matching standalone H4
+  next-bar semantics. Signal-event exports include `donor_signal_time` for
+  auditability.
+- Fixed `build_backtest_args` so `null` values from strategy JSON
+  `backtest_args` no longer wipe an execution window already derived from CLI
+  `--from/--to`.
+- Fixed CLI timeframe resolution precedence so an explicit portfolio
+  `params.candle_timeframe` or strategy `backtest_args.candle_timeframe` wins
+  before nested donor inference.
+- Added regression tests for TTL-minute precedence, `ttl_minutes` propagation,
+  portfolio donor timeframe inference, DSS portfolio event TTL preservation,
+  null strategy-file execution windows, explicit portfolio timeframe
+  precedence, and slower-donor event scheduling.
+- Verified `dssv3_016949` standalone replay and single-donor portfolio replay
+  now match on `2021-12-18T00:00:00Z` to `2026-06-29T14:00:00Z`: `174`
+  trades, `$12,265.75` final capital, `22.66%` return, and `-14.56%`
+  peak-to-trough drawdown. Earlier DSS v3 one-by-one portfolio comparison
+  numbers should be recomputed before making promotion decisions.
+- Rechecked `dssv3_016949` as a production-like single donor after the
+  event-schedule fix using H1 outer candles plus 1m intrabar execution. It
+  finished at `$11,382.34` (`13.82%`), with `176` trades, `6.25%` win rate,
+  `1.22` profit factor, `-3.08%` drawdown below start, and `-18.70%`
+  peak-to-trough drawdown. This is lower than H4 bar-close standalone but no
+  longer suffers from early H1 entries.
+- Rechecked `v6_plus_dssv3_016949` after the event-schedule fix on the same
+  window. It finished at `$1,169,478.35` (`11594.78%`), with `1678` trades,
+  `32.80%` win rate, `1.35` profit factor, `-0.85%` drawdown below start, and
+  `-26.75%` peak-to-trough drawdown. The matching current-code baseline v6
+  finished at `$1,194,926.04` (`11849.26%`), with `1544` trades, `35.06%` win
+  rate, `1.37` profit factor, `-0.53%` drawdown below start, and `-26.87%`
+  peak-to-trough drawdown. The candidate is therefore only slightly negative
+  marginally (`-$25,447.69`) instead of the earlier invalid `-$302k`/`-$87k`
+  conclusions.
+
+## 2026-08-04 — DSS v3 candidate portfolio evaluation
+
+- Evaluated all six currently promoted DSS v3 candidates from
+  `results/dss_v3_sol_all_endless_wr45_balanced_v4` through the downstream
+  path: Optuna geometry search, standalone best-run backtest, and one-by-one
+  addition to the current archived production v6 filtered donor portfolio.
+- Added `optimized_strategy.json` export to `backtester optimize`, so an
+  optimizer result can be replayed or mounted into a portfolio without
+  hand-copying `best_trial.json` parameters.
+- Fixed timeframe inference for `filtered_donor_portfolio`: a portfolio now
+  infers the fastest nested donor execution timeframe when
+  `params.candle_timeframe` is absent, and each nested donor builds its
+  execution args from its own timeframe rather than inheriting the portfolio
+  timeframe.
+- Fixed minute intrabar execution validation for non-H1 execution candles:
+  15m/H4/etc. strategies now validate 1m coverage against their own candle
+  intervals instead of assuming H1 boundaries.
+- Made intrabar 1m slicing use timestamp intervals (`current_time` to
+  `next_time`) instead of deriving windows from bar index position. This keeps
+  minute execution correct when the execution timeframe is not H1.
+- Replaced the filtered donor portfolio's direct `tqdm` event loop with the
+  shared backtester progress callback, so long portfolio signal generation
+  reports through normal CLI logs instead of noisy terminal progress rows.
+- Backfilled and verified missing SOL-USDT-SWAP 15m candles for
+  `2025-07-01` through `2026-06-30`; 15m/H1/H4/1d and 1m execution data are
+  now continuous through the evaluation window.
+- Baseline v6 on `2021-12-18T00:00:00Z` to `2026-06-29T14:00:00Z` remains
+  `$1,194,926.04` final capital, `11849.26%` return, `1544` trades, `35.06%`
+  win rate, `1.37` profit factor, and `-26.87%` peak-to-trough drawdown.
+- None of the six DSS v3 candidates improved the v6 portfolio when added
+  one-by-one without extra portfolio filters. The best added variant was
+  `dssv3_016949` at `$892,041.06`, still `$302,884.98` below baseline with
+  worse drawdown (`-29.42%` vs `-26.87%`).
+- Wrote evaluation artifacts:
+  `results/dss_v3_candidate_portfolio_eval_20260804/summary.csv` and
+  `results/dss_v3_candidate_portfolio_eval_20260804/summary.md`.
+
+## 2026-08-04 — Backtest and Optuna progress logs
+
+- Added shared elapsed/rate/ETA progress logging for long CLI workflows.
+- Updated `mandate_score` from a strict monthly-floor penalty into a
+  money/drawdown-aware optimizer objective. The new score directly rewards
+  total return, penalizes drawdown below initial capital non-linearly, penalizes
+  peak-to-trough drawdown, and keeps monthly-floor diagnostics as softer
+  penalties so sparse and medium-frequency DSS v3 candidates are not flattened
+  into equivalent bad scores.
+- `backtester run` now reports strategy-signal generation time and simulation
+  progress by bars with ETA, while keeping optimizer-internal backtests quiet.
+- Added a heartbeat for strategy signal generation, so long `strategy.generate`
+  phases report elapsed time every 10 seconds instead of leaving the terminal
+  silent until signals finish.
+- Added real DSS signal-generation progress inside `SignalComposer`: feature
+  builds by timeframe, trigger, filter alignment, and filtering are now reported
+  as measurable steps with elapsed time and ETA.
+- Added in-process discovery dataset/feature caching for DSS timeframe
+  datasets, and made DSS Optuna signal caching ignore exit geometry because DSS
+  signals do not depend on RRR/TP/trailing settings. Verified that the second
+  Optuna trial reuses signals and that `best_run` export hits the same cache.
+- `backtester optimize` now suppresses Optuna per-trial INFO spam and reports
+  owner-readable trial progress with elapsed time, trial rate, ETA, and current
+  best value.
+- Compacted DSS strategy CLI summaries so large trigger/filter parameter
+  dictionaries no longer dominate the command output.
+- Optimized DSS discovery feature generation by caching timeframe datasets
+  in-process and vectorizing the slow rolling linear regression, SMC
+  order-block state, Supertrend, and ATR trailing-stop calculations. On the
+  `smac_018020` DSS v3 smoke, signal generation dropped from roughly
+  `48-54s` to `14s` while preserving the same `$10,802.32` final capital,
+  `8.02%` return, `306` trades, `43.46%` win rate, and `1.04` profit factor.
+- Added a native fixed-entry fast exit search for DSS optimizer runs where
+  `strategy_param_search=False`. The command now builds DSS signals once,
+  ranks exit family/RRR/TTL/risk/trailing/TP choices without Optuna
+  `Study/Trial` overhead or full `ExecutionSim` scans per trial, and still
+  exports `best_run` through the full backtester. A 5000-trial smoke completed
+  in `33s` end-to-end after the cold signal build; a 100-trial smoke exported a
+  full best run with `$16,058.90` final capital, `60.59%` return, `306` trades,
+  `22.22%` win rate, and `1.28` profit factor. Standard non-DSS optimization
+  keeps the previous Optuna TPE/Hyperband behavior.
+- Fixed `backtester run` CLI override precedence for DSS candidate JSONs:
+  explicit `--risk-percent`, `--rrr`, `--ttl-minutes`, trailing, and related
+  execution flags now override DSS JSON defaults instead of being overwritten
+  by `params`. Replaying the `smac_018020` optimizer winner now matches the
+  optimizer `best_run`: `$15,638.10` final capital, `56.38%` return, `306`
+  trades, `19.93%` win rate, and `1.17` profit factor.
+- Fixed DSS fast optimizer scoring to honor `risk_base_period` the same way as
+  `ExecutionSim`. The previous native fast path always sized risk from current
+  capital, which inflated high-risk `tp_pct` proxy returns under the default
+  monthly risk base and could mislead `mandate_score`. A 50k smoke after the
+  fix selected `sl_rrr`, `rrr=9.0`, `position_ttl_minutes=3120`,
+  `risk_percent=0.5`; fast proxy estimated `72.10%` return and the full
+  best-run backtest produced `$16,716.41`, `67.16%` return, `306` trades,
+  `22.22%` win rate, and `1.31` profit factor.
+- Replaced the native DSS fast optimizer's pure random scan with an adaptive
+  sampler: random warmup, top-128 elite local mutations, parameter dedup, and
+  20% continued random exploration. Progress logs now include unique parameter
+  count and sample-source counts. On `smac_018020`, adaptive search reached the
+  previous random-50k best score by about 12k trials while preserving the same
+  full best-run result.
+- Made the native fast optimizer's elite archive behavior-diverse by tracking
+  unique money/mandate outcomes instead of letting equivalent parameter rows
+  fill the whole top archive.
+- Fixed native fast `sl_rrr_trailing` evaluation to match the full simulator:
+  invalid entry ATR now blocks the entry, activation no longer counts as fixed
+  take-profit when activation and TP are the same level, and trailing stops use
+  adverse gap-through fills. This removed a false trailing winner that proxy
+  scored near `72%` while full `ExecutionSim` produced only `23.48%`.
+
+## 2026-08-04 — DSS v3 candidate optimizer/backtest smoke
+
+- Verified the top DSS v3 promoted candidate
+  `smac_018020_pt_ps_smc_order_block_retest` through the downstream pipeline.
+- `backtester optimize` accepted the DSS v3 JSON directly, inferred
+  `Candle timeframe: 15m` from candidate metadata, and produced
+  `best_trial.json`, `best_geometry_summary.txt`, and `best_run/`.
+- One-trial Optuna smoke result chose `tp_pct`, `rrr=2.0`,
+  `position_ttl_minutes=3060`, `risk_percent=0.5`, and `tp_move_pct=0.072`;
+  the best run had `$16,821.00` final capital, `68.21%` return, `306` trades,
+  `16.34%` win rate, and `1.23` profit factor.
+- `backtester run` accepted the same DSS v3 JSON directly, inferred
+  `Candle timeframe: 15m`, and completed with `$10,802.32` final capital,
+  `8.02%` return, `306` trades, `43.46%` win rate, and `1.04` profit factor.
+- Fixed endless DSS backend exhaustion handling: a batch containing only
+  already-seen candidates no longer makes an endless backend exit with status
+  `stopped`. Bounded searches keep the previous stop behavior. Verified a
+  bounded all-backend matrix smoke after the loop fix.
+
 ## 2026-08-03 — Production v6 regression audit
 
 - Re-ran and fixed the current production strategy regression for
@@ -34,6 +216,10 @@ Format: newest on top, date in `YYYY-MM-DD`.
 - Fixed DSS matrix report refresh crashes on large `signal_identity_keys`
   CSV fields by raising the Python CSV field-size limit before reading DSS
   viability/ranked files. Verified a bounded all-backend matrix smoke.
+- Reduced endless DSS CSV bloat by writing full `signal_identity_keys` only for
+  promoted rows; rejected rows keep `signal_fingerprint` and `signal_set_size`.
+  Compacted `results/dss_v3_sol_all_endless_wr45_balanced_v4` from `7.5G` to
+  `400M` while preserving the four promoted candidate exports.
 
 ## 2026-08-03 — DSS v3 audit fixes
 

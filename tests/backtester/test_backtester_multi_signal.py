@@ -14,6 +14,7 @@ from backtester.strategies.filtered_donor_portfolio import (
     FilteredDonorPortfolioStrategy,
     PortfolioFilterRule,
     _catalog_features,
+    _donor_signal_for_portfolio_emit,
     _validate_filter_features_available,
 )
 from backtester.tester import Backtester
@@ -107,6 +108,35 @@ def test_filtered_portfolio_rejects_unavailable_filter_features() -> None:
 
     with pytest.raises(ValueError, match="alpha: confidence"):
         _validate_filter_features_available(frames, filters)
+
+
+def test_filtered_portfolio_defers_slow_donor_signal_to_its_next_entry_bar() -> None:
+    primary_index = pd.date_range("2026-01-01 00:00", periods=10, freq="h", tz="UTC")
+    donor_index = pd.date_range("2026-01-01 00:00", periods=3, freq="4h", tz="UTC")
+    frame = pd.DataFrame(
+        {
+            "signal": [0, -1, 0],
+            "sl_price": [0.0, 105.0, 0.0],
+        },
+        index=donor_index,
+    )
+
+    assert _donor_signal_for_portfolio_emit(
+        frame=frame,
+        primary_index=primary_index,
+        emit_timestamp=pd.Timestamp("2026-01-01 04:00", tz="UTC"),
+    ) is None
+
+    scheduled = _donor_signal_for_portfolio_emit(
+        frame=frame,
+        primary_index=primary_index,
+        emit_timestamp=pd.Timestamp("2026-01-01 07:00", tz="UTC"),
+    )
+
+    assert scheduled is not None
+    signal_time, row = scheduled
+    assert signal_time == pd.Timestamp("2026-01-01 04:00", tz="UTC")
+    assert int(row["signal"]) == -1
 
 
 def test_filtered_portfolio_passes_nested_backtest_defaults_to_donor_replay(

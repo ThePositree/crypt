@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -103,7 +103,33 @@ def strategy_config_candle_timeframe(
     if timeframe is not None:
         return timeframe
 
+    if cfg.name == "filtered_donor_portfolio":
+        portfolio_timeframe = _portfolio_candle_timeframe(cfg)
+        if portfolio_timeframe is not None:
+            return portfolio_timeframe
+
     return legacy_default
+
+
+def _portfolio_candle_timeframe(cfg: StrategyConfig) -> str | None:
+    strategy_paths = _mapping(_mapping(cfg.params).get("strategy_paths"))
+    if not strategy_paths:
+        return None
+
+    fastest: str | None = None
+    fastest_minutes: int | None = None
+    for raw_path in strategy_paths.values():
+        if not isinstance(raw_path, str):
+            continue
+        nested = load_strategy_config(raw_path, logging.getLogger(__name__))
+        if nested is None:
+            continue
+        timeframe = strategy_config_candle_timeframe(nested)
+        minutes = timeframe_minutes(timeframe)
+        if fastest_minutes is None or minutes < fastest_minutes:
+            fastest = timeframe
+            fastest_minutes = minutes
+    return fastest
 
 
 def dss_candidate_candle_timeframe(strategy_path: str | Path) -> str:
@@ -410,15 +436,26 @@ def build_backtest_args(
     BacktestArgs
         Merged arguments for :meth:`backtester.tester.Backtester.run`.
     """
+    explicit_cli_keys = set(cli_kwargs.pop("_explicit_cli_keys", ()))
     kwargs = dict(cli_kwargs)
     if cfg is not None:
-        kwargs.update(_strategy_param_backtest_overrides(cfg))
+        for key, value in _strategy_param_backtest_overrides(cfg).items():
+            if key not in explicit_cli_keys:
+                kwargs[key] = value
         for source_key, target_key in _BACKTEST_ARG_ALIASES.items():
-            if source_key in cfg.backtest_args and target_key not in cfg.backtest_args:
+            if (
+                source_key in cfg.backtest_args
+                and target_key not in cfg.backtest_args
+                and target_key not in explicit_cli_keys
+            ):
                 kwargs[target_key] = cfg.backtest_args[source_key]
         for key in _BACKTEST_ARG_KEYS:
-            if key in cfg.backtest_args:
-                kwargs[key] = cfg.backtest_args[key]
+            if key not in cfg.backtest_args or key in explicit_cli_keys:
+                continue
+            value = cfg.backtest_args[key]
+            if value is None and kwargs.get(key) is not None:
+                continue
+            kwargs[key] = value
     explicit_ttl_minutes = int(kwargs.get("ttl_minutes", 0))
     if explicit_ttl_minutes > 0:
         ttl_minutes = explicit_ttl_minutes
@@ -437,11 +474,39 @@ def log_strategy_info(cfg: StrategyConfig, logger: logging.Logger) -> None:
     if len(cfg.params) == 0:
         logger.info("    ⚠️ No strategy parameters found")
 
+    if cfg.name == "dss_strategy":
+        trigger_instance = _mapping(cfg.params.get("trigger_instance"))
+        trigger_name = trigger_instance.get("name") or cfg.params.get("trigger_name")
+        trigger_timeframe = trigger_instance.get("timeframe") or cfg.params.get("trigger_timeframe")
+        if trigger_name:
+            suffix = f"@{trigger_timeframe}" if trigger_timeframe else ""
+            logger.info("    trigger: %s%s", trigger_name, suffix)
+        filter_names = cfg.params.get("filter_names")
+        if isinstance(filter_names, list):
+            logger.info("    filters: %s", _compact_log_value(filter_names))
+        for key in (
+            "risk_percent",
+            "rrr",
+            "position_ttl_minutes",
+            "directional_sl_move_pct",
+            "atr_sl_mult",
+        ):
+            if key in cfg.params:
+                logger.info("    %s: %s", key, _compact_log_value(cfg.params[key]))
+        return
+
     for key, value in cfg.params.items():
         if isinstance(value, float):
             logger.info("    %s: %.4f", key, value)
         else:
-            logger.info("    %s: %s", key, value)
+            logger.info("    %s: %s", key, _compact_log_value(value))
+
+
+def _compact_log_value(value: object, *, max_len: int = 180) -> str:
+    text = str(value)
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 3] + "..."
 
 
 def load_ohlcv_via_loader(
@@ -651,6 +716,7 @@ def backtest_run_kwargs(args: BacktestArgs) -> dict[str, Any]:
         "trail_distance_atr": args.trail_distance_atr,
         "max_positions": args.max_positions,
         "position_ttl_bars": args.ttl,
+        "position_ttl_minutes": args.ttl_minutes,
         "max_allowed_leverage": args.max_allowed_leverage,
         "max_allowed_margin": args.max_allowed_margin,
         "risk_base_period": args.risk_base_period,
@@ -680,11 +746,12 @@ def run_backtest(
     strategy: BaseStrategy,
     args: BacktestArgs,
     ohlcv: pd.DataFrame | None = None,
+    progress: bool = False,
 ) -> Any:
     """Run the backtest and return an analyzer instance."""
 
     bt = Backtester(df, strategy.generate, ohlcv=ohlcv)
-    return bt.run(**backtest_run_kwargs(args))
+    return bt.run(**backtest_run_kwargs(args), progress=progress)
 
 
 def _target_function(name: str) -> TargetFunction:
@@ -867,6 +934,25 @@ def run_parameter_optimization(
     )
     logger.info("Best geometry summary saved to: %s", summary_path)
 
+    optimized_strategy_path = output_path / "optimized_strategy.json"
+    optimized_strategy_path.write_text(
+        json.dumps(
+            _optimized_strategy_payload(
+                cfg=cfg,
+                best_params=best_params,
+                best_trial=best_trial,
+                best_strategy_params=best_strategy_params,
+                best_args=best_args,
+                candle_timeframe=candle_timeframe,
+                output_path=output_path,
+            ),
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    logger.info("Optimized strategy saved to: %s", optimized_strategy_path)
+
     if not optimizer_args.export_best_run:
         return
 
@@ -876,14 +962,21 @@ def run_parameter_optimization(
         structural_sl_mode=best_args.structural_sl_mode,
         min_tp_move_pct=best_args.min_tp_move_pct,
     )
+    best_cache_execution_context = (
+        best_execution_context
+        if getattr(strategy_cls, "signals_depend_on_execution_context", True)
+        else None
+    )
     cached_best_signals = optimizer.cached_signals_for_params(
         best_strategy_params,
-        execution_context=best_execution_context,
+        execution_context=best_cache_execution_context,
     )
     if cached_best_signals is None:
+        logger.info("Best-run signal cache miss; regenerating strategy signals")
         best_strategy = strategy_cls(best_strategy_params)
         best_results = run_backtest(df=df, strategy=best_strategy, args=best_args, ohlcv=ohlcv)
     else:
+        logger.info("Best-run signal cache hit; reusing optimized trial signals")
         best_results = Backtester(df, lambda _df: cached_best_signals.copy(), ohlcv=ohlcv).run(
             **backtest_run_kwargs(best_args),
         )
@@ -892,6 +985,37 @@ def run_parameter_optimization(
         ohlcv_df=ohlcv,
     )
     logger.info("Best-run diagnostics saved to: %s", output_path / "best_run")
+
+
+def _optimized_strategy_payload(
+    *,
+    cfg: StrategyConfig,
+    best_params: dict[str, Any],
+    best_trial: Any,
+    best_strategy_params: dict[str, Any],
+    best_args: BacktestArgs,
+    candle_timeframe: str,
+    output_path: Path,
+) -> dict[str, Any]:
+    backtest_args = asdict(best_args)
+    backtest_args["position_ttl_bars"] = best_args.ttl
+    backtest_args["position_ttl_minutes"] = best_args.ttl_minutes
+    backtest_args["execution_timeframe"] = candle_timeframe
+    return {
+        "name": cfg.name,
+        "version": f"{cfg.version}-optuna-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+        "params": best_strategy_params,
+        "backtest_args": backtest_args,
+        "optuna_source": {
+            "output": str(output_path),
+            "best_trial": str(output_path / "best_trial.json"),
+            "trials_csv": str(output_path / "trials.csv"),
+            "best_run": str(output_path / "best_run"),
+            "value": best_trial.value,
+            "params": best_params,
+            "user_attrs": dict(best_trial.user_attrs),
+        },
+    }
 
 
 def _best_geometry_summary(*, best_trial: Any, best_args: BacktestArgs) -> str:

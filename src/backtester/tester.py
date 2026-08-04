@@ -1,4 +1,5 @@
 import logging
+import time
 from collections.abc import Callable
 
 import pandas as pd
@@ -9,6 +10,7 @@ from backtester.execution_context import (
     execution_context_from_run_kwargs,
 )
 from backtester.execution_sim import ExecutionSim
+from backtester.progress import HeartbeatLogger, ProgressLogger, format_duration
 from backtester.results_analyzer import ResultsAnalyzer
 
 
@@ -154,6 +156,7 @@ class Backtester:
         trail_distance_atr: float = 0.0,
         max_positions: int = 5,
         position_ttl_bars: int = 20,
+        position_ttl_minutes: int = 0,
         min_net_exposure: float = 0.01,
         max_allowed_leverage: float = 25.0,
         max_allowed_margin: float = 1.0,
@@ -176,6 +179,8 @@ class Backtester:
         risk_free_rate_annual: float = 0.02,
         execution_start: str | pd.Timestamp | None = None,
         execution_end: str | pd.Timestamp | None = None,
+        progress: bool = False,
+        log_summary: bool = True,
     ) -> ResultsAnalyzer:
         """
         Runs backtest for a single trading instrument using risk-based position sizing.
@@ -257,35 +262,37 @@ class Backtester:
         Capital is shared across all trades of the instrument.
         This models real-world portfolio management scenarios.
         """
-        self._logger.info("Starting backtest for a single asset...")
-        self._logger.info("Parameters:")
-        for param, value in [
-            ("Initial Capital", initial_capital),
-            ("Risk Percent", risk_percent),
-            ("RRR", rrr),
-            ("Trail Activation RRR", trail_activation_rrr),
-            ("Trail Distance ATR", trail_distance_atr),
-            ("Taker Fee", taker_fee),
-            ("Maker Fee", maker_fee),
-            ("Max Positions", max_positions),
-            ("Position TTL", position_ttl_bars),
-            ("Min Net Exposure", min_net_exposure),
-            ("Max Allowed Leverage", max_allowed_leverage),
-            ("Max Allowed Margin", max_allowed_margin),
-            ("Risk Base Period", risk_base_period),
-            ("Capital Sweep", capital_sweep),
-            ("Instrument Precision", instrument_precision_policy or "continuous"),
-            ("Intrabar Execution", intrabar_execution_timeframe or "bar-close"),
-        ]:
-            self._logger.info("  %s: %s", param, value)
-        if max_daily_profit is not None:
-            self._logger.info("  Max Daily Profit (RRR): %s", max_daily_profit)
-        if max_daily_loss is not None:
-            self._logger.info("  Max Daily Loss (RRR): %s", max_daily_loss)
-        if trading_begin is not None:
-            self._logger.info("  Trading Begin (hour): %s", trading_begin)
-        if trading_end is not None:
-            self._logger.info("  Trading End (hour): %s", trading_end)
+        if log_summary:
+            self._logger.info("Starting backtest for a single asset...")
+            self._logger.info("Parameters:")
+            for param, value in [
+                ("Initial Capital", initial_capital),
+                ("Risk Percent", risk_percent),
+                ("RRR", rrr),
+                ("Trail Activation RRR", trail_activation_rrr),
+                ("Trail Distance ATR", trail_distance_atr),
+                ("Taker Fee", taker_fee),
+                ("Maker Fee", maker_fee),
+                ("Max Positions", max_positions),
+                ("Position TTL Bars", position_ttl_bars),
+                ("Position TTL Minutes", position_ttl_minutes),
+                ("Min Net Exposure", min_net_exposure),
+                ("Max Allowed Leverage", max_allowed_leverage),
+                ("Max Allowed Margin", max_allowed_margin),
+                ("Risk Base Period", risk_base_period),
+                ("Capital Sweep", capital_sweep),
+                ("Instrument Precision", instrument_precision_policy or "continuous"),
+                ("Intrabar Execution", intrabar_execution_timeframe or "bar-close"),
+            ]:
+                self._logger.info("  %s: %s", param, value)
+            if max_daily_profit is not None:
+                self._logger.info("  Max Daily Profit (RRR): %s", max_daily_profit)
+            if max_daily_loss is not None:
+                self._logger.info("  Max Daily Loss (RRR): %s", max_daily_loss)
+            if trading_begin is not None:
+                self._logger.info("  Trading Begin (hour): %s", trading_begin)
+            if trading_end is not None:
+                self._logger.info("  Trading End (hour): %s", trading_end)
 
         sim = ExecutionSim(
             initial_capital=initial_capital,
@@ -297,6 +304,7 @@ class Backtester:
             trail_distance_atr=trail_distance_atr,
             max_positions=max_positions,
             position_ttl_bars=position_ttl_bars,
+            position_ttl_minutes=position_ttl_minutes,
             min_net_exposure=min_net_exposure,
             max_allowed_leverage=max_allowed_leverage,
             max_allowed_margin=max_allowed_margin,
@@ -326,12 +334,62 @@ class Backtester:
         )
         signaled_df = pd.DataFrame()
         try:
+            signal_started_at = time.monotonic()
+            if progress:
+                self._logger.info("Generating strategy signals...")
             strategy_input: StrategyInput
             if isinstance(self.data, StrategyData):
                 strategy_input = attach_execution_context(self.data.copy(), execution_context)
             else:
                 strategy_input = attach_execution_context(self.df.copy(), execution_context)
-            signaled_df = self.strategy(strategy_input)
+            strategy_progress_started_at = time.monotonic()
+            strategy_progress_supported = False
+            strategy_owner = getattr(self.strategy, "__self__", None)
+            set_progress_callback = getattr(strategy_owner, "set_progress_callback", None)
+            strategy_progress_last_log_at = strategy_progress_started_at
+            strategy_progress_last_done = -1
+
+            def _strategy_progress(label: str, done: int, total: int) -> None:
+                nonlocal strategy_progress_last_done, strategy_progress_last_log_at
+                total = max(int(total), 0)
+                done = max(0, min(int(done), total)) if total else max(0, int(done))
+                now = time.monotonic()
+                unchanged = done != 0 and done < total and done == strategy_progress_last_done
+                too_soon = done != 0 and done < total and now - strategy_progress_last_log_at < 10.0
+                if unchanged or too_soon:
+                    return
+                elapsed = time.monotonic() - strategy_progress_started_at
+                rate = done / elapsed if elapsed > 0 else 0.0
+                eta = (total - done) / rate if rate > 0 and total >= done else None
+                self._logger.info(
+                    "Generating strategy signals: %d/%d items current=%s elapsed=%s eta=%s",
+                    done,
+                    total,
+                    label,
+                    format_duration(elapsed),
+                    format_duration(eta),
+                )
+                strategy_progress_last_log_at = now
+                strategy_progress_last_done = done
+
+            if progress and callable(set_progress_callback):
+                set_progress_callback(_strategy_progress)
+                strategy_progress_supported = True
+            try:
+                if progress and not strategy_progress_supported:
+                    with HeartbeatLogger(self._logger, "Generating strategy signals"):
+                        signaled_df = self.strategy(strategy_input)
+                else:
+                    signaled_df = self.strategy(strategy_input)
+            finally:
+                if strategy_progress_supported and callable(set_progress_callback):
+                    set_progress_callback(None)
+            if progress:
+                self._logger.info(
+                    "Strategy signals generated: rows=%d elapsed=%s",
+                    len(signaled_df),
+                    format_duration(time.monotonic() - signal_started_at),
+                )
             sim_df = self.df
             execution_start_ts = _utc_timestamp(execution_start)
             execution_end_ts = _utc_timestamp(execution_end)
@@ -368,10 +426,30 @@ class Backtester:
                             "minute execution requires StrategyData from crypt-parquet"
                         )
                     intrabar_data = self.data.execution
-                trades_df = sim.run(signaled_df, intrabar_data=intrabar_data)
-                if trades_df.empty:
+                progress_logger = (
+                    ProgressLogger(
+                        self._logger,
+                        "Simulating trades",
+                        max(len(signaled_df) - 1, 0),
+                        "bars",
+                    )
+                    if progress
+                    else None
+                )
+                trades_df = sim.run(
+                    signaled_df,
+                    intrabar_data=intrabar_data,
+                    progress_callback=(
+                        (lambda done: progress_logger.update(done))
+                        if progress_logger is not None
+                        else None
+                    ),
+                )
+                if progress_logger is not None:
+                    progress_logger.finish(max(len(signaled_df) - 1, 0))
+                if trades_df.empty and log_summary:
                     self._logger.warning("🚫 No trades generated for the asset.")
-                else:
+                elif log_summary:
                     self._logger.info("  📊 Trades: %d", len(trades_df))
 
         except ValueError:

@@ -411,6 +411,33 @@ def run(
 ) -> None:
     """Run backtesting via CLI"""
     logger.info("🚀 Starting backtest via CLI...")
+    ctx = click.get_current_context()
+    explicit_cli_keys = {
+        key
+        for key in (
+            "capital",
+            "risk_percent",
+            "rrr",
+            "maker_fee",
+            "taker_fee",
+            "trail_distance_atr",
+            "ttl",
+            "ttl_minutes",
+            "max_allowed_leverage",
+            "max_allowed_margin",
+            "risk_base_period",
+            "capital_sweep",
+            "max_daily_profit",
+            "max_daily_loss",
+            "trading_begin",
+            "trading_end",
+            "exit_geometry",
+            "tp_move_pct",
+            "structural_sl_mode",
+            "min_tp_move_pct",
+        )
+        if ctx.get_parameter_source(key) is click.core.ParameterSource.COMMANDLINE
+    }
     logger.info("  Data source: %s", data_source)
     if data_source.lower() == "csv":
         logger.info("  File: %s", csv)
@@ -504,9 +531,10 @@ def run(
         min_tp_move_pct=min_tp_move_pct,
         execution_start=execution_start,
         execution_end=execution_end,
+        _explicit_cli_keys=explicit_cli_keys,
     )
 
-    results = run_backtest(df=df, strategy=strategy_instance, args=args, ohlcv=ohlcv)
+    results = run_backtest(df=df, strategy=strategy_instance, args=args, ohlcv=ohlcv, progress=True)
     export_ohlcv = _trim_frame_to_execution_window(
         ohlcv,
         start=execution_start,

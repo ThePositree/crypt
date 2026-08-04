@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
+import pandas as pd
 import pytest
 from click.testing import CliRunner
 
@@ -12,6 +14,8 @@ from backtester.cli_runner import (
     dss_candidate_candle_timeframe,
     strategy_config_candle_timeframe,
 )
+from backtester.router_runtime import ArchivedStrategySpec
+from backtester.strategies.filtered_donor_portfolio import _event_from_signal_row
 
 
 def test_backtester_cli_exposes_only_current_product_commands() -> None:
@@ -84,6 +88,115 @@ def test_strategy_config_candle_timeframe_defaults_legacy_configs_to_h1() -> Non
     )
 
     assert strategy_config_candle_timeframe(cfg) == "1h"
+
+
+def test_strategy_config_candle_timeframe_uses_fastest_portfolio_donor(
+    tmp_path: Path,
+) -> None:
+    h1 = tmp_path / "h1.json"
+    h1.write_text(
+        json.dumps(
+            {
+                "name": "dss_strategy",
+                "version": "test",
+                "params": {"trigger_instance": {"name": "pt_ema_cross", "timeframe": "H1"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    m15 = tmp_path / "m15.json"
+    m15.write_text(
+        json.dumps(
+            {
+                "name": "dss_strategy",
+                "version": "test",
+                "params": {"trigger_instance": {"name": "pt_ema_cross", "timeframe": "15m"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    cfg = StrategyConfig(
+        name="filtered_donor_portfolio",
+        version="test",
+        params={"strategy_paths": {"h1": str(h1), "m15": str(m15)}},
+        backtest_args={},
+    )
+
+    assert strategy_config_candle_timeframe(cfg) == "15m"
+
+
+def test_strategy_config_candle_timeframe_prefers_explicit_portfolio_timeframe(
+    tmp_path: Path,
+) -> None:
+    h4 = tmp_path / "h4.json"
+    h4.write_text(
+        json.dumps(
+            {
+                "name": "dss_strategy",
+                "version": "test",
+                "params": {"trigger_instance": {"name": "pt_ema_cross", "timeframe": "H4"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    cfg = StrategyConfig(
+        name="filtered_donor_portfolio",
+        version="test",
+        params={"candle_timeframe": "H1", "strategy_paths": {"h4": str(h4)}},
+        backtest_args={},
+    )
+
+    assert strategy_config_candle_timeframe(cfg) == "1h"
+
+
+def test_strategy_config_candle_timeframe_uses_only_portfolio_donors(
+    tmp_path: Path,
+) -> None:
+    h4 = tmp_path / "h4.json"
+    h4.write_text(
+        json.dumps(
+            {
+                "name": "dss_strategy",
+                "version": "test",
+                "params": {"trigger_instance": {"name": "pt_ema_cross", "timeframe": "H4"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    cfg = StrategyConfig(
+        name="filtered_donor_portfolio",
+        version="test",
+        params={"strategy_paths": {"h4": str(h4)}},
+        backtest_args={},
+    )
+
+    assert strategy_config_candle_timeframe(cfg) == "4h"
+
+
+def test_filtered_donor_event_preserves_ttl_minutes() -> None:
+    spec = ArchivedStrategySpec(
+        strategy_id="h4_candidate",
+        name="dss_strategy",
+        params={},
+        execution=SimpleNamespace(
+            risk_percent=0.25,
+            rrr=8.5,
+            ttl=32,
+            ttl_minutes=7_560,
+            trail_activation_rrr=0.0,
+            trail_distance_atr=0.0,
+            exit_geometry="sl_rrr",
+            tp_move_pct=None,
+            structural_sl_mode="cap",
+            min_tp_move_pct=0.004,
+        ),
+    )
+    row = pd.Series({"signal": -1, "sl_price": 120.0})
+
+    event = _event_from_signal_row(row, spec)
+
+    assert event["position_ttl_bars"] == 32
+    assert event["position_ttl_minutes"] == 7_560
 
 
 def test_dss_candidate_candle_timeframe_rejects_missing_timeframe(tmp_path: Path) -> None:

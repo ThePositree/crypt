@@ -14,7 +14,10 @@ from backtester.strategy_discovery.dss_config import (
     DSS_DEFAULT_DIRECTIONAL_SL_MOVE_PCT,
     TrialConfig,
 )
-from backtester.strategy_discovery.features import DiscoveryDataset
+from backtester.strategy_discovery.features import (
+    DiscoveryDataset,
+    build_timeframe_discovery_dataset,
+)
 from backtester.strategy_discovery.signal_composer import (
     SignalComposer,
     signal_df_to_ohlcv_aligned,
@@ -37,7 +40,34 @@ class DSSIncrementalAdapter:
             if isinstance(data, StrategyData)
             else data
         )
-        rows = SignalComposer().generate_from_dataset(trial, dataset)
+        trigger_dataset = (
+            build_timeframe_discovery_dataset(
+                data=data,
+                timeframe=trial.trigger_instance.timeframe,
+                window_label=dataset.window_label,
+                symbol=dataset.symbol,
+            )
+            if isinstance(data, StrategyData)
+            else dataset
+        )
+        filter_datasets = {
+            instance.label: (
+                trigger_dataset
+                if instance.timeframe == trial.trigger_instance.timeframe
+                else build_timeframe_discovery_dataset(
+                    data=data,
+                    timeframe=instance.timeframe,
+                    window_label=trigger_dataset.window_label,
+                    symbol=trigger_dataset.symbol,
+                )
+            )
+            for instance in trial.filter_instances
+        }
+        rows = SignalComposer().generate_from_dataset(
+            trial,
+            trigger_dataset,
+            filter_datasets=filter_datasets,
+        )
         aligned = signal_df_to_ohlcv_aligned(rows, primary)
         fallback_stop_pct = float(
             config.params.get(

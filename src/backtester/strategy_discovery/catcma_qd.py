@@ -571,7 +571,17 @@ def run_catcma_qd_search(
 
             if evaluated_count == evaluated_before_batch:
                 runtime.write_progress(generated=generated, evaluated=evaluated_count)
-                break
+                if config.n_trials is not None:
+                    break
+                generation += 1
+                _refresh_directional_reports(
+                    output=output,
+                    config=config,
+                    runtime=runtime,
+                    generated=generated,
+                    evaluated=evaluated_count,
+                )
+                continue
             model.update(evaluated)
             generation += 1
             if config.n_trials is None:

@@ -85,17 +85,26 @@ def compute_mandate_score(
     months_below = int(summary_row.get("months_below_floor", 0))
     dd_breach_months = int(summary_row.get("dd_breach_months", 0))
     worst_streak = int(summary_row.get("worst_consecutive_losing_months", 0))
+    total_return_pct = (
+        float(pd.to_numeric(trades["pnl_abs"], errors="coerce").fillna(0.0).sum())
+        / initial_capital
+        * 100.0
+    )
+    worst_monthly_dd = float(summary_row.get("worst_monthly_drawdown_pct", 0.0))
 
-    excess_failed_months = max(months_below - 3, 0)
+    downside_dd_pct = abs(min(worst_monthly_dd, 0.0))
+    excess_failed_months = max(months_below - 12, 0)
     excess_losing_streak = max(worst_streak - 2, 0)
 
     return (
-        sum_capped
-        - monthly_shortfall_pct * 10.0
-        - dd_excess_pct * 25.0
-        - dd_breach_months * 200.0
-        - excess_failed_months * 500.0
-        - excess_losing_streak * 500.0
+        total_return_pct * 100.0
+        + sum_capped * 10.0
+        - monthly_shortfall_pct * 1.5
+        - dd_excess_pct * 35.0
+        - dd_breach_months * 150.0
+        - excess_failed_months * 75.0
+        - excess_losing_streak * 250.0
+        - (downside_dd_pct**2) * 85.0
     )
 
 

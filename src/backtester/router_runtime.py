@@ -124,6 +124,7 @@ class RouterReplayRuntime:
             "risk_percent": args.risk_percent,
             "rrr": args.rrr,
             "position_ttl_bars": args.ttl,
+            "position_ttl_minutes": args.ttl_minutes,
             "trail_activation_rrr": args.trail_activation_rrr,
             "trail_distance_atr": args.trail_distance_atr,
             "exit_geometry": args.exit_geometry,
@@ -199,6 +200,7 @@ def replay_selected_signals(
     output["risk_percent"] = 1.0
     output["rrr"] = 2.0
     output["position_ttl_bars"] = 0
+    output["position_ttl_minutes"] = 0
     output["trail_activation_rrr"] = 0.0
     output["trail_distance_atr"] = 0.0
     output["exit_geometry"] = "sl_rrr"

@@ -50,6 +50,7 @@ class ShadowPortfolio:
             trail_distance_atr=execution.trail_distance_atr,
             max_positions=execution.max_positions,
             position_ttl_bars=execution.ttl,
+            position_ttl_minutes=getattr(execution, "ttl_minutes", 0),
             max_allowed_leverage=execution.max_allowed_leverage,
             max_allowed_margin=execution.max_allowed_margin,
             risk_base_period=execution.risk_base_period,
@@ -148,6 +149,7 @@ def _entry_context(signal_row: pd.Series, execution: Any) -> dict[str, Any]:
             "risk_percent",
             "rrr",
             "position_ttl_bars",
+            "position_ttl_minutes",
             "trail_activation_rrr",
             "trail_distance_atr",
             "exit_geometry",
@@ -166,6 +168,9 @@ def _entry_context(signal_row: pd.Series, execution: Any) -> dict[str, Any]:
         "rrr": float(signal_row.get("rrr", execution.rrr)),
         "entry_price": entry_price,
         "position_ttl_bars": int(signal_row.get("position_ttl_bars", execution.ttl)),
+        "position_ttl_minutes": int(
+            signal_row.get("position_ttl_minutes", getattr(execution, "ttl_minutes", 0))
+        ),
         "trail_activation_rrr": float(
             signal_row.get(
                 "trail_activation_rrr",

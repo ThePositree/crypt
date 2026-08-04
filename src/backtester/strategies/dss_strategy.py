@@ -24,6 +24,7 @@ from backtester.strategy_discovery.dss_config import (
     TrialConfig,
 )
 from backtester.strategy_discovery.signal_composer import (
+    ProgressCallback,
     SignalComposer,
     signal_df_to_ohlcv_aligned,
 )
@@ -103,6 +104,8 @@ class DSSStrategy(BaseStrategy):
     expected by ``ExecutionSim``.
     """
 
+    signals_depend_on_execution_context = False
+
     def __init__(self, params: dict[str, Any]) -> None:
         super().__init__(params)
         self._config = TrialConfig.from_dict(params)
@@ -124,6 +127,11 @@ class DSSStrategy(BaseStrategy):
         if self._fallback_stop_pct <= 0:
             raise ValueError("directional_sl_move_pct/sl_pct must be positive")
         self._validate_entry_skip_rules()
+
+    def set_progress_callback(self, callback: ProgressCallback | None) -> None:
+        """Attach owner-facing progress logging for long DSS signal generation."""
+
+        self._composer.set_progress_callback(callback)
 
     def generate(self, data: StrategyInput) -> pd.DataFrame:
         from backtester.data_contracts import StrategyData

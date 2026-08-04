@@ -253,7 +253,16 @@ def run_dss_directional_search(
 
             if evaluated == evaluated_before_batch:
                 runtime.write_progress(generated=generated, evaluated=evaluated)
-                break
+                if config.n_trials is not None:
+                    break
+                _refresh_directional_reports(
+                    output=output,
+                    config=config,
+                    runtime=runtime,
+                    generated=generated,
+                    evaluated=evaluated,
+                )
+                continue
             if config.n_trials is None:
                 _refresh_directional_reports(
                     output=output,
@@ -680,6 +689,9 @@ def _append_directional_result(
     result: DirectionalResult,
     windows: list[DSSWindowSpec],
 ) -> None:
+    signal_identity_keys = (
+        result.metadata.get("signal_identity_keys", []) if result.should_promote else []
+    )
     row: dict[str, object] = {
         "candidate_id": candidate.candidate_id,
         "trigger_name": candidate.trigger_name,
@@ -694,9 +706,7 @@ def _append_directional_result(
         "target_window": result.target_window,
         "rejection_reason": result.rejection_reason,
         "signal_fingerprint": result.metadata.get("signal_fingerprint", ""),
-        "signal_identity_keys": json.dumps(
-            result.metadata.get("signal_identity_keys", []), sort_keys=True
-        ),
+        "signal_identity_keys": json.dumps(signal_identity_keys, sort_keys=True),
         "signal_set_size": result.metadata.get("signal_set_size", ""),
     }
     for window in windows:
