@@ -233,6 +233,87 @@ def test_allocator_blocks_fill_that_matches_multiple_legacy_positions() -> None:
     assert allocated[second.position_id].filled_contracts == 0.0
 
 
+def test_allocator_matches_okx_stop_child_order_without_originating_algo_id() -> None:
+    pos = LivePosition.create(
+        symbol="SOL-USDT-SWAP",
+        signal_time=datetime(2026, 8, 3, 17, tzinfo=UTC),
+        entry_time=datetime(2026, 8, 3, 18, tzinfo=UTC),
+        entry_price=73.68,
+        sl_price=72.99,
+        tp_price=77.19,
+        size=0.6,
+        contracts=0.6,
+        leverage=25.0,
+        locked_margin=1.76832,
+        risk_base_capital=81.15676989637949,
+        is_long=True,
+        ttl_bars=84,
+        entry_order_id="3800966052151418880",
+        selected_strategy="freq_4pw_r03_catcma_011465",
+        entry_fee=0.022104,
+    )
+    pos.algo_client_order_id = "cad0c9542ec3c171d8dc258926"
+    pos.stop_algo_order_id = "3800966052188999680"
+    pos.trailing_algo_client_order_id = "ctd0c9542ec3c171d8dc258926"
+    pos.trailing_algo_order_id = "3800966091346706432"
+    fill = {
+        "id": "1573994935",
+        "order": "3801808418450038784",
+        "side": "sell",
+        "timestamp": 1_785_805_120_143,
+        "price": 72.99,
+        "amount": 0.6,
+        "fee": {"cost": 0.021897},
+        "info": {
+            "instId": "SOL-USDT-SWAP",
+            "tradeId": "1573994935",
+            "ordId": "3801808418450038784",
+            "clOrdId": "O3801808418357237760",
+            "side": "sell",
+            "posSide": "long",
+            "fillPx": "72.99",
+            "fillSz": "0.6",
+            "fillPnl": "-0.414",
+            "fee": "-0.021897",
+            "subType": "5",
+            "ts": "1785805120143",
+        },
+    }
+
+    allocated = allocate_closed_position_fills(positions=[pos], fills=[fill])
+    result = allocated[pos.position_id]
+
+    assert result.exit_reason == "stop_loss"
+    assert result.exit_time == datetime(2026, 8, 4, 0, 58, 40, 143000, tzinfo=UTC)
+    assert result.exit_price == pytest.approx(72.99)
+    assert result.filled_contracts == pytest.approx(0.6)
+    assert result.realized_pnl == pytest.approx(-0.458001)
+
+
+def test_allocator_does_not_fallback_match_foreign_algo_identity() -> None:
+    pos = _position(is_long=True)
+    pos.algo_client_order_id = "ca-this-position"
+    pos.stop_algo_order_id = "stop-this-position"
+    fill = {
+        "id": "trade-1",
+        "side": "sell",
+        "timestamp": 1_782_561_600_000,
+        "price": 98.0,
+        "amount": 10.0,
+        "info": {
+            "instId": "SOL-USDT-SWAP",
+            "posSide": "long",
+            "algoClOrdId": "ca-other-position",
+            "subType": "5",
+        },
+    }
+
+    allocated = allocate_closed_position_fills(positions=[pos], fills=[fill])
+
+    assert allocated[pos.position_id].filled_contracts == 0.0
+    assert allocated[pos.position_id].exit_reason == "exchange_closed_unknown"
+
+
 def test_fill_matches_stored_exchange_algo_order_id_without_client_id() -> None:
     pos = _position(is_long=True)
     pos.algo_client_order_id = "ca-missing-from-fill"

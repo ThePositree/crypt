@@ -187,6 +187,58 @@ class Position:
             raise ValueError("Leverage must be at least 1.0")
 
 
+@dataclass(frozen=True, slots=True)
+class EntryRejection:
+    signal_time: pd.Timestamp
+    intended_entry_time: pd.Timestamp
+    reason: str
+    signal: int
+    selected_strategy: str
+    position_group: str
+    entry_price: float
+    sl_price: float
+    risk_percent: float
+    rrr: float
+    capital: float
+    risk_base_capital: float | None
+    available_balance: float | None
+    open_positions_before: int
+    same_side_positions_before: int
+    total_locked_margin_before: float
+    position_value: float | None = None
+    required_margin: float | None = None
+    required_leverage: float | None = None
+    metadata: dict[str, Any] | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        row = {
+            "signal_time": self.signal_time,
+            "intended_entry_time": self.intended_entry_time,
+            "reason": self.reason,
+            "signal": self.signal,
+            "selected_strategy": self.selected_strategy,
+            "position_group": self.position_group,
+            "entry_price": self.entry_price,
+            "sl_price": self.sl_price,
+            "risk_percent": self.risk_percent,
+            "rrr": self.rrr,
+            "capital": self.capital,
+            "risk_base_capital": self.risk_base_capital,
+            "available_balance": self.available_balance,
+            "open_positions_before": self.open_positions_before,
+            "same_side_positions_before": self.same_side_positions_before,
+            "total_locked_margin_before": self.total_locked_margin_before,
+            "position_value": self.position_value,
+            "required_margin": self.required_margin,
+            "required_leverage": self.required_leverage,
+        }
+        if self.metadata:
+            for key, value in self.metadata.items():
+                if key not in row:
+                    row[key] = value
+        return row
+
+
 class ExitReason(StrEnum):
     """Standardized reasons for closing a position."""
 
@@ -489,6 +541,65 @@ class ExecutionSim:
         )
         self._risk_window_key: tuple[int, int] | None = None
         self._risk_window_capital = initial_capital
+        self.entry_rejections: list[dict[str, Any]] = []
+
+    def _record_entry_rejection(
+        self,
+        *,
+        current_time: pd.Timestamp,
+        intended_entry_time: pd.Timestamp,
+        reason: str,
+        entry_ctx: _EntryContextDict,
+        entry_price: float,
+        sl_price: float,
+        rrr: float,
+        capital: float,
+        risk_base_capital: float | None,
+        available_balance: float | None,
+        active_positions: list[Position],
+        position_value: float | None = None,
+        required_margin: float | None = None,
+        required_leverage: float | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Append one auditable non-entry reason for a non-zero signal."""
+        signal = int(entry_ctx["signal"])
+        if signal not in (1, -1):
+            return
+
+        position_group = str(entry_ctx["position_group"])
+        row_metadata = dict(metadata if metadata is not None else entry_ctx["metadata"])
+        selected_strategy = str(row_metadata.get("selected_strategy") or position_group)
+        is_long_signal = signal == 1
+        total_locked_margin = sum(pos.locked_margin for pos in active_positions)
+        same_side_count = sum(1 for pos in active_positions if pos.is_long is is_long_signal)
+        rejection = EntryRejection(
+            signal_time=current_time,
+            intended_entry_time=intended_entry_time,
+            reason=reason,
+            signal=signal,
+            selected_strategy=selected_strategy,
+            position_group=position_group,
+            entry_price=float(entry_price),
+            sl_price=float(sl_price),
+            risk_percent=float(entry_ctx["risk_percent"]),
+            rrr=float(rrr),
+            capital=float(capital),
+            risk_base_capital=(
+                None if risk_base_capital is None else float(risk_base_capital)
+            ),
+            available_balance=(
+                None if available_balance is None else float(available_balance)
+            ),
+            open_positions_before=len(active_positions),
+            same_side_positions_before=same_side_count,
+            total_locked_margin_before=float(total_locked_margin),
+            position_value=None if position_value is None else float(position_value),
+            required_margin=None if required_margin is None else float(required_margin),
+            required_leverage=None if required_leverage is None else float(required_leverage),
+            metadata=row_metadata,
+        )
+        self.entry_rejections.append(rejection.to_dict())
 
     def _risk_base_capital_for_entry(
         self, entry_time: pd.Timestamp, current_capital: float
@@ -1004,9 +1115,6 @@ class ExecutionSim:
             Price at which the position is considered closed, or None if
             no TP/SL exit occurs in this bar.
         """
-        separate_mark_price = (
-            mark_high is not None and mark_low is not None and mark_open is not None
-        )
         liquidation_high = current_high if mark_high is None else mark_high
         liquidation_low = current_low if mark_low is None else mark_low
         liquidation_open = current_open if mark_open is None else mark_open
@@ -1015,16 +1123,6 @@ class ExecutionSim:
             if pos.is_long
             else liquidation_high >= pos.liquidation_price
         )
-        if separate_mark_price and liquidation_hit and self.bar_exit_policy == "worst_case":
-            return (
-                ExitReason.LIQUIDATION,
-                _adverse_trigger_fill(
-                    trigger=pos.liquidation_price,
-                    bar_open=liquidation_open,
-                    is_long=pos.is_long,
-                ),
-            )
-
         if pos.trail_activation_rrr > 0:
             trailing_reason, trailing_price = self._resolve_trailing_bar_exit(
                 pos=pos,
@@ -1529,15 +1627,6 @@ class ExecutionSim:
         ctx_entry_price = entry_ctx.get("entry_price")
         position_group = entry_ctx["position_group"]
 
-        if (signal != 1 and signal != -1) or (
-            len(active_positions) >= self.max_positions and self.max_positions > 0
-        ):
-            return capital, active_positions
-        if entry_ctx["drain_on_group_change"] and active_positions:
-            active_groups = {position.position_group for position in active_positions}
-            if position_group not in active_groups:
-                return capital, active_positions
-
         if ctx_entry_price is not None:
             entry_price = ctx_entry_price
             entry_time = current_time
@@ -1546,9 +1635,52 @@ class ExecutionSim:
             entry_price = next_open
             entry_time = next_time
             bar_opened = i + 1
+
+        def reject(
+            reason: str,
+            *,
+            risk_base_capital: float | None = None,
+            available_balance: float | None = None,
+            position_value: float | None = None,
+            required_leverage: float | None = None,
+            metadata: dict[str, Any] | None = None,
+            rrr_value: float | None = None,
+        ) -> tuple[float, list[Position]]:
+            required_margin = (
+                None
+                if position_value is None or required_leverage in (None, 0)
+                else position_value / required_leverage
+            )
+            self._record_entry_rejection(
+                current_time=current_time,
+                intended_entry_time=entry_time,
+                reason=reason,
+                entry_ctx=entry_ctx,
+                entry_price=entry_price,
+                sl_price=sl_price,
+                rrr=original_rrr if rrr_value is None else rrr_value,
+                capital=capital,
+                risk_base_capital=risk_base_capital,
+                available_balance=available_balance,
+                active_positions=active_positions,
+                position_value=position_value,
+                required_margin=required_margin,
+                required_leverage=required_leverage,
+                metadata=metadata,
+            )
+            return capital, active_positions
+
+        if signal != 1 and signal != -1:
+            return capital, active_positions
+        if len(active_positions) >= self.max_positions and self.max_positions > 0:
+            return reject("max_positions")
+        if entry_ctx["drain_on_group_change"] and active_positions:
+            active_groups = {position.position_group for position in active_positions}
+            if position_group not in active_groups:
+                return reject("drain_on_group_change")
         if pd.isna(sl_price):
             self._logger.debug("Missing SL price, skipping signal")
-            return capital, active_positions
+            return reject("missing_sl_price")
 
         tp_decision = adjust_tp_rrr(
             signal=signal,
@@ -1623,10 +1755,16 @@ class ExecutionSim:
                 liquidation_fee_rate=self.liquidation_fee_rate,
                 liquidation_buffer_pct=self.liquidation_buffer_pct,
                 maintenance_margin_tier_schedule=self.maintenance_margin_tier_schedule,
-            )
+        )
         risk_result = risk_model.calculate_position(entry_context)
         if risk_result is None:
-            return capital, active_positions
+            return reject(
+                "risk_model_rejected",
+                risk_base_capital=risk_base_capital,
+                available_balance=capital - total_locked_margin,
+                metadata=metadata,
+                rrr_value=rrr,
+            )
         precision = self._instrument_precision
         position_size = risk_result.size
         sl_price_rounded = risk_result.sl_price
@@ -1634,7 +1772,14 @@ class ExecutionSim:
         if precision is not None:
             contracts = precision.asset_size_to_contracts(position_size)
             if contracts <= 0:
-                return capital, active_positions
+                return reject(
+                    "precision_contracts_zero",
+                    risk_base_capital=risk_base_capital,
+                    available_balance=risk_result.available_balance,
+                    required_leverage=risk_result.required_leverage,
+                    metadata=metadata,
+                    rrr_value=rrr,
+                )
             position_size = precision.contracts_to_asset_size(contracts)
             sl_price_rounded = precision.round_price(sl_price_rounded)
             tp_price_rounded = precision.round_price(tp_price_rounded)
@@ -1643,7 +1788,14 @@ class ExecutionSim:
             else:
                 valid_geometry = tp_price_rounded < entry_price < sl_price_rounded
             if not valid_geometry:
-                return capital, active_positions
+                return reject(
+                    "invalid_geometry_after_precision",
+                    risk_base_capital=risk_base_capital,
+                    available_balance=risk_result.available_balance,
+                    required_leverage=risk_result.required_leverage,
+                    metadata=metadata,
+                    rrr_value=rrr,
+                )
         same_side_positions = same_side_positions_before
         aggregate_size = sum(pos.size for pos in same_side_positions) + position_size
         if not leverage_is_within_size_tier(
@@ -1652,7 +1804,15 @@ class ExecutionSim:
             configured_max_leverage=self.max_allowed_leverage,
             tier_schedule=risk_result.maintenance_margin_tier_schedule,
         ):
-            return capital, active_positions
+            return reject(
+                "leverage_tier",
+                risk_base_capital=risk_base_capital,
+                available_balance=risk_result.available_balance,
+                position_value=position_size * entry_price,
+                required_leverage=risk_result.required_leverage,
+                metadata=metadata,
+                rrr_value=rrr,
+            )
         aggregate_safe, aggregate_liquidation = aggregate_liquidation_is_beyond_stops(
             entries_and_stops=[
                 (
@@ -1671,14 +1831,30 @@ class ExecutionSim:
             maintenance_margin_tier_schedule=risk_result.maintenance_margin_tier_schedule,
         )
         if not aggregate_safe or aggregate_liquidation is None:
-            return capital, active_positions
+            return reject(
+                "aggregate_liquidation_buffer",
+                risk_base_capital=risk_base_capital,
+                available_balance=risk_result.available_balance,
+                position_value=position_size * entry_price,
+                required_leverage=risk_result.required_leverage,
+                metadata=metadata,
+                rrr_value=rrr,
+            )
         trail_activation_rrr = entry_ctx["trail_activation_rrr"]
         trail_distance_atr = entry_ctx["trail_distance_atr"]
         trail_activation_price: float | None = None
         trail_callback_spread: float | None = None
         if trail_activation_rrr > 0:
             if entry_trail_atr is None or pd.isna(entry_trail_atr) or entry_trail_atr <= 0:
-                return capital, active_positions
+                return reject(
+                    "missing_trailing_atr",
+                    risk_base_capital=risk_base_capital,
+                    available_balance=risk_result.available_balance,
+                    position_value=position_size * entry_price,
+                    required_leverage=risk_result.required_leverage,
+                    metadata=metadata,
+                    rrr_value=rrr,
+                )
             geometry = build_native_trailing_geometry(
                 entry_price=entry_price,
                 stop_price=sl_price_rounded,
@@ -1694,7 +1870,15 @@ class ExecutionSim:
                 trail_activation_price = precision.round_price(trail_activation_price)
                 trail_callback_spread = precision.round_price(trail_callback_spread)
                 if trail_callback_spread <= 0:
-                    return capital, active_positions
+                    return reject(
+                        "invalid_trailing_callback",
+                        risk_base_capital=risk_base_capital,
+                        available_balance=risk_result.available_balance,
+                        position_value=position_size * entry_price,
+                        required_leverage=risk_result.required_leverage,
+                        metadata=metadata,
+                        rrr_value=rrr,
+                    )
 
         position_value = position_size * entry_price
         risk_value = position_size * abs(entry_price - sl_price_rounded)
@@ -1709,10 +1893,26 @@ class ExecutionSim:
 
         # Protection: fee should not be larger than risk
         if fee_entry >= risk_value * 2:
-            return capital, active_positions
+            return reject(
+                "fee_too_large",
+                risk_base_capital=risk_base_capital,
+                available_balance=available_balance,
+                position_value=position_value,
+                required_leverage=risk_result.required_leverage,
+                metadata=metadata,
+                rrr_value=rrr,
+            )
 
         if net_exposure < self.min_net_exposure * available_balance:
-            return capital, active_positions
+            return reject(
+                "min_net_exposure",
+                risk_base_capital=risk_base_capital,
+                available_balance=available_balance,
+                position_value=position_value,
+                required_leverage=risk_result.required_leverage,
+                metadata=metadata,
+                rrr_value=rrr,
+            )
 
         if not self._can_open_position(
             position_value,
@@ -1726,7 +1926,15 @@ class ExecutionSim:
                 risk_value,
                 risk_result.sl_dist,
             )
-            return capital, active_positions
+            return reject(
+                "margin_cap",
+                risk_base_capital=risk_base_capital,
+                available_balance=available_balance,
+                position_value=position_value,
+                required_leverage=risk_result.required_leverage,
+                metadata=metadata,
+                rrr_value=rrr,
+            )
 
         new_position = Position(
             signal_time=current_time,
@@ -1878,6 +2086,7 @@ class ExecutionSim:
         except _NotEnoughBarsError:
             return pd.DataFrame()
 
+        self.entry_rejections = []
         last_1m: pd.DataFrame | None = None
         mark_1m: pd.DataFrame | None = None
         if self.intrabar_execution_timeframe == "1m":
@@ -2317,9 +2526,10 @@ def _validate_minute_execution_data(
             # OKX native higher-timeframe OHLC and its historical 1m candles can differ by
             # a few ticks. Minute coverage remains strict; this tolerance only prevents
             # harmless aggregation drift from blocking 1m execution.
+            # OKX native 15m candle close can differ from the last 1m bar's close by
+            # several ticks (observed: up to ~0.4% at sub-$20 prices). Use the same
+            # tolerance formula as high/low so real data drift does not block 1m execution.
             tolerance = expected_h1[comparable_columns].abs() * 1e-3 + 0.1
-            if "close" in tolerance.columns:
-                tolerance.loc[:, "close"] = expected_h1["close"].abs() * 1e-8 + 1e-3
             mismatch = delta > tolerance
             if mismatch.any().any():
                 mismatch_time, mismatch_column = mismatch.stack().loc[lambda s: s].index[0]

@@ -116,6 +116,22 @@ def test_minute_mark_price_drives_liquidation() -> None:
     assert trades.loc[0, "exit_reason"] == "liquidation"
 
 
+def test_minute_last_price_stop_precedes_deeper_mark_liquidation() -> None:
+    data = _minute_data(mark_liquidation=True)
+    last = data.last_1m.copy()
+    # The exchange stop is nearer than liquidation; if both are touched in the
+    # same minute, the protective stop should close the position first.
+    last.loc[pd.Timestamp("2026-01-01 01:00:00+00:00"), "low"] = 89.0
+
+    trades = _sim().run(
+        _h1_signal_frame(),
+        intrabar_data=IntrabarExecutionData(last_1m=last, mark_1m=data.mark_1m),
+    )
+
+    assert trades.loc[0, "exit_reason"] == "stop_loss"
+    assert trades.loc[0, "exit_price"] == pytest.approx(90.0)
+
+
 def test_minute_execution_rejects_missing_candle() -> None:
     data = _minute_data()
     incomplete = IntrabarExecutionData(

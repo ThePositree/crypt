@@ -22,13 +22,14 @@ Read in this order:
 1. `README.md` — public surface for humans and agents.
 2. This file (`AGENTS.md`).
 3. `docs/strategy_benchmark.md` — money benchmark and reporting target.
-4. `docs/tasks/ROADMAP.md` — owner-defined milestones.
-5. `docs/tasks/IN_PROGRESS.md` — active work only.
-6. `docs/tasks/IDEAS.md` — owner ideas saved for later, not approved tasks.
-7. `docs/tasks/BACKLOG.md` — queued unfinished work.
-8. The recent entries in `CHANGELOG.md`; use `CHANGELOG_ARCHIVE.md` for older
+4. `docs/backtester_regression.md` — canonical backtester regression checks.
+5. `docs/tasks/ROADMAP.md` — owner-defined milestones.
+6. `docs/tasks/IN_PROGRESS.md` — active work only.
+7. `docs/tasks/IDEAS.md` — owner ideas saved for later, not approved tasks.
+8. `docs/tasks/BACKLOG.md` — queued unfinished work.
+9. The recent entries in `CHANGELOG.md`; use `CHANGELOG_ARCHIVE.md` for older
    history.
-9. Any ADR in `docs/decisions/` relevant to the task.
+10. Any ADR in `docs/decisions/` relevant to the task.
 
 If docs and active runtime config disagree, stop and ask the owner. For live
 execution, the runtime source of truth is the loaded config/env, especially
@@ -154,6 +155,13 @@ command covering the missing symbol/date range/timeframe family. Production
 runtime must never ask an interactive `y/n` question: it should either
 auto-backfill through the configured bootstrap path or fail fast from
 configuration/preflight.
+
+### Backtester regression checks
+
+When the owner asks whether the backtester is broken, use
+`docs/backtester_regression.md` instead of reconstructing reference periods
+from chat or old changelog entries. The canonical checks are the current
+production v6 full replay and the July 2026 live phase-B replay.
 
 ---
 

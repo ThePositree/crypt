@@ -115,9 +115,8 @@ class FilteredDonorPortfolioStrategy(BaseStrategy):
         logger.info("Filtered donor portfolio signal preparation starting")
         frames = self._controlled_frames(data=data, primary=primary, specs=specs)
         self._report_progress("donor signals", 1, total_work)
-        catalog_features = _catalog_features(primary)
         frames = {
-            strategy_id: frame.join(catalog_features, how="left")
+            strategy_id: _join_catalog_features(frame)
             for strategy_id, frame in frames.items()
         }
         self._report_progress("catalog features", 2, total_work)
@@ -164,9 +163,8 @@ class FilteredDonorPortfolioStrategy(BaseStrategy):
             specs=specs,
         )
         timestamp = primary.index[-1]
-        catalog_features = _catalog_features_from_primary_features(dataset.features)
         frames = {
-            strategy_id: frame.join(catalog_features, how="left")
+            strategy_id: _join_catalog_features(frame)
             for strategy_id, frame in frames.items()
         }
         _validate_filter_features_available(frames, self._filters)
@@ -464,6 +462,12 @@ class FilteredDonorPortfolioStrategy(BaseStrategy):
 def _catalog_features(primary: pd.DataFrame) -> pd.DataFrame:
     features = build_donor_discovery_features(primary=primary, h4=None, d1=None)
     return _catalog_features_from_primary_features(features)
+
+
+def _join_catalog_features(frame: pd.DataFrame) -> pd.DataFrame:
+    if not {"open", "high", "low", "close", "volume"}.issubset(frame.columns):
+        return frame
+    return frame.join(_catalog_features(frame), how="left")
 
 
 def _catalog_features_from_primary_features(features: pd.DataFrame) -> pd.DataFrame:

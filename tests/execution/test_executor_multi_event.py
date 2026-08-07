@@ -1870,7 +1870,7 @@ async def test_manage_open_positions_closes_reduced_same_side_constituent_with_m
         locked_margin=2.0,
         risk_base_capital=104.77,
         is_long=False,
-        ttl_bars=10000,
+        ttl_bars=10_000_000,
         entry_order_id="entry-first",
         selected_strategy="freq_4pw_r02_hyperband_004678",
     )
@@ -1889,7 +1889,7 @@ async def test_manage_open_positions_closes_reduced_same_side_constituent_with_m
         locked_margin=1.88,
         risk_base_capital=104.77,
         is_long=False,
-        ttl_bars=10000,
+        ttl_bars=10_000_000,
         entry_order_id="entry-second",
         selected_strategy="freq_4pw_r02_hyperband_004678",
     )

@@ -96,6 +96,7 @@ deployment; verify the runtime environment before changing live state.
 
 - `AGENTS.md` — mandatory operating manual for agents.
 - `docs/strategy_benchmark.md` — money benchmark and reporting requirements.
+- `docs/backtester_regression.md` — canonical checks for backtester parity.
 - `docs/execution/live_execution.md` — live execution behavior and state.
 - `docs/deploy/railway.md` — Railway deployment/runbook.
 - `docs/backtester/` — backtester and diagnostic contracts.

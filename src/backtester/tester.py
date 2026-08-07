@@ -333,6 +333,7 @@ class Backtester:
             min_tp_move_pct=min_tp_move_pct,
         )
         signaled_df = pd.DataFrame()
+        entry_rejections_df = pd.DataFrame()
         try:
             signal_started_at = time.monotonic()
             if progress:
@@ -445,6 +446,7 @@ class Backtester:
                         else None
                     ),
                 )
+                entry_rejections_df = pd.DataFrame(sim.entry_rejections)
                 if progress_logger is not None:
                     progress_logger.finish(max(len(signaled_df) - 1, 0))
                 if trades_df.empty and log_summary:
@@ -458,7 +460,11 @@ class Backtester:
             self._logger.exception("🚨 Error during backtest execution")
             trades_df = pd.DataFrame()
 
-        analyzer = ResultsAnalyzer(trades_df, signal_df=signaled_df)
+        analyzer = ResultsAnalyzer(
+            trades_df,
+            signal_df=signaled_df,
+            entry_rejections_df=entry_rejections_df,
+        )
         analyzer.generate(risk_free_rate_annual=risk_free_rate_annual)
 
         return analyzer

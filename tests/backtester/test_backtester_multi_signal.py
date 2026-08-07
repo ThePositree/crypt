@@ -97,6 +97,77 @@ def test_filtered_portfolio_catalog_features_use_previous_closed_bar() -> None:
     assert catalog.iloc[1]["entry_dayofweek"] == index[1].dayofweek
 
 
+def test_filtered_portfolio_catalog_filters_use_each_donor_timeframe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    primary_index = pd.date_range("2026-01-01 00:00", periods=8, freq="15min", tz="UTC")
+    primary = pd.DataFrame(
+        {
+            "open": [100.0] * len(primary_index),
+            "high": [101.0] * len(primary_index),
+            "low": [99.0] * len(primary_index),
+            "close": [100.0] * len(primary_index),
+            "volume": [1.0] * len(primary_index),
+        },
+        index=primary_index,
+    )
+    donor_index = pd.date_range("2026-01-01 00:00", periods=2, freq="h", tz="UTC")
+    donor_frame = pd.DataFrame(
+        {
+            "open": [100.0] * len(donor_index),
+            "high": [101.0] * len(donor_index),
+            "low": [99.0] * len(donor_index),
+            "close": [100.0] * len(donor_index),
+            "volume": [1.0] * len(donor_index),
+            "signal": [1, 0],
+            "sl_price": [99.0, 0.0],
+        },
+        index=donor_index,
+    )
+
+    def fake_catalog(frame: pd.DataFrame) -> pd.DataFrame:
+        value = 60.0 if frame.index.equals(donor_index) else 10.0
+        return pd.DataFrame({"catalog_rsi14": [value] * len(frame)}, index=frame.index)
+
+    monkeypatch.setattr(filtered_portfolio_module, "_catalog_features", fake_catalog)
+    monkeypatch.setattr(
+        filtered_portfolio_module,
+        "build_archived_signal_frames",
+        lambda **_kwargs: {"alpha": donor_frame},
+    )
+    strategy = FilteredDonorPortfolioStrategy(
+        {
+            "progress": False,
+            "strategy_paths": {"alpha": "unused.json"},
+            "candle_timeframe": "15m",
+            "filters": {
+                "alpha": [
+                    {"feature": "catalog_rsi14", "op": ">=", "value": 50.0},
+                ],
+            },
+        }
+    )
+    spec = ArchivedStrategySpec(
+        strategy_id="alpha",
+        name="dummy",
+        params={},
+        execution=SimpleNamespace(),
+    )
+    monkeypatch.setattr(strategy, "_get_specs", lambda: (spec,))
+
+    signals = strategy.generate(
+        StrategyData(
+            candles_by_timeframe={"15m": primary, "H1": donor_frame},
+            extras={},
+            metadata={"symbol": "SOL-USDT-SWAP"},
+        )
+    )
+
+    assert signals.loc[pd.Timestamp("2026-01-01 00:45", tz="UTC"), "signal_events"][
+        0
+    ]["selected_strategy"] == "alpha"
+
+
 def test_filtered_portfolio_rejects_unavailable_filter_features() -> None:
     frames = {"alpha": pd.DataFrame({"signal": [1], "catalog_bb_width_pct": [0.02]})}
     filters = {
@@ -137,6 +208,67 @@ def test_filtered_portfolio_defers_slow_donor_signal_to_its_next_entry_bar() -> 
     signal_time, row = scheduled
     assert signal_time == pd.Timestamp("2026-01-01 04:00", tz="UTC")
     assert int(row["signal"]) == -1
+
+
+def test_filtered_portfolio_slow_donor_trade_enters_on_donor_next_bar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    primary_index = pd.date_range("2026-01-01 00:00", periods=10, freq="h", tz="UTC")
+    primary = pd.DataFrame(
+        {
+            "open": [100.0] * len(primary_index),
+            "high": [101.0] * len(primary_index),
+            "low": [99.0] * len(primary_index),
+            "close": [100.0] * len(primary_index),
+            "volume": [1.0] * len(primary_index),
+        },
+        index=primary_index,
+    )
+    donor_index = pd.date_range("2026-01-01 00:00", periods=3, freq="4h", tz="UTC")
+    donor_frame = pd.DataFrame(
+        {
+            "signal": [0, 1, 0],
+            "sl_price": [0.0, 99.0, 0.0],
+        },
+        index=donor_index,
+    )
+
+    monkeypatch.setattr(
+        filtered_portfolio_module,
+        "build_archived_signal_frames",
+        lambda **_kwargs: {"alpha": donor_frame},
+    )
+    strategy = FilteredDonorPortfolioStrategy(
+        {
+            "progress": False,
+            "strategy_paths": {"alpha": "unused.json"},
+            "candle_timeframe": "H1",
+        }
+    )
+    spec = ArchivedStrategySpec(
+        strategy_id="alpha",
+        name="dummy",
+        params={},
+        execution=SimpleNamespace(),
+    )
+    monkeypatch.setattr(strategy, "_get_specs", lambda: (spec,))
+
+    signals = strategy.generate(primary)
+    events_by_time = signals["signal_events"].map(len)
+    trades = Backtester(primary, lambda _data: signals).run(
+        initial_capital=10_000.0,
+        max_positions=0,
+        maker_fee=0.0,
+        taker_fee=0.0,
+        max_allowed_leverage=100.0,
+        min_net_exposure=0.0,
+    ).get_trades()
+
+    assert events_by_time.loc[pd.Timestamp("2026-01-01 04:00", tz="UTC")] == 0
+    assert events_by_time.loc[pd.Timestamp("2026-01-01 07:00", tz="UTC")] == 1
+    assert len(trades) == 1
+    assert trades.iloc[0]["signal_time"] == pd.Timestamp("2026-01-01 07:00", tz="UTC")
+    assert trades.iloc[0]["entry_time"] == pd.Timestamp("2026-01-01 08:00", tz="UTC")
 
 
 def test_filtered_portfolio_passes_nested_backtest_defaults_to_donor_replay(

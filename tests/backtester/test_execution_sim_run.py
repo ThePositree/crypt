@@ -153,6 +153,88 @@ def test_signal_events_open_multiple_positions_on_one_bar() -> None:
     assert trades["total_locked_margin_before"].iloc[1] > 0
 
 
+def test_signal_events_record_entry_rejection_when_position_limit_blocks_entry() -> None:
+    idx = pd.date_range("2026-01-01", periods=5, freq="h")
+    df = pd.DataFrame(
+        {
+            "open": [100.0] * len(idx),
+            "high": [100.5] * len(idx),
+            "low": [99.5] * len(idx),
+            "close": [100.0] * len(idx),
+            "signal_events": [
+                [{"signal": 1, "sl_price": 90.0, "selected_strategy": "alpha"}],
+                [{"signal": 1, "sl_price": 90.0, "selected_strategy": "beta"}],
+                [],
+                [],
+                [],
+            ],
+        },
+        index=idx,
+    )
+    sim = ExecutionSim(
+        initial_capital=10_000.0,
+        max_positions=1,
+        position_ttl_bars=3,
+    )
+
+    trades = sim.run(df)
+
+    assert len(trades) == 1
+    assert len(sim.entry_rejections) == 1
+    rejection = sim.entry_rejections[0]
+    assert rejection["reason"] == "max_positions"
+    assert rejection["selected_strategy"] == "beta"
+    assert rejection["signal_time"] == idx[1]
+    assert rejection["intended_entry_time"] == idx[2]
+    assert rejection["open_positions_before"] == 1
+
+
+def test_results_export_writes_entry_rejections_csv(tmp_path) -> None:
+    idx = pd.date_range("2026-01-01", periods=5, freq="h")
+    df = pd.DataFrame(
+        {
+            "open": [100.0] * len(idx),
+            "high": [100.5] * len(idx),
+            "low": [99.5] * len(idx),
+            "close": [100.0] * len(idx),
+            "signal_events": [
+                [{"signal": 1, "sl_price": 90.0, "selected_strategy": "alpha"}],
+                [{"signal": 1, "sl_price": 90.0, "selected_strategy": "beta"}],
+                [],
+                [],
+                [],
+            ],
+        },
+        index=idx,
+    )
+    sim = ExecutionSim(
+        initial_capital=10_000.0,
+        max_positions=1,
+        position_ttl_bars=3,
+    )
+    trades = sim.run(df)
+    analyzer = ResultsAnalyzer(
+        trades,
+        signal_df=df,
+        entry_rejections_df=pd.DataFrame(sim.entry_rejections),
+    )
+    analyzer.generate()
+
+    analyzer.export_results(str(tmp_path))
+
+    rejections = pd.read_csv(tmp_path / "entry_rejections.csv")
+    diagnostics = pd.read_csv(tmp_path / "signal_diagnostics.csv")
+    assert rejections["reason"].tolist() == ["max_positions"]
+    assert rejections["selected_strategy"].tolist() == ["beta"]
+    assert (
+        diagnostics[
+            (diagnostics["metric"] == "entry_rejection_reason_count")
+            & (diagnostics["bucket"] == "max_positions")
+        ]["value"].iloc[0]
+        == 1
+    )
+
+
 def test_signal_events_request_trailing_atr() -> None:
     idx = pd.date_range("2026-01-01", periods=20, freq="D")
     signal_events = [[] for _ in range(len(idx))]

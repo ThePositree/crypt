@@ -6,6 +6,111 @@ Format: newest on top, date in `YYYY-MM-DD`.
 
 ---
 
+## 2026-08-05 — Backtester regression runbook
+
+- Added `docs/backtester_regression.md` as the canonical agent runbook for
+  checking whether the backtester still reproduces the current production v6
+  portfolio and the July 2026 live phase-B replay.
+- Re-ran the current production v6 full replay on
+  `2021-12-18T00:00:00Z` through `2026-06-29T14:00:00Z` after the
+  last-price stop versus mark-price liquidation priority fix:
+  `$1,237,819.83` final capital, `12278.20%` return, `1544` trades,
+  `1.38` profit factor, `-0.53%` below-start drawdown, `-26.58%`
+  peak-to-trough drawdown, and `0` liquidation exits.
+- Re-ran the live phase-B replay on `2026-07-18T00:00:00Z` through
+  `2026-07-27T23:00:00Z` with `$102.34` capital:
+  `$101.47` final capital, `-$0.87` total PnL, `17` trades, `16/1`
+  closed/open, and exit mix
+  `10 stop_loss / 4 take_profit / 2 ttl_expired / 1 open`.
+- Documented that the 2026-07-13 through 2026-07-17 fresh replay is context
+  only because the first three live shorts require archived live signal
+  payload replay after later H1 candle repairs.
+
+## 2026-08-05 — Mixed-timeframe DSS v3 portfolio audit
+
+- Found and fixed a mixed-timeframe portfolio composition bug in
+  `filtered_donor_portfolio`: catalog filter features were computed once from
+  the portfolio outer candle grid. Adding a `15m` DSS candidate made the
+  whole portfolio emit on `15m`, which caused existing H1 v6 donors to be
+  filtered with 15m-derived `catalog_*` features.
+- Catalog filter features are now joined per donor frame, so each nested
+  donor keeps its own execution timeframe features even when the portfolio
+  outer grid is faster.
+- Added a regression test proving an H1 donor mounted into a 15m portfolio
+  uses H1 catalog features for portfolio filters.
+- Re-ran DSS v3 timeframe regression over
+  `2021-12-18T00:00:00Z` to `2026-06-29T14:00:00Z` for one `15m` candidate,
+  one `H1` candidate, and four `H4` candidates. The audit confirmed all
+  baseline v6 donor events remain identical after adding each candidate:
+  `old_events_same=True`, `old_missing=0`, `old_extra=0` for all six mixed
+  portfolios. Results are in
+  `results/dss_v3_timeframe_regression_20260805/timeframe_regression_summary.csv`
+  and
+  `results/dss_v3_timeframe_regression_20260805/timeframe_event_invariant_audit.csv`.
+- Re-audited the suspicious `v6 + smac_012981` branch that previously showed
+  `-76.64%` peak-to-trough drawdown. Found a minute intrabar execution bug:
+  when separate mark-price data touched liquidation and last-price data touched
+  the nearer protective stop in the same minute, `worst_case` returned
+  `liquidation` before checking the stop. The simulator now lets the nearer
+  structural stop/trailing stop close first; mark-price liquidation still
+  applies when the protective stop was not touched.
+- Added a regression test for separate last/mark 1m execution proving a
+  last-price stop precedes deeper mark-price liquidation. Re-running
+  `v6 + smac_012981` over the same period changed the branch from
+  `$2.20M`, `-76.64%` peak-to-trough DD, `6` liquidations to `$3.60M`,
+  `-65.49%` peak-to-trough DD, `0` liquidations. Old v6 donor events stayed
+  identical to baseline (`1853/1853`, no missing/extra events).
+
+## 2026-08-05 — Entry rejection diagnostics export
+
+- Added `ExecutionSim.entry_rejections` and durable
+  `entry_rejections.csv` export from `backtester run` whenever a non-zero
+  scalar signal or portfolio `signal_events` entry reaches execution but does
+  not open a position.
+- Captured rejection context for portfolio audits: `signal_time`,
+  `intended_entry_time`, `reason`, side, selected strategy, position group,
+  entry/SL price, risk/rrr, capital, risk-base capital, available balance,
+  open-position counts, same-side counts, locked margin, position value,
+  required margin, required leverage, and signal metadata.
+- Covered execution blockers including `max_positions`,
+  `drain_on_group_change`, missing SL, risk-model rejection, precision
+  rounding, invalid post-precision geometry, leverage tiers, aggregate
+  liquidation buffer, missing trailing ATR, invalid trailing callback, fee/risk
+  sanity, minimum net exposure, and margin cap.
+- Added rejection counts by reason, selected strategy, and position group to
+  `signal_diagnostics.csv`.
+- Added regression tests for multi-event portfolio rejection capture and
+  `entry_rejections.csv` export.
+- Verified the export on `v6_plus_dssv3_016949` over
+  `2021-12-18T00:00:00Z` to `2026-06-29T14:00:00Z`. The run wrote
+  `results/recheck_v6_plus_dssv3_016949_with_entry_rejections/20260805_114545/entry_rejections.csv`
+  with `354` rejected entry events: `320` `aggregate_liquidation_buffer` and
+  `34` `risk_model_rejected`. All `36` rejected `dssv3_dssv3_016949` events
+  were blocked by `aggregate_liquidation_buffer`.
+
+## 2026-08-05 — OKX stop-fill classification incident fix
+
+- Investigated production Telegram close notification for position
+  `21fd3392` (`freq_4pw_r03_catcma_011465`, long SOL, entered
+  `2026-08-03T18:00:00Z` at `$73.68`) that was reported as
+  `exchange_closed_unknown`.
+- Confirmed through OKX private fills and algo history that the position was
+  closed by its stop loss, not manually: stop algo
+  `3800966052188999680` became `effective` with `actualSide=sl`,
+  `actualSz=0.6`, `slTriggerPx=72.99`; the fill occurred at
+  `2026-08-04T00:58:40.143Z` at `$72.99`, with gross PnL `-$0.414` and exit
+  fee `$0.021897`. The native trailing order `3800966091346706432` was
+  cancelled after the stop fired.
+- Fixed `allocate_closed_position_fills` so OKX child close fills that omit
+  the originating algo id can still be attributed when the fallback is unique
+  and conservative: same symbol, side, position side, OKX stop subtype,
+  exact contract amount, close price near the stored SL/TP/trailing level, and
+  no foreign algo identity.
+- Added regression coverage for the real OKX child-order shape and for the
+  safety case where a foreign algo identity must not be fallback-matched.
+- Made the reduced same-side executor regression independent of wall-clock
+  date by increasing its synthetic TTL.
+
 ## 2026-08-04 — DSS v3 portfolio composition audit fixes
 
 - Investigated why DSS v3 candidates looked profitable standalone but hurt the
@@ -61,6 +166,14 @@ Format: newest on top, date in `YYYY-MM-DD`.
   peak-to-trough drawdown. The candidate is therefore only slightly negative
   marginally (`-$25,447.69`) instead of the earlier invalid `-$302k`/`-$87k`
   conclusions.
+- Decomposed the remaining `dssv3_016949` marginal loss after the timing fix.
+  The full portfolio emitted `179` DSS signal events but opened `143` DSS
+  trades, while the single-donor replay opened `176`. The `36` full-portfolio
+  missing events correspond to only `+$1,483.89` in single-donor dollars, so
+  they are not the main loss source. The marginal delta is explained by shared
+  account interactions: DSS account PnL `-$15,307.87`, changed PnL on common
+  non-DSS trades `-$17,712.58`, baseline trades absent after adding DSS
+  `-$9,395.94`, and one extra non-DSS trade `+$16,966.27`.
 
 ## 2026-08-04 — DSS v3 candidate portfolio evaluation
 

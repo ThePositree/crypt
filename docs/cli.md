@@ -37,6 +37,10 @@ workflow needs reproduction.
 
 ## Backtest
 
+Canonical regression/parity checks live in `docs/backtester_regression.md`.
+Use them when validating whether backtester changes preserved production v6
+behavior.
+
 Full production-strategy replay:
 
 ```bash
