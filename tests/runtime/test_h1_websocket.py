@@ -153,7 +153,7 @@ async def test_rest_fallback_cancellation_during_shutdown_is_not_reported_as_fai
         _websocket_boundary: H1Boundary | None,
         _source: str,
     ) -> None:
-        await asyncio.sleep(1)
+        await asyncio.Event().wait()
 
     async def report_error(context: str, _error: BaseException | str) -> None:
         errors.append(context)
@@ -188,7 +188,7 @@ async def test_timed_out_callback_releases_boundary_for_fallback(
     ) -> None:
         calls.append(source)
         if source == "websocket":
-            await asyncio.sleep(1)
+            await asyncio.Event().wait()
 
     scheduler = H1WebSocketScheduler(callback, ["SOL-USDT-SWAP"])
     await scheduler._dispatch("SOL-USDT-SWAP", boundary_time, None, "websocket")
@@ -214,7 +214,7 @@ async def test_timed_out_callback_releases_boundary_before_slow_error_report(
     ) -> None:
         calls.append(source)
         if source == "websocket":
-            await asyncio.sleep(1)
+            await asyncio.Event().wait()
 
     async def report_error(_context: str, _error: BaseException | str) -> None:
         report_started.set()

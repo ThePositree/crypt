@@ -153,3 +153,7 @@ class EvaluationContext:
 
     # Set by the volatility engine before the regime engine runs.
     vol_regime: VolRegime | None = None
+
+    @property
+    def candles_by_timeframe(self) -> dict[Timeframe, pd.DataFrame]:
+        return self.candles

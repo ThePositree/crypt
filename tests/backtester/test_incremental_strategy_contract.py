@@ -92,8 +92,8 @@ def test_registered_strategy_adapter_contract(
     strategy_id: str,
     payload: dict[str, object],
 ) -> None:
-    full_primary = _primary()
-    prefix_primary = full_primary.iloc[:300].copy()
+    full_primary = _primary(periods=96)
+    prefix_primary = full_primary.iloc[:72].copy()
     full_data = _strategy_data(full_primary)
     prefix_data = _strategy_data(prefix_primary)
     adapter = build_incremental_adapter(str(payload["name"]))
@@ -148,7 +148,7 @@ def test_registered_adapter_matches_canonical_strategy_rows(
     strategy_id: str,
     payload: dict[str, object],
 ) -> None:
-    primary = _primary(periods=120)
+    primary = _primary(periods=72)
     data = _strategy_data(primary)
     backtest_args = _mapping(payload, "backtest_args")
     canonical_input = attach_execution_context(

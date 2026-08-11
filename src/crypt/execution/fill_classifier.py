@@ -43,9 +43,7 @@ def allocate_closed_position_fills(
 
     for fill in unallocated:
         matches = [
-            position
-            for position in positions
-            if _fill_fallback_matches_position(fill, position)
+            position for position in positions if _fill_fallback_matches_position(fill, position)
         ]
         if len(matches) == 1:
             allocated[matches[0].position_id].append(fill)

@@ -1509,11 +1509,17 @@ async def test_on_h1_close_rechecks_sync_after_marking_missing_position_closed(
     manager._state = stale_pos
     manager._signal_runner = _BatchSignalRunner(batch)
 
+    async def latest_signal_batch(symbol: str) -> SignalBatch | None:
+        return manager._signal_runner.get_latest_signal_batch(symbol)
+
+    manager._get_latest_signal_batch = latest_signal_batch
+
     await manager.on_h1_close("SOL-USDT-SWAP")
 
     assert stale_pos_position.status == "closed"
     assert [pos.selected_strategy for pos in manager._state.all_open_positions()] == ["new_donor"]
     assert manager._state.last_exchange_sync_ok
+    await manager._wait_for_pending_notifications()
 
 
 @pytest.mark.asyncio
@@ -2119,6 +2125,7 @@ async def test_live_entry_decisions_match_execution_sim_for_same_signal_events(
             "risk_percent": 1.0,
             "rrr": 2.0,
             "position_ttl_bars": 24,
+            "position_ttl_minutes": 24 * 60,
             "exit_geometry": "sl_rrr",
             "structural_sl_mode": "cap",
             "min_tp_move_pct": 0.004,
@@ -2131,6 +2138,7 @@ async def test_live_entry_decisions_match_execution_sim_for_same_signal_events(
             "risk_percent": 1.0,
             "rrr": 2.0,
             "position_ttl_bars": 32,
+            "position_ttl_minutes": 32 * 60,
             "exit_geometry": "sl_rrr",
             "structural_sl_mode": "cap",
             "min_tp_move_pct": 0.004,
@@ -2204,7 +2212,7 @@ async def test_live_entry_decisions_match_execution_sim_for_same_signal_events(
         assert live_pos.risk_base_capital == pytest.approx(trade["risk_base_capital"])
         assert live_pos.is_long == bool(trade["is_long"])
         assert live_pos.selected_strategy == trade["selected_strategy"]
-        assert live_pos.ttl_bars == int(trade["position_ttl_bars"])
+        assert live_pos.ttl_bars == int(trade["position_ttl_minutes"])
         assert live_pos.leverage == pytest.approx(trade["leverage"])
         assert live_pos.locked_margin == pytest.approx(trade["locked_margin"])
         assert live_pos.position_group == live_pos.selected_strategy

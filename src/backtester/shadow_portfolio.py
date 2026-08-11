@@ -158,6 +158,12 @@ def _entry_context(signal_row: pd.Series, execution: Any) -> dict[str, Any]:
             "min_tp_move_pct",
             "position_group",
             "drain_on_group_change",
+            "tp_policy_enabled",
+            "tp_policy_min_original_rrr",
+            "tp_policy_min_distance_pct",
+            "tp_policy_min_last_touch_bars",
+            "tp_policy_adjusted_rrr",
+            "tp_last_touch_bars",
             "entry_price",
         }
     }
@@ -199,5 +205,29 @@ def _entry_context(signal_row: pd.Series, execution: Any) -> dict[str, Any]:
         ),
         "position_group": str(signal_row.get("position_group", "")),
         "drain_on_group_change": bool(signal_row.get("drain_on_group_change", False)),
+        "tp_policy_enabled": bool(signal_row.get("tp_policy_enabled", False)),
+        "tp_policy_min_original_rrr": float(
+            signal_row.get("tp_policy_min_original_rrr", 4.0)
+        ),
+        "tp_policy_min_distance_pct": _optional_float(
+            signal_row.get("tp_policy_min_distance_pct", 0.07)
+        ),
+        "tp_policy_min_last_touch_bars": _optional_int(
+            signal_row.get("tp_policy_min_last_touch_bars", 720)
+        ),
+        "tp_policy_adjusted_rrr": float(signal_row.get("tp_policy_adjusted_rrr", 3.0)),
+        "tp_last_touch_bars": _optional_int(signal_row.get("tp_last_touch_bars")),
         "metadata": metadata,
     }
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None or pd.isna(value):
+        return None
+    return float(value)
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None or pd.isna(value):
+        return None
+    return int(value)

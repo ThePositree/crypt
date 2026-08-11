@@ -88,6 +88,8 @@ def test_run_trade_filter_research_writes_split_outputs(tmp_path: Path) -> None:
                 stress_end="2025-03-01",
             ),
             min_train_trades=1,
+            max_pair_components=10,
+            max_pair_rules=2,
             progress=False,
         )
     )
@@ -173,6 +175,8 @@ def test_run_trade_filter_research_can_search_per_strategy(tmp_path: Path) -> No
                 stress_end="2025-03-01",
             ),
             min_train_trades=1,
+            max_pair_components=3,
+            max_pair_rules=0,
             progress=False,
         )
     )

@@ -352,7 +352,7 @@ def test_execution_grid_window_reuses_one_signal_build(monkeypatch, tmp_path):
     strategy = DummyStrategy()
     monkeypatch.setattr(
         "backtester.fixed_candidate_report._load_window_data",
-        lambda **_: df,
+        lambda **_: (df, df),
     )
     monkeypatch.setattr(
         "backtester.fixed_candidate_report.build_strategy_instance",

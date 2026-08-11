@@ -52,6 +52,13 @@ Format: newest on top, date in `YYYY-MM-DD`.
   This exposed and fixed a replay-methodology gap: the CLI now supports
   `--load-from` so phase checks can warm up indicators without executing
   pre-phase trades.
+- Fixed CI compatibility issues around `EvaluationContext` candle aliases,
+  websocket boundary payload construction, router/shadow execution metadata,
+  and stale test mocks.
+- Reduced full pytest runtime by removing real sleeps from timeout tests,
+  avoiding default-executor threadpool teardown in a live executor unit test,
+  using the fast crypt-ensemble incremental adapter path, and shrinking
+  synthetic research search spaces.
 
 ## 2026-08-05 — Backtester regression runbook
 

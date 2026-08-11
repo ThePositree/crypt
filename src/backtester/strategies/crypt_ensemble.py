@@ -900,12 +900,14 @@ class _ContextWindowCache:
     def __init__(
         self,
         *,
-        candles: dict[Timeframe, pd.DataFrame],
+        candles: dict[Timeframe, pd.DataFrame] | None = None,
+        candles_by_timeframe: dict[Timeframe, pd.DataFrame] | None = None,
         extras: dict[str, pd.DataFrame],
     ) -> None:
+        candle_bundle = candles if candles is not None else candles_by_timeframe or {}
         self._candles: dict[Timeframe, pd.DataFrame] = {}
         self._candle_close_times: dict[Timeframe, pd.DatetimeIndex] = {}
-        for timeframe, frame in candles.items():
+        for timeframe, frame in candle_bundle.items():
             self._candles[timeframe] = frame
             if frame.empty or "open_time" not in frame.columns:
                 self._candle_close_times[timeframe] = pd.DatetimeIndex([], tz="UTC")
@@ -976,12 +978,14 @@ def _build_context(
     *,
     symbol: str,
     tick_time: datetime,
-    candles: dict[Timeframe, pd.DataFrame],
+    candles: dict[Timeframe, pd.DataFrame] | None = None,
+    candles_by_timeframe: dict[Timeframe, pd.DataFrame] | None = None,
     extras: dict[str, pd.DataFrame],
 ) -> EvaluationContext:
+    candle_bundle = candles if candles is not None else candles_by_timeframe or {}
     closed = {
         tf: frame
-        for tf, df in candles.items()
+        for tf, df in candle_bundle.items()
         if not (frame := _closed_candles(df, tf, tick_time)).empty
     }
     oi_df = _filter_ts(extras.get("oi", pd.DataFrame()), tick_time, _OI_LIMIT)

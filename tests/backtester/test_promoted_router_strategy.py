@@ -202,7 +202,7 @@ def test_promoted_router_never_runs_nested_backtests(monkeypatch) -> None:
         lambda **_kwargs: (_ for _ in ()).throw(AssertionError("nested backtest must not run")),
     )
 
-    def fake_prepare(*, data, specs):  # noqa: ARG001
+    def fake_prepare(*, data, specs, **_kwargs):  # noqa: ARG001
         prepared_specs.extend(spec.strategy_id for spec in specs)
         return {
             strategy_id: primary.assign(signal=1, sl_price=99.0) for strategy_id in prepared_specs
