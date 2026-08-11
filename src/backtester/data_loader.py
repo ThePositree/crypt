@@ -1,7 +1,6 @@
 import logging
-import os
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -35,7 +34,8 @@ class BaseDataLoader(ABC):
         pandas.DataFrame | StrategyData
             DataFrame with DatetimeIndex and at least the following
             columns: ``open``, ``high``, ``low``, ``close``, ``volume``; or a
-            StrategyData object whose primary frame follows the same contract.
+            StrategyData object whose selected runner frame follows the same
+            OHLCV index contract.
 
         Raises
         ------
@@ -201,7 +201,7 @@ class CsvDataLoader(BaseDataLoader):
         ValueError
             If the timestamp column is missing.
         """
-        if not os.path.exists(self.filepath):
+        if not Path(self.filepath).exists():
             raise FileNotFoundError(f"File not found: {self.filepath}")
 
         df = pd.read_csv(self.filepath)
@@ -285,7 +285,7 @@ class ParquetDataLoader(BaseDataLoader):
         self.timestamp_col = timestamp_col
 
     def load(self) -> pd.DataFrame:
-        if not os.path.exists(self.filepath):
+        if not Path(self.filepath).exists():
             raise FileNotFoundError(f"File not found: {self.filepath}")
 
         df = pd.read_parquet(self.filepath)
@@ -296,6 +296,8 @@ def _parse_utc_bound(
     value: str | datetime | pd.Timestamp | None, *, name: str
 ) -> pd.Timestamp | None:
     if value is None:
+        return None
+    if isinstance(value, str) and value.strip().lower() in {"full", "all"}:
         return None
 
     try:
@@ -333,6 +335,19 @@ def _filter_context_datetime_index(
     return _filter_datetime_index(df, start=None, end=end)
 
 
+def _empty_ohlcv_frame() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "open": pd.Series(dtype="float64"),
+            "high": pd.Series(dtype="float64"),
+            "low": pd.Series(dtype="float64"),
+            "close": pd.Series(dtype="float64"),
+            "volume": pd.Series(dtype="float64"),
+        },
+        index=pd.DatetimeIndex([], tz="UTC"),
+    )
+
+
 class CryptParquetDataLoader(BaseDataLoader):
     """Load the crypt project Parquet layout for one symbol."""
 
@@ -340,7 +355,7 @@ class CryptParquetDataLoader(BaseDataLoader):
         self,
         data_dir: str,
         symbol: str,
-        primary_timeframe: str = "4h",
+        candle_timeframe: str | None = None,
         start: str | datetime | pd.Timestamp | None = None,
         end: str | datetime | pd.Timestamp | None = None,
         load_execution_1m: bool = False,
@@ -348,7 +363,7 @@ class CryptParquetDataLoader(BaseDataLoader):
         super().__init__()
         self.data_dir = data_dir
         self.symbol = symbol
-        self.primary_timeframe = primary_timeframe
+        self.candle_timeframe = candle_timeframe
         self.start = _parse_utc_bound(start, name="start")
         self.end = _parse_utc_bound(end, name="end")
         self.load_execution_1m = load_execution_1m
@@ -358,7 +373,7 @@ class CryptParquetDataLoader(BaseDataLoader):
     def _load_candles(self, store: Any, timeframe: Any) -> pd.DataFrame:
         raw = store.load_candles(self.symbol, timeframe)
         if raw.empty:
-            return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+            return _empty_ohlcv_frame()
         frame = self._standardize_ohlcv_frame(raw, timestamp_col="open_time")
         return _filter_context_datetime_index(frame, end=self.end)
 
@@ -375,9 +390,32 @@ class CryptParquetDataLoader(BaseDataLoader):
             price_type=price_type,
         )
         if raw.empty:
-            return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+            return _empty_ohlcv_frame()
         frame = self._standardize_ohlcv_frame(raw, timestamp_col="open_time")
         return _filter_datetime_index(frame, start=self.start, end=self.end)
+
+    def _load_optional_candles(self, store: Any, timeframe_enum: Any, name: str) -> pd.DataFrame:
+        timeframe = getattr(timeframe_enum, name, None)
+        if timeframe is None:
+            return _empty_ohlcv_frame()
+        return self._load_candles(store, timeframe)
+
+    def _backfill_hint(self) -> str:
+        from_date = "2021-12-18" if self.start is None else self.start.date().isoformat()
+        if self.end is None:
+            to_date = (datetime.now(UTC).date() + timedelta(days=1)).isoformat()
+        else:
+            to_date = (self.end.date() + timedelta(days=1)).isoformat()
+        return (
+            "Suggested non-interactive backfill command: "
+            "MPLCONFIGDIR=/tmp/matplotlib-cache UV_CACHE_DIR=/tmp/uv-cache "
+            "PYTHONPATH=src uv run python -m crypt.backfill "
+            f"--symbol {self.symbol} "
+            f"--from {from_date} "
+            f"--to {to_date} "
+            "--data-types ohlcv "
+            f"--data-dir {self.data_dir}"
+        )
 
     def load(self) -> StrategyData:
         try:
@@ -393,26 +431,32 @@ class CryptParquetDataLoader(BaseDataLoader):
         h4 = self._load_candles(store, Timeframe.H4)
         if h4.empty:
             raise ValueError(
-                f"crypt-parquet requires H4 candles for symbol {self.symbol!r}"
+                f"crypt-parquet requires H4 candles for symbol {self.symbol!r}. "
+                f"{self._backfill_hint()}"
             )
 
         candles = {
-            "H4": h4,
-            "H1": self._load_candles(store, Timeframe.H1),
-            "D1": self._load_candles(store, Timeframe.D1),
+            key: _filter_datetime_index(frame, start=self.start, end=self.end)
+            for key, frame in {
+                "M15": self._load_optional_candles(store, Timeframe, "M15"),
+                "H4": h4,
+                "H1": self._load_optional_candles(store, Timeframe, "H1"),
+                "D1": self._load_optional_candles(store, Timeframe, "D1"),
+            }.items()
         }
-        primary_key = _timeframe_key(self.primary_timeframe)
-        if primary_key not in candles:
-            raise ValueError(
-                "crypt-parquet primary_timeframe must be one of: 1h, 4h, 1d"
-            )
-        primary = candles[primary_key]
-        primary = _filter_datetime_index(primary, start=self.start, end=self.end)
-        if primary.empty:
-            raise ValueError(
-                "crypt-parquet requires non-empty "
-                f"{primary_key} candles for primary_timeframe"
-            )
+        if self.candle_timeframe is not None:
+            candle_key = _timeframe_key(self.candle_timeframe)
+            if candle_key not in candles:
+                raise ValueError(
+                    "crypt-parquet candle_timeframe must be one of: 15m, 1h, 4h, 1d"
+                )
+            candle_frame = candles[candle_key]
+            candle_frame = _filter_datetime_index(candle_frame, start=self.start, end=self.end)
+            if candle_frame.empty:
+                raise ValueError(
+                    "crypt-parquet requires non-empty "
+                    f"{candle_key} candles for candle_timeframe. {self._backfill_hint()}"
+                )
 
         extras = {
             "oi": store.load_oi(self.symbol),
@@ -450,13 +494,11 @@ class CryptParquetDataLoader(BaseDataLoader):
                 )
 
         return StrategyData(
-            primary=primary,
-            candles=candles,
+            candles_by_timeframe=candles,
             extras=extras,
             metadata={
                 "symbol": self.symbol,
                 "exchange": "OKX",
-                "primary_timeframe": primary_key,
             },
             execution=execution,
         )
@@ -551,7 +593,7 @@ class BingxApiDataLoader(BaseDataLoader):
         self.cache_dir = cache_dir
 
         if self.cache_dir is not None:
-            os.makedirs(self.cache_dir, exist_ok=True)
+            Path(self.cache_dir).mkdir(parents=True, exist_ok=True)
 
     def _build_params(
         self,
@@ -589,7 +631,7 @@ class BingxApiDataLoader(BaseDataLoader):
         ]
         return "|".join(parts)
 
-    def _cache_path(self) -> str | None:
+    def _cache_path(self) -> Path | None:
         """Return absolute path to the cache file for current parameters."""
         if self.cache_dir is None:
             return None
@@ -597,7 +639,7 @@ class BingxApiDataLoader(BaseDataLoader):
         key = self._cache_key()
         digest = sha256(key.encode("utf-8")).hexdigest()
         filename = f"{digest}.pkl"
-        return os.path.join(self.cache_dir, filename)
+        return Path(self.cache_dir) / filename
 
     def _sign(self, params: dict[str, Any]) -> tuple[str, str]:
         """Create BingX-compatible query string and signature."""
@@ -642,12 +684,11 @@ class BingxApiDataLoader(BaseDataLoader):
     def _hmac_sha256(secret: str, payload: str) -> str:
         import hmac
 
-        signature = hmac.new(
+        return hmac.new(
             secret.encode("utf-8"),
             payload.encode("utf-8"),
             digestmod=sha256,
         ).hexdigest()
-        return signature
 
     def _fetch_one_batch(self, batch_end_ms: int) -> list[dict[str, Any]]:
         """Request one batch of klines from BingX (up to _BINGX_KLINES_LIMIT)."""
@@ -655,7 +696,7 @@ class BingxApiDataLoader(BaseDataLoader):
         url_params_str, signature = self._sign(params)
         url = f"{self.base_url}{self._PATH}?{url_params_str}&signature={signature}"
 
-        headers = {"X-BX-APIKEY": self.api_key or ""}
+        headers: dict[str, str | bytes] = {"X-BX-APIKEY": self.api_key or ""}
         self._logger.debug("Requesting BingX klines batch up to end %s", batch_end_ms)
         response = requests.get(url, headers=headers, timeout=30)
 
@@ -694,7 +735,7 @@ class BingxApiDataLoader(BaseDataLoader):
             If the response format is unexpected or no data in range.
         """
         cache_path = self._cache_path()
-        if cache_path is not None and os.path.exists(cache_path):
+        if cache_path is not None and cache_path.exists():
             self._logger.info("Loading BingX data from cache file %s", cache_path)
             try:
                 df = pd.read_pickle(cache_path)
@@ -898,6 +939,8 @@ def create_data_loader(source: str, **kwargs: Any) -> BaseDataLoader:
 def _timeframe_key(value: str) -> str:
     normalized = str(value).strip().lower()
     aliases = {
+        "m15": "M15",
+        "15m": "M15",
         "h1": "H1",
         "1h": "H1",
         "h4": "H4",

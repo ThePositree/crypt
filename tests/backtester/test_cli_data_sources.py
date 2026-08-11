@@ -4,6 +4,7 @@ import logging
 
 import pandas as pd
 
+from backtester.__main__ import _backtest_load_start
 from backtester.cli_runner import (
     build_cli_data_loader,
     load_ohlcv_via_loader,
@@ -21,6 +22,24 @@ def test_parse_utc_datetime_to_ms():
     ms = parse_utc_datetime_to_ms("2024-01-01 00:00:00")
     assert isinstance(ms, int)
     assert ms == 1704067200000  # UTC
+
+
+def test_backtest_load_start_defaults_to_30_day_warmup():
+    assert (
+        _backtest_load_start("2026-07-29T12:00:00Z", None)
+        == "2026-06-29T12:00:00Z"
+    )
+
+
+def test_backtest_load_start_accepts_explicit_warmup_start():
+    assert (
+        _backtest_load_start("2026-07-29T12:00:00Z", "2026-07-13T00:00:00Z")
+        == "2026-07-13T00:00:00Z"
+    )
+
+
+def test_backtest_load_start_full_alias_loads_full_history():
+    assert _backtest_load_start("2026-07-29T12:00:00Z", "full") is None
 
 
 def test_build_cli_data_loader_csv():
@@ -105,19 +124,19 @@ def test_build_cli_data_loader_crypt_parquet():
     assert isinstance(loader, CryptParquetDataLoader)
     assert loader.data_dir == "/tmp/data"
     assert loader.symbol == "SOL-USDT-SWAP"
-    assert loader.primary_timeframe == "4h"
+    assert loader.candle_timeframe is None
 
 
-def test_build_cli_data_loader_crypt_parquet_primary_timeframe():
+def test_build_cli_data_loader_crypt_parquet_candle_timeframe():
     loader = build_cli_data_loader(
         "crypt-parquet",
         data_dir="/tmp/data",
         symbol="SOL-USDT-SWAP",
-        primary_timeframe="1h",
+        candle_timeframe="1h",
     )
 
     assert isinstance(loader, CryptParquetDataLoader)
-    assert loader.primary_timeframe == "1h"
+    assert loader.candle_timeframe == "1h"
 
 
 def test_build_cli_data_loader_crypt_parquet_date_range():
@@ -132,6 +151,20 @@ def test_build_cli_data_loader_crypt_parquet_date_range():
     assert isinstance(loader, CryptParquetDataLoader)
     assert loader.start == pd.Timestamp("2024-01-01 00:00:00", tz="UTC")
     assert loader.end == pd.Timestamp("2024-01-31 23:00:00", tz="UTC")
+
+
+def test_build_cli_data_loader_crypt_parquet_full_aliases():
+    loader = build_cli_data_loader(
+        "crypt-parquet",
+        data_dir="/tmp/data",
+        symbol="SOL-USDT-SWAP",
+        start="full",
+        end="all",
+    )
+
+    assert isinstance(loader, CryptParquetDataLoader)
+    assert loader.start is None
+    assert loader.end is None
 
 
 def test_build_cli_data_loader_crypt_parquet_missing_params_raises():

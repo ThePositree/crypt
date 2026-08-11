@@ -34,7 +34,7 @@ class TrendEngine(BaseEngine):
         return "trend"
 
     def evaluate(self, ctx: EvaluationContext) -> Signal:
-        h4 = ctx.candles.get(Timeframe.H4)
+        h4 = ctx.candles_by_timeframe.get(Timeframe.H4)
         if h4 is None or len(h4) < _MIN_H4:
             return self._neutral(
                 ctx,
@@ -93,7 +93,7 @@ class TrendEngine(BaseEngine):
             confidence += 0.1
 
         # Higher-timeframe confluence: D1 EMA50 vs EMA200.
-        d1 = ctx.candles.get(Timeframe.D1)
+        d1 = ctx.candles_by_timeframe.get(Timeframe.D1)
         if d1 is not None and len(d1) >= _MIN_D1:
             d1_ema50 = ta.ema(d1["c"], length=50)
             d1_ema200 = ta.ema(d1["c"], length=200)

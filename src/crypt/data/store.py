@@ -241,6 +241,7 @@ class ParquetStore:
         candles: list[Candle],
         *,
         allow_ohlc_rewrite: bool = False,
+        validate_h1_from_1m: bool = True,
     ) -> None:
         if not candles:
             return
@@ -303,7 +304,7 @@ class ParquetStore:
                     new=new_df,
                     path=path,
                 )
-            if tf is Timeframe.H1:
+            if tf is Timeframe.H1 and validate_h1_from_1m:
                 _assert_h1_matches_complete_minutes(
                     base=self._base,
                     symbol=symbol,

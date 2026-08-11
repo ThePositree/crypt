@@ -1,6 +1,7 @@
 # PineScript-derived DSS catalog v1
 
-Status: accepted implementation spec
+Status: implemented catalog; current DSS command contract lives in
+`docs/discovery/direct_signal_search_v3.md`.
 
 Date: 2026-06-16
 
@@ -19,14 +20,8 @@ and filters.
 ```bash
 uv run backtester search-signals \
   --catalog pinescript_v1 \
-  --stage-mode stage1 \
-  --min-signals-per-week 4 \
-  --data-dir data \
-  --symbol SOL-USDT-SWAP \
   --windows 2023 \
   --n-trials 50000 \
-  --n-jobs 4 \
-  --seed 73023 \
   --output results/dss_sol_pinescript_v1_2023_seed73023
 ```
 
@@ -149,16 +144,15 @@ Required feature columns include:
 - `--catalog legacy` keeps current behavior.
 - `--catalog pinescript_v1` uses only the new catalog.
 - `--catalog all` combines both, for later comparison only.
-- `--stage-mode stage1` stops after Stage 1 signal/barrier checks, writes
-  `stage1_ranked.csv`, exports replayable research configs under
-  `stage1_candidates/`, and does not run backtests.
+- DSS v3 search uses directional candidate evaluation; replay and Optuna happen
+  through `backtester run` / `backtester optimize`.
 
 The selected catalog is written into `dss_state.json` so resumed/inspected runs
 can be tied back to the trigger/filter vocabulary that produced them.
 
 The first real run should use `--catalog pinescript_v1` and one target window
-(`2023`) in Stage 1-only mode to answer whether the new primitives produce a
-healthier 2023 signal tail.
+(`2023`) with a bounded candidate budget to answer whether the new primitives
+produce a healthier 2023 signal tail.
 
 Use `--min-signals-per-week 4` for this catalog. A full-year window then needs
 roughly 209 signals before barrier quality is considered. Candidates with only

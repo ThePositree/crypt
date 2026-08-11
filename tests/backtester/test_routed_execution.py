@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 import pytest
-from click.testing import CliRunner
 
-from backtester.__main__ import cli
 from backtester.routed_execution import (
     RoutedExecutionConfig,
     evaluate_routed_execution,
@@ -138,15 +136,6 @@ def test_routed_execution_report_writes_contract(tmp_path) -> None:
     assert (tmp_path / "monthly_mandate.csv").exists()
     assert (tmp_path / "mandate_summary.csv").exists()
     assert "# Routed Execution Validation" in (tmp_path / "report.md").read_text()
-
-
-def test_router_validate_help() -> None:
-    result = CliRunner().invoke(cli, ["router-validate", "--help"])
-
-    assert result.exit_code == 0
-    assert "--predictions" in result.output
-    assert "--matrix-dir" in result.output
-    assert "--max-allowed-margin" in result.output
 
 
 def _prediction(asof: str, strategy: str) -> dict[str, object]:

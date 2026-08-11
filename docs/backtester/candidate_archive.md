@@ -34,7 +34,7 @@ or meet the mandate archive tier. At least one of these must be true:
 - positive or weakly positive return on a meaningful window;
 - clear regime-specific performance;
 - diversified trigger/filter family compared with existing archive entries;
-- high Stage 1 signal quality but insufficient trade count;
+- high directional signal quality but insufficient trade count;
 - useful negative/failure mode that helps separate regimes;
 - owner explicitly marks it as worth keeping.
 

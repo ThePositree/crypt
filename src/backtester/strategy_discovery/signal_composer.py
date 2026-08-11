@@ -10,13 +10,18 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import pandas as pd
 
-from backtester.strategy_discovery.dss_config import TrialConfig
+from backtester.strategy_discovery.dss_config import DSSInstance, TrialConfig
 from backtester.strategy_discovery.events import DiscoveryEvent
-from backtester.strategy_discovery.features import DiscoveryDataset, build_discovery_dataset
+from backtester.strategy_discovery.features import (
+    DiscoveryDataset,
+    align_discovery_dataset_asof,
+    build_timeframe_discovery_dataset,
+)
 from backtester.strategy_discovery.parameterized_filters import (
     FilterFn,
     parameterized_filter_catalog,
@@ -44,6 +49,7 @@ _SIGNAL_ROW_COLUMNS = [
 ]
 
 GenerateFn = Callable[["StrategyInput"], pd.DataFrame]
+ProgressCallback = Callable[[str, int, int], None]
 SignalRow = dict[str, object]
 
 _CONTEXT_CONFIDENCE_BONUS: dict[str, float] = {
@@ -66,6 +72,13 @@ class SignalComposer:
             **parameterized_filter_catalog(),
             **pinescript_filter_catalog(),
         }
+        self._dataset_cache: dict[tuple[int, str, str, str], DiscoveryDataset] = {}
+        self._progress_callback: ProgressCallback | None = None
+
+    def set_progress_callback(self, callback: ProgressCallback | None) -> None:
+        """Attach an optional progress callback for owner-facing CLI runs."""
+
+        self._progress_callback = callback
 
     # ------------------------------------------------------------------
     # Public API
@@ -87,50 +100,88 @@ class SignalComposer:
             symbol = ""
             if isinstance(data, StrategyData):
                 symbol = str(data.metadata.get("symbol", ""))
-            dataset = build_discovery_dataset(
+            window_label = str(getattr(data, "metadata", {}).get("window_label", "dss"))
+            required_timeframes = _required_timeframes(config)
+            total_steps = len(required_timeframes) + 3
+            done = 0
+            dataset = self._cached_dataset(
                 data=data,
-                window_label="dss",
+                timeframe=config.trigger_instance.timeframe,
+                window_label=window_label,
                 symbol=symbol,
             )
-            return self.generate_from_dataset(config, dataset)
+            done += 1
+            self._report_progress(
+                f"features {config.trigger_instance.timeframe}",
+                done,
+                total_steps,
+            )
+            filter_datasets: dict[str, DiscoveryDataset] = {}
+            reported_timeframes = {config.trigger_instance.timeframe}
+            for instance in config.filter_instances:
+                filter_datasets[instance.label] = self._cached_dataset(
+                    data=data,
+                    timeframe=instance.timeframe,
+                    window_label=window_label,
+                    symbol=symbol,
+                )
+                if instance.timeframe not in reported_timeframes:
+                    reported_timeframes.add(instance.timeframe)
+                    done += 1
+                    self._report_progress(f"features {instance.timeframe}", done, total_steps)
+            return self.generate_from_dataset(
+                config,
+                dataset,
+                filter_datasets=filter_datasets,
+                progress_done=done,
+                progress_total=total_steps,
+            )
 
         return generate
 
     def validate_or_raise(self, config: TrialConfig) -> None:
         """Raise when a DSS config references an unknown trigger or filter."""
 
-        trigger_name = config.trigger_name
+        trigger_name = config.trigger_instance.name
         if trigger_name not in self._trigger_catalog:
             available = sorted(self._trigger_catalog)
             raise ValueError(f"Unknown trigger_name {trigger_name!r}. Available: {available}")
-        for fn in config.filter_names:
-            if fn not in self._filter_catalog:
+        for instance in config.filter_instances:
+            if instance.name not in self._filter_catalog:
                 available = sorted(self._filter_catalog)
-                raise ValueError(f"Unknown filter_name {fn!r}. Available: {available}")
+                raise ValueError(f"Unknown filter_name {instance.name!r}. Available: {available}")
 
     def generate_from_dataset(
         self,
         config: TrialConfig,
         dataset: DiscoveryDataset,
+        *,
+        filter_datasets: dict[str, DiscoveryDataset] | None = None,
+        progress_done: int = 0,
+        progress_total: int = 0,
     ) -> pd.DataFrame:
         """Generate one DSS signal frame from an already-built shared dataset."""
 
         self.validate_or_raise(config)
-        trigger_name = config.trigger_name
+        trigger_name = config.trigger_instance.name
         trigger_factory = self._trigger_catalog[trigger_name]
         trigger_fn = trigger_factory(config.trigger_params)
 
+        filter_instances = config.filter_instances
         filter_fns = [
-            self._filter_catalog[fn](config.filter_params.get(fn, {})) for fn in config.filter_names
+            (
+                instance.label,
+                self._filter_catalog[instance.name](instance.params),
+            )
+            for instance in filter_instances
         ]
 
-        rrr = config.rrr
-        atr_sl_mult = config.atr_sl_mult
-        filter_names_str = "+".join(config.filter_names) if config.filter_names else "no_filter"
-        rationale_base = f"{trigger_name} | {filter_names_str}"
+        filter_labels = tuple(instance.label for instance in filter_instances)
+        filter_names_str = "+".join(filter_labels) if filter_labels else "no_filter"
+        rationale_base = f"{config.trigger_instance.label} | {filter_names_str}"
 
         confidence_bonus = min(
-            sum(_CONTEXT_CONFIDENCE_BONUS.get(fn, 0.0) for fn in config.filter_names),
+            sum(_CONTEXT_CONFIDENCE_BONUS.get(instance.name, 0.0) for instance in config.filter_instances),
             _MAX_CONFIDENCE - _BASE_CONFIDENCE,
         )
         confidence = min(_BASE_CONFIDENCE + confidence_bonus, _MAX_CONFIDENCE)
@@ -144,21 +195,21 @@ class SignalComposer:
                 exc_info=True,
             )
             return _empty_signal_df()
+        progress_done += 1
+        self._report_progress("trigger", progress_done, progress_total)
 
+        aligned_filter_datasets = _align_filter_datasets(
+            dataset=dataset,
+            filter_instances=filter_instances,
+            filter_datasets=filter_datasets or {},
+        )
+        progress_done += 1
+        self._report_progress("filter alignment", progress_done, progress_total)
         surviving: list[SignalRow] = []
         for event in raw_events:
-            if not _apply_filters(event, dataset, filter_fns):
-                continue
-            atr = _atr_at(dataset.primary, event.event_time)
-            if atr is None or atr <= 0:
+            if not _apply_filters(event, dataset, filter_fns, aligned_filter_datasets):
                 continue
             entry = event.entry_reference_price
-            if event.side == "long":
-                stop = entry - atr * atr_sl_mult
-                tp = entry + (entry - stop) * rrr
-            else:
-                stop = entry + atr * atr_sl_mult
-                tp = entry - (stop - entry) * rrr
             surviving.append(
                 {
                     "bar_time": event.event_time,
@@ -167,10 +218,12 @@ class SignalComposer:
                     "confidence": confidence,
                     "rationale": rationale_base,
                     "entry_price": entry,
-                    "stop_price": stop,
-                    "tp_price": tp,
+                    "stop_price": 0.0,
+                    "tp_price": 0.0,
                 }
             )
+        progress_done += 1
+        self._report_progress("filters", progress_done, progress_total)
 
         if not surviving:
             return _empty_signal_df()
@@ -182,12 +235,42 @@ class SignalComposer:
     def validate_config(self, config: TrialConfig) -> list[str]:
         """Return a list of validation errors (empty = valid)."""
         errors: list[str] = []
-        if config.trigger_name not in self._trigger_catalog:
-            errors.append(f"Unknown trigger_name: {config.trigger_name!r}")
-        for fn in config.filter_names:
-            if fn not in self._filter_catalog:
-                errors.append(f"Unknown filter_name: {fn!r}")
+        if config.trigger_instance.name not in self._trigger_catalog:
+            errors.append(f"Unknown trigger_name: {config.trigger_instance.name!r}")
+        try:
+            filter_instances = config.filter_instances
+        except ValueError as exc:
+            errors.append(str(exc))
+            return errors
+        for instance in filter_instances:
+            if instance.name not in self._filter_catalog:
+                errors.append(f"Unknown filter_name: {instance.name!r}")
         return errors
+
+    def _cached_dataset(
+        self,
+        *,
+        data: StrategyInput,
+        timeframe: str,
+        window_label: str,
+        symbol: str,
+    ) -> DiscoveryDataset:
+        key = (id(data), timeframe, window_label, symbol)
+        cached = self._dataset_cache.get(key)
+        if cached is not None:
+            return cached
+        dataset = build_timeframe_discovery_dataset(
+            data=data,
+            timeframe=timeframe,
+            window_label=window_label,
+            symbol=symbol,
+        )
+        self._dataset_cache[key] = dataset
+        return dataset
+
+    def _report_progress(self, label: str, done: int, total: int) -> None:
+        if self._progress_callback is not None and total > 0:
+            self._progress_callback(label, done, total)
 
 
 # ---------------------------------------------------------------------------
@@ -195,12 +278,31 @@ class SignalComposer:
 # ---------------------------------------------------------------------------
 
 
+def _required_timeframes(config: TrialConfig) -> tuple[str, ...]:
+    labels: list[str] = []
+    seen: set[str] = set()
+    for timeframe in (
+        config.trigger_instance.timeframe,
+        *(instance.timeframe for instance in config.filter_instances),
+    ):
+        if timeframe in seen:
+            continue
+        seen.add(timeframe)
+        labels.append(timeframe)
+    return tuple(labels)
+
+
 def _apply_filters(
-    event: DiscoveryEvent, dataset: DiscoveryDataset, filter_fns: list[FilterFn]
+    event: DiscoveryEvent,
+    dataset: DiscoveryDataset,
+    filter_fns: list[tuple[str, FilterFn]],
+    filter_datasets: dict[str, DiscoveryDataset],
 ) -> bool:
-    for filt in filter_fns:
+    for label, filt in filter_fns:
+        filter_dataset = filter_datasets.get(label, dataset)
+        filter_event = _event_with_dataset_metadata(event, filter_dataset)
         try:
-            result = filt(event, dataset)
+            result = filt(filter_event, filter_dataset)
         except Exception:
             logger.debug(
                 "Filter raised for event %s; skipping event", event.event_id, exc_info=True
@@ -209,6 +311,43 @@ def _apply_filters(
         if not result.passed:
             return False
     return True
+
+
+def _event_with_dataset_metadata(
+    event: DiscoveryEvent, dataset: DiscoveryDataset
+) -> DiscoveryEvent:
+    if event.event_time not in dataset.ohlcv.index or event.event_time not in dataset.features.index:
+        return event
+    metadata = dict(event.metadata)
+    primary_row = dataset.ohlcv.loc[event.event_time]
+    feature_row = dataset.features.loc[event.event_time]
+    metadata.update(
+        {
+            "close": float(primary_row["close"]),
+            "volume": float(primary_row["volume"]),
+            "hour_utc": int(pd.Timestamp(event.event_time).hour),
+        }
+    )
+    for key, value in feature_row.items():
+        metadata[str(key)] = value
+    return replace(event, metadata=metadata)
+
+
+def _align_filter_datasets(
+    *,
+    dataset: DiscoveryDataset,
+    filter_instances: tuple[DSSInstance, ...],
+    filter_datasets: dict[str, DiscoveryDataset],
+) -> dict[str, DiscoveryDataset]:
+    aligned: dict[str, DiscoveryDataset] = {}
+    for instance in filter_instances:
+        label = instance.label
+        source = filter_datasets.get(label)
+        if source is None:
+            aligned[label] = dataset
+            continue
+        aligned[label] = align_discovery_dataset_asof(source, pd.DatetimeIndex(dataset.ohlcv.index))
+    return aligned
 
 
 def _atr_at(primary: pd.DataFrame, bar_time: pd.Timestamp, window: int = 14) -> float | None:

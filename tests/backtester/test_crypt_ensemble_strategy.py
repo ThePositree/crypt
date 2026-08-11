@@ -399,8 +399,7 @@ def test_crypt_ensemble_registered():
 def test_crypt_ensemble_maps_verdicts_to_donor_signal_and_sl():
     primary = _ohlcv()
     data = StrategyData(
-        primary=primary,
-        candles={"H4": primary},
+        candles_by_timeframe={"H4": primary},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )
@@ -423,8 +422,7 @@ def test_crypt_ensemble_maps_verdicts_to_donor_signal_and_sl():
 def test_crypt_ensemble_default_does_not_gate_entries_by_confidence():
     primary = _ohlcv()
     data = StrategyData(
-        primary=primary,
-        candles={"H4": primary},
+        candles_by_timeframe={"H4": primary},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )
@@ -447,8 +445,7 @@ def test_crypt_ensemble_default_does_not_gate_entries_by_confidence():
 def test_crypt_ensemble_explicit_min_confidence_suppresses_entries():
     primary = _ohlcv()
     data = StrategyData(
-        primary=primary,
-        candles={"H4": primary},
+        candles_by_timeframe={"H4": primary},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )
@@ -681,8 +678,7 @@ def test_structural_sl_ignores_anchor_known_after_tick_time():
 def test_crypt_ensemble_missing_optional_frames_does_not_raise():
     primary = _ohlcv()
     data = StrategyData(
-        primary=primary,
-        candles={"H4": primary, "H1": pd.DataFrame(), "D1": pd.DataFrame()},
+        candles_by_timeframe={"H4": primary, "H1": pd.DataFrame(), "D1": pd.DataFrame()},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )
@@ -699,8 +695,7 @@ def test_crypt_ensemble_accepts_open_time_named_index():
     primary = _ohlcv()
     primary.index.name = "open_time"
     data = StrategyData(
-        primary=primary,
-        candles={"H4": primary},
+        candles_by_timeframe={"H4": primary},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )
@@ -724,8 +719,7 @@ def test_crypt_ensemble_h1_mode_uses_h1_execution_index_and_diagnostics():
     h4 = _ohlcv_at(["2024-01-01 20:00:00", "2024-01-02 00:00:00"])
     d1 = _ohlcv_at(["2024-01-01 00:00:00"], closes=[12.0])
     data = StrategyData(
-        primary=primary,
-        candles={"H1": primary, "H4": h4, "D1": d1},
+        candles_by_timeframe={"H1": primary, "H4": h4, "D1": d1},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )
@@ -769,8 +763,7 @@ def test_crypt_ensemble_h1_default_requires_structural_trigger(
         ),
     )
     data = StrategyData(
-        primary=primary,
-        candles={"H1": primary, "H4": h4, "D1": d1},
+        candles_by_timeframe={"H1": primary, "H4": h4, "D1": d1},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )
@@ -832,8 +825,7 @@ def test_crypt_ensemble_h1_raw_candle_mode_uses_h1_candle_direction(
         ),
     )
     data = StrategyData(
-        primary=primary,
-        candles={"H1": primary, "H4": h4, "D1": d1},
+        candles_by_timeframe={"H1": primary, "H4": h4, "D1": d1},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )
@@ -1014,8 +1006,7 @@ def test_crypt_ensemble_h1_raw_momentum_burst_fires_on_short_burst(
     h4 = _ohlcv_at(["2024-01-01 20:00:00"], closes=[100.0])
     d1 = _ohlcv_at(["2024-01-01 00:00:00"], closes=[100.0])
     data = StrategyData(
-        primary=primary,
-        candles={"H1": primary, "H4": h4, "D1": d1},
+        candles_by_timeframe={"H1": primary, "H4": h4, "D1": d1},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )
@@ -1071,8 +1062,7 @@ def test_crypt_ensemble_h1_raw_nr7_breakout_fires_on_bullish_nr7(
     h4 = _ohlcv_at(["2024-01-01 20:00:00"], closes=[100.0])
     d1 = _ohlcv_at(["2024-01-01 00:00:00"], closes=[100.0])
     data = StrategyData(
-        primary=primary,
-        candles={"H1": primary, "H4": h4, "D1": d1},
+        candles_by_timeframe={"H1": primary, "H4": h4, "D1": d1},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )
@@ -1127,8 +1117,7 @@ def test_crypt_ensemble_tp_pct_execution_context_skips_structural_entry_gate(
     h4 = _ohlcv_at(["2024-01-01 20:00:00"], closes=[100.0])
     d1 = _ohlcv_at(["2024-01-01 00:00:00"], closes=[100.0])
     data = StrategyData(
-        primary=primary,
-        candles={"H1": primary, "H4": h4, "D1": d1},
+        candles_by_timeframe={"H1": primary, "H4": h4, "D1": d1},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )
@@ -1287,8 +1276,7 @@ def test_crypt_ensemble_h1_raw_mode_rejects_doji_without_setup_gate(
         lambda _ctx, _timeframe: _state_with_protective_pivots(),
     )
     data = StrategyData(
-        primary=primary,
-        candles={"H1": primary, "H4": h4, "D1": pd.DataFrame()},
+        candles_by_timeframe={"H1": primary, "H4": h4, "D1": pd.DataFrame()},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )
@@ -1360,8 +1348,7 @@ def test_crypt_ensemble_h1_structural_trigger_rules_emit_auditable_type(
         ),
     )
     data = StrategyData(
-        primary=primary,
-        candles={"H1": primary, "H4": h4, "D1": d1},
+        candles_by_timeframe={"H1": primary, "H4": h4, "D1": d1},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )
@@ -1441,19 +1428,19 @@ def test_context_window_cache_matches_reference_builder():
     reference = crypt_ensemble_mod._build_context(
         symbol="SOL-USDT-SWAP",
         tick_time=tick_time,
-        candles=candles,
+        candles_by_timeframe=candles,
         extras=extras,
     )
     optimized = crypt_ensemble_mod._ContextWindowCache(
-        candles=candles, extras=extras
+        candles_by_timeframe=candles, extras=extras
     ).build_context(symbol="SOL-USDT-SWAP", tick_time=tick_time)
 
-    assert {timeframe: len(frame) for timeframe, frame in reference.candles.items()} == {
-        timeframe: len(frame) for timeframe, frame in optimized.candles.items()
+    assert {timeframe: len(frame) for timeframe, frame in reference.candles_by_timeframe.items()} == {
+        timeframe: len(frame) for timeframe, frame in optimized.candles_by_timeframe.items()
     }
-    assert len(reference.candles[Timeframe.H1]) == 3
-    assert len(reference.candles[Timeframe.H4]) == 2
-    assert len(reference.candles[Timeframe.D1]) == 1
+    assert len(reference.candles_by_timeframe[Timeframe.H1]) == 3
+    assert len(reference.candles_by_timeframe[Timeframe.H4]) == 2
+    assert len(reference.candles_by_timeframe[Timeframe.D1]) == 1
     assert [item.oi for item in reference.oi or []] == [item.oi for item in optimized.oi or []]
     assert [item.long_ratio for item in reference.ls_ratio or []] == [
         item.long_ratio for item in optimized.ls_ratio or []
@@ -1496,8 +1483,7 @@ def test_crypt_ensemble_optimized_windows_match_reference_h1_output(
         index=pd.to_datetime(["2024-01-01 00:00:00"], utc=True),
     )
     data = StrategyData(
-        primary=primary,
-        candles={"H1": primary, "H4": h4, "D1": d1},
+        candles_by_timeframe={"H1": primary, "H4": h4, "D1": d1},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )
@@ -1576,8 +1562,7 @@ def test_crypt_ensemble_h1_setup_snapshot_reuses_h4_verdict_until_next_h4_close(
         lambda _ctx, _timeframe: SMCState(pivots=[_pivot("low", 9.0)]),
     )
     data = StrategyData(
-        primary=primary,
-        candles={"H1": primary, "H4": h4, "D1": d1},
+        candles_by_timeframe={"H1": primary, "H4": h4, "D1": d1},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )
@@ -1639,8 +1624,7 @@ def test_crypt_ensemble_h1_mode_uses_closer_h1_structural_stop(
         ),
     )
     data = StrategyData(
-        primary=primary,
-        candles={"H1": primary, "H4": h4, "D1": d1},
+        candles_by_timeframe={"H1": primary, "H4": h4, "D1": d1},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )
@@ -1682,8 +1666,7 @@ def test_crypt_ensemble_h1_mode_keeps_h4_stop_when_h1_is_wider(
         ),
     )
     data = StrategyData(
-        primary=primary,
-        candles={"H1": primary, "H4": h4, "D1": d1},
+        candles_by_timeframe={"H1": primary, "H4": h4, "D1": d1},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )
@@ -1714,8 +1697,7 @@ def test_crypt_ensemble_h1_mode_excludes_forming_h4_candle():
     primary = _ohlcv_at(["2024-01-02 05:00:00"], closes=[10.5])
     h4 = _ohlcv_at(["2024-01-02 00:00:00", "2024-01-02 04:00:00"])
     data = StrategyData(
-        primary=primary,
-        candles={"H1": primary, "H4": h4, "D1": pd.DataFrame()},
+        candles_by_timeframe={"H1": primary, "H4": h4, "D1": pd.DataFrame()},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )
@@ -1735,7 +1717,7 @@ def test_crypt_ensemble_h1_mode_excludes_forming_h4_candle():
     h4_lengths: list[int] = []
 
     def evaluate(ctx):
-        h4_frame = ctx.candles.get(crypt_ensemble_mod.Timeframe.H4)
+        h4_frame = ctx.candles_by_timeframe.get(crypt_ensemble_mod.Timeframe.H4)
         h4_lengths.append(0 if h4_frame is None else len(h4_frame))
         return _verdict("BUY", 0.5)
 
@@ -1764,8 +1746,7 @@ def test_crypt_ensemble_h1_mode_excludes_forming_d1_candle():
         ),
     )
     data = StrategyData(
-        primary=primary,
-        candles={"H1": primary, "H4": h4, "D1": d1},
+        candles_by_timeframe={"H1": primary, "H4": h4, "D1": d1},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )
@@ -1785,7 +1766,7 @@ def test_crypt_ensemble_h1_mode_excludes_forming_d1_candle():
     d1_lengths: list[int] = []
 
     def evaluate(ctx):
-        d1_frame = ctx.candles.get(crypt_ensemble_mod.Timeframe.D1)
+        d1_frame = ctx.candles_by_timeframe.get(crypt_ensemble_mod.Timeframe.D1)
         d1_lengths.append(0 if d1_frame is None else len(d1_frame))
         return _verdict("BUY", 0.5)
 
@@ -1813,8 +1794,7 @@ def test_crypt_ensemble_h1_mode_blocks_opposite_d1_context():
         index=pd.to_datetime(["2024-01-01 00:00:00"], utc=True),
     )
     data = StrategyData(
-        primary=primary,
-        candles={"H1": primary, "H4": h4, "D1": d1},
+        candles_by_timeframe={"H1": primary, "H4": h4, "D1": d1},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )
@@ -1860,8 +1840,7 @@ def test_crypt_ensemble_h1_mode_ignores_future_known_h4_stop_anchor(
     )
     monkeypatch.setattr(crypt_ensemble_mod, "_structural_stop_state", lambda _ctx: state)
     data = StrategyData(
-        primary=primary,
-        candles={"H1": primary, "H4": h4, "D1": d1},
+        candles_by_timeframe={"H1": primary, "H4": h4, "D1": d1},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )
@@ -1902,8 +1881,7 @@ def test_crypt_ensemble_h1_signal_enters_next_h1_open_through_execution_sim(
     h4 = _ohlcv_at(["2024-01-01 20:00:00"], closes=[100.5])
     d1 = _ohlcv_at(["2024-01-01 00:00:00"], closes=[101.0])
     data = StrategyData(
-        primary=primary,
-        candles={"H1": primary, "H4": h4, "D1": d1},
+        candles_by_timeframe={"H1": primary, "H4": h4, "D1": d1},
         extras={},
         metadata={"symbol": "SOL-USDT-SWAP"},
     )

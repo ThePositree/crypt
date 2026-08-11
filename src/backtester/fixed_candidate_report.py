@@ -18,7 +18,7 @@ from backtester.cli_runner import (
     load_ohlcv_via_loader,
     run_backtest,
 )
-from backtester.data_contracts import StrategyInput
+from backtester.data_contracts import StrategyInput, select_candle_frame
 from backtester.mandate_report import build_mandate_report
 from backtester.results_analyzer import ResultsAnalyzer
 from backtester.tester import Backtester
@@ -81,6 +81,7 @@ class FixedCandidateParams:
             maker_fee=self.maker_fee,
             taker_fee=self.taker_fee,
             ttl=self.ttl,
+            ttl_minutes=self.ttl * 60,
             max_positions=self.max_positions,
             max_allowed_leverage=self.max_allowed_leverage,
             max_allowed_margin=self.max_allowed_margin,
@@ -319,7 +320,7 @@ def _run_fixed_candidate_comparison_continuous(
     cfg: StrategyConfig,
     params: FixedCandidateParams,
     data_dir: str,
-    primary_timeframe: str,
+    candle_timeframe: str,
     output_folder: str,
     logger: logging.Logger,
 ) -> pd.DataFrame:
@@ -346,7 +347,7 @@ def _run_fixed_candidate_comparison_continuous(
             cfg=cfg,
             params=params,
             data_dir=data_dir,
-            primary_timeframe=primary_timeframe,
+            candle_timeframe=candle_timeframe,
             run_dir=run_dir,
         )
         continuous_row["execution_mode"] = "continuous"
@@ -399,7 +400,7 @@ def run_fixed_candidate_comparison(
     cfg: StrategyConfig,
     params: FixedCandidateParams,
     data_dir: str,
-    primary_timeframe: str,
+    candle_timeframe: str,
     output_folder: str,
     jobs: int,
     logger: logging.Logger,
@@ -415,7 +416,7 @@ def run_fixed_candidate_comparison(
             cfg=cfg,
             params=params,
             data_dir=data_dir,
-            primary_timeframe=primary_timeframe,
+            candle_timeframe=candle_timeframe,
             output_folder=output_folder,
             logger=logger,
         )
@@ -434,7 +435,7 @@ def run_fixed_candidate_comparison(
                 cfg=cfg,
                 params=params,
                 data_dir=data_dir,
-                primary_timeframe=primary_timeframe,
+                candle_timeframe=candle_timeframe,
                 run_dir=runs_path / window.label,
             )
             for index, window in enumerate(windows)
@@ -451,7 +452,7 @@ def run_fixed_candidate_comparison(
                     cfg=cfg,
                     params=params,
                     data_dir=data_dir,
-                    primary_timeframe=primary_timeframe,
+                    candle_timeframe=candle_timeframe,
                     run_dir=runs_path / window.label,
                 )
                 for index, window in enumerate(windows)
@@ -487,7 +488,7 @@ def run_execution_grid_comparison(
     ttl_values: list[int],
     trail_distance_atr_values: list[float],
     data_dir: str,
-    primary_timeframe: str,
+    candle_timeframe: str,
     output_folder: str,
     jobs: int,
     logger: logging.Logger,
@@ -554,7 +555,7 @@ def run_execution_grid_comparison(
                         tasks=window_tasks,
                         cfg=cfg,
                         data_dir=data_dir,
-                        primary_timeframe=primary_timeframe,
+                        candle_timeframe=candle_timeframe,
                         window_run_dir=runs_path / window_tasks[0][1].label,
                     )
                 )
@@ -576,7 +577,7 @@ def run_execution_grid_comparison(
                     tasks=window_tasks,
                     cfg=cfg,
                     data_dir=data_dir,
-                    primary_timeframe=primary_timeframe,
+                    candle_timeframe=candle_timeframe,
                     window_run_dir=runs_path / window_tasks[0][1].label,
                 ): window_tasks[0][1]
                 for window_tasks in tasks_by_window.values()
@@ -630,7 +631,7 @@ def run_signal_quality_diagnostics(
     cfg: StrategyConfig,
     params: FixedCandidateParams,
     data_dir: str,
-    primary_timeframe: str,
+    candle_timeframe: str,
     output_folder: str,
     jobs: int,
     logger: logging.Logger,
@@ -663,7 +664,7 @@ def run_signal_quality_diagnostics(
                     cfg=cfg,
                     params=params,
                     data_dir=data_dir,
-                    primary_timeframe=primary_timeframe,
+                    candle_timeframe=candle_timeframe,
                     run_dir=runs_path / window.label,
                 )
             except Exception as exc:
@@ -689,7 +690,7 @@ def run_signal_quality_diagnostics(
                     cfg=cfg,
                     params=params,
                     data_dir=data_dir,
-                    primary_timeframe=primary_timeframe,
+                    candle_timeframe=candle_timeframe,
                     run_dir=runs_path / window.label,
                 ): window
                 for index, window in enumerate(windows)
@@ -763,7 +764,7 @@ def _run_fixed_candidate_window(
     cfg: StrategyConfig,
     params: FixedCandidateParams,
     data_dir: str,
-    primary_timeframe: str,
+    candle_timeframe: str,
     run_dir: Path,
 ) -> tuple[int, dict[str, Any]]:
     worker_logger = logging.getLogger("backtester")
@@ -773,10 +774,10 @@ def _run_fixed_candidate_window(
         window.start,
         window.end,
     )
-    df = _load_window_data(
+    df, ohlcv = _load_window_data(
         window=window,
         data_dir=data_dir,
-        primary_timeframe=primary_timeframe,
+        candle_timeframe=candle_timeframe,
         logger=worker_logger,
     )
     strategy = build_strategy_instance(cfg.name, cfg.params, logger=worker_logger)
@@ -787,10 +788,11 @@ def _run_fixed_candidate_window(
         df=df,
         strategy=strategy,
         args=params.to_backtest_args(),
+        ohlcv=ohlcv,
     )
     export_and_optional_analysis(
         results=results,
-        ohlcv_df=df,
+        ohlcv_df=ohlcv,
         output_folder=str(run_dir),
         analyze_conditions=False,
         top_predictors=10,
@@ -816,7 +818,7 @@ def _run_execution_grid_window_precomputed(
     tasks: list[tuple[int, WindowSpec, FixedCandidateParams]],
     cfg: StrategyConfig,
     data_dir: str,
-    primary_timeframe: str,
+    candle_timeframe: str,
     window_run_dir: Path,
 ) -> list[tuple[int, dict[str, Any]]]:
     if not tasks:
@@ -833,10 +835,10 @@ def _run_execution_grid_window_precomputed(
         first_window.start,
         first_window.end,
     )
-    df = _load_window_data(
+    df, ohlcv = _load_window_data(
         window=first_window,
         data_dir=data_dir,
-        primary_timeframe=primary_timeframe,
+        candle_timeframe=candle_timeframe,
         logger=worker_logger,
     )
     strategy = build_strategy_instance(cfg.name, cfg.params, logger=worker_logger)
@@ -848,13 +850,14 @@ def _run_execution_grid_window_precomputed(
     for index, window, params in tasks:
         results = _run_backtest_with_precomputed_signals(
             df=df,
+            ohlcv=ohlcv,
             signals=signals,
             args=params.to_backtest_args(),
         )
         run_dir = window_run_dir / _candidate_run_label(params)
         export_and_optional_analysis(
             results=results,
-            ohlcv_df=df,
+            ohlcv_df=ohlcv,
             output_folder=str(run_dir),
             analyze_conditions=False,
             top_predictors=10,
@@ -885,7 +888,7 @@ def _run_signal_quality_window(
     cfg: StrategyConfig,
     params: FixedCandidateParams,
     data_dir: str,
-    primary_timeframe: str,
+    candle_timeframe: str,
     run_dir: Path,
 ) -> tuple[dict[str, Any], pd.DataFrame, pd.DataFrame]:
     worker_logger = logging.getLogger("backtester")
@@ -895,10 +898,10 @@ def _run_signal_quality_window(
         window.start,
         window.end,
     )
-    df = _load_window_data(
+    df, ohlcv = _load_window_data(
         window=window,
         data_dir=data_dir,
-        primary_timeframe=primary_timeframe,
+        candle_timeframe=candle_timeframe,
         logger=worker_logger,
     )
     strategy = build_strategy_instance(cfg.name, cfg.params, logger=worker_logger)
@@ -908,12 +911,13 @@ def _run_signal_quality_window(
     signals = strategy.generate(df)
     results = _run_backtest_with_precomputed_signals(
         df=df,
+        ohlcv=ohlcv,
         signals=signals,
         args=params.to_backtest_args(),
     )
     export_and_optional_analysis(
         results=results,
-        ohlcv_df=df,
+        ohlcv_df=ohlcv,
         output_folder=str(run_dir),
         analyze_conditions=False,
         top_predictors=10,
@@ -1104,31 +1108,34 @@ def summarize_signal_quality_setup_attribution(
 def _run_backtest_with_precomputed_signals(
     *,
     df: StrategyInput,
+    ohlcv: pd.DataFrame,
     signals: pd.DataFrame,
     args: BacktestArgs,
 ) -> ResultsAnalyzer:
-    return Backtester(df, lambda _df: signals.copy()).run(**backtest_run_kwargs(args))
+    return Backtester(df, lambda _df: signals.copy(), ohlcv=ohlcv).run(
+        **backtest_run_kwargs(args)
+    )
 
 
 def _load_window_data(
     *,
     window: WindowSpec,
     data_dir: str,
-    primary_timeframe: str,
+    candle_timeframe: str,
     logger: logging.Logger,
-) -> StrategyInput:
+) -> tuple[StrategyInput, pd.DataFrame]:
     loader = build_cli_data_loader(
         "crypt-parquet",
         data_dir=data_dir,
         symbol=window.symbol,
-        primary_timeframe=primary_timeframe,
+        candle_timeframe=candle_timeframe,
         start=window.start,
         end=window.end,
     )
-    df = load_ohlcv_via_loader(loader, logger=logger)
+    df = load_ohlcv_via_loader(loader, logger=logger, candle_timeframe=candle_timeframe)
     if df is None:
         raise ValueError(f"Failed to load data for {window.label}")
-    return df
+    return df, select_candle_frame(df, candle_timeframe)
 
 
 def _rows_in_window_order(

@@ -10,7 +10,7 @@ from typing import Any
 
 import pandas as pd
 
-from backtester.data_contracts import StrategyInput
+from backtester.data_contracts import StrategyInput, select_candle_frame
 from backtester.strategy_discovery.events import CandidateKey, DiscoveryEvent, LabeledEvent
 from backtester.strategy_discovery.features import DiscoveryDataset, build_discovery_dataset
 from backtester.strategy_discovery.filters import filter_catalog
@@ -27,7 +27,7 @@ from backtester.strategy_discovery.triggers import trigger_catalog
 @dataclass(frozen=True, slots=True)
 class DiscoveryConfig:
     output: Path
-    primary_timeframe: str
+    candle_timeframe: str
     label_horizon_bars: int = 24
     label_atr_mult: float = 1.0
     beam_width: int = 20
@@ -90,7 +90,7 @@ def run_strategy_discovery(
     for window in windows:
         datasets.append(
             build_discovery_dataset(
-                data=window.data,
+                data=select_candle_frame(window.data, config.candle_timeframe),
                 window_label=window.label,
                 symbol=window.symbol,
             )
@@ -283,7 +283,7 @@ def _export_results(
     write_json(
         output_path / "config.json",
         {
-            "primary_timeframe": config.primary_timeframe,
+            "candle_timeframe": config.candle_timeframe,
             "label_horizon_bars": config.label_horizon_bars,
             "label_atr_mult": config.label_atr_mult,
             "beam_width": config.beam_width,

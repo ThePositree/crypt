@@ -30,9 +30,9 @@ conditions that make them useful.
 historical data
   -> strategy constructor
   -> strategy search
-  -> Stage 1 fast signal labeling
-  -> Stage 2 parameter optimization
-  -> Stage 3 full backtest
+  -> directional signal labeling
+  -> parameter optimization
+  -> full backtest
   -> strategy performance matrix
   -> regime discovery
   -> regime labeler
@@ -371,11 +371,11 @@ Detector search is analogous to strategy search:
 - feature catalog;
 - rule/model catalog;
 - hyperparameter space;
-- staged optimization;
+- progressive optimization;
 - scoring;
 - candidate archive.
 
-Stages:
+Validation flow:
 
 | Stage | Purpose |
 | ----- | ------- |

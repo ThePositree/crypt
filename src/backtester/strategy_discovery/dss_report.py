@@ -17,7 +17,7 @@ from typing import Any
 import optuna
 import pandas as pd
 
-from backtester.strategy_discovery.dss_config import DSSConfig, TrialConfig
+from backtester.strategy_discovery.dss_config import DSSConfig, ParamValue, TrialConfig
 
 logger = logging.getLogger(__name__)
 
@@ -53,17 +53,17 @@ def _extract_pareto_front(
     ]
     pareto: list[optuna.trial.FrozenTrial] = []
     for candidate in complete:
-        scores_c = list(candidate.values)  # type: ignore[arg-type]
+        scores_c = list(candidate.values)
         dominated = False
         for other in complete:
             if other.number == candidate.number:
                 continue
-            if _is_dominated(scores_c, list(other.values)):  # type: ignore[arg-type]
+            if _is_dominated(scores_c, list(other.values)):
                 dominated = True
                 break
         if not dominated:
             pareto.append(candidate)
-    return sorted(pareto, key=lambda t: sum(t.values or []), reverse=True)  # type: ignore[arg-type]
+    return sorted(pareto, key=lambda t: sum(t.values or []), reverse=True)
 
 
 # ---------------------------------------------------------------------------
@@ -78,8 +78,8 @@ def _trial_to_trial_config(trial: optuna.trial.FrozenTrial) -> TrialConfig | Non
     if trigger_name is None:
         return None
 
-    trigger_params: dict[str, float | int] = {}
-    filter_params: dict[str, dict[str, float | int]] = {}
+    trigger_params: dict[str, ParamValue] = {}
+    filter_params: dict[str, dict[str, ParamValue]] = {}
 
     trigger_prefix = f"tp_{trigger_name}_"
     for k, v in params.items():
@@ -99,7 +99,7 @@ def _trial_to_trial_config(trial: optuna.trial.FrozenTrial) -> TrialConfig | Non
     filter_names = tuple(sorted(set(filter_names_raw)))
 
     for fn in filter_names:
-        fp: dict[str, float | int] = {}
+        fp: dict[str, ParamValue] = {}
         prefix = f"fp_{fn}_"
         for k, v in params.items():
             if k.startswith(prefix):
@@ -113,10 +113,6 @@ def _trial_to_trial_config(trial: optuna.trial.FrozenTrial) -> TrialConfig | Non
             trigger_params=trigger_params,
             filter_names=filter_names,
             filter_params=filter_params,
-            rrr=float(params.get("rrr", 2.0)),
-            risk_percent=float(params.get("risk_percent", 1.0)),
-            position_ttl_bars=int(params.get("position_ttl_bars", 36)),
-            atr_sl_mult=float(params.get("atr_sl_mult", 1.0)),
         )
     except (TypeError, ValueError, KeyError):
         return None
@@ -146,13 +142,6 @@ def _trial_to_candidate_json(
         "scores": scores,
         "min_score": min(scores.values()) if scores else float("-inf"),
         "params": config.to_dict(),
-        "backtest_args": {
-            "rrr": config.rrr,
-            "risk_percent": config.risk_percent,
-            "position_ttl_bars": config.position_ttl_bars,
-            "risk_base_period": "monthly",
-            "exit_geometry": "sl_rrr",
-        },
     }
 
 
@@ -191,7 +180,7 @@ def write_dss_report(
     threshold = dss_config.accept_min_score_per_window
     accepted = [
         t for t in pareto
-        if t.values and all(v >= threshold for v in t.values)  # type: ignore[misc]
+        if t.values and all(v >= threshold for v in t.values)
     ]
     logger.info(
         "%d solutions pass accept_min_score_per_window=%.0f", len(accepted), threshold
@@ -309,7 +298,7 @@ def _build_summary_md(
         lines.append("_No candidates passed the acceptance threshold._")
         return "\n".join(lines)
 
-    header_cols = ["#", "Trial", "Trigger", "Filters", "RRR", "TTL", "Risk%"]
+    header_cols = ["#", "Trial", "Trigger", "Filters", "RRR", "TTL min", "Risk%"]
     for label in window_labels:
         header_cols.append(label)
     header_cols.append("min_score")
@@ -321,7 +310,7 @@ def _build_summary_md(
         trigger = trial.params.get("trigger_name", "?")
         n_filters = trial.params.get("n_filters", 0)
         rrr = trial.params.get("rrr", 0.0)
-        ttl = trial.params.get("position_ttl_bars", 0)
+        ttl = trial.params.get("position_ttl_minutes", 0)
         risk = trial.params.get("risk_percent", 0.0)
         scores = [
             f"{float(v):.1f}" if trial.values and i < len(trial.values) else "—"
@@ -345,7 +334,7 @@ def _build_summary_md(
     lines.append("")
     lines.append(
         "> Candidates exported to `candidates/` directory. "
-        "Use `backtester compare-fixed` to validate top picks."
+        "Use `backtester run` for replay and `backtester optimize` for execution tuning."
     )
     lines.append("")
     return "\n".join(lines)

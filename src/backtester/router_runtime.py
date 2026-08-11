@@ -42,7 +42,7 @@ class ArchivedStrategySpec:
 
 @dataclass(frozen=True, slots=True)
 class RouterBarDecision:
-    """Composite signal selected for one closed primary bar."""
+    """Composite signal selected for one closed OHLCV bar."""
 
     timestamp: pd.Timestamp
     selected_strategy: str
@@ -124,12 +124,23 @@ class RouterReplayRuntime:
             "risk_percent": args.risk_percent,
             "rrr": args.rrr,
             "position_ttl_bars": args.ttl,
+            "position_ttl_minutes": getattr(args, "ttl_minutes", 0),
             "trail_activation_rrr": args.trail_activation_rrr,
             "trail_distance_atr": args.trail_distance_atr,
             "exit_geometry": args.exit_geometry,
             "tp_move_pct": (args.tp_move_pct if args.tp_move_pct is not None else float("nan")),
             "structural_sl_mode": args.structural_sl_mode,
             "min_tp_move_pct": args.min_tp_move_pct,
+            "tp_policy_enabled": getattr(args, "tp_policy_enabled", False),
+            "tp_policy_min_original_rrr": getattr(args, "tp_policy_min_original_rrr", 4.0),
+            "tp_policy_min_distance_pct": getattr(args, "tp_policy_min_distance_pct", 0.07),
+            "tp_policy_min_last_touch_bars": getattr(
+                args,
+                "tp_policy_min_last_touch_bars",
+                720,
+            ),
+            "tp_policy_adjusted_rrr": getattr(args, "tp_policy_adjusted_rrr", 3.0),
+            "tp_last_touch_bars": signal_row.get("tp_last_touch_bars", float("nan")),
             "router_id": self._router_id,
             "selected_strategy": selected_strategy,
             "position_group": selected_strategy,
@@ -149,16 +160,23 @@ def build_archived_signal_frames(
     *,
     data: StrategyInput,
     specs: list[ArchivedStrategySpec],
+    ohlcv: pd.DataFrame | None = None,
     dataset: DiscoveryDataset | None = None,
 ) -> dict[str, pd.DataFrame]:
     """Build all six archived signal streams from one shared feature dataset."""
 
     symbol = str(data.metadata.get("symbol", "")) if isinstance(data, StrategyData) else ""
     if dataset is None:
+        if ohlcv is None:
+            if isinstance(data, StrategyData):
+                raise ValueError("build_archived_signal_frames requires explicit ohlcv")
+            ohlcv = data
+        candles = data.candles_by_timeframe if isinstance(data, StrategyData) else None
         dataset = build_discovery_dataset(
-            data=data,
+            data=ohlcv,
             window_label="promoted_router",
             symbol=symbol,
+            candles_by_timeframe=candles,
         )
     output: dict[str, pd.DataFrame] = {}
     for spec in specs:
@@ -192,6 +210,7 @@ def replay_selected_signals(
     output["risk_percent"] = 1.0
     output["rrr"] = 2.0
     output["position_ttl_bars"] = 0
+    output["position_ttl_minutes"] = 0
     output["trail_activation_rrr"] = 0.0
     output["trail_distance_atr"] = 0.0
     output["exit_geometry"] = "sl_rrr"

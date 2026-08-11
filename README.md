@@ -48,21 +48,31 @@ running.
 
 ## Short research smoke
 
-Use short bounded runs first. Long backtests and searches must show progress
-and ETA.
+The owner-facing CLI defaults to `data/`, `SOL-USDT-SWAP`, full available
+history, and `$10,000` starting capital. Add `--from/--to` only for bounded
+smokes.
 
 ```bash
 uv run backtester run \
-    --data-source crypt-parquet \
-    --data-dir data \
-    --primary-timeframe 1h \
-    --symbol SOL-USDT-SWAP \
     --from 2025-01-01 \
     --to 2025-02-01 \
     --strategy strategies/archive/filtered_donor_portfolio_post_adr0058_tail_control_v6_drop_negative_v5.json \
-    --capital 10000 \
     --output results/smoke_v6_sol_2025_01
 ```
+
+Full-history backtest:
+
+```bash
+uv run backtester run \
+    --strategy strategies/archive/filtered_donor_portfolio_post_adr0058_tail_control_v6_drop_negative_v5.json \
+    --output results/v6_sol_full
+```
+
+For DSS v3 candidate JSONs, `backtester run` and `backtester optimize` derive
+the execution candle timeframe from the candidate trigger timeframe. Do not pass
+a separate candle timeframe for those commands.
+
+For the compact CLI runbook, see `docs/cli.md`.
 
 ## Live execution
 
@@ -70,7 +80,6 @@ Dry-run first:
 
 ```bash
 PYTHONPATH=src \
-MPLCONFIGDIR=/tmp/matplotlib \
 EXECUTION_ENABLED=true \
 EXECUTION_DRY_RUN=true \
 EXECUTION_DRY_RUN_CAPITAL=10000 \
@@ -87,6 +96,7 @@ deployment; verify the runtime environment before changing live state.
 
 - `AGENTS.md` — mandatory operating manual for agents.
 - `docs/strategy_benchmark.md` — money benchmark and reporting requirements.
+- `docs/backtester_regression.md` — canonical checks for backtester parity.
 - `docs/execution/live_execution.md` — live execution behavior and state.
 - `docs/deploy/railway.md` — Railway deployment/runbook.
 - `docs/backtester/` — backtester and diagnostic contracts.

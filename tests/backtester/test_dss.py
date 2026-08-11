@@ -12,7 +12,10 @@ Covers:
 from __future__ import annotations
 
 import json
+import sys
+import types
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -21,18 +24,20 @@ import pytest
 from click.testing import CliRunner
 
 import backtester.strategy_discovery.catcma_qd as catcma_qd_module
-import backtester.strategy_discovery.dss_stage1 as dss_stage1_module
-import backtester.strategy_discovery.dss_v2 as dss_v2_module
+import backtester.strategy_discovery.dss_directional as dss_directional_module
+import backtester.strategy_discovery.dss_directional_search as dss_directional_search_module
 import backtester.strategy_discovery.hyperband_qd as hyperband_qd_module
 import backtester.strategy_discovery.island_qd as island_qd_module
 import backtester.strategy_discovery.smac_qd as smac_qd_module
 from backtester.__main__ import cli
 from backtester.data_contracts import StrategyData
+from backtester.data_loader import CryptParquetDataLoader
 from backtester.strategies.dss_strategy import DSSStrategy
+from backtester.strategy_discovery.catalog_timeframes import dss_instance_labels
 from backtester.strategy_discovery.catcma_qd import (
+    _DirectionalCandidate,
     _EvaluatedCandidate,
-    _select_stage2_candidates,
-    _Stage1Candidate,
+    _select_directional_feedback_candidates,
     _WeightedModel,
     run_catcma_qd_search,
 )
@@ -49,25 +54,32 @@ from backtester.strategy_discovery.dss_config import (
     IntParam,
     TrialConfig,
 )
-from backtester.strategy_discovery.dss_objective import (
-    DSSObjective,
-    compute_mandate_score,
-    run_dss_backtest,
-)
-from backtester.strategy_discovery.dss_report import _extract_pareto_front, _is_dominated
-from backtester.strategy_discovery.dss_v2 import (
+from backtester.strategy_discovery.dss_directional_search import (
     BarrierMetrics,
-    DSSV2Result,
-    Stage1Result,
-    _append_stage1,
+    DirectionalResult,
+    DSSDirectionalResult,
+    DSSSignalNoveltyTracker,
+    _append_directional_result,
+    _directional_with_novelty,
     _guard_output_dir,
+    _select_directional_export_rows,
     _write_state,
-    evaluate_stage1,
-    export_stage4_candidates,
-    run_dss_v2_search,
+    directional_rank_score,
+    evaluate_directional_viability,
+    export_directional_candidates,
+    run_dss_directional_search,
+    sample_random_directional_candidate,
+    write_directional_ranked,
 )
+from backtester.strategy_discovery.dss_objective import compute_mandate_score
+from backtester.strategy_discovery.dss_report import _extract_pareto_front, _is_dominated
+from backtester.strategy_discovery.dss_runtime import DSSSearchRuntime
 from backtester.strategy_discovery.events import DiscoveryEvent
-from backtester.strategy_discovery.features import build_discovery_dataset
+from backtester.strategy_discovery.features import (
+    align_discovery_dataset_asof,
+    build_discovery_dataset,
+    build_timeframe_discovery_dataset,
+)
 from backtester.strategy_discovery.hyperband_qd import (
     _RungCandidate,
     _select_rung_promotions,
@@ -107,7 +119,27 @@ def _make_primary(n: int = 300, seed: int = 0) -> pd.DataFrame:
 
 
 def _make_strategy_data(primary: pd.DataFrame, symbol: str = "TEST-USDT-SWAP") -> StrategyData:
-    return StrategyData(primary=primary, candles={}, extras={}, metadata={"symbol": symbol})
+    return StrategyData(
+        candles_by_timeframe={"H1": primary},
+        extras={},
+        metadata={"symbol": symbol},
+    )
+
+
+def _make_multiframe_strategy_data(
+    primary: pd.DataFrame,
+    symbol: str = "TEST-USDT-SWAP",
+) -> StrategyData:
+    return StrategyData(
+        candles_by_timeframe={
+            "M15": primary.copy(),
+            "H1": primary.copy(),
+            "H4": primary.copy(),
+            "D1": primary.copy(),
+        },
+        extras={},
+        metadata={"symbol": symbol},
+    )
 
 
 def _make_candidate(
@@ -121,10 +153,6 @@ def _make_candidate(
         trigger_params={"lookback": 4},
         filter_names=filters,
         filter_params={name: {} for name in filters},
-        rrr=2.0,
-        risk_percent=1.0,
-        position_ttl_bars=36,
-        atr_sl_mult=1.0,
         generation=0,
     )
 
@@ -133,16 +161,14 @@ def _make_behavior(trigger_name: str = "pt_nr4_breakout") -> DSSBehavior:
     return DSSBehavior(
         trigger_family=trigger_name,
         side_profile="balanced",
-        trade_count_bucket="medium",
-        hold_time_bucket="medium",
-        risk_geometry="medium_sl",
+        frequency_class="medium",
         regime_strength="balanced",
         filter_depth="0",
     )
 
 
-def _make_stage1_pass(candidate: DSSCandidate) -> Stage1Result:
-    return Stage1Result(
+def _make_directional_pass(candidate: DSSCandidate) -> DirectionalResult:
+    return DirectionalResult(
         candidate_id=candidate.candidate_id,
         passed=True,
         rejection_reason="",
@@ -259,7 +285,7 @@ class _WindowAwareFakeComposer:
         self._signals_by_primary_id = signals_by_primary_id
 
     def build(self, _config: TrialConfig) -> Callable[[StrategyData], pd.DataFrame]:
-        return lambda data: self._signals_by_primary_id[id(data.primary)]
+        return lambda data: self._signals_by_primary_id[id(data.require_timeframe("H1"))]
 
 
 class _CountingWindowAwareFakeComposer:
@@ -270,7 +296,7 @@ class _CountingWindowAwareFakeComposer:
     def build(self, _config: TrialConfig) -> Callable[[StrategyData], pd.DataFrame]:
         def _generate(data: StrategyData) -> pd.DataFrame:
             self.calls += 1
-            return self._signals_by_primary_id[id(data.primary)]
+            return self._signals_by_primary_id[id(data.require_timeframe("H1"))]
 
         return _generate
 
@@ -286,16 +312,12 @@ def test_trial_config_round_trip() -> None:
         trigger_params={"lookback": 5},
         filter_names=("pf_body_to_range_min", "pf_side_short_only"),
         filter_params={"pf_body_to_range_min": {"ratio": 0.35}},
-        rrr=2.5,
-        risk_percent=1.5,
-        position_ttl_bars=36,
-        atr_sl_mult=1.0,
     )
     d = config.to_dict()
     restored = TrialConfig.from_dict(d)
     assert restored.trigger_name == config.trigger_name
     assert restored.filter_names == config.filter_names
-    assert abs(restored.rrr - config.rrr) < 1e-9
+    assert "rrr" not in d
 
 
 def test_trial_config_signal_cache_key_is_deterministic() -> None:
@@ -304,11 +326,135 @@ def test_trial_config_signal_cache_key_is_deterministic() -> None:
         trigger_params={"lookback": 4},
         filter_names=("pf_body_to_range_min",),
         filter_params={"pf_body_to_range_min": {"ratio": 0.3}},
-        rrr=2.0,
-        risk_percent=1.0,
-        position_ttl_bars=36,
     )
     assert config.signal_cache_key == config.signal_cache_key
+
+
+def test_trial_config_hash_includes_timeframe_instances() -> None:
+    h1 = TrialConfig(
+        trigger_name="pt_nr4_breakout",
+        trigger_timeframe="H1",
+        trigger_params={"lookback": 4},
+        filter_names=("pf_body_to_range_min@H1", "pf_body_to_range_min@H4"),
+        filter_params={
+            "pf_body_to_range_min@H1": {"ratio": 0.3},
+            "pf_body_to_range_min@H4": {"ratio": 0.3},
+        },
+    )
+    h4 = TrialConfig(
+        trigger_name="pt_nr4_breakout",
+        trigger_timeframe="H4",
+        trigger_params={"lookback": 4},
+        filter_names=("pf_body_to_range_min@H1", "pf_body_to_range_min@H4"),
+        filter_params={
+            "pf_body_to_range_min@H1": {"ratio": 0.3},
+            "pf_body_to_range_min@H4": {"ratio": 0.3},
+        },
+    )
+
+    assert h1.signal_cache_key != h4.signal_cache_key
+    assert [instance.label for instance in h1.filter_instances] == [
+        "pf_body_to_range_min@H1",
+        "pf_body_to_range_min@H4",
+    ]
+
+
+def test_directional_generation_samples_timeframe_instances() -> None:
+    search_space = DSSSearchSpace(
+        trigger_names=("pt_nr4_breakout@15m", "pt_nr4_breakout@H4"),
+        filter_names=("pf_body_to_range_min@H1", "pf_body_to_range_min@H4"),
+        trigger_param_bounds={"pt_nr4_breakout": {"lookback": IntParam(3, 4)}},
+        filter_param_bounds={"pf_body_to_range_min": {"ratio": FloatParam(0.2, 0.4)}},
+        max_filters=1,
+        trigger_timeframes=("15m", "H4"),
+        filter_timeframes=("H1", "H4"),
+    )
+
+    candidates = dss_directional_search_module._generate_directional_candidates(
+        search_space=search_space,
+        start=0,
+        limit=8,
+        max_filters=1,
+    )
+
+    assert {candidate.trigger_timeframe for candidate in candidates} == {"15m", "H4"}
+    assert any(
+        "pf_body_to_range_min@H4" in candidate.filter_names
+        and candidate.filter_timeframes["pf_body_to_range_min@H4"] == "H4"
+        for candidate in candidates
+    )
+
+
+def test_directional_generation_does_not_repeat_adjacent_batches() -> None:
+    search_space = DSSSearchSpace(
+        trigger_names=("pt_nr4_breakout@15m", "pt_nr4_breakout@H4"),
+        filter_names=("pf_body_to_range_min@H1", "pf_body_to_range_min@H4"),
+        trigger_param_bounds={"pt_nr4_breakout": {"lookback": IntParam(3, 8)}},
+        filter_param_bounds={"pf_body_to_range_min": {"ratio": FloatParam(0.2, 0.7)}},
+        max_filters=2,
+        trigger_timeframes=("15m", "H4"),
+        filter_timeframes=("H1", "H4"),
+    )
+
+    first = dss_directional_search_module._generate_directional_candidates(
+        search_space=search_space,
+        start=0,
+        limit=64,
+        max_filters=2,
+    )
+    second = dss_directional_search_module._generate_directional_candidates(
+        search_space=search_space,
+        start=64,
+        limit=128,
+        max_filters=2,
+    )
+
+    first_keys = {candidate.candidate_key for candidate in first}
+    second_keys = {candidate.candidate_key for candidate in second}
+    assert len(second_keys - first_keys) >= 20
+
+
+def test_trial_config_rejects_exact_duplicate_filter_instances() -> None:
+    config = TrialConfig(
+        trigger_name="pt_nr4_breakout",
+        trigger_params={"lookback": 4},
+        filter_names=("pf_body_to_range_min@H1", "pf_body_to_range_min@H1"),
+        filter_params={"pf_body_to_range_min@H1": {"ratio": 0.3}},
+    )
+
+    with pytest.raises(ValueError, match="Duplicate DSS filter instance"):
+        _ = config.filter_instances
+
+
+def test_timeframe_dataset_selects_requested_candles_and_asof_aligns() -> None:
+    primary = _make_primary(48)
+    h4 = primary.resample("4h").agg(
+        {
+            "open": "first",
+            "high": "max",
+            "low": "min",
+            "close": "last",
+            "volume": "sum",
+        }
+    )
+    data = StrategyData(
+        candles_by_timeframe={"H4": h4},
+        extras={},
+        metadata={"symbol": "TEST-USDT-SWAP"},
+    )
+
+    h4_dataset = build_timeframe_discovery_dataset(
+        data=data,
+        timeframe="H4",
+        window_label="w1",
+        symbol="TEST-USDT-SWAP",
+    )
+    aligned = align_discovery_dataset_asof(h4_dataset, pd.DatetimeIndex(primary.index))
+
+    assert h4_dataset.ohlcv.index.equals(h4.index)
+    assert aligned.ohlcv.index.equals(primary.index)
+    assert aligned.ohlcv.loc[primary.index[5], "open"] == h4.iloc[0]["open"]
+    assert aligned.ohlcv.loc[primary.index[8], "open"] == h4.iloc[1]["open"]
 
 
 def test_dss_candidate_round_trip() -> None:
@@ -318,27 +464,16 @@ def test_dss_candidate_round_trip() -> None:
     assert restored.signal_cache_key == candidate.signal_cache_key
 
 
-def test_trial_config_exec_params_do_not_affect_signal_cache_key() -> None:
-    """Different rrr/risk_percent/ttl → same cache key (signal shape unchanged)."""
+def test_trial_config_rejects_geometry_fields_from_signal_cache_key() -> None:
+    """DSS v3 ignores legacy geometry fields during deserialization."""
     base = TrialConfig(
         trigger_name="pt_nr4_breakout",
         trigger_params={"lookback": 4},
         filter_names=(),
         filter_params={},
-        rrr=2.0,
-        risk_percent=1.0,
-        position_ttl_bars=36,
     )
-    different_exec = TrialConfig(
-        trigger_name="pt_nr4_breakout",
-        trigger_params={"lookback": 4},
-        filter_names=(),
-        filter_params={},
-        rrr=3.0,
-        risk_percent=2.0,
-        position_ttl_bars=48,
-    )
-    assert base.signal_cache_key == different_exec.signal_cache_key
+    legacy = TrialConfig.from_dict({**base.to_dict(), "rrr": 3.0, "risk_percent": 2.0})
+    assert base.signal_cache_key == legacy.signal_cache_key
 
 
 def test_archive_keeps_separate_trigger_family_elites() -> None:
@@ -392,6 +527,17 @@ def test_archive_replacement_preserves_best_robust_candidate() -> None:
     assert archive.best_per_cell()[0].candidate.candidate_id == "strong"
 
 
+def test_runtime_progress_preserves_last_exported_count(tmp_path: Path) -> None:
+    config = DSSConfig(output=tmp_path, windows=[])
+
+    runtime = DSSSearchRuntime(config=config)
+    runtime.write_progress(generated=10, evaluated=10, exported=3)
+    runtime.write_progress(generated=11, evaluated=11)
+
+    payload = json.loads((tmp_path / "progress.json").read_text(encoding="utf-8"))
+    assert payload["exported"] == 3
+
+
 def test_robust_score_penalizes_cross_window_dispersion() -> None:
     stable = _make_candidate("stable")
     volatile = _make_candidate("volatile")
@@ -438,13 +584,101 @@ def test_window_spec_parse_invalid_raises() -> None:
         DSSWindowSpec.parse("bad:spec:with:too:many:colons", "SOL-USDT-SWAP")
 
 
-def test_stage1_rejects_empty_signals(tmp_path: Path) -> None:
+def test_crypt_parquet_loader_filters_every_timeframe_to_window(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class _Timeframe:
+        M15 = "M15"
+        H1 = "H1"
+        H4 = "H4"
+        D1 = "D1"
+
+    def _frame(freq: str, periods: int) -> pd.DataFrame:
+        index = pd.date_range("2023-12-31", periods=periods, freq=freq, tz="UTC")
+        values = np.arange(periods, dtype=float) + 100.0
+        return pd.DataFrame(
+            {
+                "open": values,
+                "high": values + 1.0,
+                "low": values - 1.0,
+                "close": values,
+                "volume": values * 10.0,
+            },
+            index=index,
+        )
+
+    class _ParquetStore:
+        def __init__(self, _path: Path) -> None:
+            self.frames = {
+                _Timeframe.M15: _frame("15min", 400),
+                _Timeframe.H1: _frame("1h", 140),
+                _Timeframe.H4: _frame("4h", 60),
+                _Timeframe.D1: _frame("1d", 12),
+            }
+
+        def load_candles(self, _symbol: str, timeframe: str, **_kwargs: object) -> pd.DataFrame:
+            return self.frames[timeframe]
+
+        def load_oi(self, _symbol: str) -> pd.DataFrame:
+            return pd.DataFrame()
+
+        def load_ls_ratio(self, _symbol: str) -> pd.DataFrame:
+            return pd.DataFrame()
+
+        def load_taker_volume(self, _symbol: str) -> pd.DataFrame:
+            return pd.DataFrame()
+
+    crypt_module = types.ModuleType("crypt")
+    crypt_data_module = types.ModuleType("crypt.data")
+    crypt_store_module = types.ModuleType("crypt.data.store")
+    crypt_models_module = types.ModuleType("crypt.models")
+    crypt_store_module.ParquetStore = _ParquetStore
+    crypt_models_module.Timeframe = _Timeframe
+    monkeypatch.setitem(sys.modules, "crypt", crypt_module)
+    monkeypatch.setitem(sys.modules, "crypt.data", crypt_data_module)
+    monkeypatch.setitem(sys.modules, "crypt.data.store", crypt_store_module)
+    monkeypatch.setitem(sys.modules, "crypt.models", crypt_models_module)
+
+    data = CryptParquetDataLoader(
+        str(tmp_path),
+        "TEST-USDT-SWAP",
+        candle_timeframe="4h",
+        start="2024-01-02",
+        end="2024-01-03",
+    ).load()
+
+    lower = pd.Timestamp("2024-01-02", tz="UTC")
+    upper = pd.Timestamp("2024-01-03", tz="UTC")
+    for frame in (data.require_timeframe("H1"), *data.candles_by_timeframe.values()):
+        assert frame.index.min() >= lower
+        assert frame.index.max() <= upper
+
+
+def test_cli_dss_catalog_timeframe_labels_are_role_eligible() -> None:
+    trigger_labels = dss_instance_labels(
+        ("pt_vwap_reclaim", "pt_structure_break"),
+        ("15m", "H1", "H4", "D1"),
+        role="trigger",
+    )
+    filter_labels = dss_instance_labels(
+        ("pf_session", "pf_context_aligned"),
+        ("15m", "H1", "H4", "D1"),
+        role="filter",
+    )
+
+    assert "pt_vwap_reclaim@D1" not in trigger_labels
+    assert "pt_structure_break@H4" in trigger_labels
+    assert "pf_session@D1" not in filter_labels
+    assert "pf_context_aligned@D1" in filter_labels
+
+
+def test_directional_rejects_empty_signals(tmp_path: Path) -> None:
     primary = _make_primary(200)
     windows = [
         DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
     ]
     config = DSSConfig(output=tmp_path, windows=windows, min_trades_per_window=1)
-    result = evaluate_stage1(
+    result = evaluate_directional_viability(
         _make_candidate(),
         {"w1": _make_strategy_data(primary)},
         config,
@@ -454,13 +688,13 @@ def test_stage1_rejects_empty_signals(tmp_path: Path) -> None:
     assert result.rejection_reason == "too_few_signals:w1"
 
 
-def test_stage1_rejects_too_few_signals_in_one_window(tmp_path: Path) -> None:
+def test_directional_rejects_too_few_signals_in_one_window(tmp_path: Path) -> None:
     primary = _make_primary(200)
     windows = [
         DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
     ]
     config = DSSConfig(output=tmp_path, windows=windows, min_trades_per_window=3)
-    result = evaluate_stage1(
+    result = evaluate_directional_viability(
         _make_candidate(),
         {"w1": _make_strategy_data(primary)},
         config,
@@ -470,7 +704,7 @@ def test_stage1_rejects_too_few_signals_in_one_window(tmp_path: Path) -> None:
     assert result.rejection_reason == "too_few_signals:w1"
 
 
-def test_stage1_uses_weekly_signal_frequency_gate(tmp_path: Path) -> None:
+def test_directional_uses_weekly_signal_frequency_gate(tmp_path: Path) -> None:
     primary = _make_primary(24 * 14)
     windows = [
         DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-14")
@@ -481,7 +715,7 @@ def test_stage1_uses_weekly_signal_frequency_gate(tmp_path: Path) -> None:
         min_trades_per_window=1,
         min_signals_per_week=4.0,
     )
-    result = evaluate_stage1(
+    result = evaluate_directional_viability(
         _make_candidate(),
         {"w1": _make_strategy_data(primary)},
         config,
@@ -491,7 +725,7 @@ def test_stage1_uses_weekly_signal_frequency_gate(tmp_path: Path) -> None:
     assert result.rejection_reason == "too_few_signals:w1"
 
 
-def test_stage1_accepts_tp_first_barrier_signal(tmp_path: Path) -> None:
+def test_directional_accepts_tp_first_barrier_signal(tmp_path: Path) -> None:
     primary = _make_barrier_primary()
     windows = [
         DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
@@ -508,13 +742,9 @@ def test_stage1_accepts_tp_first_barrier_signal(tmp_path: Path) -> None:
         trigger_params={"lookback": 4},
         filter_names=(),
         filter_params={},
-        rrr=1.0,
-        risk_percent=1.0,
-        position_ttl_bars=6,
-        atr_sl_mult=1.0,
         generation=0,
     )
-    result = evaluate_stage1(
+    result = evaluate_directional_viability(
         candidate,
         {"w1": _make_strategy_data(primary)},
         config,
@@ -529,13 +759,79 @@ def test_stage1_accepts_tp_first_barrier_signal(tmp_path: Path) -> None:
     assert result.advisory_score is not None
 
 
-def test_stage1_reject_does_not_promote(tmp_path: Path) -> None:
+def test_directional_labels_barriers_on_trigger_timeframe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    h1_primary = _make_primary(120)
+    m15_primary = _make_primary(480)
+    m15_primary.index = pd.date_range("2024-01-01", periods=480, freq="15min", tz="UTC")
+    data = StrategyData(
+        candles_by_timeframe={"H1": h1_primary, "M15": m15_primary},
+        extras={},
+        metadata={"symbol": "TEST-USDT-SWAP"},
+    )
+    candidate = DSSCandidate(
+        candidate_id="m15_trigger",
+        trigger_name="pt_nr4_breakout@15m",
+        trigger_params={"lookback": 4},
+        filter_names=(),
+        filter_params={},
+        generation=0,
+    )
+    signals = _make_signal_df(m15_primary, 3)
+    config = DSSConfig(
+        output=tmp_path,
+        windows=[
+            DSSWindowSpec(
+                label="w1",
+                symbol="TEST-USDT-SWAP",
+                start="2024-01-01",
+                end="2024-01-05",
+            )
+        ],
+        min_trades_per_window=1,
+        min_barrier_tp_first_rate=0.5,
+    )
+
+    def _fake_barrier_metrics(
+        primary: pd.DataFrame,
+        signals: pd.DataFrame,
+        *,
+        tp_move_pct: float,
+        sl_move_pct: float,
+        reference_atr_pct: float,
+    ) -> BarrierMetrics:
+        _ = (signals, tp_move_pct, sl_move_pct, reference_atr_pct)
+        assert primary.index.equals(m15_primary.index)
+        return BarrierMetrics(
+            total=3,
+            tp_first=2,
+            sl_first=1,
+            unresolved_tail=0,
+            tp_first_rate=2 / 3,
+            sl_first_rate=1 / 3,
+            unresolved_tail_rate=0.0,
+            win_rate=2 / 3,
+            median_mae_pct=0.2,
+            median_mfe_pct=0.8,
+            median_bars_to_tp=2.0,
+        )
+
+    monkeypatch.setattr(dss_directional_module, "_barrier_metrics", _fake_barrier_metrics)
+
+    result = evaluate_directional_viability(candidate, {"w1": data}, config, _FakeComposer(signals))
+
+    assert result.passed is True
+    assert result.barrier_metrics["w1"].total == 3
+
+
+def test_directional_reject_does_not_promote(tmp_path: Path) -> None:
     primary = _make_primary(200)
     windows = [
         DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
     ]
     config = DSSConfig(output=tmp_path, windows=windows, min_trades_per_window=3)
-    result = evaluate_stage1(
+    result = evaluate_directional_viability(
         _make_candidate(),
         {"w1": _make_strategy_data(primary)},
         config,
@@ -545,7 +841,31 @@ def test_stage1_reject_does_not_promote(tmp_path: Path) -> None:
     assert result.should_promote is False
 
 
-def test_stage1_records_window_specialist_without_survivor_export(tmp_path: Path) -> None:
+def test_directional_result_records_signal_fingerprint(tmp_path: Path) -> None:
+    primary = _make_primary(200)
+    windows = [
+        DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
+    ]
+    config = DSSConfig(
+        output=tmp_path,
+        windows=windows,
+        min_trades_per_window=1,
+        min_barrier_tp_first_rate=0.0,
+        min_barrier_win_rate=0.0,
+    )
+
+    result = evaluate_directional_viability(
+        _make_candidate(),
+        {"w1": _make_strategy_data(primary)},
+        config,
+        _FakeComposer(_make_one_signal(primary)),
+    )
+
+    assert result.metadata["signal_set_size"] == 1
+    assert result.metadata["signal_fingerprint"]
+
+
+def test_directional_records_window_specialist_without_survivor_export(tmp_path: Path) -> None:
     w1_primary = _make_barrier_primary()
     w2_primary = _make_barrier_primary()
     windows = [
@@ -565,13 +885,9 @@ def test_stage1_records_window_specialist_without_survivor_export(tmp_path: Path
         trigger_params={"lookback": 4},
         filter_names=(),
         filter_params={},
-        rrr=1.0,
-        risk_percent=1.0,
-        position_ttl_bars=6,
-        atr_sl_mult=1.0,
         generation=0,
     )
-    result = evaluate_stage1(
+    result = evaluate_directional_viability(
         candidate,
         {
             "w1": _make_strategy_data(w1_primary),
@@ -593,16 +909,16 @@ def test_stage1_records_window_specialist_without_survivor_export(tmp_path: Path
     assert result.behavior is not None
     assert result.behavior.regime_strength == "w1"
 
-    _append_stage1(tmp_path, candidate, result, windows)
+    _append_directional_result(tmp_path, candidate, result, windows)
 
-    assert not (tmp_path / "stage1_survivors.jsonl").exists()
-    assert not (tmp_path / "stage1_rejections.csv").exists()
-    specialist_csv = (tmp_path / "stage1_specialists.csv").read_text(encoding="utf-8")
+    assert not (tmp_path / "directional_survivors.jsonl").exists()
+    assert not (tmp_path / "directional_rejections.csv").exists()
+    specialist_csv = (tmp_path / "directional_specialists.csv").read_text(encoding="utf-8")
     assert "candidate_class" in specialist_csv.splitlines()[0]
     assert "specialist:w1" in specialist_csv
 
 
-def test_stage1_default_path_still_rejects_early(tmp_path: Path) -> None:
+def test_directional_default_path_still_rejects_early(tmp_path: Path) -> None:
     w1_primary = _make_barrier_primary()
     w2_primary = _make_barrier_primary()
     windows = [
@@ -617,7 +933,7 @@ def test_stage1_default_path_still_rejects_early(tmp_path: Path) -> None:
         }
     )
 
-    result = evaluate_stage1(
+    result = evaluate_directional_viability(
         _make_candidate(),
         {
             "w1": _make_strategy_data(w1_primary),
@@ -633,7 +949,7 @@ def test_stage1_default_path_still_rejects_early(tmp_path: Path) -> None:
     assert composer.calls == 1
 
 
-def test_stage1_counts_same_bar_tp_and_sl_as_sl_first(tmp_path: Path) -> None:
+def test_directional_counts_same_bar_tp_and_sl_as_sl_first(tmp_path: Path) -> None:
     primary = _make_barrier_primary(same_bar_stop=True)
     windows = [
         DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
@@ -650,13 +966,9 @@ def test_stage1_counts_same_bar_tp_and_sl_as_sl_first(tmp_path: Path) -> None:
         trigger_params={"lookback": 4},
         filter_names=(),
         filter_params={},
-        rrr=1.0,
-        risk_percent=1.0,
-        position_ttl_bars=6,
-        atr_sl_mult=1.0,
         generation=0,
     )
-    result = evaluate_stage1(
+    result = evaluate_directional_viability(
         candidate,
         {"w1": _make_strategy_data(primary)},
         config,
@@ -669,7 +981,7 @@ def test_stage1_counts_same_bar_tp_and_sl_as_sl_first(tmp_path: Path) -> None:
     assert metrics.sl_first_rate == 1.0
 
 
-def test_stage1_barrier_uses_next_open_entry_like_stage2(tmp_path: Path) -> None:
+def test_directional_barrier_uses_next_open_entry(tmp_path: Path) -> None:
     primary = _make_barrier_primary()
     primary.iloc[11, primary.columns.get_loc("open")] = 110.0
     primary.iloc[12, primary.columns.get_loc("high")] = 100.8
@@ -688,13 +1000,9 @@ def test_stage1_barrier_uses_next_open_entry_like_stage2(tmp_path: Path) -> None
         trigger_params={"lookback": 4},
         filter_names=(),
         filter_params={},
-        rrr=1.0,
-        risk_percent=1.0,
-        position_ttl_bars=6,
-        atr_sl_mult=1.0,
         generation=0,
     )
-    result = evaluate_stage1(
+    result = evaluate_directional_viability(
         candidate,
         {"w1": _make_strategy_data(primary)},
         config,
@@ -707,7 +1015,7 @@ def test_stage1_barrier_uses_next_open_entry_like_stage2(tmp_path: Path) -> None
     assert metrics.sl_first == 1
 
 
-def test_stage1_atr_scaled_label_ignores_rrr_ttl_and_signal_stop(tmp_path: Path) -> None:
+def test_directional_atr_scaled_label_ignores_rrr_ttl_and_signal_stop(tmp_path: Path) -> None:
     primary = _make_barrier_primary()
     windows = [
         DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
@@ -724,10 +1032,6 @@ def test_stage1_atr_scaled_label_ignores_rrr_ttl_and_signal_stop(tmp_path: Path)
         trigger_params={"lookback": 4},
         filter_names=(),
         filter_params={},
-        rrr=1.0,
-        risk_percent=1.0,
-        position_ttl_bars=1,
-        atr_sl_mult=0.5,
         generation=0,
     )
     variant = DSSCandidate(
@@ -736,22 +1040,18 @@ def test_stage1_atr_scaled_label_ignores_rrr_ttl_and_signal_stop(tmp_path: Path)
         trigger_params={"lookback": 4},
         filter_names=(),
         filter_params={},
-        rrr=10.0,
-        risk_percent=3.0,
-        position_ttl_bars=100,
-        atr_sl_mult=5.0,
         generation=0,
     )
     signals = _make_one_signal(primary)
     signals["stop_price"] = 1.0
 
-    base_metrics = evaluate_stage1(
+    base_metrics = evaluate_directional_viability(
         base,
         {"w1": _make_strategy_data(primary)},
         config,
         _FakeComposer(signals),
     ).barrier_metrics["w1"]
-    variant_metrics = evaluate_stage1(
+    variant_metrics = evaluate_directional_viability(
         variant,
         {"w1": _make_strategy_data(primary)},
         config,
@@ -763,7 +1063,7 @@ def test_stage1_atr_scaled_label_ignores_rrr_ttl_and_signal_stop(tmp_path: Path)
     assert base_metrics.median_bars_to_tp == 2.0
 
 
-def test_stage1_atr_scaled_label_expands_for_more_volatile_symbol(tmp_path: Path) -> None:
+def test_directional_atr_scaled_label_expands_for_more_volatile_symbol(tmp_path: Path) -> None:
     index = pd.date_range("2024-01-01", periods=40, freq="1h", tz="UTC")
     primary = pd.DataFrame(
         {
@@ -788,7 +1088,7 @@ def test_stage1_atr_scaled_label_expands_for_more_volatile_symbol(tmp_path: Path
         min_trades_per_window=1,
         min_barrier_tp_first_rate=0.5,
     )
-    result = evaluate_stage1(
+    result = evaluate_directional_viability(
         _make_candidate(),
         {"w1": _make_strategy_data(primary)},
         config,
@@ -802,7 +1102,7 @@ def test_stage1_atr_scaled_label_expands_for_more_volatile_symbol(tmp_path: Path
     assert metrics.median_bars_to_tp == 3.0
 
 
-def test_stage1_unresolved_tail_excluded_from_win_rate(tmp_path: Path) -> None:
+def test_directional_unresolved_tail_excluded_from_win_rate(tmp_path: Path) -> None:
     index = pd.date_range("2024-01-01", periods=30, freq="1h", tz="UTC")
     primary = pd.DataFrame(
         {
@@ -827,7 +1127,7 @@ def test_stage1_unresolved_tail_excluded_from_win_rate(tmp_path: Path) -> None:
         min_barrier_tp_first_rate=0.0,
         min_barrier_win_rate=0.4,
     )
-    result = evaluate_stage1(
+    result = evaluate_directional_viability(
         _make_candidate(),
         {"w1": _make_strategy_data(primary)},
         config,
@@ -842,7 +1142,7 @@ def test_stage1_unresolved_tail_excluded_from_win_rate(tmp_path: Path) -> None:
     assert metrics.unresolved_tail_rate == pytest.approx(1 / 3)
 
 
-def test_stage1_rejects_barrier_win_rate_below_floor(tmp_path: Path) -> None:
+def test_directional_rejects_barrier_win_rate_below_floor(tmp_path: Path) -> None:
     index = pd.date_range("2024-01-01", periods=80, freq="1h", tz="UTC")
     primary = pd.DataFrame(
         {
@@ -878,13 +1178,9 @@ def test_stage1_rejects_barrier_win_rate_below_floor(tmp_path: Path) -> None:
         trigger_params={"lookback": 4},
         filter_names=(),
         filter_params={},
-        rrr=1.0,
-        risk_percent=1.0,
-        position_ttl_bars=6,
-        atr_sl_mult=1.0,
         generation=0,
     )
-    result = evaluate_stage1(
+    result = evaluate_directional_viability(
         candidate,
         {"w1": _make_strategy_data(primary)},
         config,
@@ -898,7 +1194,7 @@ def test_stage1_rejects_barrier_win_rate_below_floor(tmp_path: Path) -> None:
     assert metrics.win_rate == 0.5
 
 
-def test_stage1_min_wr_is_only_win_rate_gate(
+def test_directional_min_wr_is_only_win_rate_gate(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     primary = _make_primary(80)
@@ -928,8 +1224,8 @@ def test_stage1_min_wr_is_only_win_rate_gate(
             median_bars_to_tp=3.0,
         )
 
-    monkeypatch.setattr(dss_stage1_module, "_barrier_metrics", fake_barrier_metrics)
-    result = evaluate_stage1(
+    monkeypatch.setattr(dss_directional_module, "_barrier_metrics", fake_barrier_metrics)
+    result = evaluate_directional_viability(
         _make_candidate("wr45_only"),
         {"w1": _make_strategy_data(primary)},
         config,
@@ -943,13 +1239,13 @@ def test_stage1_min_wr_is_only_win_rate_gate(
     assert result.rejection_reason == ""
 
 
-def test_stage1_csv_header_includes_barrier_columns_after_early_reject(tmp_path: Path) -> None:
+def test_directional_csv_header_includes_barrier_columns_after_early_reject(tmp_path: Path) -> None:
     windows = [
         DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10"),
         DSSWindowSpec(label="w2", symbol="TEST-USDT-SWAP", start="2024-02-01", end="2024-02-10"),
     ]
     candidate = _make_candidate("early_reject")
-    result = Stage1Result(
+    result = DirectionalResult(
         candidate_id=candidate.candidate_id,
         passed=False,
         rejection_reason="too_few_signals:w1",
@@ -959,21 +1255,23 @@ def test_stage1_csv_header_includes_barrier_columns_after_early_reject(tmp_path:
         barrier_metrics={},
         behavior=None,
     )
-    _append_stage1(tmp_path, candidate, result, windows)
-    header = (tmp_path / "stage1_viability.csv").read_text(encoding="utf-8").splitlines()[0]
+    _append_directional_result(tmp_path, candidate, result, windows)
+    header = (tmp_path / "directional_viability.csv").read_text(encoding="utf-8").splitlines()[0]
+    assert "trigger_timeframe" in header
+    assert "filter_timeframes" in header
     assert "barrier_tp_first_rate_w1" in header
     assert "barrier_tp_first_rate_w2" in header
     assert len(header.split(",")) == len(
-        (tmp_path / "stage1_viability.csv").read_text().splitlines()[1].split(",")
+        (tmp_path / "directional_viability.csv").read_text().splitlines()[1].split(",")
     )
 
 
-def test_stage1_ranked_preserves_near_miss_rejections(tmp_path: Path) -> None:
+def test_directional_ranked_preserves_near_miss_rejections(tmp_path: Path) -> None:
     windows = [
         DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
     ]
     candidate = _make_candidate("near_miss")
-    result = Stage1Result(
+    result = DirectionalResult(
         candidate_id=candidate.candidate_id,
         passed=False,
         rejection_reason="weak_barrier_win_rate:w1",
@@ -997,25 +1295,25 @@ def test_stage1_ranked_preserves_near_miss_rejections(tmp_path: Path) -> None:
         },
         behavior=None,
     )
-    _append_stage1(tmp_path, candidate, result, windows)
+    _append_directional_result(tmp_path, candidate, result, windows)
 
-    ranked = dss_v2_module.write_stage1_ranked(
+    ranked = dss_directional_search_module.write_directional_ranked(
         tmp_path, DSSConfig(output=tmp_path, windows=windows)
     )
 
     assert ranked == []
-    near_misses = (tmp_path / "stage1_near_misses.csv").read_text(encoding="utf-8")
+    near_misses = (tmp_path / "directional_near_misses.csv").read_text(encoding="utf-8")
     assert "near_miss" in near_misses
     assert "weak_barrier_win_rate:w1" in near_misses
 
 
-def test_stage1_rejects_overtrading(tmp_path: Path) -> None:
+def test_directional_rejects_overtrading(tmp_path: Path) -> None:
     primary = _make_primary(120)
     windows = [
         DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-06")
     ]
     config = DSSConfig(output=tmp_path, windows=windows, min_trades_per_window=1)
-    result = evaluate_stage1(
+    result = evaluate_directional_viability(
         _make_candidate(),
         {"w1": _make_strategy_data(primary)},
         config,
@@ -1025,7 +1323,7 @@ def test_stage1_rejects_overtrading(tmp_path: Path) -> None:
     assert result.rejection_reason == "overtrading:w1"
 
 
-def test_stage1_allows_up_to_ten_signals_per_day(tmp_path: Path) -> None:
+def test_directional_allows_up_to_ten_signals_per_day(tmp_path: Path) -> None:
     primary = _make_barrier_primary()
     primary = pd.concat([primary] * 4, ignore_index=True)
     primary.index = pd.date_range("2024-01-01", periods=len(primary), freq="1h", tz="UTC")
@@ -1039,40 +1337,13 @@ def test_stage1_allows_up_to_ten_signals_per_day(tmp_path: Path) -> None:
         min_barrier_tp_first_rate=0.0,
         min_barrier_win_rate=0.0,
     )
-    result = evaluate_stage1(
+    result = evaluate_directional_viability(
         _make_candidate(),
         {"w1": _make_strategy_data(primary)},
         config,
         _FakeComposer(_make_signal_df(primary, 49)),
     )
     assert result.rejection_reason != "overtrading:w1"
-
-
-def test_stage4_exported_json_replays_through_dss_strategy(tmp_path: Path) -> None:
-    candidate = _make_candidate()
-    behavior = _make_behavior()
-    archive = DSSArchive()
-    archive.consider(
-        candidate,
-        behavior,
-        DSSScore.from_window_scores(
-            candidate=candidate,
-            window_scores={"w1": 10.0},
-            trades_by_window={"w1": 5},
-        ),
-    )
-    config = DSSConfig(
-        output=tmp_path,
-        windows=[
-            DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
-        ],
-        top_n_candidates=1,
-    )
-    paths = export_stage4_candidates(archive, config)
-    payload = json.loads(paths[0].read_text(encoding="utf-8"))
-    strategy = DSSStrategy(payload["params"])
-    generated = strategy.generate(_make_strategy_data(_make_primary(300)))
-    assert {"signal", "sl_price"}.issubset(generated.columns)
 
 
 def test_dss_strategy_allowed_signal_filters_direction() -> None:
@@ -1115,6 +1386,86 @@ def test_dss_strategy_allowed_signal_filters_direction() -> None:
     signals = strategy.generate(primary)
 
     assert signals["signal"].tolist() == [0, -1, 0]
+
+
+def test_dss_strategy_adds_default_stop_for_directional_only_signals() -> None:
+    index = pd.date_range("2026-01-01", periods=3, freq="h", tz="UTC")
+    primary = pd.DataFrame(
+        {
+            "open": [100.0, 101.0, 102.0],
+            "high": [101.0, 102.0, 103.0],
+            "low": [99.0, 100.0, 101.0],
+            "close": [100.5, 101.5, 102.5],
+            "volume": [1.0, 1.0, 1.0],
+        },
+        index=index,
+    )
+    strategy = DSSStrategy(
+        {
+            "trigger_name": "pt_engulfing",
+            "trigger_params": {"body_ratio": 0.7},
+            "filter_names": [],
+            "filter_params": {},
+            "directional_sl_move_pct": 0.004,
+        }
+    )
+    strategy._generate_fn = lambda data: pd.DataFrame(  # noqa: ARG005
+        {
+            "bar_time": [index[0], index[1]],
+            "symbol": ["SOL-USDT-SWAP", "SOL-USDT-SWAP"],
+            "side": ["long", "short"],
+            "confidence": [80.0, 80.0],
+            "rationale": ["directional long", "directional short"],
+            "entry_price": [0.0, 0.0],
+            "stop_price": [0.0, 0.0],
+            "tp_price": [0.0, 0.0],
+        }
+    )
+
+    signals = strategy.generate(primary)
+
+    assert signals.loc[index[0], "sl_price"] == pytest.approx(101.0 * 0.996)
+    assert signals.loc[index[1], "sl_price"] == pytest.approx(102.0 * 1.004)
+
+
+def test_dss_strategy_atr_default_stop_uses_previous_closed_tr() -> None:
+    index = pd.date_range("2026-01-01", periods=16, freq="h", tz="UTC")
+    primary = pd.DataFrame(
+        {
+            "open": [100.0] * 15 + [107.0],
+            "high": [101.0] * 15 + [120.0],
+            "low": [99.0] * 15 + [80.0],
+            "close": [100.0] * len(index),
+            "volume": [1.0] * len(index),
+        },
+        index=index,
+    )
+    strategy = DSSStrategy(
+        {
+            "trigger_name": "pt_engulfing",
+            "trigger_params": {"body_ratio": 0.7},
+            "filter_names": [],
+            "filter_params": {},
+            "directional_sl_move_pct": 0.004,
+            "atr_sl_mult": 1.5,
+        }
+    )
+    strategy._generate_fn = lambda data: pd.DataFrame(  # noqa: ARG005
+        {
+            "bar_time": [index[-2]],
+            "symbol": ["SOL-USDT-SWAP"],
+            "side": ["long"],
+            "confidence": [80.0],
+            "rationale": ["directional long"],
+            "entry_price": [0.0],
+            "stop_price": [0.0],
+            "tp_price": [0.0],
+        }
+    )
+
+    signals = strategy.generate(primary)
+
+    assert signals.loc[index[-2], "sl_price"] == pytest.approx(100.0 - 2.0 * 1.5)
 
 
 def test_dss_strategy_entry_skip_rules_filter_next_bar_entry_features() -> None:
@@ -1169,11 +1520,11 @@ def test_dss_strategy_entry_skip_rules_filter_next_bar_entry_features() -> None:
 
 def test_dss_v1_output_dir_fails_resume(tmp_path: Path) -> None:
     (tmp_path / "study.journal").write_text("{}", encoding="utf-8")
-    with pytest.raises(ValueError, match="DSS v1 artifacts"):
+    with pytest.raises(ValueError, match="legacy DSS artifacts"):
         _guard_output_dir(tmp_path)
 
 
-def test_dss_v2_state_serializes_slots_window_specs(tmp_path: Path) -> None:
+def test_dss_directional_state_serializes_slots_window_specs(tmp_path: Path) -> None:
     config = DSSConfig(
         output=tmp_path,
         windows=[
@@ -1198,7 +1549,7 @@ def test_dss_v2_state_serializes_slots_window_specs(tmp_path: Path) -> None:
     ]
 
 
-def test_dss_v2_progress_callback_ticks_per_candidate(tmp_path: Path) -> None:
+def test_dss_directional_progress_callback_ticks_per_candidate(tmp_path: Path) -> None:
     primary = _make_primary(200)
     windows = [
         DSSWindowSpec(
@@ -1222,16 +1573,64 @@ def test_dss_v2_progress_callback_ticks_per_candidate(tmp_path: Path) -> None:
         max_filters=0,
     )
     ticks: list[int] = []
-    run_dss_v2_search(
+    result = run_dss_directional_search(
         config=config,
         search_space=search_space,
         window_data={"w1": _make_strategy_data(primary)},
         progress_callback=ticks.append,
     )
-    assert ticks == [1, 1, 1]
+    assert ticks == [1] * result.generated
+    assert (tmp_path / "candidate_journal.jsonl").exists()
+    assert (tmp_path / "seen_candidates.jsonl").exists()
+    progress = json.loads((tmp_path / "progress.json").read_text(encoding="utf-8"))
+    assert progress["generated"] == result.generated
+    assert progress["status"] == "stopped"
+    assert json.loads((tmp_path / "heartbeat.json").read_text(encoding="utf-8"))[
+        "status"
+    ] == "stopped"
+    assert not (tmp_path / "search.lock").exists()
 
 
-def test_catcma_weighted_model_updates_toward_elites() -> None:
+def test_dss_directional_resume_ticks_existing_evaluations(tmp_path: Path) -> None:
+    candidate = _make_candidate("dssv3_000001")
+    windows = [
+        DSSWindowSpec(
+            label="w1",
+            symbol="TEST-USDT-SWAP",
+            start="2024-01-01",
+            end="2024-01-10",
+        )
+    ]
+    (tmp_path / "candidates.jsonl").write_text(
+        json.dumps(candidate.to_dict()) + "\n",
+        encoding="utf-8",
+    )
+    _append_directional_result(tmp_path, candidate, _make_directional_pass(candidate), windows)
+    ticks: list[int] = []
+
+    result = run_dss_directional_search(
+        config=DSSConfig(
+            output=tmp_path,
+            windows=windows,
+            n_trials=1,
+            min_trades_per_window=1,
+        ),
+        search_space=DSSSearchSpace(
+            trigger_names=("pt_nr4_breakout",),
+            filter_names=(),
+            trigger_param_bounds={"pt_nr4_breakout": {}},
+            filter_param_bounds={},
+            max_filters=0,
+        ),
+        window_data={"w1": _make_strategy_data(_make_primary(80))},
+        progress_callback=ticks.append,
+    )
+
+    assert result.generated == 1
+    assert ticks == [1]
+
+
+def test_catcma_model_updates_full_catcmawm_generation() -> None:
     search_space = DSSSearchSpace(
         trigger_names=("pt_a", "pt_b"),
         filter_names=("pf_a", "pf_b"),
@@ -1240,21 +1639,21 @@ def test_catcma_weighted_model_updates_toward_elites() -> None:
         max_filters=2,
     )
     model = _WeightedModel(search_space, seed=123)
-    elite = DSSCandidate(
-        candidate_id="elite",
-        trigger_name="pt_b",
-        trigger_params={},
-        filter_names=("pf_b",),
-        filter_params={"pf_b": {}},
-        rrr=2.0,
-        risk_percent=1.5,
-        position_ttl_bars=36,
-        atr_sl_mult=1.0,
-        generation=0,
+    candidates = [
+        model.sample(f"c{i}", generation=0) for i in range(model._optimizer.population_size)
+    ]
+    model.update(
+        [
+            _EvaluatedCandidate(
+                candidate,
+                robust_score=10.0 if candidate.trigger_name == "pt_b" else 0.0,
+            )
+            for candidate in candidates
+        ]
     )
-    model.update([_EvaluatedCandidate(elite, robust_score=10.0, promoted_to_stage3=False)])
-    sampled = [model.sample(f"c{i}", generation=1).trigger_name for i in range(100)]
-    assert sampled.count("pt_b") > sampled.count("pt_a")
+    assert model.backend_name == "cmaes.CatCMAwM"
+    assert model._tell_count == 1
+    assert not model._feedback
 
 
 def test_catcma_qd_progress_callback_ticks_per_candidate(tmp_path: Path) -> None:
@@ -1289,16 +1688,16 @@ def test_catcma_qd_progress_callback_ticks_per_candidate(tmp_path: Path) -> None
         window_data={"w1": _make_strategy_data(primary)},
         progress_callback=ticks.append,
     )
-    assert ticks == [1, 1, 1, 1]
-    assert result.generated == 4
-    assert (tmp_path / "catcma_qd_state.csv").exists()
+    assert ticks == [1] * result.generated
+    assert result.generated == 1
+    assert (tmp_path / "backend_state" / "catcma_qd_state.csv").exists()
 
 
-def test_catcma_qd_stage2_selection_caps_batch_cost() -> None:
+def test_catcma_qd_directional_feedback_selection_caps_batch_cost() -> None:
     candidates = [
-        _Stage1Candidate(
+        _DirectionalCandidate(
             candidate=(candidate := _make_candidate(f"c{i}", trigger_name=f"pt_{i % 12}")),
-            result=Stage1Result(
+            result=DirectionalResult(
                 candidate_id=candidate.candidate_id,
                 passed=True,
                 rejection_reason="",
@@ -1326,14 +1725,14 @@ def test_catcma_qd_stage2_selection_caps_batch_cost() -> None:
         )
         for i in range(40)
     ]
-    selected = _select_stage2_candidates(candidates, batch_size=48)
+    selected = _select_directional_feedback_candidates(candidates, batch_size=48)
     assert len(selected) == 5
     assert len({item.result.behavior.cell_key for item in selected if item.result.behavior}) > 1
 
 
-def test_catcma_qd_resume_continues_after_existing_stage0(tmp_path: Path) -> None:
+def test_catcma_qd_resume_continues_after_existing_candidates(tmp_path: Path) -> None:
     existing = _make_candidate("catcma_000001").to_dict()
-    (tmp_path / "stage0_candidates.jsonl").write_text(
+    (tmp_path / "candidates.jsonl").write_text(
         json.dumps(existing) + "\n",
         encoding="utf-8",
     )
@@ -1361,16 +1760,52 @@ def test_catcma_qd_resume_continues_after_existing_stage0(tmp_path: Path) -> Non
         max_filters=0,
     )
     ticks: list[int] = []
-    run_catcma_qd_search(
+    result = run_catcma_qd_search(
         config=config,
         search_space=search_space,
         window_data={"w1": _make_strategy_data(primary)},
         progress_callback=ticks.append,
     )
-    lines = (tmp_path / "stage0_candidates.jsonl").read_text(encoding="utf-8").splitlines()
+    lines = (tmp_path / "candidates.jsonl").read_text(encoding="utf-8").splitlines()
     ids = [json.loads(line)["candidate_id"] for line in lines]
-    assert ticks == [1, 1, 1]
-    assert ids == ["catcma_000001", "catcma_000002", "catcma_000003"]
+    assert ticks == [1] * result.generated
+    assert ids == ["catcma_000001", "catcma_000002"]
+    journal = (tmp_path / "candidate_journal.jsonl").read_text(encoding="utf-8")
+    assert "duplicate_skipped" in journal
+
+
+def test_catcma_qd_resume_reports_existing_candidates_above_budget(tmp_path: Path) -> None:
+    candidates = [_make_candidate("catcma_000001"), _make_candidate("catcma_000002")]
+    (tmp_path / "candidates.jsonl").write_text(
+        "".join(json.dumps(candidate.to_dict()) + "\n" for candidate in candidates),
+        encoding="utf-8",
+    )
+    windows = [
+        DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
+    ]
+    _append_directional_result(tmp_path, candidates[0], _make_directional_pass(candidates[0]), windows)
+
+    result = run_catcma_qd_search(
+        config=DSSConfig(
+            output=tmp_path,
+            windows=windows,
+            n_trials=1,
+            min_trades_per_window=1,
+            algorithm="catcma_qd",
+            seed=777,
+        ),
+        search_space=DSSSearchSpace(
+            trigger_names=("pt_nr4_breakout",),
+            filter_names=(),
+            trigger_param_bounds={"pt_nr4_breakout": {}},
+            filter_param_bounds={},
+            max_filters=0,
+        ),
+        window_data={"w1": _make_strategy_data(_make_primary(80))},
+    )
+
+    assert result.generated == 2
+    assert "Generated candidates: **2**" in (tmp_path / "summary.md").read_text(encoding="utf-8")
 
 
 def test_island_qd_progress_callback_ticks_per_candidate(tmp_path: Path) -> None:
@@ -1414,9 +1849,9 @@ def test_island_qd_progress_callback_ticks_per_candidate(tmp_path: Path) -> None
         },
         progress_callback=ticks.append,
     )
-    assert ticks == [1, 1, 1, 1]
-    assert result.generated == 4
-    assert (tmp_path / "stage0_candidates.jsonl").exists()
+    assert ticks == [1] * result.generated
+    assert result.generated == 1
+    assert (tmp_path / "candidates.jsonl").exists()
 
 
 def test_hyperband_qd_progress_callback_ticks_per_candidate(tmp_path: Path) -> None:
@@ -1451,9 +1886,9 @@ def test_hyperband_qd_progress_callback_ticks_per_candidate(tmp_path: Path) -> N
         window_data={"w1": _make_strategy_data(primary)},
         progress_callback=ticks.append,
     )
-    assert ticks == [1, 1, 1, 1]
-    assert result.generated == 4
-    assert (tmp_path / "hyperband_qd_state.csv").exists()
+    assert ticks == [1] * result.generated
+    assert result.generated == 1
+    assert (tmp_path / "backend_state" / "hyperband_qd_state.csv").exists()
 
 
 def test_hyperband_qd_rung_selection_caps_expensive_evaluations() -> None:
@@ -1461,9 +1896,9 @@ def test_hyperband_qd_rung_selection_caps_expensive_evaluations() -> None:
     for i in range(40):
         candidate = _make_candidate(f"c{i}", trigger_name=f"pt_{i % 16}")
         behavior = _make_behavior(candidate.trigger_name)
-        stage1 = _Stage1Candidate(
+        directional = _DirectionalCandidate(
             candidate=candidate,
-            result=Stage1Result(
+            result=DirectionalResult(
                 candidate_id=candidate.candidate_id,
                 passed=True,
                 rejection_reason="",
@@ -1489,19 +1924,19 @@ def test_hyperband_qd_rung_selection_caps_expensive_evaluations() -> None:
             ),
             cheap_score=float(i),
         )
-        items.append(_RungCandidate(stage1))
+        items.append(_RungCandidate(directional))
 
     selected = _select_rung_promotions(
         items,
         fraction=0.30,
         minimum=3,
-        score_getter=lambda item: item.stage1.cheap_score,
+        score_getter=lambda item: item.directional.cheap_score,
     )
     assert len(selected) == 12
     selected_cells = {
-        item.stage1.result.behavior.cell_key
+        item.directional.result.behavior.cell_key
         for item in selected
-        if item.stage1.result.behavior is not None
+        if item.directional.result.behavior is not None
     }
     assert len(selected_cells) > 1
 
@@ -1527,10 +1962,6 @@ def test_smac_qd_encoder_is_fixed_width_for_conditional_candidates() -> None:
         trigger_params={"lookback": 4},
         filter_names=("pf_a",),
         filter_params={"pf_a": {"mode": "y"}},
-        rrr=2.0,
-        risk_percent=1.0,
-        position_ttl_bars=36,
-        atr_sl_mult=1.0,
         generation=0,
     )
     c2 = DSSCandidate(
@@ -1539,10 +1970,6 @@ def test_smac_qd_encoder_is_fixed_width_for_conditional_candidates() -> None:
         trigger_params={"threshold": 0.3},
         filter_names=("pf_b",),
         filter_params={"pf_b": {}},
-        rrr=2.5,
-        risk_percent=1.5,
-        position_ttl_bars=48,
-        atr_sl_mult=1.5,
         generation=0,
     )
     assert len(encoder.encode(c1)) == len(encoder.feature_names)
@@ -1559,6 +1986,39 @@ def test_smac_qd_random_forest_surrogate_predicts_elite_region() -> None:
     assert surrogate.fitted
     assert means[1] > means[0]
     assert len(stds) == 2
+
+
+def test_smac_qd_surrogate_fit_uses_capped_recent_observations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    search_space = DSSSearchSpace(
+        trigger_names=("pt_nr4_breakout",),
+        filter_names=(),
+        trigger_param_bounds={"pt_nr4_breakout": {}},
+        filter_param_bounds={},
+        max_filters=0,
+    )
+    encoder = _CandidateEncoder(search_space)
+    surrogate = _RandomForestSurrogate(seed=1)
+    observations = [
+        smac_qd_module._SMACObservation(
+            candidate=_make_candidate(f"c{i}"),
+            target_score=float(i),
+            fidelity="directional_reject",
+        )
+        for i in range(5_100)
+    ]
+    fit_sizes: list[int] = []
+
+    def _fake_fit(x_rows: list[list[float]], y: list[float]) -> None:
+        fit_sizes.append(len(x_rows))
+        assert y[0] == 100.0
+
+    monkeypatch.setattr(surrogate, "fit", _fake_fit)
+
+    smac_qd_module._fit_surrogate(surrogate, encoder, observations)
+
+    assert fit_sizes == [5_000]
 
 
 def test_smac_qd_progress_callback_ticks_per_candidate(tmp_path: Path) -> None:
@@ -1593,13 +2053,15 @@ def test_smac_qd_progress_callback_ticks_per_candidate(tmp_path: Path) -> None:
         window_data={"w1": _make_strategy_data(primary)},
         progress_callback=ticks.append,
     )
-    assert ticks == [1, 1, 1, 1]
-    assert result.generated == 4
-    assert (tmp_path / "smac_qd_state.csv").exists()
+    assert ticks == [1] * result.generated
+    assert result.generated == 1
+    assert (tmp_path / "backend_state" / "smac_qd_state.csv").exists()
     assert (tmp_path / "smac_qd_observations.csv").exists()
+    observations = (tmp_path / "smac_qd_observations.csv").read_text(encoding="utf-8")
+    assert "directional_reject" in observations
 
 
-def test_dss_stage1_mode_stops_before_backtest_and_exports_shortlist(
+def test_dss_directional_search_exports_shortlist(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     primary = _make_primary(80)
@@ -1611,7 +2073,6 @@ def test_dss_stage1_mode_stops_before_backtest_and_exports_shortlist(
         windows=windows,
         n_trials=1,
         min_trades_per_window=1,
-        stage_mode="stage1",
     )
     search_space = DSSSearchSpace(
         trigger_names=("pt_nr4_breakout",),
@@ -1623,20 +2084,18 @@ def test_dss_stage1_mode_stops_before_backtest_and_exports_shortlist(
     behavior = DSSBehavior(
         trigger_family="pt_nr4_breakout",
         side_profile="balanced",
-        trade_count_bucket="medium",
-        hold_time_bucket="medium",
-        risk_geometry="medium_sl",
+        frequency_class="medium",
         regime_strength="balanced",
         filter_depth="0",
     )
 
-    def _fake_stage1(
+    def _fake_directional(
         candidate: DSSCandidate,
         _window_data: dict[str, StrategyData],
         _config: DSSConfig,
         _composer: object | None = None,
-    ) -> Stage1Result:
-        return Stage1Result(
+    ) -> DirectionalResult:
+        return DirectionalResult(
             candidate_id=candidate.candidate_id,
             passed=True,
             rejection_reason="",
@@ -1662,24 +2121,368 @@ def test_dss_stage1_mode_stops_before_backtest_and_exports_shortlist(
             candidate_class="balanced",
         )
 
-    def _stage2_must_not_run(*_args: object, **_kwargs: object) -> object:
-        raise AssertionError("Stage 2 should not run in stage1 mode")
+    monkeypatch.setattr(dss_directional_search_module, "evaluate_directional_viability", _fake_directional)
 
-    monkeypatch.setattr(dss_v2_module, "evaluate_stage1", _fake_stage1)
-    monkeypatch.setattr(dss_v2_module, "evaluate_stage_scores", _stage2_must_not_run)
-
-    result = dss_v2_module.run_dss_v2_search(
+    result = dss_directional_search_module.run_dss_directional_search(
         config=config,
         search_space=search_space,
         window_data={"w1": _make_strategy_data(primary)},
     )
 
-    assert result.stage1_survivors == 1
-    assert result.stage2_survivors == 0
-    assert (tmp_path / "stage1_ranked.csv").exists()
-    assert (tmp_path / "stage1_candidates").exists()
-    assert not (tmp_path / "stage2_proxy.csv").exists()
-    assert "Stage mode: **stage1**" in (tmp_path / "summary.md").read_text(encoding="utf-8")
+    assert result.directional_survivors == 1
+    assert (tmp_path / "directional_ranked.csv").exists()
+    assert (tmp_path / "directional_candidates").exists()
+    assert not (tmp_path / "replay_proxy.csv").exists()
+    assert not (tmp_path / "replay_full_scores.csv").exists()
+    assert "Evaluator: **directional_labeling_only**" in (
+        tmp_path / "summary.md"
+    ).read_text(encoding="utf-8")
+
+
+def test_directional_export_replaces_stale_candidate_files(tmp_path: Path) -> None:
+    windows = [
+        DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
+    ]
+    config = DSSConfig(output=tmp_path, windows=windows, top_n_candidates=1)
+    candidates = [_make_candidate("c1"), _make_candidate("c2", trigger_name="pt_ema_cross")]
+    (tmp_path / "candidates.jsonl").write_text(
+        "".join(json.dumps(candidate.to_dict()) + "\n" for candidate in candidates),
+        encoding="utf-8",
+    )
+    for candidate in candidates:
+        _append_directional_result(tmp_path, candidate, _make_directional_pass(candidate), windows)
+    stale_dir = tmp_path / "directional_candidates"
+    stale_dir.mkdir()
+    (stale_dir / "directional_999_stale.json").write_text("{}", encoding="utf-8")
+
+    ranked = write_directional_ranked(tmp_path, config)
+    exported = export_directional_candidates(ranked, tmp_path, config)
+
+    assert len(exported) == 1
+    assert not (stale_dir / "directional_999_stale.json").exists()
+    assert len(list(stale_dir.glob("directional_*.json"))) == 1
+
+
+def test_directional_export_includes_default_execution_geometry(tmp_path: Path) -> None:
+    windows = [
+        DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
+    ]
+    config = DSSConfig(
+        output=tmp_path,
+        windows=windows,
+        top_n_candidates=1,
+        directional_sl_move_pct=0.004,
+    )
+    candidate = _make_candidate("c1")
+    (tmp_path / "candidates.jsonl").write_text(
+        json.dumps(candidate.to_dict()) + "\n",
+        encoding="utf-8",
+    )
+    _append_directional_result(tmp_path, candidate, _make_directional_pass(candidate), windows)
+
+    ranked = write_directional_ranked(tmp_path, config)
+    exported = export_directional_candidates(ranked, tmp_path, config)
+    payload = json.loads(exported[0].read_text(encoding="utf-8"))
+
+    assert payload["params"]["rrr"] == 2.0
+    assert payload["params"]["risk_percent"] == 1.0
+    assert payload["params"]["position_ttl_minutes"] == 720
+    assert payload["params"]["position_ttl_bars"] == 12
+    assert payload["params"]["directional_sl_move_pct"] == 0.004
+
+
+def test_directional_export_deduplicates_signal_fingerprints(tmp_path: Path) -> None:
+    windows = [
+        DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
+    ]
+    config = DSSConfig(output=tmp_path, windows=windows, top_n_candidates=2)
+    candidates = [_make_candidate("c1"), _make_candidate("c2", trigger_name="pt_ema_cross")]
+    (tmp_path / "candidates.jsonl").write_text(
+        "".join(json.dumps(candidate.to_dict()) + "\n" for candidate in candidates),
+        encoding="utf-8",
+    )
+    for candidate in candidates:
+        result = _make_directional_pass(candidate)
+        result = DirectionalResult(
+            candidate_id=result.candidate_id,
+            passed=result.passed,
+            rejection_reason=result.rejection_reason,
+            signal_counts=result.signal_counts,
+            long_ratios=result.long_ratios,
+            median_stop_atr=result.median_stop_atr,
+            barrier_metrics=result.barrier_metrics,
+            behavior=result.behavior,
+            candidate_class=result.candidate_class,
+            target_window=result.target_window,
+            advisory_score=result.advisory_score,
+            metadata={"signal_fingerprint": "same-signal-set", "signal_set_size": 12},
+        )
+        _append_directional_result(tmp_path, candidate, result, windows)
+
+    ranked = write_directional_ranked(tmp_path, config)
+    exported = export_directional_candidates(ranked, tmp_path, config)
+
+    assert len(exported) == 1
+
+
+def test_directional_export_prefers_active_frequency_buckets() -> None:
+    rows = [
+        {"candidate_id": "sparse_1", "frequency_class": "sparse", "signal_fingerprint": "s1"},
+        {"candidate_id": "medium_1", "frequency_class": "medium", "signal_fingerprint": "m1"},
+        {"candidate_id": "frequent_1", "frequency_class": "frequent", "signal_fingerprint": "f1"},
+        {"candidate_id": "sparse_2", "frequency_class": "sparse", "signal_fingerprint": "s2"},
+    ]
+
+    selected = _select_directional_export_rows(rows, top_n=3)
+
+    assert [row["candidate_id"] for row in selected] == [
+        "frequent_1",
+        "medium_1",
+        "sparse_1",
+    ]
+
+
+def test_directional_rank_score_rewards_more_active_viable_candidates() -> None:
+    windows = [
+        DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
+    ]
+    base = {
+        "barrier_win_rate_w1": 0.52,
+        "barrier_tp_first_rate_w1": 0.52,
+        "barrier_sl_first_rate_w1": 0.48,
+        "barrier_unresolved_tail_rate_w1": 0.0,
+    }
+
+    sparse = {**base, "signals_w1": 35}
+    frequent = {**base, "signals_w1": 220}
+
+    assert directional_rank_score(frequent, windows) > directional_rank_score(sparse, windows)
+
+
+def test_signal_novelty_tracker_rejects_duplicate_promoted_fingerprint(tmp_path: Path) -> None:
+    windows = [
+        DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
+    ]
+    first = _make_candidate("c1")
+    second = _make_candidate("c2", trigger_name="pt_ema_cross")
+    first_result = _make_directional_pass(first)
+    first_result = DirectionalResult(
+        candidate_id=first_result.candidate_id,
+        passed=first_result.passed,
+        rejection_reason=first_result.rejection_reason,
+        signal_counts=first_result.signal_counts,
+        long_ratios=first_result.long_ratios,
+        median_stop_atr=first_result.median_stop_atr,
+        barrier_metrics=first_result.barrier_metrics,
+        behavior=first_result.behavior,
+        candidate_class=first_result.candidate_class,
+        target_window=first_result.target_window,
+        advisory_score=first_result.advisory_score,
+        metadata={"signal_fingerprint": "fp1", "signal_set_size": 12},
+    )
+    second_result = DirectionalResult(
+        candidate_id=second.candidate_id,
+        passed=first_result.passed,
+        rejection_reason=first_result.rejection_reason,
+        signal_counts=first_result.signal_counts,
+        long_ratios=first_result.long_ratios,
+        median_stop_atr=first_result.median_stop_atr,
+        barrier_metrics=first_result.barrier_metrics,
+        behavior=first_result.behavior,
+        candidate_class=first_result.candidate_class,
+        target_window=first_result.target_window,
+        advisory_score=first_result.advisory_score,
+        metadata={"signal_fingerprint": "fp1", "signal_set_size": 12},
+    )
+
+    tracker = DSSSignalNoveltyTracker(tmp_path / "directional_viability.csv")
+
+    assert tracker.register(first_result) is True
+    _append_directional_result(tmp_path, first, first_result, windows)
+    assert tracker.register(second_result) is False
+
+
+def test_signal_novelty_tracker_rejects_high_overlap_promoted_signal(tmp_path: Path) -> None:
+    candidate = _make_candidate("c1")
+    first_result = replace(
+        _make_directional_pass(candidate),
+        metadata={
+            "signal_fingerprint": "fp1",
+            "signal_identity_keys": [f"w1|2024-01-{day:02d}T00:00:00+00:00|long" for day in range(1, 11)],
+            "signal_set_size": 10,
+        },
+    )
+    second_result = replace(
+        _make_directional_pass(_make_candidate("c2", trigger_name="pt_ema_cross")),
+        metadata={
+            "signal_fingerprint": "fp2",
+            "signal_identity_keys": [
+                *[f"w1|2024-01-{day:02d}T00:00:00+00:00|long" for day in range(1, 9)],
+                "w1|2024-02-01T00:00:00+00:00|long",
+                "w1|2024-02-02T00:00:00+00:00|long",
+            ],
+            "signal_set_size": 10,
+        },
+    )
+
+    tracker = DSSSignalNoveltyTracker(tmp_path / "directional_viability.csv")
+
+    assert tracker.register(first_result) is True
+    assert tracker.register(second_result) is False
+
+
+def test_signal_novelty_tracker_restores_overlap_from_viability_csv(tmp_path: Path) -> None:
+    windows = [
+        DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
+    ]
+    first = _make_candidate("c1")
+    first_result = replace(
+        _make_directional_pass(first),
+        metadata={
+            "signal_fingerprint": "fp1",
+            "signal_identity_keys": [
+                f"w1|2024-01-{day:02d}T00:00:00+00:00|long" for day in range(1, 11)
+            ],
+            "signal_set_size": 10,
+        },
+    )
+    _append_directional_result(tmp_path, first, first_result, windows)
+
+    resumed_tracker = DSSSignalNoveltyTracker(tmp_path / "directional_viability.csv")
+    overlapping_result = replace(
+        _make_directional_pass(_make_candidate("c2", trigger_name="pt_ema_cross")),
+        metadata={
+            "signal_fingerprint": "fp2",
+            "signal_identity_keys": [
+                *[f"w1|2024-01-{day:02d}T00:00:00+00:00|long" for day in range(1, 9)],
+                "w1|2024-02-01T00:00:00+00:00|long",
+                "w1|2024-02-02T00:00:00+00:00|long",
+            ],
+            "signal_set_size": 10,
+        },
+    )
+
+    assert resumed_tracker.register(overlapping_result) is False
+
+
+def test_random_directional_candidate_uses_independent_sampler() -> None:
+    search_space = DSSSearchSpace(
+        trigger_names=("pt_a@15m", "pt_b@H4"),
+        filter_names=("pf_a@15m", "pf_b@H4", "pf_c@D1"),
+        trigger_param_bounds={"pt_a": {}, "pt_b": {}},
+        filter_param_bounds={"pf_a": {}, "pf_b": {}, "pf_c": {}},
+        max_filters=3,
+    )
+
+    candidate = sample_random_directional_candidate(
+        search_space=search_space,
+        candidate_id="random_000005",
+        generation=7,
+        max_filters=3,
+        seed=123,
+    )
+
+    assert candidate.candidate_id == "random_000005"
+    assert candidate.generation == 7
+    assert candidate.trigger_name in {"pt_a", "pt_b"}
+    assert candidate.trigger_timeframe in {"15m", "H4"}
+    assert set(candidate.filter_names).issubset(set(search_space.filter_names))
+
+
+def test_directional_duplicate_signal_demotes_exportable_result() -> None:
+    result = _make_directional_pass(_make_candidate())
+
+    demoted = _directional_with_novelty(result, is_novel_signal=False)
+
+    assert demoted.passed is False
+    assert demoted.should_promote is False
+    assert demoted.rejection_reason == "duplicate_signal_set"
+    assert demoted.advisory_score is not None
+    assert demoted.advisory_score < 0
+
+
+def test_smac_observation_penalizes_duplicate_promoted_signal() -> None:
+    candidate = _make_candidate()
+    result = _make_directional_pass(candidate)
+
+    observation = smac_qd_module._directional_observation(
+        candidate, result, is_novel_signal=False
+    )
+
+    assert observation.fidelity == "duplicate_signal"
+    assert observation.target_score < 0
+
+
+@pytest.mark.parametrize(
+    ("runner", "algorithm"),
+    [
+        (run_dss_directional_search, "directional"),
+        (run_catcma_qd_search, "catcma_qd"),
+        (run_island_qd_search, "island_qd"),
+        (run_hyperband_qd_search, "hyperband_qd"),
+        (run_smac_qd_search, "smac_qd"),
+    ],
+)
+def test_dss_resume_evaluates_candidate_without_directional_row(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    runner: Callable[..., DSSDirectionalResult],
+    algorithm: str,
+) -> None:
+    candidate = _make_candidate("pending_000001")
+    (tmp_path / "candidates.jsonl").write_text(
+        json.dumps(candidate.to_dict()) + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "seen_candidates.jsonl").write_text(
+        json.dumps(
+            {
+                "candidate_hash": candidate.candidate_key,
+                "candidate_id": candidate.candidate_id,
+                "ts": "2026-07-31T00:00:00+00:00",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    windows = [
+        DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-01-10")
+    ]
+
+    def _fake_directional(
+        candidate: DSSCandidate,
+        _window_data: dict[str, StrategyData],
+        _config: DSSConfig,
+        _composer: object | None = None,
+    ) -> DirectionalResult:
+        return _make_directional_pass(candidate)
+
+    monkeypatch.setattr(dss_directional_search_module, "evaluate_directional_viability", _fake_directional)
+
+    result = runner(
+        config=DSSConfig(
+            output=tmp_path,
+            windows=windows,
+            n_trials=1,
+            min_trades_per_window=1,
+            algorithm=algorithm,  # type: ignore[arg-type]
+        ),
+        search_space=DSSSearchSpace(
+            trigger_names=("pt_nr4_breakout",),
+            filter_names=(),
+            trigger_param_bounds={"pt_nr4_breakout": {}},
+            filter_param_bounds={},
+            max_filters=0,
+        ),
+        window_data={"w1": _make_strategy_data(_make_primary(80))},
+    )
+
+    assert result.generated == 1
+    assert result.directional_survivors == 1
+    viability = (tmp_path / "directional_viability.csv").read_text(encoding="utf-8")
+    assert "pending_000001" in viability
+    journal = (tmp_path / "candidate_journal.jsonl").read_text(encoding="utf-8")
+    assert "candidate_evaluated" in journal
 
 
 @pytest.mark.parametrize(
@@ -1691,11 +2494,11 @@ def test_dss_stage1_mode_stops_before_backtest_and_exports_shortlist(
         (smac_qd_module, run_smac_qd_search),
     ],
 )
-def test_stage1_mode_stops_all_backends_before_backtest(
+def test_directional_search_all_backends_skip_replay_backtests(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     module: object,
-    runner: Callable[..., DSSV2Result],
+    runner: Callable[..., DSSDirectionalResult],
 ) -> None:
     primary = _make_primary(80)
     windows = [
@@ -1706,7 +2509,6 @@ def test_stage1_mode_stops_all_backends_before_backtest(
         windows=windows,
         n_trials=1,
         min_trades_per_window=1,
-        stage_mode="stage1",
     )
     search_space = DSSSearchSpace(
         trigger_names=("pt_nr4_breakout",),
@@ -1716,19 +2518,16 @@ def test_stage1_mode_stops_all_backends_before_backtest(
         max_filters=0,
     )
 
-    def _fake_stage1(
+    def _fake_directional(
         candidate: DSSCandidate,
         _window_data: dict[str, StrategyData],
         _config: DSSConfig,
         _composer: object | None = None,
-    ) -> Stage1Result:
-        return _make_stage1_pass(candidate)
+    ) -> DirectionalResult:
+        return _make_directional_pass(candidate)
 
-    def _stage2_must_not_run(*_args: object, **_kwargs: object) -> object:
-        raise AssertionError("Stage 2 should not run in stage1 mode")
-
-    monkeypatch.setattr(module, "evaluate_stage1", _fake_stage1)
-    monkeypatch.setattr(module, "evaluate_stage_scores", _stage2_must_not_run)
+    _ = module
+    monkeypatch.setattr(dss_directional_search_module, "evaluate_directional_viability", _fake_directional)
 
     result = runner(
         config=config,
@@ -1736,12 +2535,14 @@ def test_stage1_mode_stops_all_backends_before_backtest(
         window_data={"w1": _make_strategy_data(primary)},
     )
 
-    assert result.stage1_survivors == 1
-    assert result.stage2_survivors == 0
-    assert (tmp_path / "stage1_ranked.csv").exists()
-    assert (tmp_path / "stage1_candidates").exists()
-    assert not (tmp_path / "stage2_proxy.csv").exists()
-    assert "Stage mode: **stage1**" in (tmp_path / "summary.md").read_text(encoding="utf-8")
+    assert result.directional_survivors == 1
+    assert (tmp_path / "directional_ranked.csv").exists()
+    assert (tmp_path / "directional_candidates").exists()
+    assert not (tmp_path / "replay_proxy.csv").exists()
+    assert not (tmp_path / "replay_full_scores.csv").exists()
+    assert "Evaluator: **directional_labeling_only**" in (
+        tmp_path / "summary.md"
+    ).read_text(encoding="utf-8")
 
 
 def test_search_signals_help_no_longer_exposes_sampler() -> None:
@@ -1752,6 +2553,175 @@ def test_search_signals_help_no_longer_exposes_sampler() -> None:
     assert "island_qd" in result.output
     assert "hyperband_qd" in result.output
     assert "smac_qd" in result.output
+
+
+def test_search_signals_without_n_trials_runs_endless_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def _fake_load_discovery_window(**_kwargs: object) -> StrategyData:
+        return _make_multiframe_strategy_data(_make_primary(80))
+
+    def _fake_runner(
+        *,
+        config: DSSConfig,
+        search_space: DSSSearchSpace,
+        window_data: dict[str, StrategyData],
+        progress_callback: Callable[[int], None] | None = None,
+    ) -> DSSDirectionalResult:
+        captured["n_trials"] = config.n_trials
+        captured["progress_callback"] = progress_callback
+        captured["trigger_count"] = len(search_space.trigger_names)
+        captured["window_count"] = len(window_data)
+        return DSSDirectionalResult(
+            output=config.output,
+            generated=0,
+            directional_survivors=0,
+            exported_candidates=0,
+            archive=DSSArchive(),
+        )
+
+    monkeypatch.setattr("backtester.__main__._load_discovery_window", _fake_load_discovery_window)
+    monkeypatch.setattr("backtester.__main__.run_dss_directional_search", _fake_runner)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "search-signals",
+            "--data-dir",
+            "data",
+            "--symbol",
+            "SOL-USDT-SWAP",
+            "--windows",
+            "smoke:2024-01-01:2024-01-05",
+            "--output",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "endless mode" in result.output
+    assert captured["n_trials"] is None
+    assert captured["progress_callback"] is None
+    assert captured["window_count"] == 1
+    assert captured["trigger_count"] > 0
+
+
+def test_search_signals_multi_symbol_keeps_distinct_window_labels(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def _fake_load_discovery_window(**kwargs: object) -> StrategyData:
+        return _make_multiframe_strategy_data(
+            _make_primary(80),
+            symbol=str(kwargs["symbol"]),
+        )
+
+    def _fake_runner(
+        *,
+        config: DSSConfig,
+        search_space: DSSSearchSpace,
+        window_data: dict[str, StrategyData],
+        progress_callback: Callable[[int], None] | None = None,
+    ) -> DSSDirectionalResult:
+        _ = search_space, progress_callback
+        captured["window_labels"] = [window.label for window in config.windows]
+        captured["window_symbols"] = [window.symbol for window in config.windows]
+        captured["window_data_keys"] = sorted(window_data)
+        captured["metadata"] = {
+            key: dict(data.metadata) for key, data in sorted(window_data.items())
+        }
+        return DSSDirectionalResult(
+            output=config.output,
+            generated=0,
+            directional_survivors=0,
+            exported_candidates=[],
+            archive=DSSArchive(),
+        )
+
+    monkeypatch.setattr("backtester.__main__._load_discovery_window", _fake_load_discovery_window)
+    monkeypatch.setattr("backtester.__main__.run_dss_directional_search", _fake_runner)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "search-signals",
+            "--data-dir",
+            "data",
+            "--symbol",
+            "SOL-USDT-SWAP",
+            "--symbol",
+            "BTC-USDT-SWAP",
+            "--windows",
+            "smoke:2024-01-01:2024-01-05",
+            "--output",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["window_labels"] == [
+        "SOL-USDT-SWAP:smoke",
+        "BTC-USDT-SWAP:smoke",
+    ]
+    assert captured["window_symbols"] == ["SOL-USDT-SWAP", "BTC-USDT-SWAP"]
+    assert captured["window_data_keys"] == [
+        "BTC-USDT-SWAP:smoke",
+        "SOL-USDT-SWAP:smoke",
+    ]
+    assert captured["metadata"] == {
+        "BTC-USDT-SWAP:smoke": {
+            "symbol": "BTC-USDT-SWAP",
+            "window_label": "BTC-USDT-SWAP:smoke",
+        },
+        "SOL-USDT-SWAP:smoke": {
+            "symbol": "SOL-USDT-SWAP",
+            "window_label": "SOL-USDT-SWAP:smoke",
+        },
+    }
+
+
+def test_search_signals_preflight_rejects_missing_required_timeframes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _fake_load_discovery_window(**_kwargs: object) -> StrategyData:
+        return _make_strategy_data(_make_primary(80))
+
+    def _fail_runner(**_kwargs: object) -> DSSDirectionalResult:
+        raise AssertionError("DSS runner must not start when required candles are missing")
+
+    monkeypatch.setattr("backtester.__main__._load_discovery_window", _fake_load_discovery_window)
+    monkeypatch.setattr("backtester.__main__.run_dss_directional_search", _fail_runner)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "search-signals",
+            "--data-dir",
+            "data",
+            "--symbol",
+            "SOL-USDT-SWAP",
+            "--windows",
+            "smoke:2024-01-01:2024-01-05",
+            "--output",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "DSS search space requires candle timeframes" in result.output
+    assert "smoke:15m" in result.output
+    assert "python -m crypt.backfill" in result.output
+    assert "MPLCONFIGDIR" not in result.output
+    assert "UV_CACHE_DIR" not in result.output
+    assert "--from 2024-01-01" in result.output
+    assert "--to 2024-01-06" in result.output
+    assert "--data-types ohlcv" in result.output
 
 
 def test_search_signals_rejects_removed_sampler_option() -> None:
@@ -1768,14 +2738,17 @@ def test_search_signals_rejects_removed_sampler_option() -> None:
         ],
     )
     assert result.exit_code != 0
-    assert "DSS v2 replaced the old Optuna sampler path" in result.output
+    assert "DSS directional search removed the old Optuna sampler path" in result.output
 
 
 def test_search_signals_matrix_help() -> None:
     result = CliRunner().invoke(cli, ["search-signals-matrix", "--help"])
     assert result.exit_code == 0
-    assert "--n-jobs-per-algorithm" in result.output
+    assert "--n-jobs-per-algorithm" not in result.output
     assert "--algorithms" in result.output
+    assert "--min-signals-per-week FLOAT" not in result.output
+    assert "[default: data]" in result.output
+    assert "[default: SOL-USDT-SWAP]" in result.output
 
 
 def test_search_signals_matrix_rejects_unknown_algorithm() -> None:
@@ -1788,12 +2761,194 @@ def test_search_signals_matrix_rejects_unknown_algorithm() -> None:
             "--symbol",
             "SOL-USDT-SWAP",
             "--algorithms",
-            "staged,nope",
+            "generated,nope",
         ],
     )
     assert result.exit_code != 0
     assert "unknown value" in result.output
     assert "nope" in result.output
+
+
+def test_search_signals_matrix_preflight_rejects_before_spawning_children(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _fake_load_discovery_window(**_kwargs: object) -> StrategyData:
+        return _make_strategy_data(_make_primary(80))
+
+    def _fail_popen(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("matrix must not spawn children before candle preflight passes")
+
+    monkeypatch.setattr("backtester.__main__._load_discovery_window", _fake_load_discovery_window)
+    monkeypatch.setattr("backtester.__main__.subprocess.Popen", _fail_popen)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "search-signals-matrix",
+            "--data-dir",
+            "data",
+            "--symbol",
+            "SOL-USDT-SWAP",
+            "--windows",
+            "smoke:2024-01-01:2024-01-05",
+            "--output-root",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "DSS search space requires candle timeframes" in result.output
+    assert "python -m crypt.backfill" in result.output
+    assert "MPLCONFIGDIR" not in result.output
+    assert "UV_CACHE_DIR" not in result.output
+
+
+def _capture_search_signals_matrix_children(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[list[str]]:
+    launched: list[list[str]] = []
+
+    def _fake_load_discovery_window(**_kwargs: object) -> StrategyData:
+        return _make_multiframe_strategy_data(_make_primary(80))
+
+    class _FakeProcess:
+        pid = 12345
+
+        def __init__(self, cmd: list[str], stdout: object, stderr: object) -> None:
+            _ = stdout, stderr
+            launched.append(cmd)
+
+        def wait(self) -> int:
+            return 0
+
+        def poll(self) -> int:
+            return 0
+
+        def terminate(self) -> None:
+            raise AssertionError("terminate should not be called on successful children")
+
+    monkeypatch.setattr("backtester.__main__._load_discovery_window", _fake_load_discovery_window)
+    monkeypatch.setattr("backtester.__main__.subprocess.Popen", _FakeProcess)
+    return launched
+
+
+def test_search_signals_matrix_defaults_to_endless_children(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launched = _capture_search_signals_matrix_children(monkeypatch)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "search-signals-matrix",
+            "--data-dir",
+            "data",
+            "--symbol",
+            "SOL-USDT-SWAP",
+            "--windows",
+            "smoke:2024-01-01:2024-01-05",
+            "--algorithms",
+            "directional,catcma_qd",
+            "--output-root",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "mode=endless" in result.output
+    assert [cmd[cmd.index("--algorithm") + 1] for cmd in launched] == [
+        "directional",
+        "catcma_qd",
+    ]
+    assert all("--n-trials" not in cmd for cmd in launched)
+    assert all(cmd[cmd.index("--directional-min-wr") + 1] == "0.45" for cmd in launched)
+
+
+def test_search_signals_matrix_all_alias_launches_every_backend(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launched = _capture_search_signals_matrix_children(monkeypatch)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "search-signals-matrix",
+            "--data-dir",
+            "data",
+            "--symbol",
+            "SOL-USDT-SWAP",
+            "--windows",
+            "smoke:2024-01-01:2024-01-05",
+            "--algorithms",
+            "all",
+            "--n-trials",
+            "1",
+            "--output-root",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert [cmd[cmd.index("--algorithm") + 1] for cmd in launched] == [
+        "directional",
+        "catcma_qd",
+        "island_qd",
+        "hyperband_qd",
+        "smac_qd",
+    ]
+
+
+def test_search_signals_matrix_launches_bounded_current_dss_children(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launched = _capture_search_signals_matrix_children(monkeypatch)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "search-signals-matrix",
+            "--data-dir",
+            "data",
+            "--symbol",
+            "SOL-USDT-SWAP",
+            "--windows",
+            "smoke:2024-01-01:2024-01-05",
+            "--candle-timeframe",
+            "1h",
+            "--n-trials",
+            "7",
+            "--n-jobs-per-algorithm",
+            "2",
+            "--algorithms",
+            "directional,catcma_qd",
+            "--catalog",
+            "all",
+            "--output-root",
+            str(tmp_path),
+            "--directional-min-wr",
+            "0.42",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert [cmd[cmd.index("--algorithm") + 1] for cmd in launched] == [
+        "directional",
+        "catcma_qd",
+    ]
+    for cmd in launched:
+        assert cmd[1:3] == ["-m", "backtester"]
+        assert cmd[cmd.index("search-signals")] == "search-signals"
+        assert cmd[cmd.index("--n-trials") + 1] == "7"
+        assert cmd[cmd.index("--n-jobs") + 1] == "2"
+        assert cmd[cmd.index("--catalog") + 1] == "all"
+        assert cmd[cmd.index("--directional-min-wr") + 1] == "0.42"
+        assert "--sampler" not in cmd
+        assert "--resume" not in cmd
+        assert "--accept-min-score" not in cmd
 
 
 # ---------------------------------------------------------------------------
@@ -1808,9 +2963,6 @@ def test_cache_basic_hit_miss() -> None:
         trigger_params={"lookback": 4},
         filter_names=(),
         filter_params={},
-        rrr=2.0,
-        risk_percent=1.0,
-        position_ttl_bars=36,
     )
     calls = [0]
 
@@ -1836,9 +2988,6 @@ def test_cache_evicts_oldest_when_full() -> None:
             trigger_params={"body_ratio": float(n) / 10},
             filter_names=(),
             filter_params={},
-            rrr=2.0,
-            risk_percent=1.0,
-            position_ttl_bars=36,
         )
 
     empty_df = pd.DataFrame()
@@ -1855,9 +3004,6 @@ def test_cache_different_windows_cached_separately() -> None:
         trigger_params={"lookback": 4},
         filter_names=(),
         filter_params={},
-        rrr=2.0,
-        risk_percent=1.0,
-        position_ttl_bars=36,
     )
     calls: dict[str, int] = {"2022": 0, "2023": 0}
 
@@ -1930,7 +3076,7 @@ def test_pinescript_macd_cross_trigger_emits_events() -> None:
     primary["high"] = primary[["open", "close"]].max(axis=1) + 1.0
     primary["low"] = primary[["open", "close"]].min(axis=1) - 1.0
     dataset = build_discovery_dataset(
-        data=_make_strategy_data(primary),
+        data=primary,
         window_label="w1",
         symbol="TEST-USDT-SWAP",
     )
@@ -1955,10 +3101,6 @@ def test_signal_composer_replays_pinescript_catalog_config() -> None:
         trigger_params={"zero_filter": "off"},
         filter_names=(),
         filter_params={},
-        rrr=2.0,
-        risk_percent=1.0,
-        position_ttl_bars=24,
-        atr_sl_mult=1.0,
     )
 
     composer = SignalComposer()
@@ -1992,7 +3134,7 @@ def _make_smc_primary() -> pd.DataFrame:
 def test_pinescript_smc_features_and_triggers_emit_events() -> None:
     primary = _make_smc_primary()
     dataset = build_discovery_dataset(
-        data=_make_strategy_data(primary),
+        data=primary,
         window_label="w1",
         symbol="TEST-USDT-SWAP",
     )
@@ -2020,10 +3162,6 @@ def test_signal_composer_replays_pinescript_smc_config() -> None:
         trigger_params={"min_gap_atr": 0.0},
         filter_names=("pf_ps_smc_fvg_recent",),
         filter_params={"pf_ps_smc_fvg_recent": {"lookback": 12}},
-        rrr=2.0,
-        risk_percent=1.0,
-        position_ttl_bars=24,
-        atr_sl_mult=1.0,
     )
 
     composer = SignalComposer()
@@ -2037,7 +3175,7 @@ def test_signal_composer_replays_pinescript_smc_config() -> None:
 def test_pinescript_adx_di_filter_uses_side_alignment() -> None:
     primary = _make_primary(80)
     dataset = build_discovery_dataset(
-        data=_make_strategy_data(primary),
+        data=primary,
         window_label="w1",
         symbol="TEST-USDT-SWAP",
     )
@@ -2074,8 +3212,7 @@ def test_pinescript_adx_di_filter_uses_side_alignment() -> None:
 def test_trigger_produces_events_on_synthetic_data() -> None:
     """At least one trigger fires on synthetic noisy data."""
     primary = _make_primary(400)
-    data = _make_strategy_data(primary)
-    dataset = build_discovery_dataset(data=data, window_label="test", symbol="TEST")
+    dataset = build_discovery_dataset(data=primary, window_label="test", symbol="TEST")
     cat = parameterized_trigger_catalog()
     any_fired = False
     for _name, factory in cat.items():
@@ -2151,13 +3288,8 @@ def test_extract_pareto_front_empty() -> None:
     assert front == []
 
 
-# ---------------------------------------------------------------------------
-# run_dss_backtest
-# ---------------------------------------------------------------------------
-
-
-def test_run_dss_backtest_completes_with_ignore_structural_sl_mode() -> None:
-    """DSS signals embed sl_price; backtest must not use invalid structural_sl_mode."""
+def test_dss_v3_signal_composer_does_not_export_trade_geometry() -> None:
+    """DSS v3 signals are directional research rows, not trade geometry."""
     primary = _make_primary(500, seed=42)
     data = _make_strategy_data(primary)
     config = TrialConfig(
@@ -2165,52 +3297,14 @@ def test_run_dss_backtest_completes_with_ignore_structural_sl_mode() -> None:
         trigger_params={"lookback": 4},
         filter_names=(),
         filter_params={},
-        rrr=2.0,
-        risk_percent=1.0,
-        position_ttl_bars=36,
-        atr_sl_mult=1.0,
     )
     signal_df = SignalComposer().build(config)(data)
     assert not signal_df.empty
-
-    trades = run_dss_backtest(signal_df, config, data)
-    assert not trades.empty
-    score = compute_mandate_score(
-        trades,
-        initial_capital=10_000.0,
-        start="2024-01-01",
-        end="2024-12-31",
-    )
-    assert score not in (-5_000.0, -10_000.0)
+    assert set(signal_df["stop_price"]) == {0.0}
+    assert set(signal_df["tp_price"]) == {0.0}
 
 
-# ---------------------------------------------------------------------------
-# DSSObjective smoke test (5 trials on synthetic data)
-# ---------------------------------------------------------------------------
-
-
-def test_dss_objective_smoke(tmp_path: Path) -> None:
-    """DSSObjective must complete 5 trials without crashing."""
-    import optuna
-
-    primary = _make_primary(500, seed=7)
-
-    windows = [
-        DSSWindowSpec(label="w1", symbol="TEST-USDT-SWAP", start="2024-01-01", end="2024-06-30"),
-        DSSWindowSpec(label="w2", symbol="TEST-USDT-SWAP", start="2024-07-01", end="2024-12-31"),
-    ]
-    primary_w1 = primary.loc["2024-01-01":"2024-06-30"]
-    primary_w2 = primary.loc["2024-07-01":"2024-12-31"]
-
-    window_data = {
-        "w1": StrategyData(
-            primary=primary_w1, candles={}, extras={}, metadata={"symbol": "TEST-USDT-SWAP"}
-        ),
-        "w2": StrategyData(
-            primary=primary_w2, candles={}, extras={}, metadata={"symbol": "TEST-USDT-SWAP"}
-        ),
-    }
-
+def test_dss_v3_search_space_has_no_geometry_ranges() -> None:
     t_catalog = parameterized_trigger_catalog()
     f_catalog = parameterized_filter_catalog()
 
@@ -2220,38 +3314,8 @@ def test_dss_objective_smoke(tmp_path: Path) -> None:
         trigger_param_bounds={},
         filter_param_bounds={},
         max_filters=1,
-        rrr_range=(2.0, 2.0, 0.5),
-        risk_percent_range=(1.0, 1.0, 0.5),
-        position_ttl_bars_range=(36, 36, 4),
-        atr_sl_mult_range=(1.0, 1.0, 0.5),
     )
-
-    dss_config = DSSConfig(
-        output=tmp_path,
-        windows=windows,
-        n_trials=5,
-        n_jobs=1,
-        max_filters=1,
-        min_trades_per_window=1,
-    )
-
-    signal_cache = DSSSignalCache(max_entries=100)
-    objective = DSSObjective(
-        windows=windows,
-        window_data=window_data,
-        search_space=search_space,
-        signal_cache=signal_cache,
-        config=dss_config,
-    )
-
-    optuna.logging.set_verbosity(optuna.logging.ERROR)
-    study = optuna.create_study(
-        directions=["maximize", "maximize"],
-        sampler=optuna.samplers.RandomSampler(seed=42),
-    )
-    study.optimize(objective, n_trials=5)
-    complete = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
-    assert len(complete) == 5
-    for trial in complete:
-        assert trial.values is not None
-        assert len(trial.values) == 2
+    assert not hasattr(search_space, "rrr_range")
+    assert not hasattr(search_space, "risk_percent_range")
+    assert not hasattr(search_space, "position_ttl_bars_range")
+    assert not hasattr(search_space, "atr_sl_mult_range")

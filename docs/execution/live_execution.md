@@ -105,8 +105,10 @@ Loaded from `.env` via `pydantic-settings`. All keys prefixed `EXECUTION_`.
 
 `LiveSignalRunner.get_latest_signal_batch(symbol) -> SignalBatch | None`
 
-1. Loads `CryptParquetDataLoader(data_dir, symbol, primary_timeframe="1h").load()`
-   to get `StrategyData` with all H1/H4/D1 history.
+1. Resolves the strategy-owned execution candle timeframe from the loaded
+   strategy config (`trigger_instance.timeframe`, `trigger_timeframe`,
+   `candle_timeframe`, or legacy default `1h`) and loads
+   `CryptParquetDataLoader(..., candle_timeframe=<resolved>).load()`.
 2. Loads the strategy JSON via the backtester registry. Core v4 is
    `filtered_donor_portfolio`, not `crypt_ensemble`.
 3. Calls the strategy's `generate(strategy_data)` to produce the full signal
@@ -118,18 +120,19 @@ Loaded from `.env` via `pydantic-settings`. All keys prefixed `EXECUTION_`.
 4. A "closed bar" is any bar before the current forming bar — the same
    no-lookahead rule enforced by the backtester.
 
-The signal batch also carries the current forming H1 candle open when OKX
-returns it. This is the live equivalent of the backtester's `next_open`. If the
-next open cannot be known, the executor must skip new entries; it must not use
-the signal candle close as a substitute.
+The signal batch also carries the current forming execution candle open when
+OKX returns it. This is the live equivalent of the backtester's `next_open`. If
+the next open cannot be known, the executor must skip new entries; it must not
+use the signal candle close as a substitute.
 
 **Data freshness**: before calling `generate()`, the runner updates the Parquet
 files by fetching recent bars from OKX via `OKXClient.fetch_ohlcv()` and
 appending any bars newer than the last stored timestamp. This ensures the signal
-frame is up to date at each H1 tick.
+frame is up to date at each execution tick.
 
 For normal scheduled execution, the primary trigger is the OKX business
-WebSocket described in `docs/execution/h1_websocket_trigger.md`. It connects at
+WebSocket described in `docs/execution/h1_websocket_trigger.md`. For the active
+H1 production portfolio it connects at
 `HH:59:30 UTC`, waits for exchange-confirmed H1/H4/D1 candles and the new H1
 open, persists that boundary, and starts signal generation immediately. The
 REST refresh at `*:02 UTC` is a fallback, not the primary clock.
@@ -569,8 +572,8 @@ not simulated.
 3. **Capital guard**: if `total_locked_margin / balance > max_capital_risk_pct`,
    skip new entries.
 4. **Authentication guard**: if OKX API key is empty, refuse to start executor.
-5. **Parquet freshness guard**: if newest H1 bar is older than 3 hours, log
-   WARNING and skip signal check (likely data pipeline failure).
+5. **Parquet freshness guard**: if the newest execution-timeframe bar is stale,
+   log WARNING and skip signal check (likely data pipeline failure).
 6. **Risk-base continuity guard**: a missing or conflicting current-month
    checkpoint blocks only new entries until the operator resolves it.
 

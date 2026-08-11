@@ -22,7 +22,8 @@ portfolio router work.
 
 - One symbol.
 - One shared historical window.
-- One primary timeframe.
+- One shared execution candle stream per strategy run; each strategy still
+  requests any additional context timeframes it owns.
 - A list of strategy JSON files from `strategies/archive/`.
 - Optional explicit strategy JSON files from `strategies/backtester/` for
   exploratory runs only.

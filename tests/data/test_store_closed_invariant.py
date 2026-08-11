@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import tempfile
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -121,6 +121,82 @@ class TestSaveCandlesClosedInvariant:
         with tempfile.TemporaryDirectory() as tmp:
             store = ParquetStore(Path(tmp))
             store.save_candles([])
+
+    def test_h1_must_match_complete_minutes_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ParquetStore(Path(tmp))
+            store.save_candles(
+                [
+                    Candle(
+                        symbol="SOL-USDT-SWAP",
+                        timeframe=Timeframe.M1,
+                        open_time=datetime(2026, 5, 1, 0, minute, tzinfo=UTC),
+                        o=Decimal("100"),
+                        h=Decimal("101"),
+                        low=Decimal("99"),
+                        c=Decimal("100.5"),
+                        volume=Decimal("1"),
+                        closed=True,
+                    )
+                    for minute in range(60)
+                ]
+            )
+            h1 = Candle(
+                symbol="SOL-USDT-SWAP",
+                timeframe=Timeframe.H1,
+                open_time=datetime(2026, 5, 1, 0, 0, tzinfo=UTC),
+                o=Decimal("100.1"),
+                h=Decimal("101"),
+                low=Decimal("99"),
+                c=Decimal("100.5"),
+                volume=Decimal("60"),
+                closed=True,
+            )
+
+            with pytest.raises(ValueError, match="H1 candle does not aggregate"):
+                store.save_candles([h1])
+
+    def test_historical_backfill_can_skip_h1_minute_crosscheck(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = ParquetStore(Path(tmp))
+            store.save_candles(
+                [
+                    Candle(
+                        symbol="SOL-USDT-SWAP",
+                        timeframe=Timeframe.M1,
+                        open_time=datetime(2026, 5, 1, 0, 0, tzinfo=UTC)
+                        + timedelta(minutes=minute),
+                        o=Decimal("100"),
+                        h=Decimal("101"),
+                        low=Decimal("99"),
+                        c=Decimal("100.5"),
+                        volume=Decimal("1"),
+                        closed=True,
+                    )
+                    for minute in range(60)
+                ]
+            )
+            h1 = Candle(
+                symbol="SOL-USDT-SWAP",
+                timeframe=Timeframe.H1,
+                open_time=datetime(2026, 5, 1, 0, 0, tzinfo=UTC),
+                o=Decimal("100.1"),
+                h=Decimal("101"),
+                low=Decimal("99"),
+                c=Decimal("100.5"),
+                volume=Decimal("60"),
+                closed=True,
+            )
+
+            store.save_candles_with_policy(
+                [h1],
+                allow_ohlc_rewrite=True,
+                validate_h1_from_1m=False,
+            )
+
+            df = store.load_candles("SOL-USDT-SWAP", Timeframe.H1)
+            assert len(df) == 1
+            assert df.iloc[0]["o"] == 100.1
 
 
 class TestIngestorClosedFilter:

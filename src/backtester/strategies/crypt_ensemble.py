@@ -203,7 +203,7 @@ class CryptEnsembleStrategy(BaseStrategy):
     def generate(self, data: StrategyInput) -> pd.DataFrame:
         strategy_data = _coerce_strategy_data(data)
         execution_context = read_execution_context(data)
-        primary = strategy_data.primary.sort_index().copy()
+        primary = strategy_data.require_timeframe(self.timeframes.execution.value).sort_index().copy()
         out = primary.copy()
         tick_index = _tick_index_from_open_index(primary.index, self.timeframes.execution)
         out.index = tick_index
@@ -794,8 +794,7 @@ def _coerce_strategy_data(data: StrategyInput) -> StrategyData:
     if execution_context is not None:
         metadata[EXECUTION_CONTEXT_METADATA_KEY] = execution_context
     return StrategyData(
-        primary=data,
-        candles={Timeframe.H4.name: data},
+        candles_by_timeframe={Timeframe.H4.name: data},
         extras={},
         metadata=metadata,
     )
@@ -824,7 +823,7 @@ def _tp_pct_placeholder_stop(*, signal: int, entry: float, atr: float) -> _StopP
 
 
 def _candle_frame(data: StrategyData, timeframe: Timeframe) -> pd.DataFrame:
-    return data.candles.get(timeframe.name, data.candles.get(timeframe.value, pd.DataFrame()))
+    return data.candles_by_timeframe.get(timeframe.name, data.candles_by_timeframe.get(timeframe.value, pd.DataFrame()))
 
 
 def _tick_index_from_open_index(index: pd.Index, timeframe: Timeframe) -> pd.DatetimeIndex:
@@ -901,12 +900,14 @@ class _ContextWindowCache:
     def __init__(
         self,
         *,
-        candles: dict[Timeframe, pd.DataFrame],
+        candles: dict[Timeframe, pd.DataFrame] | None = None,
+        candles_by_timeframe: dict[Timeframe, pd.DataFrame] | None = None,
         extras: dict[str, pd.DataFrame],
     ) -> None:
+        candle_bundle = candles if candles is not None else candles_by_timeframe or {}
         self._candles: dict[Timeframe, pd.DataFrame] = {}
         self._candle_close_times: dict[Timeframe, pd.DatetimeIndex] = {}
-        for timeframe, frame in candles.items():
+        for timeframe, frame in candle_bundle.items():
             self._candles[timeframe] = frame
             if frame.empty or "open_time" not in frame.columns:
                 self._candle_close_times[timeframe] = pd.DatetimeIndex([], tz="UTC")
@@ -977,12 +978,14 @@ def _build_context(
     *,
     symbol: str,
     tick_time: datetime,
-    candles: dict[Timeframe, pd.DataFrame],
+    candles: dict[Timeframe, pd.DataFrame] | None = None,
+    candles_by_timeframe: dict[Timeframe, pd.DataFrame] | None = None,
     extras: dict[str, pd.DataFrame],
 ) -> EvaluationContext:
+    candle_bundle = candles if candles is not None else candles_by_timeframe or {}
     closed = {
         tf: frame
-        for tf, df in candles.items()
+        for tf, df in candle_bundle.items()
         if not (frame := _closed_candles(df, tf, tick_time)).empty
     }
     oi_df = _filter_ts(extras.get("oi", pd.DataFrame()), tick_time, _OI_LIMIT)

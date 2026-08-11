@@ -3,44 +3,40 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from pathlib import Path
 
 from backtester.data_contracts import StrategyData
 from backtester.strategy_discovery.catcma_qd import (
+    _NOVELTY_MUTATION_INTERVAL,
+    _directional_feedback_score,
     _EvaluatedCandidate,
-    _select_stage2_candidates,
-    _stage1_cheap_score,
-    _Stage1Candidate,
+    _mutate_candidate,
     _WeightedModel,
     _write_model_summary,
 )
 from backtester.strategy_discovery.dss_archive import DSSArchive
-from backtester.strategy_discovery.dss_config import DSSConfig, DSSSearchSpace, DSSWindowSpec
-from backtester.strategy_discovery.dss_v2 import (
-    DSSV2Result,
-    StageScoreResult,
-    _append_csv_row,
-    _append_jsonl,
-    _append_score_history,
-    _append_stage1,
-    _append_stage_score,
+from backtester.strategy_discovery.dss_config import DSSCandidate, DSSConfig, DSSSearchSpace
+from backtester.strategy_discovery.dss_directional_search import (
+    DSSDirectionalResult,
+    DSSSignalNoveltyTracker,
+    _count_csv_rows,
+    _count_directional_survivors,
+    _evaluate_directional_candidate,
     _guard_output_dir,
-    _read_completed_ids,
-    _read_stage0_candidates,
-    _write_archive,
+    _is_novel_directional,
+    _read_candidate_rows,
+    _read_directional_candidate_ids,
+    _refresh_directional_reports,
     _write_state,
     _write_summary,
-    evaluate_stage1,
-    evaluate_stage_scores,
-    export_stage1_candidates,
-    export_stage4_candidates,
-    write_stage1_ranked,
+    sample_random_directional_candidate,
+)
+from backtester.strategy_discovery.dss_runtime import (
+    DSSSearchRuntime,
+    should_use_random_injection,
 )
 from backtester.strategy_discovery.signal_composer import SignalComposer
 
 _POPULATION_SIZE = 48
-_SPECIALIST_STAGE3_THRESHOLD = -250.0
-_ROBUST_CHECK_EVERY_BATCHES = 8
 
 
 def run_island_qd_search(
@@ -49,166 +45,182 @@ def run_island_qd_search(
     search_space: DSSSearchSpace,
     window_data: dict[str, StrategyData],
     progress_callback: Callable[[int], None] | None = None,
-) -> DSSV2Result:
+) -> DSSDirectionalResult:
     """Run window-specialist islands and keep DSS-compatible outputs."""
     output = config.output
     output.mkdir(parents=True, exist_ok=True)
     _guard_output_dir(output)
     _write_state(output, config)
 
-    completed_stage3 = _read_completed_ids(output / "stage3_full_scores.csv")
-    existing_stage0 = _read_stage0_candidates(output / "stage0_candidates.jsonl")
     model_by_window = {
         window.label: _WeightedModel(search_space, seed=config.seed + idx * 997)
         for idx, window in enumerate(config.windows)
     }
     composer = SignalComposer()
     archive = DSSArchive()
-    generated = min(len(existing_stage0), config.n_trials)
-    if generated and progress_callback is not None:
-        progress_callback(generated)
-    stage1_survivors = 0
-    stage2_survivors = 0
-    stage3_evaluations = 0
+    existing_candidates = _read_candidate_rows(output / "candidates.jsonl")
+    generated = len(existing_candidates)
+    attempted = len(existing_candidates)
+    viability_path = output / "directional_viability.csv"
+    evaluated_ids = _read_directional_candidate_ids(viability_path)
+    signal_novelty = DSSSignalNoveltyTracker(viability_path)
+    evaluated_count = _count_csv_rows(viability_path)
+    novelty_parents: list[DSSCandidate] = []
+    if evaluated_count and progress_callback is not None:
+        progress_callback(evaluated_count)
+    directional_survivors = _count_directional_survivors(viability_path)
     batch_index = generated // _POPULATION_SIZE
 
-    while generated < config.n_trials:
-        target = config.windows[batch_index % len(config.windows)]
-        model = model_by_window[target.label]
-        batch_size = min(_POPULATION_SIZE, config.n_trials - generated)
-        stage1_passed: list[_Stage1Candidate] = []
-        evaluated: list[_EvaluatedCandidate] = []
+    with DSSSearchRuntime(config=config) as runtime:
+        for candidate in existing_candidates:
+            runtime.record_candidate(candidate, source="resume")
 
-        for _ in range(batch_size):
-            generated += 1
-            candidate = model.sample(
-                f"island_{target.label}_{generated:06d}",
-                generation=batch_index,
+        pending_candidates = [
+            candidate
+            for candidate in existing_candidates
+            if candidate.candidate_id not in evaluated_ids
+        ]
+        for candidate in pending_candidates:
+            if not runtime.should_continue(evaluated_count):
+                break
+            directional = _evaluate_directional_candidate(
+                output=output,
+                candidate=candidate,
+                window_data=window_data,
+                config=config,
+                composer=composer,
+                runtime=runtime,
+                signal_novelty=signal_novelty,
+                append_candidate=False,
             )
-            try:
-                _append_jsonl(output / "stage0_candidates.jsonl", candidate.to_dict())
-                if candidate.candidate_id in completed_stage3:
-                    continue
-                stage1 = evaluate_stage1(candidate, window_data, config, composer)
-                _append_stage1(output, candidate, stage1, config.windows)
-                if not stage1.should_promote:
-                    continue
-                stage1_survivors += 1
-                stage1_passed.append(
-                    _Stage1Candidate(
-                        candidate=candidate,
-                        result=stage1,
-                        cheap_score=_stage1_cheap_score(stage1),
+            evaluated_count += 1
+            is_novel_signal = _is_novel_directional(directional)
+            evaluated_item = _EvaluatedCandidate(
+                candidate=candidate,
+                robust_score=_directional_feedback_score(directional, is_novel_signal),
+            )
+            for model in model_by_window.values():
+                model.update([evaluated_item])
+            if directional.should_promote and is_novel_signal:
+                directional_survivors += 1
+                novelty_parents.append(candidate)
+            runtime.write_progress(generated=generated, evaluated=evaluated_count)
+            if progress_callback is not None:
+                progress_callback(1)
+
+        while runtime.should_continue(evaluated_count):
+            target = config.windows[batch_index % len(config.windows)]
+            model = model_by_window[target.label]
+            batch_size = runtime.remaining_batch(evaluated_count, _POPULATION_SIZE)
+            evaluated_before_batch = evaluated_count
+            evaluated: list[_EvaluatedCandidate] = []
+
+            for _ in range(batch_size):
+                attempted += 1
+                if attempted % _NOVELTY_MUTATION_INTERVAL == 0 and novelty_parents:
+                    source = "novelty_mutation"
+                    candidate = _mutate_candidate(
+                        novelty_parents[-1],
+                        search_space,
+                        candidate_id=f"island_{target.label}_{attempted:06d}",
+                        generation=batch_index,
+                        seed=config.seed + attempted,
                     )
-                )
-            finally:
-                if progress_callback is not None:
-                    progress_callback(1)
+                else:
+                    source = (
+                        "random_unseen" if should_use_random_injection(attempted) else "island_qd"
+                    )
+                    if source == "random_unseen":
+                        candidate = sample_random_directional_candidate(
+                            search_space=search_space,
+                            candidate_id=f"island_{target.label}_{attempted:06d}",
+                            generation=batch_index,
+                            max_filters=config.max_filters,
+                            seed=config.seed + attempted * 1009,
+                        )
+                    else:
+                        candidate = model.sample(
+                            f"island_{target.label}_{attempted:06d}",
+                            generation=batch_index,
+                        )
+                if not runtime.record_candidate(candidate, source=source):
+                    runtime.write_progress(generated=generated, evaluated=evaluated_count)
+                    continue
+                generated += 1
+                try:
+                    directional = _evaluate_directional_candidate(
+                        output=output,
+                        candidate=candidate,
+                        window_data=window_data,
+                        config=config,
+                        composer=composer,
+                        runtime=runtime,
+                        signal_novelty=signal_novelty,
+                        append_candidate=True,
+                    )
+                    evaluated_count += 1
+                    is_novel_signal = _is_novel_directional(directional)
+                    evaluated.append(
+                        _EvaluatedCandidate(
+                            candidate=candidate,
+                            robust_score=_directional_feedback_score(directional, is_novel_signal),
+                        )
+                    )
+                    if not directional.should_promote or not is_novel_signal:
+                        continue
+                    directional_survivors += 1
+                    novelty_parents.append(candidate)
+                finally:
+                    runtime.write_progress(generated=generated, evaluated=evaluated_count)
+                    if progress_callback is not None:
+                        progress_callback(1)
 
-        if config.stage_mode == "stage1":
+            if evaluated_count == evaluated_before_batch:
+                runtime.write_progress(generated=generated, evaluated=evaluated_count)
+                if config.n_trials is not None:
+                    break
+                batch_index += 1
+                _refresh_directional_reports(
+                    output=output,
+                    config=config,
+                    runtime=runtime,
+                    generated=generated,
+                    evaluated=evaluated_count,
+                )
+                continue
+            model.update(evaluated)
             batch_index += 1
-            continue
-
-        stage2_candidates = _select_stage2_candidates(stage1_passed, batch_size=batch_size)
-        for item in stage2_candidates:
-            if item.result.behavior is None:
-                continue
-            candidate = item.candidate
-            specialist = evaluate_stage_scores(
-                candidate=candidate,
-                behavior=item.result.behavior,
-                windows=[target],
-                window_data=window_data,
-                config=config,
-                composer=composer,
-                novelty_bonus=10.0 if archive.occupied_cells == 0 else 0.0,
-            )
-            _append_stage_score(output / "stage2_proxy.csv", specialist, config.windows)
-            _append_island_score(output, target, specialist)
-            archive.consider(specialist.candidate, item.result.behavior, specialist.score)
-            evaluated.append(
-                _EvaluatedCandidate(
-                    candidate=candidate,
-                    robust_score=specialist.score.robust_score,
-                    promoted_to_stage3=False,
+            if config.n_trials is None:
+                _refresh_directional_reports(
+                    output=output,
+                    config=config,
+                    runtime=runtime,
+                    generated=generated,
+                    evaluated=evaluated_count,
                 )
-            )
 
-            should_robust_check = (
-                specialist.score.robust_score >= _SPECIALIST_STAGE3_THRESHOLD
-                or batch_index % _ROBUST_CHECK_EVERY_BATCHES == 0
-            )
-            if not should_robust_check:
-                continue
-            robust = evaluate_stage_scores(
-                candidate=candidate,
-                behavior=item.result.behavior,
-                windows=config.windows,
-                window_data=window_data,
-                config=config,
-                composer=composer,
-                novelty_bonus=0.0,
-            )
-            _append_stage_score(output / "stage3_full_scores.csv", robust, config.windows)
-            _append_score_history(output / "score_history.csv", robust)
-            archive.consider(robust.candidate, item.result.behavior, robust.score)
-            completed_stage3.add(candidate.candidate_id)
-            stage2_survivors += 1
-            stage3_evaluations += 1
-            evaluated.append(
-                _EvaluatedCandidate(
-                    candidate=candidate,
-                    robust_score=robust.score.robust_score,
-                    promoted_to_stage3=True,
-                )
-            )
-        model.update(evaluated)
-        batch_index += 1
-
-    for label, model in model_by_window.items():
-        _write_model_summary(output / f"island_qd_state_{label}.csv", model)
-    stage1_ranked = write_stage1_ranked(output, config)
-    if config.stage_mode == "stage1":
-        exported = export_stage1_candidates(stage1_ranked, output, config)
-    else:
-        _write_archive(output, archive)
-        exported = export_stage4_candidates(archive, config)
+        for label, model in model_by_window.items():
+            _write_model_summary(output / "backend_state" / f"island_qd_state_{label}.csv", model)
+        directional_ranked, exported = _refresh_directional_reports(
+            output=output,
+            config=config,
+            runtime=runtime,
+            generated=generated,
+            evaluated=evaluated_count,
+        )
     _write_summary(
         output=output,
         config=config,
         generated=generated,
-        stage1_survivors=stage1_survivors,
-        stage2_survivors=stage2_survivors,
-        stage3_evaluations=stage3_evaluations,
+        directional_survivors=directional_survivors,
         exported=exported,
         archive=archive,
-        stage1_ranked=len(stage1_ranked),
+        directional_ranked=len(directional_ranked),
     )
-    return DSSV2Result(
+    return DSSDirectionalResult(
         output=output,
         generated=generated,
-        stage1_survivors=stage1_survivors,
-        stage2_survivors=stage2_survivors,
-        stage3_evaluations=stage3_evaluations,
+        directional_survivors=directional_survivors,
         exported_candidates=exported,
         archive=archive,
-    )
-
-
-def _append_island_score(output: Path, target: DSSWindowSpec, result: StageScoreResult) -> None:
-    _append_csv_row(
-        output / "island_scores.csv",
-        {
-            "candidate_id": result.candidate.candidate_id,
-            "target_window": target.label,
-            "trigger_name": result.candidate.trigger_name,
-            "filter_names": "+".join(result.candidate.filter_names),
-            "robust_score": result.score.robust_score,
-            "target_score": result.score.window_scores.get(target.label, ""),
-            "target_trades": result.score.trades_by_window.get(target.label, ""),
-            "rrr": result.candidate.rrr,
-            "risk_percent": result.candidate.risk_percent,
-            "position_ttl_bars": result.candidate.position_ttl_bars,
-            "atr_sl_mult": result.candidate.atr_sl_mult,
-        },
     )

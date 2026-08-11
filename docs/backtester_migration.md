@@ -69,8 +69,6 @@ H4 donor-backed smoke:
 
 ```bash
 uv run backtester run \
-    --data-source crypt-parquet \
-    --data-dir data \
     --symbol SOL-USDT-SWAP \
     --strategy strategies/backtester/crypt_ensemble.json \
     --output results/crypt_ensemble_sol
@@ -80,9 +78,6 @@ H1 MTF diagnostic smoke:
 
 ```bash
 uv run backtester run \
-    --data-source crypt-parquet \
-    --data-dir data \
-    --primary-timeframe 1h \
     --symbol SOL-USDT-SWAP \
     --from 2025-01-01 \
     --to 2025-02-01 \
@@ -206,16 +201,15 @@ import pandas as pd
 
 @dataclass(frozen=True)
 class StrategyData:
-    primary: pd.DataFrame
-    candles: dict[str, pd.DataFrame]
+    candles_by_timeframe: dict[str, pd.DataFrame]
     extras: dict[str, pd.DataFrame]
     metadata: dict[str, Any]
 ```
 
 Expected `crypt-parquet` fields:
 
-- `primary`: selected primary timeframe OHLCV for the symbol.
-- `candles["H4"]`, `candles["H1"]`, `candles["D1"]`: available OHLCV frames.
+- `candles_by_timeframe["H4"]`, `["H1"]`, `["D1"]`, optionally `["M15"]`:
+  available OHLCV frames.
 - `extras`: optional OI/LS-ratio/taker-volume frames.
 - `metadata["symbol"]`: OKX instrument id.
 - `metadata["exchange"]`: `OKX`.

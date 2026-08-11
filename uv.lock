@@ -425,6 +425,18 @@ wheels = [
 ]
 
 [[package]]
+name = "cmaes"
+version = "0.13.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3d/9f/ae4edb7dec820e84fef7a90b753ae5c72c66a05ffa69a7894771024386a7/cmaes-0.13.0.tar.gz", hash = "sha256:69a252b0291d08100351e37c2918c7c6d929b02ab7dcd9dd14fc02c7c98cc1b9", size = 61265, upload-time = "2026-03-28T07:41:55.249Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7e/98/be3f668f77838b2756ccc78a45e0c62f43d3134003f3f4bad814d37df1b3/cmaes-0.13.0-py3-none-any.whl", hash = "sha256:ccf61c73d5792cf44b50672b63f28c590082d1c1f5ab5155e2dd6e5305427cad", size = 73027, upload-time = "2026-03-28T07:41:53.956Z" },
+]
+
+[[package]]
 name = "coincurve"
 version = "21.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -628,11 +640,12 @@ name = "crypt"
 version = "0.0.0"
 source = { editable = "." }
 dependencies = [
-    { name = "aiohttp" },
     { name = "aiogram" },
+    { name = "aiohttp" },
     { name = "apscheduler" },
     { name = "ccxt" },
     { name = "click" },
+    { name = "cmaes" },
     { name = "httpx" },
     { name = "loguru" },
     { name = "matplotlib" },
@@ -663,11 +676,12 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiohttp", specifier = ">=3.13" },
     { name = "aiogram", specifier = ">=3.10" },
+    { name = "aiohttp", specifier = ">=3.13" },
     { name = "apscheduler", specifier = ">=3.10" },
     { name = "ccxt", specifier = ">=4.4" },
     { name = "click", specifier = ">=8.1" },
+    { name = "cmaes", specifier = ">=0.13.0" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "loguru", specifier = ">=0.7" },
     { name = "matplotlib", specifier = ">=3.8" },

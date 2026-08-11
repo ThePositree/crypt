@@ -29,7 +29,7 @@ def _label_event(
     dataset: DiscoveryDataset,
     config: LabelConfig,
 ) -> LabeledEvent:
-    df = dataset.primary
+    df = dataset.ohlcv
     if event.event_time not in df.index:
         return _neutral(event, "event_time_missing", atr=0.0)
     event_position = df.index.get_loc(event.event_time)

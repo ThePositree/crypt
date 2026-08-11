@@ -305,15 +305,17 @@ class DSSObjective:
 
 ### mandate_score formula
 
-Identical to `optimizer.py` (ADR-0031):
+Aligned with the money/drawdown-aware optimizer target:
 
 ```
-score = sum_capped_monthly_return_pct
-      - monthly_shortfall_pct   × 10.0
-      - dd_excess_pct           × 25.0
-      - dd_breach_months        × 200.0
-      - excess_failed_months    × 500.0
-      - excess_losing_streak    × 500.0
+score = total_return_pct × 100.0
+      + sum_capped_monthly_return_pct × 10.0
+      - monthly_shortfall_pct × 1.5
+      - dd_excess_pct × 35.0
+      - dd_breach_months × 150.0
+      - max(months_below_floor - 12, 0) × 75.0
+      - excess_losing_streak × 250.0
+      - downside_drawdown_pct² × 85.0
 ```
 
 ### Empty signal penalty

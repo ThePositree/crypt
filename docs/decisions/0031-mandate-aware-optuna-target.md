@@ -34,15 +34,20 @@ Each trial now records mandate-oriented user attrs:
 - `mandate_sum_capped_monthly_return_pct`
 - `mandate_verdict`
 
-The score is:
+The score started as a strict monthly-floor proxy. It is now money/drawdown
+aware so sparse and medium-frequency strategies are not flattened into the same
+"bad" bucket when they make good money with controlled drawdown:
 
 ```text
-sum_capped_monthly_return_pct
-- 10  * monthly_shortfall_pct
-- 25  * dd_excess_pct
-- 200 * dd_breach_months
-- 500 * max(months_below_floor - 3, 0)
-- 500 * max(worst_consecutive_losing_months - 2, 0)
+100 * total_return_pct
++ 10 * sum_capped_monthly_return_pct
+- 1.5 * monthly_shortfall_pct
+- 35  * dd_excess_pct
+- 150 * dd_breach_months
+- 75  * max(months_below_floor - 12, 0)
+- 250 * max(worst_consecutive_losing_months - 2, 0)
+- 85  * downside_drawdown_pct^2
+- 35  * peak_to_trough_drawdown_pct
 ```
 
 Where:
@@ -50,7 +55,9 @@ Where:
 - `monthly_shortfall_pct` is the sum of `max(15 - raw_monthly_return_pct, 0)`;
 - `dd_excess_pct` is the sum of drawdown beyond the accepted -10% monthly DD
   limit under ADR-0030;
-- capped monthly return follows ADR-0025 (`min(raw, 20%)`).
+- capped monthly return follows ADR-0025 (`min(raw, 20%)`);
+- `downside_drawdown_pct` is the absolute drawdown below initial capital;
+- `peak_to_trough_drawdown_pct` is the absolute peak-to-trough drawdown.
 
 ## Consequences
 
@@ -61,8 +68,9 @@ Where:
 - `mandate_score` is a continuous-run optimizer objective aligned with the
   canonical mandate path (ADR-0032). Final promotion still requires owner-run
   `compare-fixed` (default continuous) for exported artifacts.
-- The penalty weights are deliberately conservative: mandate gate failures
-  should dominate high aggregate return when ranking trials.
+- The score still records mandate gate diagnostics, but direct money and
+  drawdown now dominate trial ranking. Final promotion still requires the
+  benchmark report and owner review.
 
 ## References
 

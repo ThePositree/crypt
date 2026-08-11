@@ -103,10 +103,10 @@ it.
 The search also writes `router_shortlist.csv`, merging the highest-ranked
 utility rows with their complete frozen router parameters.
 
-## Staged validation
+## Validation
 
-Mass oracle-regret search is only stage 1. Validate every retained candidate
-through the archived continuous shared-capital replay:
+Mass oracle-regret search is only the first filter. Validate every retained
+candidate through the archived continuous shared-capital replay:
 
 ```bash
 uv run backtester router-validate-shortlist \

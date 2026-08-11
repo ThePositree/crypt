@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pandas as pd
 
@@ -74,7 +74,7 @@ def replay_position(
         liquidation_buffer_pct=pos.liquidation_buffer_pct,
         maintenance_margin_tier_schedule=pos.maintenance_margin_tier_schedule,
         metadata={},
-        position_ttl_bars=pos.ttl_bars,
+        position_ttl_bars=0,
         trail_activation_rrr=pos.trail_activation_rrr if native_trailing_placed else 0.0,
         trail_distance_atr=pos.trail_distance_atr if native_trailing_placed else 0.0,
         trail_activation_price=pos.trail_activation_price if native_trailing_placed else None,
@@ -88,7 +88,6 @@ def replay_position(
     expected_price: float | None = None
     bars = list(window.itertuples(index=False))
     for bar_index, row in enumerate(bars):
-        bar_number = bar_index + 1
         reason, price = sim._resolve_bar_exit(
             pos=simulated,
             current_open=float(row.o),
@@ -100,7 +99,8 @@ def replay_position(
             expected_reason = reason.value
             expected_price = price
             break
-        if pos.ttl_bars > 0 and bar_number >= pos.ttl_bars:
+        bar_open_time = pd.to_datetime(row.open_time, utc=True).to_pydatetime()
+        if pos.ttl_bars > 0 and bar_open_time >= entry_time + timedelta(minutes=pos.ttl_bars):
             expected_reason = "ttl_expired"
             expected_price = (
                 float(bars[bar_index + 1].o) if bar_index + 1 < len(bars) else pos.exit_price

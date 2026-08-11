@@ -8,7 +8,7 @@ declared search bounds.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 
@@ -31,7 +31,7 @@ TriggerFactory = Callable[[TriggerParams], TriggerFn]
 
 
 def parameterized_trigger_catalog() -> dict[str, TriggerFactory]:
-    return {
+    return cast(dict[str, TriggerFactory], {
         "pt_sweep_reversal": pt_sweep_reversal_factory,
         "pt_structure_break": pt_structure_break_factory,
         "pt_range_breakout": pt_range_breakout_factory,
@@ -52,7 +52,7 @@ def parameterized_trigger_catalog() -> dict[str, TriggerFactory]:
         "pt_candle_confirm": pt_candle_confirm_factory,
         "pt_order_block_retest": pt_order_block_retest_factory,
         "pt_double_bottom_sweep": pt_double_bottom_sweep_factory,
-    }
+    })
 
 
 def parameterized_trigger_param_space() -> dict[str, dict[str, ParamDef]]:
@@ -81,7 +81,7 @@ def parameterized_trigger_param_space() -> dict[str, dict[str, ParamDef]]:
         "pt_double_bottom_sweep": pt_double_bottom_sweep_factory,
     }
     for name, factory in factories.items():
-        catalog[name] = factory.param_space()  # type: ignore[attr-defined]
+        catalog[name] = factory.param_space()
     return catalog
 
 
@@ -96,7 +96,7 @@ def _events_from_masks(
     long_mask: pd.Series,
     short_mask: pd.Series,
 ) -> list[DiscoveryEvent]:
-    df = dataset.primary
+    df = dataset.ohlcv
     events: list[DiscoveryEvent] = []
     for side, mask in (("long", long_mask), ("short", short_mask)):
         selected = mask.fillna(False)
@@ -160,18 +160,20 @@ def _safe_float(value: object) -> float | None:
     if value is None:
         return None
     try:
-        v = float(value)  # type: ignore[arg-type]
+        v = float(cast(Any, value))
         return None if pd.isna(v) else v
     except (TypeError, ValueError):
         return None
 
 
 def _clamp_int(value: object, low: int, high: int) -> int:
-    return max(low, min(high, int(value)))  # type: ignore[arg-type]
+    coerced = int(cast(Any, value))
+    return max(low, min(high, coerced))
 
 
 def _clamp_float(value: object, low: float, high: float) -> float:
-    return max(low, min(high, float(value)))  # type: ignore[arg-type]
+    coerced = float(cast(Any, value))
+    return max(low, min(high, coerced))
 
 
 # ---------------------------------------------------------------------------
@@ -184,12 +186,12 @@ class pt_sweep_reversal_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"window": IntParam(low=6, high=24, step=2)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         window = _clamp_int(params.get("window", 12), 4, 48)
         min_p = max(3, window // 2)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-            df = dataset.primary
+            df = dataset.ohlcv
             prior_low = df["low"].rolling(window, min_periods=min_p).min().shift(1)
             prior_high = df["high"].rolling(window, min_periods=min_p).max().shift(1)
             long_mask = (df["low"] < prior_low) & (df["close"] > df["open"])
@@ -204,12 +206,12 @@ class pt_structure_break_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"window": IntParam(low=8, high=40, step=4)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         window = _clamp_int(params.get("window", 20), 4, 80)
         min_p = max(4, window // 2)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-            df = dataset.primary
+            df = dataset.ohlcv
             prior_high = df["high"].rolling(window, min_periods=min_p).max().shift(1)
             prior_low = df["low"].rolling(window, min_periods=min_p).min().shift(1)
             long_mask = df["close"] > prior_high
@@ -224,12 +226,12 @@ class pt_range_breakout_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"window": IntParam(low=8, high=48, step=4)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         window = _clamp_int(params.get("window", 24), 4, 96)
         min_p = max(4, window // 2)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-            df = dataset.primary
+            df = dataset.ohlcv
             range_high = df["high"].rolling(window, min_periods=min_p).max().shift(1)
             range_low = df["low"].rolling(window, min_periods=min_p).min().shift(1)
             long_mask = df["close"] > range_high
@@ -244,11 +246,11 @@ class pt_momentum_burst_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"threshold": FloatParam(low=1.0, high=4.0)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         threshold = _clamp_float(params.get("threshold", 1.5), 0.3, 8.0)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-            df = dataset.primary
+            df = dataset.ohlcv
             std = dataset.features["return_std20"]
             ret = dataset.features["return_1"]
             long_mask = (ret > std * threshold) & (df["close"] > df["open"])
@@ -268,11 +270,11 @@ class pt_mean_revert_wick_factory:
             "threshold": FloatParam(low=0.3, high=2.0),
         }
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         threshold = _clamp_float(params.get("threshold", 2.0), 0.1, 5.0)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-            df = dataset.primary
+            df = dataset.ohlcv
             body = (df["close"] - df["open"]).abs()
             lower_wick = df[["open", "close"]].min(axis=1) - df["low"]
             upper_wick = df["high"] - df[["open", "close"]].max(axis=1)
@@ -293,12 +295,12 @@ class pt_ema_cross_factory:
             "slow": IntParam(low=20, high=100, step=5),
         }
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         fast = _clamp_int(params.get("fast", 9), 2, 50)
         slow = _clamp_int(params.get("slow", 21), fast + 2, 200)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-            df = dataset.primary
+            df = dataset.ohlcv
             ema_fast = df["close"].ewm(span=fast, adjust=False).mean().shift(1)
             ema_slow = df["close"].ewm(span=slow, adjust=False).mean().shift(1)
             long_mask = (ema_fast > ema_slow) & (ema_fast.shift(1) <= ema_slow.shift(1))
@@ -319,13 +321,13 @@ class pt_rsi_reversal_factory:
             "overbought": IntParam(low=60, high=80, step=5),
         }
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         period = _clamp_int(params.get("period", 14), 4, 50)
         oversold = _clamp_int(params.get("oversold", 35), 10, 45)
         overbought = _clamp_int(params.get("overbought", 65), 55, 90)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-            df = dataset.primary
+            df = dataset.ohlcv
             delta = df["close"].diff()
             gain = delta.clip(lower=0).rolling(period, min_periods=period).mean()
             loss = (-delta.clip(upper=0)).rolling(period, min_periods=period).mean()
@@ -355,12 +357,12 @@ class pt_bb_rejection_factory:
             "std": FloatParam(low=1.5, high=2.5),
         }
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         period = _clamp_int(params.get("period", 20), 5, 60)
         std_mult = _clamp_float(params.get("std", 2.0), 0.5, 4.0)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-            df = dataset.primary
+            df = dataset.ohlcv
             mid = df["close"].rolling(period, min_periods=period).mean().shift(1)
             bb_std = df["close"].rolling(period, min_periods=period).std().shift(1)
             bb_lower = mid - std_mult * bb_std
@@ -379,11 +381,11 @@ class pt_engulfing_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"body_ratio": FloatParam(low=0.6, high=1.0)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         body_ratio = _clamp_float(params.get("body_ratio", 0.8), 0.0, 2.0)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-            df = dataset.primary
+            df = dataset.ohlcv
             prev_open = df["open"].shift(1)
             prev_close = df["close"].shift(1)
             prev_body = (prev_close - prev_open).abs()
@@ -416,11 +418,11 @@ class pt_nr4_breakout_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"lookback": IntParam(low=3, high=8, step=1)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         lookback = _clamp_int(params.get("lookback", 4), 2, 20)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-            df = dataset.primary
+            df = dataset.ohlcv
             bar_range = df["high"] - df["low"]
             is_nr = bar_range <= bar_range.rolling(lookback, min_periods=lookback).min().shift(1)
             long_mask = is_nr & (df["close"] > df["open"])
@@ -437,11 +439,11 @@ class pt_nr14_breakout_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"lookback": IntParam(low=8, high=20, step=2)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         lookback = _clamp_int(params.get("lookback", 14), 4, 40)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-            df = dataset.primary
+            df = dataset.ohlcv
             bar_range = df["high"] - df["low"]
             is_nr = bar_range <= bar_range.rolling(lookback, min_periods=lookback).min().shift(1)
             long_mask = is_nr & (df["close"] > df["open"])
@@ -458,11 +460,11 @@ class pt_vwap_reclaim_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"tolerance": FloatParam(low=0.001, high=0.02)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         tolerance = _clamp_float(params.get("tolerance", 0.005), 0.0, 0.1)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-            df = dataset.primary
+            df = dataset.ohlcv
             vwap = dataset.features["session_vwap"]
             dist_pct = (df["close"] - vwap).abs() / df["close"].replace(0, pd.NA)
             near_vwap = dist_pct <= tolerance
@@ -483,12 +485,12 @@ class pt_compression_breakout_factory:
             "threshold": FloatParam(low=0.3, high=1.5),
         }
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         window = _clamp_int(params.get("window", 12), 4, 48)
         threshold = _clamp_float(params.get("threshold", 0.6), 0.1, 3.0)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-            df = dataset.primary
+            df = dataset.ohlcv
             bar_range = df["high"] - df["low"]
             atr = dataset.features["atr"]
             atr_ratio = bar_range / atr.replace(0, pd.NA)
@@ -507,11 +509,11 @@ class pt_pivot_reclaim_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"window": IntParam(low=12, high=48, step=4)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         window = _clamp_int(params.get("window", 20), 4, 100)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-            df = dataset.primary
+            df = dataset.ohlcv
             prior_low = df["low"].rolling(window, min_periods=window // 2).min().shift(1)
             prior_high = df["high"].rolling(window, min_periods=window // 2).max().shift(1)
             long_mask = (df["low"] <= prior_low) & (df["close"] > df["close"].shift(1))
@@ -528,11 +530,11 @@ class pt_volume_spike_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"mult": FloatParam(low=1.5, high=5.0)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         mult = _clamp_float(params.get("mult", 2.0), 0.5, 10.0)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-            df = dataset.primary
+            df = dataset.ohlcv
             vol_median = dataset.features["volume_median20"]
             vol_spike = df["volume"] >= vol_median * mult
             long_mask = vol_spike & (df["close"] > df["open"])
@@ -552,12 +554,12 @@ class pt_hammer_factory:
             "body_ratio": FloatParam(low=0.05, high=0.3),
         }
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         shadow_ratio = _clamp_float(params.get("shadow_ratio", 2.0), 0.5, 8.0)
         body_ratio_max = _clamp_float(params.get("body_ratio", 0.3), 0.01, 0.8)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-            df = dataset.primary
+            df = dataset.ohlcv
             body = (df["close"] - df["open"]).abs()
             bar_range = df["high"] - df["low"]
             lower_wick = df[["open", "close"]].min(axis=1) - df["low"]
@@ -580,11 +582,11 @@ class pt_pin_bar_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"shadow_ratio": FloatParam(low=2.0, high=5.0)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         shadow_ratio = _clamp_float(params.get("shadow_ratio", 3.0), 0.5, 10.0)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-            df = dataset.primary
+            df = dataset.ohlcv
             body = (df["close"] - df["open"]).abs()
             lower_wick = df[["open", "close"]].min(axis=1) - df["low"]
             upper_wick = df["high"] - df[["open", "close"]].max(axis=1)
@@ -602,11 +604,11 @@ class pt_candle_confirm_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"body_ratio": FloatParam(low=0.1, high=0.8)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         body_ratio_min = _clamp_float(params.get("body_ratio", 0.3), 0.0, 1.0)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-            df = dataset.primary
+            df = dataset.ohlcv
             body = (df["close"] - df["open"]).abs()
             bar_range = df["high"] - df["low"]
             body_pct = body / bar_range.replace(0, pd.NA)
@@ -625,11 +627,11 @@ class pt_order_block_retest_factory:
     def param_space() -> dict[str, ParamDef]:
         return {"tolerance": FloatParam(low=0.3, high=1.0)}
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         tolerance_atr = _clamp_float(params.get("tolerance", 0.5), 0.0, 3.0)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-            df = dataset.primary
+            df = dataset.ohlcv
             atr = dataset.features["atr"]
             previous_bearish = df["close"].shift(1) < df["open"].shift(1)
             previous_bullish = df["close"].shift(1) > df["open"].shift(1)
@@ -653,12 +655,12 @@ class pt_double_bottom_sweep_factory:
             "tolerance": FloatParam(low=0.1, high=0.5),
         }
 
-    def __new__(cls, params: TriggerParams) -> TriggerFn:
+    def __new__(cls, params: TriggerParams) -> TriggerFn:  # type: ignore[misc]
         window = _clamp_int(params.get("window", 8), 2, 40)
         tolerance_atr = _clamp_float(params.get("tolerance", 0.2), 0.0, 2.0)
 
         def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-            df = dataset.primary
+            df = dataset.ohlcv
             atr = dataset.features["atr"]
             prior_low = df["low"].rolling(window, min_periods=window // 2).min().shift(1)
             prior_high = df["high"].rolling(window, min_periods=window // 2).max().shift(1)

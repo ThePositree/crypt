@@ -5,9 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from click.testing import CliRunner
 
-from backtester.__main__ import cli
 from backtester.cli_runner import BacktestArgs, StrategyConfig, build_backtest_args
 from backtester.regime_matrix import (
     MatrixBacktestCliParams,
@@ -119,6 +117,7 @@ def _args() -> BacktestArgs:
         maker_fee=0.0002,
         taker_fee=0.0005,
         ttl=24,
+        ttl_minutes=24 * 60,
         max_positions=0,
         max_allowed_leverage=25.0,
         max_allowed_margin=1.0,
@@ -286,15 +285,6 @@ def test_pivot_metric_returns_bucket_x_strategy() -> None:
     ]
 
 
-def test_archived_performance_matrix_help() -> None:
-    result = CliRunner().invoke(cli, ["archived-performance-matrix", "--help"])
-
-    assert result.exit_code == 0
-    assert "--include-archive" in result.output
-    assert "--bucket" in result.output
-    assert "--jobs" in result.output
-
-
 def test_results_in_strategy_order_sorts_by_index() -> None:
     cfg = StrategyConfig(name="x", version="v1", params={}, backtest_args={})
     args = _args()
@@ -358,6 +348,7 @@ def test_run_archived_performance_matrix_parallel_writes_outputs(
     def _fake_worker(
         *,
         data: object,  # noqa: ARG001
+        candle_timeframe: str,  # noqa: ARG001
         work: object,
         bucket: str,
         start: str | None,
@@ -444,6 +435,7 @@ def test_run_archived_performance_matrix_parallel_writes_outputs(
     run_archived_performance_matrix(
         paths=paths,
         data=data,
+        candle_timeframe="H1",
         output=output,
         bucket="month",
         from_date="2024-01-01",

@@ -34,7 +34,11 @@ def _make_primary(n: int = 200, seed: int = 42) -> pd.DataFrame:
 
 
 def _make_strategy_data(primary: pd.DataFrame, symbol: str = "SOL-USDT-SWAP") -> StrategyData:
-    return StrategyData(primary=primary, candles={}, extras={}, metadata={"symbol": symbol})
+    return StrategyData(
+        candles_by_timeframe={"H1": primary},
+        extras={},
+        metadata={"symbol": symbol},
+    )
 
 
 def _minimal_config(
@@ -46,10 +50,6 @@ def _minimal_config(
         trigger_params={"lookback": 4},
         filter_names=filter_names,
         filter_params={},
-        rrr=2.0,
-        risk_percent=1.0,
-        position_ttl_bars=36,
-        atr_sl_mult=1.0,
     )
 
 
@@ -85,10 +85,6 @@ def test_generate_empty_when_no_events() -> None:
         trigger_params={"lookback": 4},
         filter_names=(),
         filter_params={},
-        rrr=2.0,
-        risk_percent=1.0,
-        position_ttl_bars=36,
-        atr_sl_mult=1.0,
     )
     fn = composer.build(config)
     result = fn(data)
@@ -108,8 +104,8 @@ def test_generate_schema_matches() -> None:
         assert required.issubset(set(result.columns)), f"Missing columns: {required - set(result.columns)}"
 
 
-def test_stop_tp_long_consistency() -> None:
-    """All long signals: stop < entry < tp."""
+def test_directional_long_rows_do_not_export_trade_geometry() -> None:
+    """SignalComposer emits directional rows; execution geometry is downstream."""
     primary = _make_primary(500)
     data = _make_strategy_data(primary)
     composer = SignalComposer()
@@ -118,12 +114,12 @@ def test_stop_tp_long_consistency() -> None:
     result = fn(data)
     longs = result[result["side"] == "long"]
     if not longs.empty:
-        assert (longs["stop_price"] < longs["entry_price"]).all(), "stop >= entry for some longs"
-        assert (longs["entry_price"] < longs["tp_price"]).all(), "entry >= tp for some longs"
+        assert (longs["stop_price"] == 0.0).all()
+        assert (longs["tp_price"] == 0.0).all()
 
 
-def test_stop_tp_short_consistency() -> None:
-    """All short signals: tp < entry < stop."""
+def test_directional_short_rows_do_not_export_trade_geometry() -> None:
+    """SignalComposer emits directional rows; execution geometry is downstream."""
     primary = _make_primary(500, seed=99)
     data = _make_strategy_data(primary)
     composer = SignalComposer()
@@ -132,8 +128,8 @@ def test_stop_tp_short_consistency() -> None:
     result = fn(data)
     shorts = result[result["side"] == "short"]
     if not shorts.empty:
-        assert (shorts["tp_price"] < shorts["entry_price"]).all(), "tp >= entry for some shorts"
-        assert (shorts["entry_price"] < shorts["stop_price"]).all(), "entry >= stop for some shorts"
+        assert (shorts["stop_price"] == 0.0).all()
+        assert (shorts["tp_price"] == 0.0).all()
 
 
 def test_unknown_trigger_raises() -> None:
@@ -144,9 +140,6 @@ def test_unknown_trigger_raises() -> None:
         trigger_params={},
         filter_names=(),
         filter_params={},
-        rrr=2.0,
-        risk_percent=1.0,
-        position_ttl_bars=36,
     )
     with pytest.raises(ValueError, match="Unknown trigger_name"):
         composer.build(config)
@@ -163,9 +156,6 @@ def test_filter_drops_events() -> None:
         trigger_params={"body_ratio": 0.3},
         filter_names=("pf_side_short_only",),
         filter_params={"pf_side_short_only": {}},
-        rrr=2.0,
-        risk_percent=1.0,
-        position_ttl_bars=36,
     )
     fn_full = composer.build(config_no_filter)
     fn_filtered = composer.build(config_short_only)

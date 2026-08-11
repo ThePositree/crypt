@@ -1,23 +1,118 @@
 from __future__ import annotations
 
 import math
+from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from backtester.data_contracts import StrategyData, StrategyInput
+from backtester.data_contracts import StrategyData, StrategyInput, normalize_timeframe_key
 
 REQUIRED_OHLCV_COLUMNS = ("open", "high", "low", "close", "volume")
+_DISCOVERY_DATASET_CACHE_MAX_ITEMS = 16
+_DISCOVERY_DATASET_CACHE: OrderedDict[tuple[object, ...], DiscoveryDataset] = OrderedDict()
 
 
 @dataclass(frozen=True, slots=True)
 class DiscoveryDataset:
     window_label: str
     symbol: str
-    primary: pd.DataFrame
+    ohlcv: pd.DataFrame
     features: pd.DataFrame
+
+
+def build_timeframe_discovery_dataset(
+    *,
+    data: StrategyInput,
+    timeframe: str,
+    window_label: str,
+    symbol: str,
+) -> DiscoveryDataset:
+    """Build features on a requested timeframe from StrategyData candles."""
+
+    primary = select_timeframe_frame(data, timeframe)
+    candles = data.candles_by_timeframe if isinstance(data, StrategyData) else {}
+    primary = _validate_primary(primary).copy()
+    cache_key = _discovery_dataset_cache_key(
+        timeframe=timeframe,
+        window_label=window_label,
+        symbol=symbol,
+        primary=primary,
+        h4=candles.get("H4"),
+        d1=candles.get("D1"),
+    )
+    cached = _DISCOVERY_DATASET_CACHE.get(cache_key)
+    if cached is not None:
+        _DISCOVERY_DATASET_CACHE.move_to_end(cache_key)
+        return cached
+    features = _with_context_features(
+        _build_primary_features(primary),
+        h4=candles.get("H4"),
+        d1=candles.get("D1"),
+        index=primary.index,
+    )
+    dataset = DiscoveryDataset(
+        window_label=window_label,
+        symbol=symbol,
+        ohlcv=primary,
+        features=features,
+    )
+    _DISCOVERY_DATASET_CACHE[cache_key] = dataset
+    _DISCOVERY_DATASET_CACHE.move_to_end(cache_key)
+    while len(_DISCOVERY_DATASET_CACHE) > _DISCOVERY_DATASET_CACHE_MAX_ITEMS:
+        _DISCOVERY_DATASET_CACHE.popitem(last=False)
+    return dataset
+
+
+def align_discovery_dataset_asof(
+    dataset: DiscoveryDataset, target_index: pd.DatetimeIndex
+) -> DiscoveryDataset:
+    """As-of align a dataset to target timestamps using already-closed candles."""
+
+    if dataset.ohlcv.empty or dataset.features.empty:
+        return DiscoveryDataset(
+            window_label=dataset.window_label,
+            symbol=dataset.symbol,
+            ohlcv=dataset.ohlcv,
+            features=dataset.features,
+        )
+    target = pd.DatetimeIndex(pd.to_datetime(target_index, utc=True)).sort_values()
+    source_index = dataset.ohlcv.sort_index().index
+    target_delta = _median_index_delta(target)
+    source_delta = _median_index_delta(source_index)
+    available_index = source_index
+    if source_delta is not None and target_delta is not None and source_delta > target_delta:
+        available_index = source_index + source_delta
+    primary_source = dataset.ohlcv.sort_index().copy()
+    features_source = dataset.features.sort_index().copy()
+    primary_source.index = available_index
+    features_source.index = available_index
+    primary = primary_source.reindex(target, method="ffill")
+    features = features_source.reindex(target, method="ffill")
+    return DiscoveryDataset(
+        window_label=dataset.window_label,
+        symbol=dataset.symbol,
+        ohlcv=primary,
+        features=features,
+    )
+
+
+def select_timeframe_frame(data: StrategyInput, timeframe: str) -> pd.DataFrame:
+    """Return the OHLCV frame for timeframe or raise an explicit data error."""
+
+    normalized = normalize_timeframe_key(timeframe)
+    if isinstance(data, StrategyData):
+        if normalized == "1m" and data.execution is not None and not data.execution.last_1m.empty:
+            return data.execution.last_1m
+        return data.require_timeframe(timeframe)
+    if normalized not in {"", "h1", "1h"}:
+        raise ValueError(f"DSS timeframe {timeframe!r} requires StrategyData candles")
+    return data
+
+
+def _normalize_timeframe_key(timeframe: str) -> str:
+    return normalize_timeframe_key(timeframe)
 
 
 def build_donor_discovery_features(
@@ -138,23 +233,26 @@ def build_discovery_dataset(
     data: StrategyInput,
     window_label: str,
     symbol: str,
+    candles_by_timeframe: dict[str, pd.DataFrame] | None = None,
 ) -> DiscoveryDataset:
-    primary = data.primary if isinstance(data, StrategyData) else data
+    if isinstance(data, StrategyData):
+        raise TypeError(
+            "build_discovery_dataset requires a caller-supplied OHLCV frame; "
+            "use build_timeframe_discovery_dataset for StrategyData bundles"
+        )
+    primary = data
     primary = _validate_primary(primary).copy()
-    candles = data.candles if isinstance(data, StrategyData) else {}
-    features = _build_primary_features(primary)
-    features["h4_context"] = _aligned_context_direction(
-        candles.get("H4"),
-        primary.index,
-    )
-    features["d1_context"] = _aligned_context_direction(
-        candles.get("D1"),
-        primary.index,
+    candles = candles_by_timeframe or {}
+    features = _with_context_features(
+        _build_primary_features(primary),
+        h4=candles.get("H4"),
+        d1=candles.get("D1"),
+        index=primary.index,
     )
     return DiscoveryDataset(
         window_label=window_label,
         symbol=symbol,
-        primary=primary,
+        ohlcv=primary,
         features=features,
     )
 
@@ -171,6 +269,54 @@ def _validate_primary(df: pd.DataFrame) -> pd.DataFrame:
     frame.index = pd.to_datetime(frame.index, utc=True)
     frame.sort_index(inplace=True)
     return frame
+
+
+def _discovery_dataset_cache_key(
+    *,
+    timeframe: str,
+    window_label: str,
+    symbol: str,
+    primary: pd.DataFrame,
+    h4: pd.DataFrame | None,
+    d1: pd.DataFrame | None,
+) -> tuple[object, ...]:
+    return (
+        normalize_timeframe_key(timeframe),
+        window_label,
+        symbol,
+        _frame_signature(primary),
+        _frame_signature(h4),
+        _frame_signature(d1),
+    )
+
+
+def _frame_signature(frame: pd.DataFrame | None) -> tuple[object, ...]:
+    if frame is None or frame.empty:
+        return ("empty",)
+    index = pd.to_datetime(frame.index, utc=True)
+    first = index[0].value
+    last = index[-1].value
+    close = frame["close"] if "close" in frame.columns else pd.Series(dtype="float64")
+    first_close = float(close.iloc[0]) if not close.empty else float("nan")
+    last_close = float(close.iloc[-1]) if not close.empty else float("nan")
+    return (len(frame), first, last, round(first_close, 12), round(last_close, 12))
+
+
+def _with_context_features(
+    features: pd.DataFrame,
+    *,
+    h4: pd.DataFrame | None,
+    d1: pd.DataFrame | None,
+    index: pd.DatetimeIndex,
+) -> pd.DataFrame:
+    context = pd.DataFrame(
+        {
+            "h4_context": _aligned_context_direction(h4, index),
+            "d1_context": _aligned_context_direction(d1, index),
+        },
+        index=index,
+    )
+    return pd.concat([features, context], axis=1).copy()
 
 
 def _build_primary_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -284,13 +430,12 @@ def _build_primary_features(df: pd.DataFrame) -> pd.DataFrame:
     ema26 = df["close"].ewm(span=26, adjust=False).mean().shift(1)
     features["macd_proxy"] = ema12 - ema26
     features["macd_signal_proxy"] = features["macd_proxy"].ewm(span=9, adjust=False).mean()
-    _add_pinescript_features(df, features, true_range)
-    return features
+    return _add_pinescript_features(df, features, true_range)
 
 
 def _add_pinescript_features(
     df: pd.DataFrame, features: pd.DataFrame, true_range: pd.Series
-) -> None:
+) -> pd.DataFrame:
     close = df["close"]
     high = df["high"]
     low = df["low"]
@@ -323,7 +468,7 @@ def _add_pinescript_features(
     squeeze_momentum = _rolling_linreg_last(squeeze_source, 20)
     features["ps_squeeze_on"] = squeeze_on
     features["ps_squeeze_off"] = squeeze_off
-    features["ps_squeeze_release"] = squeeze_off & squeeze_on.shift(1).fillna(False)
+    features["ps_squeeze_release"] = squeeze_off & squeeze_on.shift(1, fill_value=False)
     features["ps_squeeze_momentum"] = squeeze_momentum
     features["ps_squeeze_momentum_slope"] = squeeze_momentum - squeeze_momentum.shift(1)
 
@@ -378,10 +523,10 @@ def _add_pinescript_features(
     features["ps_trendline_upper_slope"] = features["ps_trendline_upper"].diff()
     features["ps_trendline_lower_slope"] = features["ps_trendline_lower"].diff()
     features["ps_killzone"] = pd.Series(df.index.hour, index=df.index).map(_killzone_label)
-    _add_smc_pinescript_features(df, features)
+    return _add_smc_pinescript_features(df, features)
 
 
-def _add_smc_pinescript_features(df: pd.DataFrame, features: pd.DataFrame) -> None:
+def _add_smc_pinescript_features(df: pd.DataFrame, features: pd.DataFrame) -> pd.DataFrame:
     high = df["high"]
     low = df["low"]
     close = df["close"]
@@ -449,7 +594,7 @@ def _add_smc_pinescript_features(df: pd.DataFrame, features: pd.DataFrame) -> No
         ),
     )
     ob_frame = pd.DataFrame({f"ps_smc_{key}": value for key, value in ob.items()})
-    features[ob_frame.columns] = ob_frame
+    return pd.concat([features, ob_frame], axis=1).copy()
 
 
 def _confirmed_pivot(series: pd.Series, *, lookback: int, mode: str) -> pd.Series:
@@ -505,58 +650,81 @@ def _order_block_state(
     lookback: int = 12,
 ) -> dict[str, pd.Series]:
     index = df.index
-    bullish_high = pd.Series(np.nan, index=index)
-    bullish_low = pd.Series(np.nan, index=index)
-    bearish_high = pd.Series(np.nan, index=index)
-    bearish_low = pd.Series(np.nan, index=index)
-    bullish_active = pd.Series(False, index=index)
-    bearish_active = pd.Series(False, index=index)
-    bullish_retest = pd.Series(False, index=index)
-    bearish_retest = pd.Series(False, index=index)
+    open_values = df["open"].to_numpy(dtype="float64")
+    high_values = df["high"].to_numpy(dtype="float64")
+    low_values = df["low"].to_numpy(dtype="float64")
+    close_values = df["close"].to_numpy(dtype="float64")
+    bullish_break_values = bullish_break.to_numpy(dtype="bool", na_value=False)
+    bearish_break_values = bearish_break.to_numpy(dtype="bool", na_value=False)
+    size = len(df)
+    bullish_high_values = np.full(size, np.nan, dtype="float64")
+    bullish_low_values = np.full(size, np.nan, dtype="float64")
+    bearish_high_values = np.full(size, np.nan, dtype="float64")
+    bearish_low_values = np.full(size, np.nan, dtype="float64")
+    bullish_active_values = np.zeros(size, dtype="bool")
+    bearish_active_values = np.zeros(size, dtype="bool")
+    bullish_retest_values = np.zeros(size, dtype="bool")
+    bearish_retest_values = np.zeros(size, dtype="bool")
     current_bull: tuple[float, float] | None = None
     current_bear: tuple[float, float] | None = None
 
-    for i, ts in enumerate(index):
-        if bool(bullish_break.iat[i]):
-            zone = _last_opposite_candle_zone(df, i, lookback=lookback, bearish=True)
+    for i in range(size):
+        if bullish_break_values[i]:
+            zone = _last_opposite_candle_zone_from_arrays(
+                open_values,
+                high_values,
+                low_values,
+                close_values,
+                i,
+                lookback=lookback,
+                bearish=True,
+            )
             if zone is not None:
                 current_bull = zone
-        if bool(bearish_break.iat[i]):
-            zone = _last_opposite_candle_zone(df, i, lookback=lookback, bearish=False)
+        if bearish_break_values[i]:
+            zone = _last_opposite_candle_zone_from_arrays(
+                open_values,
+                high_values,
+                low_values,
+                close_values,
+                i,
+                lookback=lookback,
+                bearish=False,
+            )
             if zone is not None:
                 current_bear = zone
 
-        close = float(df["close"].iat[i])
-        high = float(df["high"].iat[i])
-        low = float(df["low"].iat[i])
+        close = close_values[i]
+        high = high_values[i]
+        low = low_values[i]
         if current_bull is not None:
             zone_low, zone_high = current_bull
             if close < zone_low:
                 current_bull = None
             else:
-                bullish_active.loc[ts] = True
-                bullish_low.loc[ts] = zone_low
-                bullish_high.loc[ts] = zone_high
-                bullish_retest.loc[ts] = low <= zone_high and close >= zone_low
+                bullish_active_values[i] = True
+                bullish_low_values[i] = zone_low
+                bullish_high_values[i] = zone_high
+                bullish_retest_values[i] = low <= zone_high and close >= zone_low
         if current_bear is not None:
             zone_low, zone_high = current_bear
             if close > zone_high:
                 current_bear = None
             else:
-                bearish_active.loc[ts] = True
-                bearish_low.loc[ts] = zone_low
-                bearish_high.loc[ts] = zone_high
-                bearish_retest.loc[ts] = high >= zone_low and close <= zone_high
+                bearish_active_values[i] = True
+                bearish_low_values[i] = zone_low
+                bearish_high_values[i] = zone_high
+                bearish_retest_values[i] = high >= zone_low and close <= zone_high
 
     return {
-        "bullish_ob_active": bullish_active,
-        "bearish_ob_active": bearish_active,
-        "bullish_ob_high": bullish_high,
-        "bullish_ob_low": bullish_low,
-        "bearish_ob_high": bearish_high,
-        "bearish_ob_low": bearish_low,
-        "bullish_ob_retest": bullish_retest,
-        "bearish_ob_retest": bearish_retest,
+        "bullish_ob_active": pd.Series(bullish_active_values, index=index),
+        "bearish_ob_active": pd.Series(bearish_active_values, index=index),
+        "bullish_ob_high": pd.Series(bullish_high_values, index=index),
+        "bullish_ob_low": pd.Series(bullish_low_values, index=index),
+        "bearish_ob_high": pd.Series(bearish_high_values, index=index),
+        "bearish_ob_low": pd.Series(bearish_low_values, index=index),
+        "bullish_ob_retest": pd.Series(bullish_retest_values, index=index),
+        "bearish_ob_retest": pd.Series(bearish_retest_values, index=index),
     }
 
 
@@ -571,66 +739,114 @@ def _last_opposite_candle_zone(
     return None
 
 
+def _last_opposite_candle_zone_from_arrays(
+    open_values: np.ndarray,
+    high_values: np.ndarray,
+    low_values: np.ndarray,
+    close_values: np.ndarray,
+    index_position: int,
+    *,
+    lookback: int,
+    bearish: bool,
+) -> tuple[float, float] | None:
+    start = max(0, index_position - lookback)
+    for pos in range(index_position - 1, start - 1, -1):
+        is_bearish = close_values[pos] < open_values[pos]
+        if is_bearish == bearish:
+            return float(low_values[pos]), float(high_values[pos])
+    return None
+
+
 def _supertrend_upper_band(basic: pd.Series, close: pd.Series) -> pd.Series:
-    values = basic.copy()
+    values = basic.to_numpy(dtype="float64", copy=True)
+    close_values = close.to_numpy(dtype="float64")
     for idx in range(1, len(values)):
-        prev = values.iat[idx - 1]
-        if pd.notna(prev) and close.iat[idx - 1] > prev:
-            values.iat[idx] = max(values.iat[idx], prev)
-    return values
+        prev = values[idx - 1]
+        if not np.isnan(prev) and close_values[idx - 1] > prev and not np.isnan(values[idx]):
+            values[idx] = max(values[idx], prev)
+    return pd.Series(values, index=basic.index, dtype="float64")
 
 
 def _supertrend_lower_band(basic: pd.Series, close: pd.Series) -> pd.Series:
-    values = basic.copy()
+    values = basic.to_numpy(dtype="float64", copy=True)
+    close_values = close.to_numpy(dtype="float64")
     for idx in range(1, len(values)):
-        prev = values.iat[idx - 1]
-        if pd.notna(prev) and close.iat[idx - 1] < prev:
-            values.iat[idx] = min(values.iat[idx], prev)
-    return values
+        prev = values[idx - 1]
+        if not np.isnan(prev) and close_values[idx - 1] < prev and not np.isnan(values[idx]):
+            values[idx] = min(values[idx], prev)
+    return pd.Series(values, index=basic.index, dtype="float64")
 
 
 def _supertrend_direction(close: pd.Series, upper: pd.Series, lower: pd.Series) -> pd.Series:
-    direction = pd.Series(1, index=close.index, dtype="int64")
-    for idx in range(1, len(close)):
-        prev_dir = direction.iat[idx - 1]
-        if prev_dir == -1 and pd.notna(lower.iat[idx - 1]) and close.iat[idx] > lower.iat[idx - 1]:
-            direction.iat[idx] = 1
-        elif prev_dir == 1 and pd.notna(upper.iat[idx - 1]) and close.iat[idx] < upper.iat[idx - 1]:
-            direction.iat[idx] = -1
+    close_values = close.to_numpy(dtype="float64")
+    upper_values = upper.to_numpy(dtype="float64")
+    lower_values = lower.to_numpy(dtype="float64")
+    direction = np.ones(len(close_values), dtype="int64")
+    for idx in range(1, len(close_values)):
+        prev_dir = direction[idx - 1]
+        if (
+            prev_dir == -1
+            and not np.isnan(lower_values[idx - 1])
+            and close_values[idx] > lower_values[idx - 1]
+        ):
+            direction[idx] = 1
+        elif (
+            prev_dir == 1
+            and not np.isnan(upper_values[idx - 1])
+            and close_values[idx] < upper_values[idx - 1]
+        ):
+            direction[idx] = -1
         else:
-            direction.iat[idx] = prev_dir
-    return direction
+            direction[idx] = prev_dir
+    return pd.Series(direction, index=close.index, dtype="int64")
 
 
 def _atr_trailing_stop(close: pd.Series, atr: pd.Series, multiplier: float = 1.0) -> pd.Series:
-    trail = pd.Series(index=close.index, dtype="float64")
-    for idx in range(len(close)):
-        loss = multiplier * atr.iat[idx]
+    close_values = close.to_numpy(dtype="float64")
+    atr_values = atr.to_numpy(dtype="float64")
+    trail = np.empty(len(close_values), dtype="float64")
+    for idx in range(len(close_values)):
+        loss = multiplier * atr_values[idx]
         if idx == 0 or pd.isna(loss):
-            trail.iat[idx] = close.iat[idx]
+            trail[idx] = close_values[idx]
             continue
-        prev = trail.iat[idx - 1]
-        if close.iat[idx] > prev and close.iat[idx - 1] > prev:
-            trail.iat[idx] = max(prev, close.iat[idx] - loss)
-        elif close.iat[idx] < prev and close.iat[idx - 1] < prev:
-            trail.iat[idx] = min(prev, close.iat[idx] + loss)
-        elif close.iat[idx] > prev:
-            trail.iat[idx] = close.iat[idx] - loss
+        prev = trail[idx - 1]
+        if close_values[idx] > prev and close_values[idx - 1] > prev:
+            trail[idx] = max(prev, close_values[idx] - loss)
+        elif close_values[idx] < prev and close_values[idx - 1] < prev:
+            trail[idx] = min(prev, close_values[idx] + loss)
+        elif close_values[idx] > prev:
+            trail[idx] = close_values[idx] - loss
         else:
-            trail.iat[idx] = close.iat[idx] + loss
-    return trail
+            trail[idx] = close_values[idx] + loss
+    return pd.Series(trail, index=close.index, dtype="float64")
 
 
 def _rolling_linreg_last(series: pd.Series, window: int) -> pd.Series:
+    if window <= 0:
+        raise ValueError("rolling linreg window must be positive")
+    if len(series) < window:
+        return pd.Series(np.nan, index=series.index, dtype="float64")
+
+    values = pd.to_numeric(series, errors="coerce").to_numpy(dtype="float64")
+    valid = ~np.isnan(values)
+    safe_values = np.where(valid, values, 0.0)
     x = np.arange(window, dtype="float64")
+    count = np.convolve(valid.astype("float64"), np.ones(window, dtype="float64"), mode="valid")
+    sum_y = np.convolve(safe_values, np.ones(window, dtype="float64"), mode="valid")
+    sum_xy = np.correlate(safe_values, x, mode="valid")
 
-    def _fit(values: Any) -> float:
-        if np.isnan(values).any():
-            return np.nan
-        slope, intercept = np.polyfit(x, values, 1)
-        return float(intercept + slope * (window - 1))
+    sum_x = float(x.sum())
+    sum_x2 = float((x * x).sum())
+    denominator = window * sum_x2 - sum_x * sum_x
+    slope = (window * sum_xy - sum_x * sum_y) / denominator
+    intercept = (sum_y - slope * sum_x) / window
+    fitted_last = intercept + slope * (window - 1)
+    fitted_last[count < window] = np.nan
 
-    return series.rolling(window, min_periods=window).apply(_fit, raw=True)
+    out = np.full(len(series), np.nan, dtype="float64")
+    out[window - 1 :] = fitted_last
+    return pd.Series(out, index=series.index, dtype="float64")
 
 
 def _killzone_label(hour: int) -> str:
@@ -666,12 +882,19 @@ def _aligned_context_direction(
 
 
 def _available_after_close_index(index: pd.DatetimeIndex) -> pd.DatetimeIndex:
-    if len(index) < 2:
+    delta = _median_index_delta(index)
+    if delta is None:
         return index
+    return index + delta
+
+
+def _median_index_delta(index: pd.DatetimeIndex) -> pd.Timedelta | None:
+    if len(index) < 2:
+        return None
     deltas = index.to_series().diff().dropna()
     if deltas.empty:
-        return index
-    return index + deltas.median()
+        return None
+    return deltas.median()
 
 
 def _to_numeric(series: pd.Series) -> pd.Series:

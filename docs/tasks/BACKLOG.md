@@ -12,6 +12,85 @@ Priority labels:
 Read `docs/strategy_benchmark.md` before strategy evaluation. The benchmark is
 the main optimization target, not a hard limit on owner production selection.
 
+## P0 — Make backfill fail when required downloads fail
+
+**What:** make `python -m crypt.backfill` return a non-zero exit code and a
+clear operator error when all required exchange fetches fail or when a requested
+timeframe remains missing after the run.
+
+**Why now:** during DSS v3 portfolio evaluation, a sandboxed backfill attempt
+printed `Backfill complete` after exchange fetch failures and did not populate
+the missing 15m candles. Research/backtest preflight must not treat this as a
+successful data repair.
+
+**Expected gain:** missing-candle recovery becomes trustworthy: expensive DSS,
+backtest, optimizer, and live bootstrap workflows either have the data or stop
+with an exact backfill/error message.
+
+**Acceptance:** failed exchange/network fetches produce a non-zero process
+exit when requested data remains unavailable; successful partial repairs report
+which timeframes were filled and which remain blocked; tests cover all-failed,
+partial-failed, and complete-success backfills.
+
+**Links:** `src/crypt/backfill/__main__.py`,
+`src/backtester/cli_runner.py`, `src/crypt/data/store.py`.
+
+## P1 — Add portfolio marginal-impact gate for DSS candidates
+
+**What:** add an explicit post-Optuna gate that tests promoted DSS candidates
+against the current production portfolio one-by-one and only marks candidates
+portfolio-ready when they improve money/risk metrics.
+
+**Why now:** DSS v3 candidates can pass standalone DSS criteria and Optuna
+replay while still being neutral or negative inside the current shared-capital
+portfolio. The first one-by-one comparison also exposed mixed-timeframe
+composition bugs, so portfolio promotion needs a reproducible current-code
+marginal check rather than trusting standalone edge.
+
+**Expected gain:** DSS can keep discovering standalone entries, while promotion
+decisions become aligned with the owner's actual portfolio account curve.
+
+**Acceptance:** candidate reports include standalone metrics, optimized exit
+geometry, portfolio delta in dollars, return, win rate, profit factor, trade
+count, and both drawdown measures; failing candidates remain archived but are
+not marked portfolio-ready; the gate is reproducible from saved configs and
+metrics.
+
+**Links:** `results/dss_v3_candidate_portfolio_eval_20260804/summary.md`,
+`results/recheck_v6_plus_dssv3_016949_after_event_schedule_fix/20260804_134940`,
+`results/recheck_v6_baseline_after_event_schedule_fix/20260804_135921`,
+`src/backtester/strategies/filtered_donor_portfolio.py`,
+`docs/discovery/direct_signal_search.md`.
+
+## P1 — Promote stop-loss selection into explicit post-DSS SL families
+
+**What:** make stop-loss placement an explicit execution-geometry family
+searched after DSS, instead of a hidden fallback split between
+`directional_sl_move_pct`, legacy `atr_sl_mult`, and strategy-provided
+`sl_price`.
+
+**Why now:** DSS v3 intentionally searches entry logic first, then sends
+leaders to Optuna for money geometry. SL distance controls position size,
+TP distance, liquidation exposure, and exit timing, so it must be a first-class
+Optuna choice alongside `exit_family`, `rrr`, `position_ttl_minutes`, and
+`risk_percent`.
+
+**Expected gain:** new DSS candidates can fairly compare fixed-percent,
+ATR-based, and structural stop families; old archive/prod candidates remain
+replayable through their saved legacy geometry.
+
+**Acceptance:** strategy/backtest/optimizer config has an explicit `sl_family`
+field; Optuna can search `fixed_pct` (`directional_sl_move_pct`) and `atr`
+(`atr_sl_mult`) at minimum; existing `structural` strategy stops are preserved
+as their own family/mode; exported best-trial summaries state the winning SL
+family and parameters in money-readable terms; legacy candidates with
+`atr_sl_mult` reproduce old behavior.
+
+**Links:** `src/backtester/strategies/dss_strategy.py`,
+`src/backtester/strategies/dss_incremental.py`,
+`src/backtester/optimizer.py`, `docs/backtester/exit_geometry.md`,
+`docs/discovery/direct_signal_search_v3.md`.
+
 ## P0 — Archive exact live entry snapshots for replay
 
 **What:** persist an immutable replay packet for every live entry: emitted

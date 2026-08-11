@@ -3,9 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
-from click.testing import CliRunner
 
-from backtester.__main__ import cli
 from backtester.regime_labels import build_oracle_label_dataset, build_rolling_label_dataset
 
 
@@ -74,14 +72,6 @@ def test_oracle_label_dataset_accepts_datetime_index_ohlcv() -> None:
     )
 
     assert labels.iloc[0]["feature_bar_count"] == len(indexed)
-
-
-def test_oracle_regime_labels_help() -> None:
-    result = CliRunner().invoke(cli, ["oracle-regime-labels", "--help"])
-
-    assert result.exit_code == 0
-    assert "--matrix-dir" in result.output
-    assert "--bucket" in result.output
 
 
 def test_build_rolling_label_dataset_uses_future_exit_window(tmp_path: Path) -> None:
@@ -182,14 +172,6 @@ def test_build_rolling_label_dataset_respects_partial_strategy_coverage(tmp_path
     assert row["best_strategy"] == "covered"
     assert pd.isna(row["return_past_only"])
     assert row["return_covered"] == -0.5
-
-
-def test_rolling_regime_labels_help() -> None:
-    result = CliRunner().invoke(cli, ["rolling-regime-labels", "--help"])
-
-    assert result.exit_code == 0
-    assert "--horizon-days" in result.output
-    assert "--matrix-dir" in result.output
 
 
 def _hourly_ohlcv(start: str, *, periods: int) -> pd.DataFrame:

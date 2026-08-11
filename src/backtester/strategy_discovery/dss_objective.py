@@ -23,8 +23,10 @@ from backtester.strategy_discovery.dss_config import (
     DSSConfig,
     DSSSearchSpace,
     DSSWindowSpec,
+    ParamValue,
     TrialConfig,
 )
+from backtester.strategy_discovery.features import select_timeframe_frame
 from backtester.strategy_discovery.signal_composer import SignalComposer, signal_df_to_ohlcv_aligned
 from backtester.tester import Backtester
 
@@ -83,17 +85,26 @@ def compute_mandate_score(
     months_below = int(summary_row.get("months_below_floor", 0))
     dd_breach_months = int(summary_row.get("dd_breach_months", 0))
     worst_streak = int(summary_row.get("worst_consecutive_losing_months", 0))
+    total_return_pct = (
+        float(pd.to_numeric(trades["pnl_abs"], errors="coerce").fillna(0.0).sum())
+        / initial_capital
+        * 100.0
+    )
+    worst_monthly_dd = float(summary_row.get("worst_monthly_drawdown_pct", 0.0))
 
-    excess_failed_months = max(months_below - 3, 0)
+    downside_dd_pct = abs(min(worst_monthly_dd, 0.0))
+    excess_failed_months = max(months_below - 12, 0)
     excess_losing_streak = max(worst_streak - 2, 0)
 
     return (
-        sum_capped
-        - monthly_shortfall_pct * 10.0
-        - dd_excess_pct * 25.0
-        - dd_breach_months * 200.0
-        - excess_failed_months * 500.0
-        - excess_losing_streak * 500.0
+        total_return_pct * 100.0
+        + sum_capped * 10.0
+        - monthly_shortfall_pct * 1.5
+        - dd_excess_pct * 35.0
+        - dd_breach_months * 150.0
+        - excess_failed_months * 75.0
+        - excess_losing_streak * 250.0
+        - (downside_dd_pct**2) * 85.0
     )
 
 
@@ -120,26 +131,23 @@ def run_dss_backtest(
     signal_df:
         SignalRow DataFrame from SignalComposer.
     config:
-        TrialConfig with rrr, risk_percent, position_ttl_bars.
+        TrialConfig plus downstream execution defaults.
     window_data:
         StrategyData for the window.
     """
-    primary = window_data.primary
+    primary = select_timeframe_frame(window_data, config.trigger_instance.timeframe)
 
     aligned = signal_df_to_ohlcv_aligned(signal_df, primary)
 
     def _strategy(_data: Any) -> pd.DataFrame:
         return aligned
 
-    bt = Backtester(window_data, _strategy)
+    bt = Backtester(window_data, _strategy, ohlcv=primary)
     results = bt.run(
         initial_capital=initial_capital,
-        risk_percent=config.risk_percent,
-        rrr=config.rrr,
         taker_fee=taker_fee,
         maker_fee=maker_fee,
         max_positions=max_positions,
-        position_ttl_bars=config.position_ttl_bars,
         risk_base_period=risk_base_period,
         exit_geometry="sl_rrr",
         structural_sl_mode="ignore",
@@ -168,7 +176,7 @@ def _sample_trial_config(trial: optuna.Trial, search_space: DSSSearchSpace) -> T
         filter_names_raw.append(str(fn))
     filter_names = tuple(sorted(set(filter_names_raw)))
 
-    trigger_params: dict[str, float | int] = {}
+    trigger_params: dict[str, ParamValue] = {}
     trigger_bounds = search_space.trigger_param_bounds
     trigger_name_str = str(trigger_name)
     for pname, pdef in trigger_bounds.get(trigger_name_str, {}).items():
@@ -195,10 +203,10 @@ def _sample_trial_config(trial: optuna.Trial, search_space: DSSSearchSpace) -> T
                 trial.suggest_categorical(param_key, list(pdef.choices))
             )
 
-    filter_params: dict[str, dict[str, float | int]] = {}
+    filter_params: dict[str, dict[str, ParamValue]] = {}
     filter_bounds = search_space.filter_param_bounds
     for fn in filter_names:
-        fp: dict[str, float | int] = {}
+        fp: dict[str, ParamValue] = {}
         for pname, pdef in filter_bounds.get(fn, {}).items():
             from backtester.strategy_discovery.dss_config import (
                 CategoricalParam,
@@ -224,32 +232,11 @@ def _sample_trial_config(trial: optuna.Trial, search_space: DSSSearchSpace) -> T
                 )
         filter_params[fn] = fp
 
-    rrr_range = search_space.rrr_range
-    rrr = trial.suggest_float(
-        "rrr", rrr_range[0], rrr_range[1], step=rrr_range[2]
-    )
-    risk_range = search_space.risk_percent_range
-    risk_percent = trial.suggest_float(
-        "risk_percent", risk_range[0], risk_range[1], step=risk_range[2]
-    )
-    ttl_range = search_space.position_ttl_bars_range
-    ttl = trial.suggest_int(
-        "position_ttl_bars", ttl_range[0], ttl_range[1], step=ttl_range[2]
-    )
-    atr_sl_range = search_space.atr_sl_mult_range
-    atr_sl_mult = trial.suggest_float(
-        "atr_sl_mult", atr_sl_range[0], atr_sl_range[1], step=atr_sl_range[2]
-    )
-
     return TrialConfig(
         trigger_name=trigger_name_str,
         trigger_params=trigger_params,
         filter_names=filter_names,
         filter_params=filter_params,
-        rrr=float(rrr),
-        risk_percent=float(risk_percent),
-        position_ttl_bars=int(ttl),
-        atr_sl_mult=float(atr_sl_mult),
     )
 
 

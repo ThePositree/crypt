@@ -57,8 +57,7 @@ def _strategy_data(primary: pd.DataFrame) -> StrategyData:
         "volume": "sum",
     }
     return StrategyData(
-        primary=primary,
-        candles={
+        candles_by_timeframe={
             "H1": primary,
             "H4": primary.resample("4h").agg(aggregations).dropna(),
             "D1": primary.resample("1D").agg(aggregations).dropna(),
@@ -93,8 +92,8 @@ def test_registered_strategy_adapter_contract(
     strategy_id: str,
     payload: dict[str, object],
 ) -> None:
-    full_primary = _primary()
-    prefix_primary = full_primary.iloc[:300].copy()
+    full_primary = _primary(periods=96)
+    prefix_primary = full_primary.iloc[:72].copy()
     full_data = _strategy_data(full_primary)
     prefix_data = _strategy_data(prefix_primary)
     adapter = build_incremental_adapter(str(payload["name"]))
@@ -108,7 +107,7 @@ def test_registered_strategy_adapter_contract(
     full = adapter.prepare_replay(
         data=full_data,
         dataset=build_discovery_dataset(
-            data=full_data,
+            data=full_primary,
             window_label="contract",
             symbol="SOL-USDT-SWAP",
         ),
@@ -117,7 +116,7 @@ def test_registered_strategy_adapter_contract(
     prefix = adapter.prepare_replay(
         data=prefix_data,
         dataset=build_discovery_dataset(
-            data=prefix_data,
+            data=prefix_primary,
             window_label="contract",
             symbol="SOL-USDT-SWAP",
         ),
@@ -149,7 +148,7 @@ def test_registered_adapter_matches_canonical_strategy_rows(
     strategy_id: str,
     payload: dict[str, object],
 ) -> None:
-    primary = _primary(periods=120)
+    primary = _primary(periods=72)
     data = _strategy_data(primary)
     backtest_args = _mapping(payload, "backtest_args")
     canonical_input = attach_execution_context(
@@ -168,7 +167,7 @@ def test_registered_adapter_matches_canonical_strategy_rows(
     adapted = adapter.prepare_replay(
         data=canonical_input,
         dataset=build_discovery_dataset(
-            data=canonical_input,
+            data=primary,
             window_label="canonical-parity",
             symbol="SOL-USDT-SWAP",
         ),

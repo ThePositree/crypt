@@ -33,7 +33,7 @@ class RegimeEngine(BaseEngine):
         return "regime"
 
     def evaluate(self, ctx: EvaluationContext) -> Signal:
-        h4 = ctx.candles.get(Timeframe.H4)
+        h4 = ctx.candles_by_timeframe.get(Timeframe.H4)
         vol_regime = ctx.vol_regime or "normal"
 
         if h4 is None or len(h4) < _MIN_H4:
@@ -70,7 +70,7 @@ class RegimeEngine(BaseEngine):
 
         # Optional D1 ADX for confluence.
         adx_d1: float | None = None
-        d1 = ctx.candles.get(Timeframe.D1)
+        d1 = ctx.candles_by_timeframe.get(Timeframe.D1)
         if d1 is not None and len(d1) >= _MIN_D1:
             adx_d1_df = ta.adx(d1["h"], d1["l"], d1["c"], length=14)
             if adx_d1_df is not None:

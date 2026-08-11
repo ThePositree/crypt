@@ -1,4 +1,4 @@
-"""Quality-diversity archive for DSS v2."""
+"""Quality-diversity archive for DSS."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ ArchiveRole = Literal["robust", "average", "low_drawdown"]
 
 @dataclass(frozen=True, slots=True)
 class DSSScore:
-    """Stage score summary used by archive and reports."""
+    """Score summary used by archive and reports."""
 
     candidate_id: str
     window_scores: dict[str, float]

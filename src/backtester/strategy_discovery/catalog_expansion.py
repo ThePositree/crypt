@@ -156,7 +156,7 @@ def _atr_ratio_bounds(threshold: float, label: str) -> tuple[str, Callable[[floa
 
 
 def _masks(dataset: DiscoveryDataset) -> tuple[pd.DataFrame, pd.DataFrame]:
-    return dataset.primary, dataset.features
+    return dataset.ohlcv, dataset.features
 
 
 def _emit(
@@ -164,15 +164,26 @@ def _emit(
     name: str,
     long_mask: pd.Series,
     short_mask: pd.Series,
-    **kwargs: object,
+    *,
+    anchor_type: str | None = None,
+    anchor_age_bars: int | None = None,
+    anchor_price: pd.Series | None = None,
 ) -> list[DiscoveryEvent]:
     from backtester.strategy_discovery.triggers import _events_from_masks
 
-    return _events_from_masks(dataset, name, long_mask, short_mask, **kwargs)
+    return _events_from_masks(
+        dataset,
+        name,
+        long_mask,
+        short_mask,
+        anchor_type=anchor_type,
+        anchor_age_bars=anchor_age_bars,
+        anchor_price=anchor_price,
+    )
 
 
 def _h1_hammer(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-    df, features = _masks(dataset)
+    df, _features = _masks(dataset)
     body = (df["close"] - df["open"]).abs()
     lower = df[["open", "close"]].min(axis=1) - df["low"]
     upper = df["high"] - df[["open", "close"]].max(axis=1)
@@ -380,7 +391,7 @@ def _h1_volume_spike_breakout(dataset: DiscoveryDataset) -> list[DiscoveryEvent]
 
 
 def _h1_closing_range_high(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-    df, features = _masks(dataset)
+    _df, features = _masks(dataset)
     long_mask = features["close_location"] >= 0.8
     short_mask = features["close_location"] <= 0.2
     return _emit(dataset, "h1_closing_range_high", long_mask.fillna(False), short_mask.fillna(False))
@@ -399,7 +410,7 @@ def _h1_ema50_bounce(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
 
 
 def _h1_macd_proxy_cross(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-    df, features = _masks(dataset)
+    _df, features = _masks(dataset)
     macd = features["macd_proxy"]
     signal = features["macd_signal_proxy"]
     long_mask = (macd > signal) & (macd.shift(1) <= signal.shift(1))

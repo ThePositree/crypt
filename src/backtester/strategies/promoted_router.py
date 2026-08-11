@@ -67,6 +67,7 @@ class PromotedRouterStrategy(BaseStrategy):
         self._min_available_strategies = int(
             params.get("min_available_strategies", len(self._strategy_paths))
         )
+        self._candle_timeframe = str(params.get("candle_timeframe", "H1"))
         self._progress = bool(params.get("progress", True))
 
     def generate(self, data: StrategyInput) -> pd.DataFrame:
@@ -77,7 +78,7 @@ class PromotedRouterStrategy(BaseStrategy):
             load_strategy_config,
         )
 
-        primary = data.primary if isinstance(data, StrategyData) else data
+        primary = data.require_timeframe(self._candle_timeframe) if isinstance(data, StrategyData) else data
         labels = self._load_labels()
         selected = self._selection_series(labels, primary.index)
         selected_ids = set(selected.astype(str))
@@ -125,7 +126,7 @@ class PromotedRouterStrategy(BaseStrategy):
             )
 
         logger.info("Promoted router shared feature/signal preparation starting")
-        signal_frames = build_archived_signal_frames(data=data, specs=specs)
+        signal_frames = build_archived_signal_frames(data=data, specs=specs, ohlcv=primary)
         logger.info("Promoted router chronological replay starting")
         return replay_selected_signals(
             primary=primary,

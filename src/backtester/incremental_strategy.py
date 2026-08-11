@@ -31,7 +31,7 @@ class IncrementalStrategyAdapter(Protocol):
         dataset: DiscoveryDataset,
         config: IncrementalStrategyConfig,
     ) -> pd.DataFrame:
-        """Return a causal signal frame indexed like the primary candles."""
+        """Return a causal signal frame indexed like the supplied candles."""
 
 
 AdapterFactory = Callable[[], IncrementalStrategyAdapter]

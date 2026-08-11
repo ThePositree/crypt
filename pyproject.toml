@@ -31,6 +31,7 @@ dependencies = [
     "scikit-learn>=1.5",
     "scipy>=1.14",
     "seaborn>=0.13",
+    "cmaes>=0.13.0",
 ]
 
 [project.scripts]
@@ -101,6 +102,7 @@ module = [
     "pandas_ta.*",
     "pyarrow.*",
     "sklearn.*",
+    "cmaes.*",
     "apscheduler.*",
     "tqdm.*",
 ]

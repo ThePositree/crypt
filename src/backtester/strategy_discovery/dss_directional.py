@@ -1,7 +1,8 @@
-"""Shared DSS Stage 1 signal-viability evaluator."""
+"""Shared DSS directional signal-viability evaluator."""
 
 from __future__ import annotations
 
+import hashlib
 import math
 from dataclasses import dataclass, field
 from typing import Any, Protocol, cast
@@ -15,6 +16,7 @@ from backtester.strategy_discovery.dss_config import (
     DSSConfig,
     DSSWindowSpec,
 )
+from backtester.strategy_discovery.features import select_timeframe_frame
 from backtester.strategy_discovery.signal_composer import SignalComposer
 
 _MAX_SIGNALS_PER_DAY = 10
@@ -56,7 +58,7 @@ class BarrierMetrics:
 
 
 @dataclass(frozen=True, slots=True)
-class Stage1Result:
+class DirectionalResult:
     candidate_id: str
     passed: bool
     rejection_reason: str
@@ -72,43 +74,52 @@ class Stage1Result:
 
     @property
     def should_promote(self) -> bool:
-        """Whether this candidate should be passed to the next stage."""
+        """Whether this candidate should be exported for downstream review."""
         return self.passed and self.behavior is not None
 
 
-def evaluate_stage1(
+def evaluate_directional_viability(
     candidate: DSSCandidate,
     window_data: dict[str, StrategyData],
     config: DSSConfig,
     composer: ComposerProtocol | None = None,
-) -> Stage1Result:
+) -> DirectionalResult:
     composer = composer or SignalComposer()
     try:
         generate = composer.build(candidate.trial_config)
     except ValueError as exc:
-        return _stage1_reject(candidate, f"invalid_config:{exc}")
+        return _directional_reject(candidate, f"invalid_config:{exc}")
 
     signal_counts: dict[str, int] = {}
     long_ratios: dict[str, float] = {}
     median_stop_atr: dict[str, float] = {}
     barrier_metrics: dict[str, BarrierMetrics] = {}
     total_signals = 0
+    total_resolved = 0
+    total_days = 0.0
     first_rejection_reason = ""
     passing_windows: list[str] = []
+    signal_identity_rows: list[tuple[str, str, str]] = []
 
     for window in config.windows:
         data = window_data[window.label]
         try:
+            trigger_primary = select_timeframe_frame(data, candidate.trial_config.trigger_instance.timeframe)
+        except ValueError as exc:
+            return _directional_reject(candidate, f"missing_trigger_timeframe:{exc}")
+        try:
             signals = generate(data)
         except Exception as exc:
-            return _stage1_reject(candidate, f"signal_generation_error:{type(exc).__name__}")
+            return _directional_reject(candidate, f"signal_generation_error:{type(exc).__name__}")
         count = len(signals)
+        signal_identity_rows.extend(_signal_identity_rows(window.label, signals))
         signal_counts[window.label] = count
         total_signals += count
-        if count > _max_signals_for_window(window, data):
+        total_days += _window_days(trigger_primary)
+        if count > _max_signals_for_window(window, trigger_primary):
             first_rejection_reason = first_rejection_reason or f"overtrading:{window.label}"
             if not config.specialist_windows:
-                return _stage1_result(
+                return _directional_result(
                     candidate=candidate,
                     passed=False,
                     rejection_reason=f"overtrading:{window.label}",
@@ -117,24 +128,26 @@ def evaluate_stage1(
                     median_stop_atr=median_stop_atr,
                     barrier_metrics=barrier_metrics,
                     behavior=None,
+                    metadata=_signal_metadata(signal_identity_rows),
                 )
             continue
         long_ratios[window.label] = _long_ratio(signals)
         median_stop_atr[window.label] = 0.0
         metrics = _barrier_metrics(
             signals=signals,
-            primary=data.primary,
-            tp_move_pct=config.stage1_tp_move_pct,
-            sl_move_pct=config.stage1_sl_move_pct,
-            reference_atr_pct=config.stage1_reference_atr_pct,
+            primary=trigger_primary,
+            tp_move_pct=config.directional_tp_move_pct,
+            sl_move_pct=config.directional_sl_move_pct,
+            reference_atr_pct=config.directional_reference_atr_pct,
         )
         barrier_metrics[window.label] = metrics
-        min_signals = _min_signals_for_window(window, data, config)
+        min_signals = _min_signals_for_window(window, trigger_primary, config)
         resolved_signals = metrics.tp_first + metrics.sl_first
+        total_resolved += resolved_signals
         if resolved_signals < min_signals:
             first_rejection_reason = first_rejection_reason or f"too_few_signals:{window.label}"
             if not config.specialist_windows:
-                return _stage1_result(
+                return _directional_result(
                     candidate=candidate,
                     passed=False,
                     rejection_reason=f"too_few_signals:{window.label}",
@@ -143,12 +156,13 @@ def evaluate_stage1(
                     median_stop_atr=median_stop_atr,
                     barrier_metrics=barrier_metrics,
                     behavior=None,
+                    metadata=_signal_metadata(signal_identity_rows),
                 )
             continue
         if metrics.tp_first_rate < config.min_barrier_tp_first_rate:
             first_rejection_reason = first_rejection_reason or f"weak_barrier_edge:{window.label}"
             if not config.specialist_windows:
-                return _stage1_result(
+                return _directional_result(
                     candidate=candidate,
                     passed=False,
                     rejection_reason=f"weak_barrier_edge:{window.label}",
@@ -157,6 +171,7 @@ def evaluate_stage1(
                     median_stop_atr=median_stop_atr,
                     barrier_metrics=barrier_metrics,
                     behavior=None,
+                    metadata=_signal_metadata(signal_identity_rows),
                 )
             continue
         if metrics.win_rate < config.min_barrier_win_rate:
@@ -164,7 +179,7 @@ def evaluate_stage1(
                 first_rejection_reason or f"weak_barrier_win_rate:{window.label}"
             )
             if not config.specialist_windows:
-                return _stage1_result(
+                return _directional_result(
                     candidate=candidate,
                     passed=False,
                     rejection_reason=f"weak_barrier_win_rate:{window.label}",
@@ -173,15 +188,20 @@ def evaluate_stage1(
                     median_stop_atr=median_stop_atr,
                     barrier_metrics=barrier_metrics,
                     behavior=None,
+                    metadata=_signal_metadata(signal_identity_rows),
                 )
             continue
         passing_windows.append(window.label)
 
     if len(passing_windows) == len(config.windows):
         behavior = _balanced_behavior(
-            candidate, total_signals=total_signals, long_ratios=long_ratios
+            candidate,
+            total_signals=total_signals,
+            total_resolved=total_resolved,
+            total_days=total_days,
+            long_ratios=long_ratios,
         )
-        return _stage1_result(
+        return _directional_result(
             candidate=candidate,
             passed=True,
             rejection_reason="",
@@ -191,6 +211,7 @@ def evaluate_stage1(
             barrier_metrics=barrier_metrics,
             behavior=behavior,
             candidate_class="balanced",
+            metadata=_signal_metadata(signal_identity_rows),
         )
 
     specialist_passing_windows = [
@@ -201,10 +222,12 @@ def evaluate_stage1(
         behavior = _behavior_from_metrics(
             candidate,
             total_signals=total_signals,
+            total_resolved=total_resolved,
+            total_days=total_days,
             long_ratio=sum(long_ratios.values()) / max(len(long_ratios), 1),
             regime_strength=target_window,
         )
-        return _stage1_result(
+        return _directional_result(
             candidate=candidate,
             passed=False,
             rejection_reason=f"specialist:{target_window}",
@@ -215,9 +238,10 @@ def evaluate_stage1(
             behavior=behavior,
             candidate_class=f"specialist:{target_window}",
             target_window=target_window,
+            metadata=_signal_metadata(signal_identity_rows),
         )
 
-    return _stage1_result(
+    return _directional_result(
         candidate=candidate,
         passed=False,
         rejection_reason=first_rejection_reason or "no_viable_window",
@@ -226,22 +250,24 @@ def evaluate_stage1(
         median_stop_atr=median_stop_atr,
         barrier_metrics=barrier_metrics,
         behavior=None,
+        metadata=_signal_metadata(signal_identity_rows),
     )
 
 
-def stage1_advisory_score(result: Stage1Result) -> float:
+def directional_advisory_score(result: DirectionalResult) -> float:
     if result.behavior is None:
         return -10_000.0
     total_signals = sum(result.signal_counts.values())
     windows = max(len(result.signal_counts), 1)
     avg_signals = total_signals / windows
-    count_score = 100.0 - abs(avg_signals - 180.0) * 0.25
+    count_score = 100.0 - abs(avg_signals - 220.0) * 0.20
     bucket_bonus = {
-        "low": 25.0,
         "medium": 35.0,
-        "high": 5.0,
-        "too_high": -80.0,
-    }.get(result.behavior.trade_count_bucket, 0.0)
+        "sparse": 5.0,
+        "frequent": 45.0,
+        "too_sparse": -35.0,
+        "overactive": -60.0,
+    }.get(result.behavior.frequency_class, 0.0)
     long_ratio_values = list(result.long_ratios.values())
     if long_ratio_values:
         side_dispersion = max(long_ratio_values) - min(long_ratio_values)
@@ -269,7 +295,7 @@ def stage1_advisory_score(result: Stage1Result) -> float:
     return count_score + bucket_bonus + stability_score + barrier_score
 
 
-def stage1_rank_score(row: dict[str, object], windows: list[DSSWindowSpec]) -> float:
+def directional_rank_score(row: dict[str, object], windows: list[DSSWindowSpec]) -> float:
     parts: list[float] = []
     for window in windows:
         label = window.label
@@ -280,17 +306,31 @@ def stage1_rank_score(row: dict[str, object], windows: list[DSSWindowSpec]) -> f
         if unresolved_rate == 0.0:
             unresolved_rate = _row_float(row, f"barrier_timeout_rate_{label}")
         signals = max(0.0, _row_float(row, f"signals_{label}"))
+        frequency_bonus = _directional_rank_frequency_bonus(signals)
         parts.append(
             win_rate * 100.0
             + tp_rate * 50.0
             + math.log1p(signals) * 5.0
+            + frequency_bonus
             - sl_rate * 25.0
             - unresolved_rate * 10.0
         )
     return float(sum(parts) / max(len(parts), 1))
 
 
-def _stage1_result(
+def _directional_rank_frequency_bonus(signals: float) -> float:
+    if signals < 20.0:
+        return -25.0
+    if signals < 60.0:
+        return 0.0
+    if signals < 180.0:
+        return 18.0
+    if signals <= 520.0:
+        return 30.0
+    return -35.0
+
+
+def _directional_result(
     *,
     candidate: DSSCandidate,
     passed: bool,
@@ -302,8 +342,9 @@ def _stage1_result(
     behavior: DSSBehavior | None,
     candidate_class: str = "rejected",
     target_window: str = "",
-) -> Stage1Result:
-    base = Stage1Result(
+    metadata: dict[str, object] | None = None,
+) -> DirectionalResult:
+    base = DirectionalResult(
         candidate_id=candidate.candidate_id,
         passed=passed,
         rejection_reason=rejection_reason,
@@ -315,7 +356,7 @@ def _stage1_result(
         candidate_class=candidate_class,
         target_window=target_window,
     )
-    return Stage1Result(
+    return DirectionalResult(
         candidate_id=base.candidate_id,
         passed=base.passed,
         rejection_reason=base.rejection_reason,
@@ -326,12 +367,13 @@ def _stage1_result(
         behavior=base.behavior,
         candidate_class=base.candidate_class,
         target_window=base.target_window,
-        advisory_score=stage1_advisory_score(base),
+        advisory_score=directional_advisory_score(base),
+        metadata=dict(metadata or {}),
     )
 
 
-def _stage1_reject(candidate: DSSCandidate, reason: str) -> Stage1Result:
-    return _stage1_result(
+def _directional_reject(candidate: DSSCandidate, reason: str) -> DirectionalResult:
+    return _directional_result(
         candidate=candidate,
         passed=False,
         rejection_reason=reason,
@@ -356,15 +398,38 @@ def _best_specialist_window(
     )
 
 
+def _signal_identity_rows(window_label: str, signals: pd.DataFrame) -> list[tuple[str, str, str]]:
+    if signals.empty or not {"bar_time", "side"}.issubset(signals.columns):
+        return []
+    rows: list[tuple[str, str, str]] = []
+    for bar_time, side in signals[["bar_time", "side"]].itertuples(index=False):
+        rows.append((window_label, pd.Timestamp(bar_time).isoformat(), str(side)))
+    return rows
+
+
+def _signal_metadata(signal_identity_rows: list[tuple[str, str, str]]) -> dict[str, object]:
+    signal_identity_keys = ["|".join(row) for row in sorted(set(signal_identity_rows))]
+    payload = "\n".join(signal_identity_keys)
+    return {
+        "signal_fingerprint": hashlib.sha1(payload.encode()).hexdigest(),
+        "signal_identity_keys": signal_identity_keys,
+        "signal_set_size": len(signal_identity_keys),
+    }
+
+
 def _balanced_behavior(
     candidate: DSSCandidate,
     *,
     total_signals: int,
+    total_resolved: int,
+    total_days: float,
     long_ratios: dict[str, float],
 ) -> DSSBehavior:
     return _behavior_from_metrics(
         candidate,
         total_signals=total_signals,
+        total_resolved=total_resolved,
+        total_days=total_days,
         long_ratio=sum(long_ratios.values()) / max(len(long_ratios), 1),
         regime_strength="balanced",
     )
@@ -374,6 +439,8 @@ def _behavior_from_metrics(
     candidate: DSSCandidate,
     *,
     total_signals: int,
+    total_resolved: int,
+    total_days: float,
     long_ratio: float,
     regime_strength: str,
 ) -> DSSBehavior:
@@ -388,37 +455,15 @@ def _behavior_from_metrics(
     else:
         side_profile = "balanced"
 
-    if total_signals < 100:
-        trade_bucket = "low"
-    elif total_signals < 400:
-        trade_bucket = "medium"
-    elif total_signals < 900:
-        trade_bucket = "high"
-    else:
-        trade_bucket = "too_high"
-
-    if candidate.position_ttl_bars <= 30:
-        hold_bucket = "short"
-    elif candidate.position_ttl_bars <= 54:
-        hold_bucket = "medium"
-    else:
-        hold_bucket = "long"
-
-    if candidate.atr_sl_mult < 1.0:
-        risk_geometry = "tight_sl"
-    elif candidate.atr_sl_mult <= 1.75:
-        risk_geometry = "medium_sl"
-    else:
-        risk_geometry = "wide_sl"
+    del total_signals
+    frequency_class = _frequency_class(total_resolved, total_days)
     depth = len(candidate.filter_names)
     filter_depth = "3plus" if depth >= 3 else str(depth)
 
     return DSSBehavior(
         trigger_family=candidate.trigger_name,
         side_profile=side_profile,
-        trade_count_bucket=trade_bucket,
-        hold_time_bucket=hold_bucket,
-        risk_geometry=risk_geometry,
+        frequency_class=frequency_class,
         regime_strength=regime_strength,
         filter_depth=filter_depth,
     )
@@ -586,25 +631,50 @@ def _first_barrier_outcome(
     return ("unresolved_tail", max_adverse, max_favorable, None)
 
 
-def _max_signals_for_window(window: DSSWindowSpec, data: StrategyData) -> int:
+def _max_signals_for_window(window: DSSWindowSpec, primary: pd.DataFrame) -> int:
     del window
-    primary = data.primary
     if primary.empty:
         return _MAX_SIGNALS_PER_DAY
     index = pd.DatetimeIndex(primary.index)
     if len(index) <= 1:
         return _MAX_SIGNALS_PER_DAY
-    elapsed_days = max((index.max() - index.min()).total_seconds() / 86_400, 0.0)
+    elapsed_seconds = float((index.max() - index.min()).total_seconds())
+    elapsed_days = max(elapsed_seconds / 86_400, 0.0)
     covered_days = max(1.0, elapsed_days + 1.0 / 24.0)
     return max(_MAX_SIGNALS_PER_DAY, int(covered_days * _MAX_SIGNALS_PER_DAY))
 
 
-def _min_signals_for_window(window: DSSWindowSpec, data: StrategyData, config: DSSConfig) -> int:
+def _window_days(primary: pd.DataFrame) -> float:
+    if primary.empty:
+        return 0.0
+    index = pd.DatetimeIndex(primary.index)
+    if len(index) <= 1:
+        return 1.0 / 24.0
+    elapsed_seconds = float((index.max() - index.min()).total_seconds())
+    elapsed_days = max(elapsed_seconds / 86_400, 0.0)
+    return max(1.0 / 24.0, elapsed_days + 1.0 / 24.0)
+
+
+def _frequency_class(resolved_events: int, covered_days: float) -> str:
+    if resolved_events <= 0 or covered_days <= 0:
+        return "empty"
+    annualized = resolved_events * 365.0 / covered_days
+    if annualized < 20:
+        return "too_sparse"
+    if annualized < 60:
+        return "sparse"
+    if annualized < 180:
+        return "medium"
+    if annualized <= 520:
+        return "frequent"
+    return "overactive"
+
+
+def _min_signals_for_window(window: DSSWindowSpec, primary: pd.DataFrame, config: DSSConfig) -> int:
     del window
     base = max(config.min_trades_per_window, 0)
     if config.min_signals_per_week <= 0:
         return base
-    primary = data.primary
     if primary.empty:
         return base
     index = pd.DatetimeIndex(primary.index)

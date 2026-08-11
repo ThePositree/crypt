@@ -3,52 +3,49 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 
 from backtester.data_contracts import StrategyData
 from backtester.strategy_discovery.catcma_qd import (
+    _NOVELTY_MUTATION_INTERVAL,
+    _directional_feedback_score,
+    _DirectionalCandidate,
     _EvaluatedCandidate,
-    _stage1_cheap_score,
-    _Stage1Candidate,
+    _mutate_candidate,
     _WeightedModel,
     _write_model_summary,
 )
 from backtester.strategy_discovery.dss_archive import DSSArchive
 from backtester.strategy_discovery.dss_config import DSSConfig, DSSSearchSpace
-from backtester.strategy_discovery.dss_v2 import (
-    DSSV2Result,
-    StageScoreResult,
+from backtester.strategy_discovery.dss_directional_search import (
+    DSSDirectionalResult,
+    DSSSignalNoveltyTracker,
     _append_csv_row,
-    _append_jsonl,
-    _append_score_history,
-    _append_stage1,
-    _append_stage_score,
+    _count_csv_rows,
+    _count_directional_survivors,
+    _evaluate_directional_candidate,
     _guard_output_dir,
-    _proxy_windows,
-    _read_completed_ids,
-    _read_stage0_candidates,
-    _write_archive,
+    _is_novel_directional,
+    _read_candidate_rows,
+    _read_directional_candidate_ids,
+    _refresh_directional_reports,
     _write_state,
     _write_summary,
-    evaluate_stage1,
-    evaluate_stage_scores,
-    export_stage1_candidates,
-    export_stage4_candidates,
-    write_stage1_ranked,
+    sample_random_directional_candidate,
+)
+from backtester.strategy_discovery.dss_runtime import (
+    DSSSearchRuntime,
+    should_use_random_injection,
 )
 from backtester.strategy_discovery.signal_composer import SignalComposer
 
 _POPULATION_SIZE = 64
 _RUNG1_FRACTION = 0.30
-_RUNG2_FRACTION = 0.20
-_RUNG3_FRACTION = 0.10
 
 
-@dataclass(frozen=True, slots=True)
 class _RungCandidate:
-    stage1: _Stage1Candidate
-    score: StageScoreResult | None = None
+    def __init__(self, directional: _DirectionalCandidate) -> None:
+        self.directional = directional
 
 
 def run_hyperband_qd_search(
@@ -57,194 +54,203 @@ def run_hyperband_qd_search(
     search_space: DSSSearchSpace,
     window_data: dict[str, StrategyData],
     progress_callback: Callable[[int], None] | None = None,
-) -> DSSV2Result:
+) -> DSSDirectionalResult:
     """Run a successive-halving QD backend with DSS-compatible outputs."""
     output = config.output
     output.mkdir(parents=True, exist_ok=True)
     _guard_output_dir(output)
     _write_state(output, config)
 
-    completed_stage3 = _read_completed_ids(output / "stage3_full_scores.csv")
-    existing_stage0 = _read_stage0_candidates(output / "stage0_candidates.jsonl")
     model = _WeightedModel(search_space, seed=config.seed)
     composer = SignalComposer()
     archive = DSSArchive()
-    generated = min(len(existing_stage0), config.n_trials)
-    if generated and progress_callback is not None:
-        progress_callback(generated)
+    existing_candidates = _read_candidate_rows(output / "candidates.jsonl")
+    generated = len(existing_candidates)
+    attempted = len(existing_candidates)
+    viability_path = output / "directional_viability.csv"
+    evaluated_ids = _read_directional_candidate_ids(viability_path)
+    signal_novelty = DSSSignalNoveltyTracker(viability_path)
+    evaluated_count = _count_csv_rows(viability_path)
+    novelty_parents: list[_DirectionalCandidate] = []
+    if evaluated_count and progress_callback is not None:
+        progress_callback(evaluated_count)
     batch_index = generated // _POPULATION_SIZE
-    stage1_survivors = 0
-    stage2_survivors = 0
-    stage3_evaluations = 0
+    directional_survivors = _count_directional_survivors(viability_path)
 
-    while generated < config.n_trials:
-        batch_size = min(_POPULATION_SIZE, config.n_trials - generated)
-        stage1_passed: list[_Stage1Candidate] = []
-        evaluated_for_model: list[_EvaluatedCandidate] = []
+    with DSSSearchRuntime(config=config) as runtime:
+        for candidate in existing_candidates:
+            runtime.record_candidate(candidate, source="resume")
 
-        for _ in range(batch_size):
-            generated += 1
-            candidate = model.sample(f"hyperband_{generated:06d}", generation=batch_index)
-            try:
-                _append_jsonl(output / "stage0_candidates.jsonl", candidate.to_dict())
-                if candidate.candidate_id in completed_stage3:
-                    continue
-                stage1 = evaluate_stage1(candidate, window_data, config, composer)
-                _append_stage1(output, candidate, stage1, config.windows)
-                if not stage1.should_promote:
-                    continue
-                stage1_survivors += 1
-                stage1_passed.append(
-                    _Stage1Candidate(
-                        candidate=candidate,
-                        result=stage1,
-                        cheap_score=_stage1_cheap_score(stage1),
+        pending_evaluated: list[_EvaluatedCandidate] = []
+        for candidate in (
+            item for item in existing_candidates if item.candidate_id not in evaluated_ids
+        ):
+            if not runtime.should_continue(evaluated_count):
+                break
+            directional = _evaluate_directional_candidate(
+                output=output,
+                candidate=candidate,
+                window_data=window_data,
+                config=config,
+                composer=composer,
+                runtime=runtime,
+                signal_novelty=signal_novelty,
+                append_candidate=False,
+            )
+            evaluated_count += 1
+            is_novel_signal = _is_novel_directional(directional)
+            directional_item = _DirectionalCandidate(
+                candidate=candidate,
+                result=directional,
+                cheap_score=_directional_feedback_score(directional, is_novel_signal),
+            )
+            pending_evaluated.append(
+                _EvaluatedCandidate(
+                    candidate=candidate,
+                    robust_score=directional_item.cheap_score,
+                )
+            )
+            if directional.should_promote and is_novel_signal:
+                directional_survivors += 1
+                novelty_parents.append(directional_item)
+            runtime.write_progress(generated=generated, evaluated=evaluated_count)
+            if progress_callback is not None:
+                progress_callback(1)
+        model.update(pending_evaluated)
+
+        while runtime.should_continue(evaluated_count):
+            batch_size = runtime.remaining_batch(evaluated_count, _POPULATION_SIZE)
+            evaluated_before_batch = evaluated_count
+            directional_passed: list[_DirectionalCandidate] = []
+            evaluated_for_model: list[_EvaluatedCandidate] = []
+
+            for _ in range(batch_size):
+                attempted += 1
+                if attempted % _NOVELTY_MUTATION_INTERVAL == 0 and novelty_parents:
+                    source = "novelty_mutation"
+                    candidate = _mutate_candidate(
+                        novelty_parents[-1].candidate,
+                        search_space,
+                        candidate_id=f"hyperband_{attempted:06d}",
+                        generation=batch_index,
+                        seed=config.seed + attempted,
                     )
-                )
-            finally:
-                if progress_callback is not None:
-                    progress_callback(1)
+                else:
+                    source = (
+                        "random_unseen"
+                        if should_use_random_injection(attempted)
+                        else "hyperband_qd"
+                    )
+                    if source == "random_unseen":
+                        candidate = sample_random_directional_candidate(
+                            search_space=search_space,
+                            candidate_id=f"hyperband_{attempted:06d}",
+                            generation=batch_index,
+                            max_filters=config.max_filters,
+                            seed=config.seed + attempted * 1009,
+                        )
+                    else:
+                        candidate = model.sample(
+                            f"hyperband_{attempted:06d}",
+                            generation=batch_index,
+                        )
+                if not runtime.record_candidate(candidate, source=source):
+                    runtime.write_progress(generated=generated, evaluated=evaluated_count)
+                    continue
+                generated += 1
+                try:
+                    directional = _evaluate_directional_candidate(
+                        output=output,
+                        candidate=candidate,
+                        window_data=window_data,
+                        config=config,
+                        composer=composer,
+                        runtime=runtime,
+                        signal_novelty=signal_novelty,
+                        append_candidate=True,
+                    )
+                    evaluated_count += 1
+                    is_novel_signal = _is_novel_directional(directional)
+                    directional_item = _DirectionalCandidate(
+                        candidate=candidate,
+                        result=directional,
+                        cheap_score=_directional_feedback_score(directional, is_novel_signal),
+                    )
+                    evaluated_for_model.append(
+                        _EvaluatedCandidate(
+                            candidate=candidate,
+                            robust_score=directional_item.cheap_score,
+                        )
+                    )
+                    if not directional.should_promote or not is_novel_signal:
+                        continue
+                    directional_survivors += 1
+                    directional_passed.append(directional_item)
+                    novelty_parents.append(directional_item)
+                finally:
+                    runtime.write_progress(generated=generated, evaluated=evaluated_count)
+                    if progress_callback is not None:
+                        progress_callback(1)
 
-        if config.stage_mode == "stage1":
+            if evaluated_count == evaluated_before_batch:
+                runtime.write_progress(generated=generated, evaluated=evaluated_count)
+                if config.n_trials is not None:
+                    break
+                batch_index += 1
+                _refresh_directional_reports(
+                    output=output,
+                    config=config,
+                    runtime=runtime,
+                    generated=generated,
+                    evaluated=evaluated_count,
+                )
+                continue
+            rung1_items = _select_rung_promotions(
+                [_RungCandidate(item) for item in directional_passed],
+                fraction=_RUNG1_FRACTION,
+                minimum=3,
+                score_getter=lambda item: item.directional.cheap_score,
+            )
+            _append_rung_rows(
+                output,
+                batch_index,
+                0,
+                [_RungCandidate(item) for item in directional_passed],
+                rung1_items,
+            )
+
+            model.update(evaluated_for_model)
             batch_index += 1
-            continue
-
-        rung1_items = _select_rung_promotions(
-            [_RungCandidate(item) for item in stage1_passed],
-            fraction=_RUNG1_FRACTION,
-            minimum=3,
-            score_getter=lambda item: item.stage1.cheap_score,
-        )
-        _append_rung_rows(
-            output,
-            batch_index,
-            0,
-            [_RungCandidate(item) for item in stage1_passed],
-            rung1_items,
-        )
-
-        rung1_scored: list[_RungCandidate] = []
-        first_proxy_window = _proxy_windows(config.windows)[:1]
-        for item in rung1_items:
-            behavior = item.stage1.result.behavior
-            if behavior is None:
-                continue
-            score = evaluate_stage_scores(
-                candidate=item.stage1.candidate,
-                behavior=behavior,
-                windows=first_proxy_window,
-                window_data=window_data,
-                config=config,
-                composer=composer,
-                novelty_bonus=10.0 if archive.occupied_cells == 0 else 0.0,
-            )
-            _append_stage_score(output / "stage2_proxy.csv", score, config.windows)
-            archive.consider(score.candidate, behavior, score.score)
-            rung1_scored.append(_RungCandidate(item.stage1, score))
-            evaluated_for_model.append(
-                _EvaluatedCandidate(
-                    candidate=score.candidate,
-                    robust_score=score.score.robust_score,
-                    promoted_to_stage3=False,
+            if config.n_trials is None:
+                _refresh_directional_reports(
+                    output=output,
+                    config=config,
+                    runtime=runtime,
+                    generated=generated,
+                    evaluated=evaluated_count,
                 )
-            )
 
-        rung2_items = _select_rung_promotions(
-            rung1_scored,
-            fraction=_RUNG2_FRACTION,
-            minimum=2,
-            score_getter=_score_or_penalty,
+        _write_model_summary(output / "backend_state" / "hyperband_qd_state.csv", model)
+        directional_ranked, exported = _refresh_directional_reports(
+            output=output,
+            config=config,
+            runtime=runtime,
+            generated=generated,
+            evaluated=evaluated_count,
         )
-        _append_rung_rows(output, batch_index, 1, rung1_scored, rung2_items)
-
-        rung2_scored: list[_RungCandidate] = []
-        proxy_windows = _proxy_windows(config.windows)
-        for item in rung2_items:
-            behavior = item.stage1.result.behavior
-            if behavior is None:
-                continue
-            score = evaluate_stage_scores(
-                candidate=item.stage1.candidate,
-                behavior=behavior,
-                windows=proxy_windows,
-                window_data=window_data,
-                config=config,
-                composer=composer,
-                novelty_bonus=0.0,
-            )
-            _append_stage_score(output / "stage2_proxy.csv", score, config.windows)
-            archive.consider(score.candidate, behavior, score.score)
-            rung2_scored.append(_RungCandidate(item.stage1, score))
-            evaluated_for_model.append(
-                _EvaluatedCandidate(
-                    candidate=score.candidate,
-                    robust_score=score.score.robust_score,
-                    promoted_to_stage3=False,
-                )
-            )
-
-        rung3_items = _select_rung_promotions(
-            rung2_scored,
-            fraction=_RUNG3_FRACTION,
-            minimum=1,
-            score_getter=_score_or_penalty,
-        )
-        _append_rung_rows(output, batch_index, 2, rung2_scored, rung3_items)
-
-        for item in rung3_items:
-            behavior = item.stage1.result.behavior
-            if behavior is None:
-                continue
-            full = evaluate_stage_scores(
-                candidate=item.stage1.candidate,
-                behavior=behavior,
-                windows=config.windows,
-                window_data=window_data,
-                config=config,
-                composer=composer,
-                novelty_bonus=0.0,
-            )
-            _append_stage_score(output / "stage3_full_scores.csv", full, config.windows)
-            _append_score_history(output / "score_history.csv", full)
-            archive.consider(full.candidate, behavior, full.score)
-            completed_stage3.add(full.candidate.candidate_id)
-            stage2_survivors += 1
-            stage3_evaluations += 1
-            evaluated_for_model.append(
-                _EvaluatedCandidate(
-                    candidate=full.candidate,
-                    robust_score=full.score.robust_score,
-                    promoted_to_stage3=True,
-                )
-            )
-
-        model.update(evaluated_for_model)
-        batch_index += 1
-
-    _write_model_summary(output / "hyperband_qd_state.csv", model)
-    stage1_ranked = write_stage1_ranked(output, config)
-    if config.stage_mode == "stage1":
-        exported = export_stage1_candidates(stage1_ranked, output, config)
-    else:
-        _write_archive(output, archive)
-        exported = export_stage4_candidates(archive, config)
     _write_summary(
         output=output,
         config=config,
         generated=generated,
-        stage1_survivors=stage1_survivors,
-        stage2_survivors=stage2_survivors,
-        stage3_evaluations=stage3_evaluations,
+        directional_survivors=directional_survivors,
         exported=exported,
         archive=archive,
-        stage1_ranked=len(stage1_ranked),
+        directional_ranked=len(directional_ranked),
     )
-    return DSSV2Result(
+    return DSSDirectionalResult(
         output=output,
         generated=generated,
-        stage1_survivors=stage1_survivors,
-        stage2_survivors=stage2_survivors,
-        stage3_evaluations=stage3_evaluations,
+        directional_survivors=directional_survivors,
         exported_candidates=exported,
         archive=archive,
     )
@@ -268,17 +274,17 @@ def _select_rung_promotions(
     seen_cells: set[tuple[str, str, str, str, str]] = set()
 
     for item in ranked:
-        behavior = item.stage1.result.behavior
+        behavior = item.directional.result.behavior
         if behavior is None or behavior.cell_key in seen_cells:
             continue
         selected.append(item)
-        selected_ids.add(item.stage1.candidate.candidate_id)
+        selected_ids.add(item.directional.candidate.candidate_id)
         seen_cells.add(behavior.cell_key)
         if len(selected) >= budget:
             return selected
 
     for item in ranked:
-        candidate_id = item.stage1.candidate.candidate_id
+        candidate_id = item.directional.candidate.candidate_id
         if candidate_id in selected_ids:
             continue
         selected.append(item)
@@ -288,9 +294,7 @@ def _select_rung_promotions(
 
 
 def _score_or_penalty(item: _RungCandidate) -> float:
-    if item.score is None:
-        return -10_000.0
-    return item.score.score.robust_score
+    return item.directional.cheap_score
 
 
 def _append_rung_rows(
@@ -300,22 +304,22 @@ def _append_rung_rows(
     candidates: list[_RungCandidate],
     promoted: list[_RungCandidate],
 ) -> None:
-    promoted_ids = {item.stage1.candidate.candidate_id for item in promoted}
+    promoted_ids = {item.directional.candidate.candidate_id for item in promoted}
     for item in candidates:
         _append_csv_row(
             output / "hyperband_rungs.csv",
             {
                 "batch": batch_index,
                 "rung": rung,
-                "candidate_id": item.stage1.candidate.candidate_id,
-                "trigger_name": item.stage1.candidate.trigger_name,
-                "filter_names": "+".join(item.stage1.candidate.filter_names),
+                "candidate_id": item.directional.candidate.candidate_id,
+                "trigger_name": item.directional.candidate.trigger_name,
+                "filter_names": "+".join(item.directional.candidate.filter_names),
                 "behavior_cell": (
-                    item.stage1.result.behavior.to_label()
-                    if item.stage1.result.behavior is not None
+                    item.directional.result.behavior.to_label()
+                    if item.directional.result.behavior is not None
                     else ""
                 ),
                 "score": _score_or_penalty(item),
-                "promoted": item.stage1.candidate.candidate_id in promoted_ids,
+                "promoted": item.directional.candidate.candidate_id in promoted_ids,
             },
         )

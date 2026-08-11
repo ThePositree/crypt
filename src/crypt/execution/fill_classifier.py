@@ -33,14 +33,26 @@ def allocate_closed_position_fills(
     allocated: dict[str, list[dict[str, Any]]] = {
         position.position_id: [] for position in positions
     }
+    unallocated: list[dict[str, Any]] = []
     for fill in fills:
         matches = [position for position in positions if _fill_matches_position(fill, position)]
         if len(matches) == 1:
             allocated[matches[0].position_id].append(fill)
+        else:
+            unallocated.append(fill)
+
+    for fill in unallocated:
+        matches = [
+            position for position in positions if _fill_fallback_matches_position(fill, position)
+        ]
+        if len(matches) == 1:
+            allocated[matches[0].position_id].append(fill)
+
     return {
         position.position_id: classify_closed_position_from_fills(
             pos=position,
             fills=allocated[position.position_id],
+            allow_fallback_matches=True,
         )
         for position in positions
     }
@@ -50,6 +62,7 @@ def classify_closed_position_from_fills(
     *,
     pos: LivePosition,
     fills: list[dict[str, Any]],
+    allow_fallback_matches: bool = False,
 ) -> ClosedPositionFill:
     """Infer close details for a position that is absent from exchange positions."""
     close_side = "sell" if pos.is_long else "buy"
@@ -58,8 +71,11 @@ def classify_closed_position_from_fills(
     seen_fill_ids: set[str] = set()
     for fill in fills:
         fill_time = _fill_time(fill)
+        matches_position = _fill_matches_position(fill, pos) or (
+            allow_fallback_matches and _fill_fallback_matches_position(fill, pos)
+        )
         if (
-            not _fill_matches_position(fill, pos)
+            not matches_position
             or _fill_side(fill) != close_side
             or fill_time is None
             or fill_time < entry_time
@@ -235,6 +251,70 @@ def _fill_matches_position(fill: dict[str, Any], pos: LivePosition) -> bool:
     if subtype:
         return subtype == ("5" if pos.is_long else "6")
     return not raw
+
+
+def _fill_fallback_matches_position(fill: dict[str, Any], pos: LivePosition) -> bool:
+    """Match OKX child close fills that omit the originating algo identity."""
+    fill_time = _fill_time(fill)
+    if fill_time is None or fill_time < pos.entry_dt.astimezone(UTC):
+        return False
+    if _fill_side(fill) != ("sell" if pos.is_long else "buy"):
+        return False
+
+    info = fill.get("info")
+    raw = info if isinstance(info, dict) else {}
+    inst_id = raw.get("instId")
+    if inst_id and str(inst_id) != pos.symbol:
+        return False
+    pos_side = raw.get("posSide")
+    expected_side = "long" if pos.is_long else "short"
+    if pos_side and str(pos_side).lower() != expected_side:
+        return False
+
+    subtype = str(raw.get("subType") or "")
+    if subtype != ("5" if pos.is_long else "6"):
+        return False
+    if _has_foreign_algo_identity(fill, pos):
+        return False
+
+    amount = _float_or_none(fill.get("amount")) or _float_or_none(fill.get("contracts")) or 0.0
+    if abs(amount - pos.contracts) > 1e-8:
+        return False
+
+    price = _float_or_none(fill.get("price")) or _float_or_none(raw.get("fillPx"))
+    if price is None:
+        return False
+    if _near(price, pos.sl_price) or _near(price, pos.tp_price):
+        return True
+    return pos.trail_stop_price is not None and _near(price, pos.trail_stop_price)
+
+
+def _has_foreign_algo_identity(fill: dict[str, Any], pos: LivePosition) -> bool:
+    """Return True when OKX exposed a non-local algo identity on this fill."""
+    info = fill.get("info")
+    raw = info if isinstance(info, dict) else {}
+    observed_algo_ids = {
+        str(identifier)
+        for identifier in (
+            raw.get("algoId"),
+            raw.get("algoClOrdId"),
+            raw.get("attachAlgoClOrdId"),
+        )
+        if identifier
+    }
+    if not observed_algo_ids:
+        return False
+    expected_ids = {
+        identifier
+        for identifier in (
+            pos.algo_client_order_id,
+            pos.trailing_algo_client_order_id,
+            pos.stop_algo_order_id,
+            pos.trailing_algo_order_id,
+        )
+        if identifier
+    }
+    return not bool(observed_algo_ids & expected_ids)
 
 
 def _exit_reason(pos: LivePosition, exit_price: float | None) -> str:

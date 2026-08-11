@@ -67,6 +67,7 @@ _BACKTEST_ARG_TO_SETTING = {
     "structural_sl_mode": "structural_sl_mode",
     "min_tp_move_pct": "min_tp_move_pct",
     "risk_base_period": "risk_base_period",
+    "ttl_minutes": "ttl_minutes",
     "ttl": "ttl_bars",
     "rrr": "rrr",
     "risk_percent": "risk_percent",
@@ -758,8 +759,8 @@ class LiveExecutionManager:
                 await self._notify_position_closed(pos)
                 continue
 
-            # TTL check (wall-clock based, mirrors bar-count TTL in simulator)
-            ttl_expiry = pos.entry_dt + timedelta(hours=pos.ttl_bars)
+            # TTL check is wall-clock based in live execution.
+            ttl_expiry = pos.entry_dt + timedelta(minutes=pos.ttl_bars)
             if pos.ttl_bars > 0 and now >= ttl_expiry:
                 logger.info(
                     "TTL expired for position %s (%s) — closing at market",
@@ -1291,9 +1292,9 @@ class LiveExecutionManager:
             locked_margin=planned_locked_margin,
             risk_base_capital=risk_base,
             is_long=rr.is_long,
-            ttl_bars=event.position_ttl_bars
-            if event.position_ttl_bars is not None
-            else self._settings.ttl_bars,
+            ttl_bars=event.position_ttl_minutes
+            if event.position_ttl_minutes is not None
+            else self._settings.ttl_minutes,
             entry_order_id=None,
             event_id=event_id,
             client_order_id=client_order_id,
@@ -2033,6 +2034,8 @@ def _jsonable_event(raw: dict[str, object]) -> dict[str, object]:
 def _optional_event_int(raw: dict[str, object], key: str) -> int | None:
     value = raw.get(key)
     if value is None:
+        return None
+    if not isinstance(value, str | bytes | bytearray | int | float):
         return None
     try:
         return int(value)

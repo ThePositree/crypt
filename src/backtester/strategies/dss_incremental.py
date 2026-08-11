@@ -9,8 +9,15 @@ from backtester.incremental_strategy import (
     IncrementalStrategyConfig,
     register_incremental_adapter,
 )
-from backtester.strategy_discovery.dss_config import TrialConfig
-from backtester.strategy_discovery.features import DiscoveryDataset
+from backtester.strategies.dss_strategy import apply_default_dss_execution_stops
+from backtester.strategy_discovery.dss_config import (
+    DSS_DEFAULT_DIRECTIONAL_SL_MOVE_PCT,
+    TrialConfig,
+)
+from backtester.strategy_discovery.features import (
+    DiscoveryDataset,
+    build_timeframe_discovery_dataset,
+)
 from backtester.strategy_discovery.signal_composer import (
     SignalComposer,
     signal_df_to_ohlcv_aligned,
@@ -27,10 +34,56 @@ class DSSIncrementalAdapter:
         dataset: DiscoveryDataset,
         config: IncrementalStrategyConfig,
     ) -> pd.DataFrame:
-        primary = data.primary if isinstance(data, StrategyData) else data
         trial = TrialConfig.from_dict(config.params)
-        rows = SignalComposer().generate_from_dataset(trial, dataset)
-        return signal_df_to_ohlcv_aligned(rows, primary)
+        primary = (
+            data.require_timeframe(trial.trigger_instance.timeframe)
+            if isinstance(data, StrategyData)
+            else data
+        )
+        trigger_dataset = (
+            build_timeframe_discovery_dataset(
+                data=data,
+                timeframe=trial.trigger_instance.timeframe,
+                window_label=dataset.window_label,
+                symbol=dataset.symbol,
+            )
+            if isinstance(data, StrategyData)
+            else dataset
+        )
+        filter_datasets = {
+            instance.label: (
+                trigger_dataset
+                if instance.timeframe == trial.trigger_instance.timeframe
+                else build_timeframe_discovery_dataset(
+                    data=data,
+                    timeframe=instance.timeframe,
+                    window_label=trigger_dataset.window_label,
+                    symbol=trigger_dataset.symbol,
+                )
+            )
+            for instance in trial.filter_instances
+        }
+        rows = SignalComposer().generate_from_dataset(
+            trial,
+            trigger_dataset,
+            filter_datasets=filter_datasets,
+        )
+        aligned = signal_df_to_ohlcv_aligned(rows, primary)
+        fallback_stop_pct = float(
+            config.params.get(
+                "directional_sl_move_pct",
+                config.params.get("sl_pct", DSS_DEFAULT_DIRECTIONAL_SL_MOVE_PCT),
+            )
+        )
+        raw_atr_sl_mult = config.params.get("atr_sl_mult")
+        atr_sl_mult = float(raw_atr_sl_mult) if raw_atr_sl_mult is not None else None
+        apply_default_dss_execution_stops(
+            aligned,
+            primary,
+            fallback_stop_pct,
+            atr_sl_mult=atr_sl_mult,
+        )
+        return aligned
 
 
 register_incremental_adapter("dss_strategy", DSSIncrementalAdapter)

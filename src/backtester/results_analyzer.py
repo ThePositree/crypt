@@ -46,7 +46,12 @@ class ResultsAnalyzer:
     >>> analyzer.export_results("results/strategy_v1")
     """
 
-    def __init__(self, trades_df: pd.DataFrame, signal_df: pd.DataFrame | None = None):
+    def __init__(
+        self,
+        trades_df: pd.DataFrame,
+        signal_df: pd.DataFrame | None = None,
+        entry_rejections_df: pd.DataFrame | None = None,
+    ):
         """
         Initializes the analyzer.
 
@@ -83,6 +88,11 @@ class ResultsAnalyzer:
         """
         self.trades = trades_df.copy() if not trades_df.empty else pd.DataFrame()
         self.signals = signal_df.copy() if signal_df is not None else pd.DataFrame()
+        self.entry_rejections = (
+            entry_rejections_df.copy()
+            if entry_rejections_df is not None and not entry_rejections_df.empty
+            else pd.DataFrame()
+        )
         self.equity_curve: pd.Series | None = None
         self.metrics: dict[str, Any] = {}
         self.trade_analyzer: Optional[TradeAnalyzer] = None
@@ -669,6 +679,8 @@ class ResultsAnalyzer:
           diagnostics when trades exist
         - {folder}/signal_events.csv - one row per portfolio signal event,
           when the input signal frame contains ``signal_events``
+        - {folder}/entry_rejections.csv - one row per non-zero signal event
+          rejected by the execution simulator before opening a position
         - {folder}/ohlcv.csv - full OHLCV frame used by the run, when provided
         - {folder}/trade_chart.html - interactive TradingView chart report,
           when OHLCV is provided
@@ -703,6 +715,11 @@ class ResultsAnalyzer:
             diagnostics_path = os.path.join(folder, "trade_diagnostics.csv")
             trade_diagnostics.to_csv(diagnostics_path, index=False)
             self._logger.info("Trade diagnostics saved: %s", diagnostics_path)
+
+        if not self.entry_rejections.empty:
+            entry_rejections_path = Path(folder) / "entry_rejections.csv"
+            self.entry_rejections.to_csv(entry_rejections_path, index=False)
+            self._logger.info("Entry rejections saved: %s", entry_rejections_path)
 
         if not self.signals.empty:
             signals_path = os.path.join(folder, "signals.csv")
@@ -879,6 +896,27 @@ class ResultsAnalyzer:
                         }
                         for bucket, value in counts.items()
                     )
+
+        if not self.entry_rejections.empty:
+            rows.append(
+                {
+                    "metric": "entry_rejections_count",
+                    "bucket": "all",
+                    "value": len(self.entry_rejections),
+                }
+            )
+            for column in ("reason", "selected_strategy", "position_group"):
+                if column not in self.entry_rejections.columns:
+                    continue
+                counts = self.entry_rejections[column].value_counts(dropna=False).sort_index()
+                rows.extend(
+                    {
+                        "metric": f"entry_rejection_{column}_count",
+                        "bucket": str(bucket),
+                        "value": int(value),
+                    }
+                    for bucket, value in counts.items()
+                )
 
         for col in ("signal", "decision", "regime"):
             if col not in self.signals.columns:

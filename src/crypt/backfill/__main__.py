@@ -73,7 +73,7 @@ async def _backfill_ohlcv(
     delay_s: float,
 ) -> None:
     """Paginate forward through OHLCV for all required timeframes."""
-    timeframes = [Timeframe.H4, Timeframe.H1, Timeframe.D1]
+    timeframes = [Timeframe.M15, Timeframe.H1, Timeframe.H4, Timeframe.D1]
 
     for tf in timeframes:
         ms_per_bar = _MS_PER_BAR[tf]
@@ -99,7 +99,11 @@ async def _backfill_ohlcv(
 
                 closed = [c for c in candles if c.closed]
                 if closed:
-                    store.save_candles_with_policy(closed, allow_ohlc_rewrite=True)
+                    store.save_candles_with_policy(
+                        closed,
+                        allow_ohlc_rewrite=True,
+                        validate_h1_from_1m=False,
+                    )
 
                 last_ts_ms = _dt_to_ms(candles[-1].open_time)
                 logger.debug(

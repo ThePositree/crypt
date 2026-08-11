@@ -25,12 +25,17 @@ class CryptEnsembleIncrementalAdapter:
         dataset: DiscoveryDataset,
         config: IncrementalStrategyConfig,
     ) -> pd.DataFrame:
-        primary = data.primary if isinstance(data, StrategyData) else data
-        return _signal_frame(
+        primary = data.require_timeframe("H1") if isinstance(data, StrategyData) else data
+        frame = _signal_frame(
             primary=primary,
             dataset=dataset,
             params=config.params,
         )
+        if len(frame) != len(primary):
+            raise ValueError("canonical crypt_ensemble output length changed during replay")
+        output = frame.copy()
+        output.index = primary.index
+        return output
 
 
 def _signal_frame(

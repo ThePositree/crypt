@@ -178,7 +178,7 @@ def pt_nr4_breakout_factory(params: TriggerParams) -> TriggerFn:
     lookback = int(params.get("lookback", 4))   # NR-N generalization
 
     def _trigger(dataset: DiscoveryDataset) -> list[DiscoveryEvent]:
-        df = dataset.primary
+        df = dataset.ohlcv
         ranges = (df["high"] - df["low"]).rolling(lookback).min().shift(1)
         is_nr = (df["high"] - df["low"]) <= ranges
         long_mask = is_nr & (df["close"] > df["high"].shift(1))

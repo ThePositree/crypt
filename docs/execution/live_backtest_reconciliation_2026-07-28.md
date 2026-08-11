@@ -257,10 +257,7 @@ parallel in separate terminals:
 ```bash
 PYTHONPATH=src MPLCONFIGDIR=/tmp/crypt-mpl UV_CACHE_DIR=/tmp/uv-cache \
 uv run backtester run \
-  --data-source crypt-parquet \
   --data-dir /tmp/crypt_live_audit_20260728T1600Z \
-  --primary-timeframe 1h \
-  --symbol SOL-USDT-SWAP \
   --strategy strategies/archive/filtered_donor_portfolio_post_adr0058_tail_control_v6_drop_negative_v5.json \
   --from 2026-07-13T00:00:00+00:00 \
   --to 2026-07-17T23:00:00+00:00 \
@@ -271,10 +268,7 @@ uv run backtester run \
 ```bash
 PYTHONPATH=src MPLCONFIGDIR=/tmp/crypt-mpl UV_CACHE_DIR=/tmp/uv-cache \
 uv run backtester run \
-  --data-source crypt-parquet \
   --data-dir /tmp/crypt_live_audit_20260728T1600Z \
-  --primary-timeframe 1h \
-  --symbol SOL-USDT-SWAP \
   --strategy strategies/archive/filtered_donor_portfolio_post_adr0058_tail_control_v6_drop_negative_v5.json \
   --from 2026-07-18T00:00:00+00:00 \
   --to 2026-07-27T23:00:00+00:00 \
@@ -284,7 +278,7 @@ uv run backtester run \
 
 `--from` and `--to` are inclusive timestamp bounds. A date-only `--to
 2026-07-27` would mean midnight and discard almost all of that day. The final
-primary bar intentionally has no next H1 open, so `23:00Z` is a safe right
+execution bar intentionally has no next H1 open, so `23:00Z` is a safe right
 boundary for the execution simulator.
 
 Each `--output` root receives a timestamped child directory.
@@ -308,10 +302,7 @@ uv run python -m crypt.backfill \
 
 PYTHONPATH=src MPLCONFIGDIR=/tmp/crypt-mpl UV_CACHE_DIR=/tmp/uv-cache \
 uv run backtester run \
-  --data-source crypt-parquet \
   --data-dir /tmp/crypt_live_audit_20260728T1600Z \
-  --primary-timeframe 1h \
-  --symbol SOL-USDT-SWAP \
   --strategy strategies/archive/filtered_donor_portfolio_post_adr0058_tail_control_v6_drop_negative_v5.json \
   --from 2026-07-18T00:00:00+00:00 \
   --to 2026-07-28T23:00:00+00:00 \

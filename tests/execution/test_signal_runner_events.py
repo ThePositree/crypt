@@ -165,6 +165,28 @@ def test_check_data_freshness_accepts_timezone_aware_open_time() -> None:
     assert runner._check_data_freshness("SOL-USDT-SWAP")
 
 
+def test_check_data_freshness_uses_strategy_execution_timeframe() -> None:
+    runner = LiveSignalRunner.__new__(LiveSignalRunner)
+    runner._execution_timeframe = Timeframe.M15
+    runner._store = _MutableFakeStore(
+        {Timeframe.M15: pd.DataFrame({"open_time": [pd.Timestamp(datetime.now(tz=UTC))]})}
+    )
+
+    assert runner._check_data_freshness("SOL-USDT-SWAP")
+
+
+def test_refresh_timeframes_include_non_h1_execution_timeframe() -> None:
+    runner = LiveSignalRunner.__new__(LiveSignalRunner)
+    runner._execution_timeframe = Timeframe.M15
+
+    assert runner._refresh_timeframes() == (
+        Timeframe.M15,
+        Timeframe.H1,
+        Timeframe.H4,
+        Timeframe.D1,
+    )
+
+
 def test_timestamp_to_utc_parses_string_timestamp() -> None:
     assert _timestamp_to_utc("2026-06-27T10:00:00Z") == datetime(
         2026,
