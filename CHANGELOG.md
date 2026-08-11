@@ -6,6 +6,53 @@ Format: newest on top, date in `YYYY-MM-DD`.
 
 ---
 
+## 2026-08-11 — Phase-C reconciliation boundary and first artifacts
+
+- Added `--load-from` to `backtester run` so live replay checks can load a
+  warmup window while starting execution/accounting at a later `--from`
+  boundary.
+- Fixed DSS archived default ATR stop replay to use the previous closed ATR
+  window and signal close as the stop basis. This restores phase-C parity with
+  the production `81a4e01` live signals, including the
+  `2026-08-03T17:00Z` raw SL `72.987143` stop that exits on
+  `2026-08-04T00:58Z`.
+- Added phase C as a strict backtester regression checkpoint in
+  `docs/backtester_regression.md`, with the `2026-07-13` warmup start,
+  `2026-07-29T12:00Z` accounting start, expected metrics, and signal-level
+  pass/fail targets.
+- Identified the phase-C production boundary from Railway deployments:
+  `81a4e01` deployed at `2026-07-29T12:12:04Z` was the latest deployed
+  live-behavior change, adding live distant-TP reachability adjustment and the
+  owner-selected production strategy JSON change. The later `0b76c30`
+  production deploy was documentation/status cleanup for runtime code.
+- Confirmed the `exchange_closed_unknown` OKX child-fill classifier fix is in
+  local commit `2704c83` and has not been deployed to Railway production.
+- Exported phase-C OKX private artifacts under
+  `results/live_reconciliation/phase_c_20260729/`: fills, regular orders,
+  algo order history, account bills, and grouped order fills from
+  `2026-07-29T13:00Z` onward.
+- Backfilled SOL-USDT-SWAP H1/15m/4H/1d plus last/mark 1m data through the
+  closed `2026-08-10` UTC window and ran a preliminary replay from signal bar
+  `2026-07-29T12:00:00Z` through `2026-08-10T22:00:00Z` with
+  `$83.0980436609` starting cash. The replay produced `20` trades,
+  `17` closed and `3` open, `$72.39` final capital, and `-$10.71` PnL.
+- Preliminary live/replay count check before `2026-08-11T00:00Z`: OKX has
+  `20` phase entries and `17` phase closes, plus one carried-in pre-phase
+  short close on `2026-07-30T13:47:32Z`. The first concrete mismatch to audit
+  is the live `2026-08-03T18:00Z` long, which OKX stopped on
+  `2026-08-04T00:58:40Z` while fresh replay keeps the analogous trade until
+  `2026-08-06T13:05Z`.
+- Pulled Railway archived execution logs for phase C and built log-backed join
+  artifacts under `results/live_reconciliation/phase_c_20260729/`, including
+  `railway_live_entries.csv`, `railway_live_closures.csv`, and
+  `phase_c_live_backtest_match_81a4e01_log_joined.csv`.
+- Re-ran the closed-window replay on the actual production commit `81a4e01`.
+  With the deployed code, live/replay SL values match for joined phase-C
+  entries; the `2026-08-03T18:00Z` long now exits at the same OKX stop minute.
+  This exposed and fixed a replay-methodology gap: the CLI now supports
+  `--load-from` so phase checks can warm up indicators without executing
+  pre-phase trades.
+
 ## 2026-08-05 — Backtester regression runbook
 
 - Added `docs/backtester_regression.md` as the canonical agent runbook for

@@ -1428,6 +1428,46 @@ def test_dss_strategy_adds_default_stop_for_directional_only_signals() -> None:
     assert signals.loc[index[1], "sl_price"] == pytest.approx(102.0 * 1.004)
 
 
+def test_dss_strategy_atr_default_stop_uses_previous_closed_tr() -> None:
+    index = pd.date_range("2026-01-01", periods=16, freq="h", tz="UTC")
+    primary = pd.DataFrame(
+        {
+            "open": [100.0] * 15 + [107.0],
+            "high": [101.0] * 15 + [120.0],
+            "low": [99.0] * 15 + [80.0],
+            "close": [100.0] * len(index),
+            "volume": [1.0] * len(index),
+        },
+        index=index,
+    )
+    strategy = DSSStrategy(
+        {
+            "trigger_name": "pt_engulfing",
+            "trigger_params": {"body_ratio": 0.7},
+            "filter_names": [],
+            "filter_params": {},
+            "directional_sl_move_pct": 0.004,
+            "atr_sl_mult": 1.5,
+        }
+    )
+    strategy._generate_fn = lambda data: pd.DataFrame(  # noqa: ARG005
+        {
+            "bar_time": [index[-2]],
+            "symbol": ["SOL-USDT-SWAP"],
+            "side": ["long"],
+            "confidence": [80.0],
+            "rationale": ["directional long"],
+            "entry_price": [0.0],
+            "stop_price": [0.0],
+            "tp_price": [0.0],
+        }
+    )
+
+    signals = strategy.generate(primary)
+
+    assert signals.loc[index[-2], "sl_price"] == pytest.approx(100.0 - 2.0 * 1.5)
+
+
 def test_dss_strategy_entry_skip_rules_filter_next_bar_entry_features() -> None:
     index = pd.date_range("2026-01-02 23:00", periods=4, freq="h", tz="UTC")
     primary = pd.DataFrame(

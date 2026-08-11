@@ -64,19 +64,70 @@ Expected current-code metrics:
 
 | Metric | Expected |
 |---|---:|
-| Final capital | `$101.47` |
-| Total PnL | `-$0.87` |
-| Total return | `-0.85%` |
+| Final capital | `$101.48` |
+| Total PnL | `-$0.86` |
+| Total return | `-0.84%` |
 | Total trades | `17` |
 | Closed/open trades | `16 / 1` |
 | Win rate | `31.25%` |
 | Profit factor | `0.93` |
-| Drawdown below start | `-9.68%` |
-| Peak-to-trough drawdown | `-9.68%` |
+| Drawdown below start | `-8.73%` |
+| Peak-to-trough drawdown | `-8.73%` |
 | Exit mix | `10 stop_loss / 4 take_profit / 2 ttl_expired / 1 open` |
 
 The historical reconciliation note records closed replay PnL around
 `-$0.85356390`; the CLI summary rounds the same run to about `-$0.87`.
+
+## Live Phase C Replay Check
+
+This is the strict live/backtest checkpoint for the production period after
+the `81a4e01` live-behavior deployment on `2026-07-29T12:12:04Z`.
+It exists specifically to catch drift in DSS archived stop generation,
+portfolio donor event alignment, and phase-boundary warmup handling.
+
+The command intentionally separates warmup from accounting: `--load-from`
+loads enough context for indicators and donor stops, while `--from` starts the
+phase-C trading/capital window.
+
+```bash
+PYTHONPATH=src uv run backtester run \
+  --load-from 2026-07-13T00:00:00Z \
+  --from 2026-07-29T12:00:00Z \
+  --to 2026-08-10T22:00:00Z \
+  --capital 83.09804366087424 \
+  --strategy strategies/archive/filtered_donor_portfolio_post_adr0058_tail_control_v6_drop_negative_v5.json \
+  --output results/backtester_regression_live_phase_c
+```
+
+Expected current-code metrics:
+
+| Metric | Expected |
+|---|---:|
+| Final capital | `$72.30` |
+| Total PnL | `-$10.80` |
+| Total return | `-13.00%` |
+| Total trades | `20` |
+| Closed/open trades | `17 / 3` |
+| Win rate | `11.76%` |
+| Profit factor | `0.18` |
+| Drawdown below start | `-13.00%` |
+| Peak-to-trough drawdown | `-13.96%` |
+| Exit mix | `15 stop_loss / 2 take_profit / 3 open` |
+
+Strict signal parity targets:
+
+| Signal time UTC | Strategy | Expected raw SL | Expected replay outcome |
+|---|---|---:|---|
+| `2026-07-29T12:00:00Z` | `freq_4pw_r02_hyperband_004678` | `74.202500` | stop-loss at `2026-07-29T18:00Z` |
+| `2026-08-03T17:00:00Z` | `freq_4pw_r03_catcma_011465` | `72.987143` | stop-loss at `2026-08-04T00:58Z` |
+| `2026-08-06T09:00:00Z` | `sparse_0pw_r07_hyperband_019621` | `73.908571` | stop-loss at `2026-08-07T12:10Z` |
+| `2026-08-09T18:00:00Z` | `sparse_0pw_r07_hyperband_019621` | `76.421429` | stop-loss at `2026-08-09T23:29Z` |
+
+Phase C fails regression if the replay misses the first
+`2026-07-29T12:00:00Z` signal, if the `2026-08-03T17:00:00Z` trade exits on
+`2026-08-06` instead of `2026-08-04T00:58Z`, or if rounded SL values diverge
+from the archived production/live signal levels without an explicit audited
+reason.
 
 ## Live Phase A Caveat
 

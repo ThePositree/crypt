@@ -54,6 +54,7 @@ def apply_default_dss_execution_stops(
 
     actionable = signals != 0
     valid_entry = entry_basis.notna() & (entry_basis > 0)
+    atr_entry_basis = close_fallback.where(close_fallback > 0, entry_basis)
     invalid_stop = stops.isna() | (stops <= 0)
     invalid_stop |= ((signals == 1) & (stops >= entry_basis)).fillna(False)
     invalid_stop |= ((signals == -1) & (stops <= entry_basis)).fillna(False)
@@ -69,10 +70,10 @@ def apply_default_dss_execution_stops(
         atr_long_mask = long_mask & valid_atr
         atr_short_mask = short_mask & valid_atr
         aligned.loc[atr_long_mask, "sl_price"] = (
-            entry_basis.loc[atr_long_mask] - atr_distance.loc[atr_long_mask]
+            atr_entry_basis.loc[atr_long_mask] - atr_distance.loc[atr_long_mask]
         )
         aligned.loc[atr_short_mask, "sl_price"] = (
-            entry_basis.loc[atr_short_mask] + atr_distance.loc[atr_short_mask]
+            atr_entry_basis.loc[atr_short_mask] + atr_distance.loc[atr_short_mask]
         )
         long_mask &= ~valid_atr
         short_mask &= ~valid_atr
@@ -93,7 +94,7 @@ def _closed_atr14(primary: pd.DataFrame) -> pd.Series:
         ],
         axis=1,
     ).max(axis=1)
-    return true_range.rolling(14, min_periods=1).mean()
+    return true_range.shift(1).rolling(14, min_periods=1).mean()
 
 
 class DSSStrategy(BaseStrategy):

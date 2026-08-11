@@ -94,6 +94,14 @@ def _default_backtest_load_start(from_date: str | None) -> str | None:
     return load_start.isoformat().replace("+00:00", "Z")
 
 
+def _backtest_load_start(from_date: str | None, load_from_date: str | None) -> str | None:
+    if load_from_date is None:
+        return _default_backtest_load_start(from_date)
+    if _is_full_history_bound(load_from_date):
+        return None
+    return load_from_date
+
+
 def _trim_frame_to_execution_window(
     frame: pd.DataFrame,
     *,
@@ -166,6 +174,16 @@ def cli() -> None:
     "from_date",
     default=None,
     help="Inclusive start date/time in UTC. Omit or pass full for full history.",
+)
+@click.option(
+    "--load-from",
+    "load_from_date",
+    default=None,
+    hidden=True,
+    help=(
+        "Inclusive data load start in UTC for feature warmup. "
+        "When set, --from remains the execution/accounting start."
+    ),
 )
 @click.option(
     "--to",
@@ -369,6 +387,7 @@ def run(
     parquet: str | None,
     data_dir: str | None,
     from_date: str | None,
+    load_from_date: str | None,
     to_date: str | None,
     symbol: str,
     strategy: str,
@@ -453,7 +472,7 @@ def run(
     log_strategy_info(cfg, logger)
     candle_timeframe = strategy_config_candle_timeframe(cfg)
     logger.info("  Candle timeframe: %s", candle_timeframe)
-    load_start = _default_backtest_load_start(from_date)
+    load_start = _backtest_load_start(from_date, load_from_date)
     load_end = None if _is_full_history_bound(to_date) else to_date
     execution_start = None if _is_full_history_bound(from_date) else from_date
     execution_end = None if _is_full_history_bound(to_date) else to_date
