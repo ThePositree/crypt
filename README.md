@@ -94,9 +94,13 @@ deployment; verify the runtime environment before changing live state.
 
 ## Documentation map
 
-- `AGENTS.md` — mandatory operating manual for agents.
+- `AGENTS.md` — compact agent bootstrap and hard rules.
+- `docs/agent/context_routes.yml` — deterministic AI context routing.
+- `docs/state/current.yml` — compact current project and live-state snapshot.
 - `docs/strategy_benchmark.md` — money benchmark and reporting requirements.
+- `docs/strategy_benchmark.card.md` — compact benchmark entry point.
 - `docs/backtester_regression.md` — canonical checks for backtester parity.
+- `docs/backtester_regression.card.md` — compact regression entry point.
 - `docs/execution/live_execution.md` — live execution behavior and state.
 - `docs/deploy/railway.md` — Railway deployment/runbook.
 - `docs/backtester/` — backtester and diagnostic contracts.

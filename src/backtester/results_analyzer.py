@@ -280,7 +280,7 @@ class ResultsAnalyzer:
         float
             Annualized Sharpe ratio, or 0.0 if fewer than 2 months or SD is zero.
         """
-        monthly_capital = equity_curve.resample("ME").last()
+        monthly_capital = equity_curve.resample("ME").last().ffill()
         if len(monthly_capital) < 2:
             return 0.0
         monthly_returns = monthly_capital.pct_change()
@@ -301,7 +301,7 @@ class ResultsAnalyzer:
         trades_df: pd.DataFrame | None = None,
     ) -> dict[str, dict[str, float]]:
         """Compute monthly returns dict in the current output format."""
-        monthly_capital = equity_curve.resample("ME").last()
+        monthly_capital = equity_curve.resample("ME").last().ffill()
         monthly_returns = monthly_capital.pct_change().fillna(0) * 100
         if len(monthly_capital) > 0:
             monthly_returns.iloc[0] = (

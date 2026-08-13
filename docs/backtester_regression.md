@@ -15,9 +15,10 @@ backtester or production portfolio replay.
 ## Full Replay Check
 
 This is the current-code canonical full replay after the 2026-08-05
-last-price stop versus mark-price liquidation priority fix. Older archived
-snapshots are useful provenance, but they still include false liquidation
-priority in some paths and should not be used as the current pass/fail target.
+last-price stop versus mark-price liquidation priority fix and the 2026-08-11
+DSS archived ATR stop basis fix used for phase-C live parity. Older archived
+snapshots are useful provenance, but they still include earlier execution/stop
+semantics and should not be used as the current pass/fail target.
 
 ```bash
 PYTHONPATH=src uv run backtester run \
@@ -31,15 +32,15 @@ Expected current-code metrics:
 
 | Metric | Expected |
 |---|---:|
-| Final capital | `$1,237,819.83` |
-| Total return | `12278.20%` |
-| Total trades | `1544` |
-| Closed/open trades | `1543 / 1` |
-| Win rate | `35.13%` |
-| Profit factor | `1.38` |
-| Drawdown below start | `-0.53%` |
-| Peak-to-trough drawdown | `-26.58%` |
-| Exit mix | `1045 stop_loss / 409 take_profit / 45 ttl_expired / 44 trailing_stop / 1 open` |
+| Final capital | `$1,411,788.62` |
+| Total return | `14017.89%` |
+| Total trades | `1564` |
+| Closed/open trades | `1563 / 1` |
+| Win rate | `35.32%` |
+| Profit factor | `1.43` |
+| Drawdown below start | `-4.14%` |
+| Peak-to-trough drawdown | `-33.26%` |
+| Exit mix | `1058 stop_loss / 415 take_profit / 48 trailing_stop / 42 ttl_expired / 1 open` |
 
 Small differences from candle repair or a deliberate execution-model fix must
 be explained in `CHANGELOG.md`. Unexplained changes in final capital, trade

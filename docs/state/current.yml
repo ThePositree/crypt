@@ -1,0 +1,51 @@
+version: 1
+updated: 2026-08-11
+
+project:
+  name: crypt
+  shape: research workbench plus live OKX execution for owner-selected crypto perpetual strategies
+  language_policy: English in code/docs, Russian in owner chat
+
+runtime_truth:
+  live_config_source: EXECUTION_STRATEGY_CONFIG and loaded runtime env
+  exchange_truth: OKX fills, orders, fees, positions, account equity
+  default_symbol: SOL-USDT-SWAP
+  current_strategy_doc_path: strategies/archive/filtered_donor_portfolio_post_adr0058_tail_control_v6_drop_negative_v5.json
+  owner_override: production strategy selection belongs to the owner even if benchmark-failing
+
+production_reconciliation:
+  latest_strict_checkpoint: phase-c
+  phase_c_boundary:
+    deployed_commit: 81a4e01
+    deployed_at_utc: 2026-07-29T12:12:04Z
+    replay_load_from_utc: 2026-07-13T00:00:00Z
+    replay_from_utc: 2026-07-29T12:00:00Z
+    replay_to_utc: 2026-08-10T22:00:00Z
+    starting_capital_usdt: 83.09804366087424
+  exchange_closed_unknown_fix:
+    commit: 2704c83
+    deployed: false
+    money_path_impact: none known; notification/reconciliation classification only
+  verdict: no critical live money-path bug found in phase-C audit; backtester warmup/accounting split is now a strict checkpoint
+
+canonical_docs:
+  agent_routes: docs/agent/context_routes.yml
+  operating_rules: docs/agent/operating_rules.md
+  ai_context_system: docs/agent/ai_context_system.md
+  benchmark: docs/strategy_benchmark.md
+  backtester_regression: docs/backtester_regression.md
+  live_reconciliation: docs/execution/live_backtest_reconciliation_2026-07-28.md
+  tasks_active: docs/tasks/IN_PROGRESS.md
+  tasks_backlog: docs/tasks/BACKLOG.md
+  changelog_recent: CHANGELOG.md
+  changelog_archive: CHANGELOG_ARCHIVE.md
+
+required_commands:
+  uv_agent_prefix: UV_CACHE_DIR=/tmp/uv-cache
+  full_pytest: PYTHONPATH=src uv run pytest
+  docs_context_test: PYTHONPATH=src uv run pytest tests/docs/test_agent_context_docs.py
+
+known_constraints:
+  rtk: documented but may be unavailable in this environment; use raw commands when rtk is missing
+  long_jobs: stop and hand to owner if ETA is above 3 minutes or progress is invisible
+  data_availability: fail fast or degrade explicitly; never assume candles/exchange data exist

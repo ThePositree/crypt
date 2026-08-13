@@ -490,6 +490,44 @@ def test_generate_monthly_returns_pct_keys_and_first_point_logic():
     assert mr["2026-01"]["ret_abs"] == 10.0
 
 
+def test_generate_monthly_returns_forward_fills_empty_month_abs_return():
+    df = _trades_df(
+        [
+            {
+                "entry_time": "2026-01-10 00:00:00",
+                "exit_time": "2026-01-31 12:00:00",
+                "entry_price": 100.0,
+                "exit_price": 110.0,
+                "pnl_abs": 100.0,
+                "pnl_rel": 0.1,
+                "exit_reason": "take_profit",
+                "capital_before": 1000.0,
+                "capital_after": 1100.0,
+                "holding_bars": 10,
+                "is_long": True,
+            },
+            {
+                "entry_time": "2026-03-01 00:00:00",
+                "exit_time": "2026-03-31 12:00:00",
+                "entry_price": 100.0,
+                "exit_price": 105.0,
+                "pnl_abs": 50.0,
+                "pnl_rel": 0.05,
+                "exit_reason": "take_profit",
+                "capital_before": 1100.0,
+                "capital_after": 1150.0,
+                "holding_bars": 8,
+                "is_long": True,
+            },
+        ]
+    )
+
+    mr = ResultsAnalyzer(df).generate()["monthly_returns_pct"]
+
+    assert mr["2026-02"]["ret"] == 0.0
+    assert mr["2026-02"]["ret_abs"] == 10.0
+
+
 def test_generate_counts_banked_profit_in_total_account_value():
     df = _trades_df(
         [

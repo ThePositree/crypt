@@ -1,0 +1,151 @@
+version: 1
+updated: 2026-08-11
+purpose: >
+  Deterministic first-pass routing for AI agents. Read AGENTS.md and
+  docs/state/current.yml first, then pick routes by task instead of loading all
+  markdown files.
+
+always:
+  - path: AGENTS.md
+    mode: full
+    reason: hard rules and bootstrap
+  - path: docs/agent/context_routes.yml
+    mode: full
+    reason: deterministic route selector
+  - path: docs/state/current.yml
+    mode: full
+    reason: compact current state
+
+routes:
+  live_execution:
+    match:
+      - live
+      - railway
+      - okx
+      - execution
+      - telegram
+      - position
+      - exchange
+    cards:
+      - docs/execution/live_execution.card.md
+      - docs/execution/live_backtest_reconciliation_2026-07-28.card.md
+    full_docs:
+      - docs/execution/live_execution.md
+      - docs/deploy/railway.md
+      - docs/execution/live_backtest_reconciliation_2026-07-28.md
+      - docs/execution/telegram_notifications.md
+    notes:
+      - Runtime env/config beats prose.
+      - OKX is the truth for money, fills, fees, and positions.
+
+  backtester_regression:
+    match:
+      - backtester
+      - regression
+      - phase-a
+      - phase-b
+      - phase-c
+      - replay
+      - parity
+    cards:
+      - docs/backtester_regression.card.md
+    full_docs:
+      - docs/backtester_regression.md
+      - docs/execution/live_backtest_reconciliation_2026-07-28.md
+    notes:
+      - Use phase checkpoints from docs/backtester_regression.md only.
+      - Phase C uses separate warmup/accounting via --load-from and --from.
+
+  strategy_research:
+    match:
+      - strategy
+      - benchmark
+      - optimize
+      - donor
+      - portfolio
+      - dss
+      - candidate
+      - router
+    cards:
+      - docs/strategy_benchmark.card.md
+      - docs/backtester_regression.card.md
+    full_docs:
+      - docs/strategy_benchmark.md
+      - docs/backtester/candidate_archive.md
+      - docs/archive/candidates/README.md
+      - docs/discovery/direct_signal_search_v3.md
+      - docs/strategies/incremental_router_runtime.md
+    notes:
+      - Benchmark is a reporting target, not a production veto.
+      - Owner-promoted live config remains operational truth.
+
+  docs_ai_context:
+    match:
+      - agents
+      - context
+      - docs
+      - markdown
+      - changelog
+      - archive
+      - vector
+      - image-pack
+      - card
+      - source
+    cards:
+      - docs/agent/ai_context_system.card.md
+    full_docs:
+      - docs/agent/ai_context_system.md
+      - docs/agent/context_benchmark.md
+      - docs/agent/context_benchmark_results.md
+      - docs/agent/operating_rules.md
+      - CHANGELOG.md
+      - CHANGELOG_ARCHIVE.md
+    notes:
+      - Hard rules stay as text, not embeddings or images.
+      - Vector/image retrieval can assist discovery, but cannot be source truth.
+
+  architecture_or_adr:
+    match:
+      - adr
+      - architecture
+      - component
+      - engine
+      - sink
+      - sandbox
+    cards:
+      - docs/agent/operating_rules.card.md
+    full_docs:
+      - docs/agent/operating_rules.md
+      - docs/architecture.md
+      - docs/architecture/flexible_sandbox.md
+      - docs/decisions/
+    notes:
+      - Read only ADRs relevant to the current decision.
+      - New reversible-risk trade-offs need a new ADR.
+
+  agent_operations:
+    match:
+      - task
+      - backlog
+      - in_progress
+      - command
+      - uv
+      - cache
+      - eta
+      - missing
+      - candle
+    cards:
+      - docs/agent/operating_rules.card.md
+    full_docs:
+      - docs/agent/operating_rules.md
+    notes:
+      - Use detailed operating rules for task hygiene and command policy.
+
+fallback:
+  cards:
+    - docs/agent/operating_rules.card.md
+  full_docs:
+    - docs/agent/operating_rules.md
+  search:
+    - rg --files docs
+    - rg "<task keywords>" docs src tests strategies
