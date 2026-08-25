@@ -235,3 +235,38 @@ def test_frontend_design_subsystem_has_onboarding_stop_gate() -> None:
         assert term in full
     for term in required_card_terms:
         assert term in card
+
+
+def test_frontend_design_subsystem_requires_stack_and_interaction_qa() -> None:
+    full = " ".join(
+        (ROOT / "docs/agent/frontend_design_subsystem.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    card = " ".join(
+        (ROOT / "docs/agent/frontend_design_subsystem.card.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+
+    required_full_terms = [
+        "small adaptive rounds",
+        "Do not dump every possible question at once",
+        "implementation technology is also a gated decision",
+        "Do not assume the absence of a framework requirement",
+        "narrow mobile",
+        "large desktop or wide monitor",
+        "exercise every added interactive zone",
+        "Click or activate every added button, link, tab, menu",
+    ]
+    required_card_terms = [
+        "small adaptive rounds",
+        "lightweight static stack or a framework/UI-library stack",
+        "desktop, mobile, intermediate, and large viewport breakpoints",
+        "Exercise every added interactive element",
+    ]
+
+    for term in required_full_terms:
+        assert term in full
+    for term in required_card_terms:
+        assert term in card

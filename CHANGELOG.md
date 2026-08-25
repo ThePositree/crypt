@@ -8,6 +8,15 @@ Format: newest on top, date in `YYYY-MM-DD`.
 
 ## 2026-08-25 - Frontend design subsystem
 
+- Updated frontend onboarding to ask questions in small adaptive rounds instead
+  of dumping every possible design question at once.
+- Added an explicit implementation-stack gate for new site/app work when the
+  repository does not already establish the stack, so agents ask about static
+  versus framework/UI-library preferences instead of assuming.
+- Tightened rendered QA requirements: new site/app work must check more than
+  one desktop/mobile pair, include large-screen breakpoints when relevant, and
+  exercise every added interactive element, button, link, and post-interaction
+  state.
 - Tightened the frontend subsystem with explicit non-negotiable onboarding
   gates: agents must stop before implementation for a new frontend/product when
   Design Identity is not established, unless the owner waives onboarding or

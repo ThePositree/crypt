@@ -72,6 +72,13 @@ Do not convert a test of this methodology into a production frontend artifact.
 When the owner appears to be testing agent behavior, explain the gated next step
 and wait for the required input instead of silently implementing.
 
+For a new site, app, or major frontend surface, implementation technology is
+also a gated decision. If the existing repository does not clearly establish the
+frontend stack, ask whether the owner wants a lightweight static implementation,
+a framework-based app, specific UI libraries, or another stack preference before
+choosing. Do not assume the absence of a framework requirement means that heavy
+frameworks or UI libraries are unwanted.
+
 ## First-Use Discovery
 
 Before establishing new frontend rules for a project, inspect the repository and
@@ -139,6 +146,18 @@ custom option. The suggestions are conveniences, not restrictions.
 
 Abstract visual or emotional questions must include examples. The owner should
 not need design expertise to participate.
+
+Ask design onboarding questions in small adaptive rounds. The first round should
+cover only the highest-leverage unknowns. After the owner answers, synthesize
+what was learned, identify the remaining uncertainty, and ask the next useful
+round. Do not dump every possible question at once. Later questions should
+depend on earlier answers so the agent can build a more accurate product model.
+
+For a new site/app, include implementation-stack preferences in an early round
+when the repository does not already decide them. Clarify whether the owner
+wants static HTML/CSS/JS, a frontend framework, a design-system/UI library,
+charts/tables/forms libraries, animation libraries, or constraints such as
+deployment target and maintainability expectations.
 
 ## Preliminary Identity
 
@@ -381,6 +400,14 @@ Implementation must respect:
 - Design Decisions;
 - existing project conventions.
 
+Before implementing a new site/app or major frontend surface, the selected
+stack must be supported by one of:
+
+- clear existing repository convention;
+- explicit owner preference;
+- a documented trade-off in `docs/frontend/decisions/`;
+- an explicit owner waiver allowing the agent to choose.
+
 Keep workflow proportional:
 
 ```text
@@ -400,6 +427,25 @@ tests succeed.
 Run the application, render the real UI, inspect it with available browser,
 screenshot, multimodal, or equivalent capability, fix problems, and inspect
 again when needed.
+
+Rendered QA must cover viewport sizes that are meaningful for the layout, not
+only one desktop and one mobile width. At minimum for a new site/app, check:
+
+- narrow mobile;
+- wide mobile or small tablet;
+- tablet or narrow desktop;
+- normal desktop;
+- large desktop or wide monitor when content has a max-width, sidebar, rail,
+  canvas, dashboard grid, or hero composition.
+
+Record the checked viewport sizes in the review notes when the review is
+durable.
+
+Rendered QA must also exercise every added interactive zone, not just verify
+that it is visible. Click or activate every added button, link, tab, menu,
+toggle, form control, carousel control, and other focusable/clickable element.
+Verify the resulting state, navigation target, URL/hash, enabled/disabled
+behavior, focus state, error state, and console output as relevant.
 
 ## Visual Review Protocol
 
@@ -424,6 +470,10 @@ Evaluate relevant dimensions:
 - Anti-Identity violations;
 - consistency with positive references;
 - accidental resemblance to rejected references.
+- all added interactive elements are exercised and their post-interaction state
+  is checked;
+- all added links and buttons either perform the intended action or are
+  intentionally disabled/placeholder states documented in the screen contract.
 
 One final review question should be: is this merely a clean interface, or does
 it clearly belong to this particular product?

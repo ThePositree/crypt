@@ -16,6 +16,12 @@ Core lifecycle:
   waives onboarding or prior frontend memory already proves the identity.
 - Do not fill product Design Identity, Visual Direction Boards, positive or
   negative references, or final design-system choices from agent taste alone.
+- Run design onboarding in small adaptive rounds. Ask only the next useful
+  batch of questions, then let later questions depend on the owner's answers.
+- For a new site/app or major frontend surface, explicitly ask whether the owner
+  wants a lightweight static stack or a framework/UI-library stack before
+  choosing implementation technology, unless the repo already makes that choice
+  unambiguous.
 - Use proportional design before implementation. Tiny fixes can go straight to
   implementation plus inspection; new screens and redesigns need UX modeling,
   contracts, and exploration first.
@@ -28,13 +34,18 @@ Core lifecycle:
 - Before creating components, prefer existing project components, then UI
   library primitives, then composed primitives; new primitives are last.
 - Render the real interface after implementation and visually inspect it. Code
-  compilation is not enough.
+  compilation is not enough. Check desktop, mobile, intermediate, and large
+  viewport breakpoints relevant to the layout.
+- Exercise every added interactive element: buttons, links, tabs, menus, forms,
+  toggles, keyboard/focus states, and post-interaction behavior.
 
 Visual review rubric:
 
 - hierarchy, spacing, alignment, typography, density, composition;
 - component consistency, semantic color, state handling, accessibility;
-- responsive behavior on relevant device classes;
+- responsive behavior across relevant viewport sizes, including large screens
+  when the layout could stretch;
+- interaction correctness for every added clickable or focusable control;
 - consistency with Design Identity, Signature Traits, Anti-Identity, and visual
   references;
 - no unexamined AI-default UI such as excessive cards, meaningless gradients,
