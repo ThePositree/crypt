@@ -219,16 +219,21 @@ def test_frontend_design_subsystem_has_onboarding_stop_gate() -> None:
 
     required_full_terms = [
         "Non-Negotiable Gates",
-        "must not proceed to production implementation",
-        "Status: not established",
+        "frontend memory is not established",
+        "state-based gate, not only a new-site gate",
+        "first serious frontend task",
+        "owner answering the first onboarding round does not mean frontend memory is established",
+        "Do not replace the five boards with one hero image",
         "design onboarding interview",
         "five Visual Direction Boards",
         "must not fill Design Identity",
     ]
     required_card_terms = [
-        "stop after discovery",
-        "Do not implement the site/app in the same turn",
-        "Do not fill product Design Identity",
+        "If frontend memory is not established",
+        "first serious frontend task",
+        "An owner's first answer to onboarding questions is not enough",
+        "Visual exploration boards are direction studies",
+        "Do not replace the default five boards with one hero image",
     ]
 
     for term in required_full_terms:

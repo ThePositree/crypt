@@ -8,6 +8,15 @@ Format: newest on top, date in `YYYY-MM-DD`.
 
 ## 2026-08-25 - Frontend design subsystem
 
+- Reframed the frontend onboarding stop gate as state-based: when frontend
+  memory is not established, the first substantial frontend task must pause for
+  full onboarding, not only tasks labeled as new site/app work.
+- Clarified that the owner's first answer to onboarding questions does not
+  establish frontend memory; agents must continue through product surface,
+  adaptive interview, preliminary identity, visual exploration, owner feedback,
+  final identity, and design system before implementation unless waived.
+- Clarified that Visual Direction Boards are direction studies for owner
+  feedback and cannot be replaced by one production hero image or site asset.
 - Added Product Knowledge Discovery, Product Surface Model, and Product
   Completeness Review so substantial frontend work first determines what users
   must understand and do before visual screen design begins.

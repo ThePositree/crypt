@@ -50,32 +50,62 @@ One check does not replace another.
 
 ## Non-Negotiable Gates
 
-For a new frontend/product or major redesign, the agent must not proceed to
-production implementation when `docs/frontend/design-identity.md` is still
-`Status: not established`, unless one of these is true:
+For substantial frontend work, the agent must not proceed to production
+implementation when frontend memory is not established. This is a state-based
+gate, not only a new-site gate. It applies to the first serious frontend task in
+the repository even when the user asks for something that sounds implementable
+immediately.
+
+Frontend memory is not established when any of the durable foundations needed
+for the task are still placeholders, for example:
+
+- `docs/frontend/product-surface-model.md` is `Status: not established`;
+- `docs/frontend/design-identity.md` is `Status: not established`;
+- `docs/frontend/design-system.md` is `Status: not established`;
+- visual references are absent for a task that needs visual direction;
+- relevant screen contracts or design decisions are missing for a task that
+  needs them.
+
+The agent may proceed only when one of these is true:
 
 - the owner explicitly waives design onboarding for this task;
-- prior frontend memory already contains enough project-specific identity,
-  visual references, design-system rules, and screen contracts to support the
-  change.
+- existing frontend memory already contains enough project-specific product
+  surface, identity, visual references, design-system rules, and screen
+  contracts to support the change.
 
-If neither condition is true, the correct output is not a site or app. The
+If neither condition is true, the correct output is not implementation. The
 correct output is:
 
 1. repository frontend discovery;
-2. a short statement that Design Identity is not established;
-3. a design onboarding interview with examples for abstract questions;
-4. no production frontend implementation yet.
+2. product knowledge discovery;
+3. a short statement that frontend memory is not established;
+4. the next adaptive design onboarding interview round with examples for
+   abstract questions;
+5. no production frontend implementation yet.
+
+The owner answering the first onboarding round does not mean frontend memory is
+established. After the first answer, the agent must synthesize what was learned,
+identify remaining uncertainty, continue the adaptive interview as needed,
+draft or update the Product Surface Model, draft preliminary Design Identity,
+perform visual exploration when the task needs visual direction, collect owner
+feedback, finalize Design Identity and Design System, and only then implement.
 
 Agents must not fill Design Identity, Visual Direction Boards, selected or
 rejected references, or final design-system choices from their own taste alone.
 Those artifacts require owner answers, inferred existing product evidence, or
 explicit owner approval.
 
-After the owner answers the interview, the next gate is visual exploration. For
-new frontend/product onboarding, generate the default five Visual Direction
-Boards before finalizing Design Identity, unless the owner explicitly skips or
-narrows that stage.
+After the owner answers enough interview rounds to support a preliminary
+identity, the next gate is visual exploration. For first-time frontend
+onboarding or any substantial task that needs visual direction, generate the
+default five Visual Direction Boards before finalizing Design Identity, unless
+the owner explicitly skips or narrows that stage.
+
+Visual Direction Boards are direction studies for owner feedback. They are not
+production assets. Do not replace the five boards with one hero image, one
+illustration, one mockup, or an asset intended directly for the site/app. After
+presenting boards, stop for owner selection, mixing, rejection, or correction
+before finalizing Design Identity and implementing.
 
 Do not convert a test of this methodology into a production frontend artifact.
 When the owner appears to be testing agent behavior, explain the gated next step

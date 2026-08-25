@@ -10,10 +10,13 @@ Core lifecycle:
 
 - Classify the frontend change by depth: visual bug, small UI modification, new
   component, new section, new screen, major redesign, or new frontend/product.
-- For a new frontend/product or major redesign with no established Design
-  Identity, stop after discovery and ask the owner for design onboarding input.
-  Do not implement the site/app in the same turn unless the owner explicitly
-  waives onboarding or prior frontend memory already proves the identity.
+- If frontend memory is not established, stop substantial frontend work after
+  discovery and run full onboarding before implementation. This applies to the
+  first serious frontend task in the repository, not only to a new site/app.
+- An owner's first answer to onboarding questions is not enough to establish
+  frontend memory. Continue adaptive interview, Product Surface Model,
+  preliminary identity, visual exploration, feedback, final identity, and design
+  system before implementation unless the owner explicitly waives steps.
 - Do not fill product Design Identity, Visual Direction Boards, positive or
   negative references, or final design-system choices from agent taste alone.
 - Run design onboarding in small adaptive rounds. Ask only the next useful
@@ -32,6 +35,8 @@ Core lifecycle:
   for unresolved choices that cannot reasonably be inferred.
 - If product design identity is not established, run a deep one-time design
   onboarding before major UI work.
+- Visual exploration boards are direction studies for owner feedback, not
+  production assets. Do not replace the default five boards with one hero image.
 - Persist the resulting design identity, system, references, screen contracts,
   component registry, decisions, and reviews under `docs/frontend/`.
 - Before creating components, prefer existing project components, then UI
