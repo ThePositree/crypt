@@ -8,6 +8,10 @@ Format: newest on top, date in `YYYY-MM-DD`.
 
 ## 2026-08-25 - Frontend design subsystem
 
+- Clarified that first-time frontend onboarding is deep, not short: agents must
+  not describe it as quick/brief/lightweight, must ask 30 total questions in 6
+  adaptive rounds of 5, and must not promise implementation immediately after
+  the owner's next answer while frontend memory is still unestablished.
 - Reframed the frontend onboarding stop gate as state-based: when frontend
   memory is not established, the first substantial frontend task must pause for
   full onboarding, not only tasks labeled as new site/app work.
@@ -26,8 +30,8 @@ Format: newest on top, date in `YYYY-MM-DD`.
 - Split final substantial frontend verification into Functional QA, Visual QA,
   and Product Completeness Review, with each check covering a different failure
   mode.
-- Updated frontend onboarding to ask questions in small adaptive rounds instead
-  of dumping every possible design question at once.
+- Updated frontend onboarding to ask questions in adaptive 5-question rounds
+  instead of dumping every possible design question at once.
 - Added an explicit implementation-stack gate for new site/app work when the
   repository does not already establish the stack, so agents ask about static
   versus framework/UI-library preferences instead of assuming.

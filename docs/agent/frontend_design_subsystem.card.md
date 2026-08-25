@@ -19,8 +19,14 @@ Core lifecycle:
   system before implementation unless the owner explicitly waives steps.
 - Do not fill product Design Identity, Visual Direction Boards, positive or
   negative references, or final design-system choices from agent taste alone.
-- Run design onboarding in small adaptive rounds. Ask only the next useful
-  batch of questions, then let later questions depend on the owner's answers.
+- First-time frontend onboarding is deep, not short: 30 questions total,
+  delivered as 6 adaptive rounds of 5 questions. Do not describe it as quick,
+  brief, or lightweight. Do not ask all 30 at once.
+- The agent chooses each round's 5 questions dynamically from product context
+  and prior answers; there is no fixed questionnaire.
+- Do not promise implementation immediately after the owner's next answer while
+  frontend memory is still not established. Promise the next onboarding step,
+  synthesis, visual exploration, or persistence step instead.
 - For a new site/app or major frontend surface, explicitly ask whether the owner
   wants a lightweight static stack or a framework/UI-library stack before
   choosing implementation technology, unless the repo already makes that choice
@@ -70,5 +76,4 @@ Visual review rubric:
 Final check:
 
 - Ask whether the UI merely looks clean or clearly belongs to this product.
-- Ask whether removing CSS would still leave a complete useful product surface
-  for the requested scope.
+- Ask whether removing CSS would still leave a complete useful product surface.

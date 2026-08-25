@@ -90,6 +90,23 @@ draft or update the Product Surface Model, draft preliminary Design Identity,
 perform visual exploration when the task needs visual direction, collect owner
 feedback, finalize Design Identity and Design System, and only then implement.
 
+First-time frontend onboarding is deep, not short. Do not describe it as quick,
+brief, lightweight, or a short round. The agent should set expectations that
+this is a multi-step discovery process because the repository has no established
+frontend memory yet.
+
+The full first-time onboarding interview is 30 questions total, delivered as 6
+adaptive rounds of 5 questions. Do not ask all 30 questions at once. Do not stop
+after one round unless the owner explicitly waives the rest of onboarding. The
+agent decides the exact 5 questions in each round dynamically from repository
+context, product knowledge, previous answers, and remaining uncertainty. There
+is no fixed questionnaire.
+
+Do not promise implementation immediately after the owner's next answer while
+frontend memory is still not established. The next owner answer can advance the
+process, but it does not automatically unlock implementation. Promise the next
+onboarding step, synthesis, visual exploration, or persistence step instead.
+
 Agents must not fill Design Identity, Visual Direction Boards, selected or
 rejected references, or final design-system choices from their own taste alone.
 Those artifacts require owner answers, inferred existing product evidence, or
@@ -282,11 +299,15 @@ custom option. The suggestions are conveniences, not restrictions.
 Abstract visual or emotional questions must include examples. The owner should
 not need design expertise to participate.
 
-Ask design onboarding questions in small adaptive rounds. The first round should
-cover only the highest-leverage unknowns. After the owner answers, synthesize
-what was learned, identify the remaining uncertainty, and ask the next useful
-round. Do not dump every possible question at once. Later questions should
-depend on earlier answers so the agent can build a more accurate product model.
+Ask design onboarding questions in the 6-round / 5-question protocol defined in
+Non-Negotiable Gates. Each round should cover the highest-leverage remaining
+unknowns across product purpose, audience, desired surface, visual direction,
+stack constraints, references, and success criteria. The first round must be 5
+questions, not a token three-question preflight. After each owner answer,
+synthesize what was learned, identify the remaining uncertainty, and ask the
+next 5-question round. Do not dump every possible question at once. Later rounds
+must depend on earlier answers so the agent can build a more accurate product
+model.
 
 For a new site/app, include implementation-stack preferences in an early round
 when the repository does not already decide them. Clarify whether the owner

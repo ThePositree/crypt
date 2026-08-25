@@ -223,6 +223,11 @@ def test_frontend_design_subsystem_has_onboarding_stop_gate() -> None:
         "state-based gate, not only a new-site gate",
         "first serious frontend task",
         "owner answering the first onboarding round does not mean frontend memory is established",
+        "First-time frontend onboarding is deep, not short",
+        "30 questions total, delivered as 6 adaptive rounds of 5 questions",
+        "Do not ask all 30 questions at once",
+        "There is no fixed questionnaire",
+        "Do not promise implementation immediately after the owner's next answer",
         "Do not replace the five boards with one hero image",
         "design onboarding interview",
         "five Visual Direction Boards",
@@ -232,6 +237,10 @@ def test_frontend_design_subsystem_has_onboarding_stop_gate() -> None:
         "If frontend memory is not established",
         "first serious frontend task",
         "An owner's first answer to onboarding questions is not enough",
+        "First-time frontend onboarding is deep, not short",
+        "30 questions total",
+        "6 adaptive rounds of 5 questions",
+        "Do not promise implementation immediately after the owner's next answer",
         "Visual exploration boards are direction studies",
         "Do not replace the default five boards with one hero image",
     ]
@@ -255,8 +264,9 @@ def test_frontend_design_subsystem_requires_stack_and_interaction_qa() -> None:
     )
 
     required_full_terms = [
-        "small adaptive rounds",
+        "6-round / 5-question protocol",
         "Do not dump every possible question at once",
+        "not a token three-question preflight",
         "implementation technology is also a gated decision",
         "Do not assume the absence of a framework requirement",
         "narrow mobile",
@@ -265,7 +275,7 @@ def test_frontend_design_subsystem_requires_stack_and_interaction_qa() -> None:
         "Click or activate every added button, link, tab, menu",
     ]
     required_card_terms = [
-        "small adaptive rounds",
+        "6 adaptive rounds of 5 questions",
         "lightweight static stack or a framework/UI-library stack",
         "desktop, mobile, intermediate, and large viewport breakpoints",
         "Exercise every added interactive element",
