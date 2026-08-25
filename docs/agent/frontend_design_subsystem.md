@@ -1,0 +1,522 @@
+# Frontend Design Subsystem
+
+This document defines the portable frontend design workflow for AI agents in
+this repository. It is framework-agnostic: use the browser, screenshot,
+multimodal, image-generation, component-library, and test tools available in the
+current environment, but do not make the process depend on one vendor, UI
+library, framework, or agent harness.
+
+The subsystem exists to preserve visual quality, product-specific identity,
+cross-session consistency, and the reasoning behind frontend decisions.
+
+## Process Depth
+
+Meaningful frontend work must separate design from implementation. Use this
+lifecycle, with depth proportional to risk and scope:
+
+```text
+DESIGN
+  |
+IMPLEMENT
+  |
+RENDER
+  |
+INSPECT
+  |
+FIX
+```
+
+Classify frontend tasks before acting:
+
+- visual bug;
+- small UI modification;
+- new component;
+- new section;
+- new screen;
+- major redesign;
+- new frontend/product.
+
+Tiny changes should not trigger a full ceremony. New screens, major redesigns,
+or a new frontend/product should.
+
+## First-Use Discovery
+
+Before establishing new frontend rules for a project, inspect the repository and
+infer existing decisions without asking the owner by default.
+
+Identify:
+
+- frontend framework;
+- styling approach;
+- UI libraries and local primitives;
+- design tokens, CSS variables, themes, and dark/light behavior;
+- typography;
+- icon libraries;
+- form, chart, table, animation, and visualization libraries;
+- responsive conventions;
+- layout patterns;
+- assets and imagery;
+- Storybook or similar component documentation;
+- established screen and component patterns;
+- apparent legacy areas, migrations, and inconsistencies.
+
+Stable, actively used choices are intentional by default. Continue an obvious
+local stack without asking. Ask only when evidence shows a meaningful unresolved
+choice, such as competing active UI libraries, an unfinished migration, strong
+legacy/current conflicts, or genuinely ambiguous brand direction.
+
+```text
+INFER
+  |
+ASK ONLY WHAT CANNOT REASONABLY BE INFERRED
+  |
+PERSIST
+```
+
+Persist inferred decisions in `docs/frontend/context.md`.
+
+## Design Onboarding
+
+When the project lacks a sufficiently established design identity and the task
+is significant, run a deep one-time design onboarding before implementation.
+Do not use a fixed questionnaire or a fixed number of questions. Generate
+questions dynamically for the product and adapt follow-ups to the owner's
+answers.
+
+Understand:
+
+- product purpose and domain;
+- target audience and expertise;
+- usage frequency and context;
+- product character and desired emotional response;
+- visual personality;
+- information density;
+- calm versus energetic, restrained versus expressive, conventional versus
+  experimental, utilitarian versus premium, human versus clinical;
+- desired and undesired associations;
+- visual references and what is liked or disliked in them;
+- platform and device priorities;
+- content and data characteristics;
+- motion, imagery, illustration, and iconography direction;
+- brand constraints;
+- accessibility expectations.
+
+When useful, offer several meaningfully different suggested answers plus a free
+custom option. The suggestions are conveniences, not restrictions.
+
+Abstract visual or emotional questions must include examples. The owner should
+not need design expertise to participate.
+
+## Preliminary Identity
+
+After the verbal interview, synthesize a preliminary Design Identity. It is not
+final; it is the input to visual exploration.
+
+The preliminary identity should explain why this product should look and feel
+the way it does. It can cover core feeling, personality, desired perception,
+visual tension, associations, anti-associations, density, expression, utility
+versus personality, and possible signature traits.
+
+## Visual Exploration
+
+Visual exploration is the final interactive onboarding stage. Use available
+image-generation or visual tools when useful. The default is five Visual
+Direction Boards.
+
+The boards are not five finished versions of the same website or screen. They
+are visual-language studies combining, as relevant:
+
+- moodboard signals;
+- miniature design-system exploration;
+- representative UI fragments;
+- typography study;
+- color and surface study;
+- geometry study;
+- density and rhythm study;
+- imagery or illustration direction;
+- iconographic direction;
+- one or more representative interface fragments.
+
+All five boards must remain plausible interpretations of the owner's answers
+and preliminary identity. Variation should be meaningful, not random. Explore
+composition, typography, density, geometry, surfaces, hierarchy, navigation,
+data presentation, imagery, emphasis, and signature ideas when those axes are
+relevant. Do not hardcode named styles as required directions.
+
+The owner may select one direction, combine several, prefer individual
+properties, reject properties, reject every board, or describe what is missing.
+Treat feedback as additional design information. If all directions are rejected,
+determine why, revise the interpretation, and generate another exploration when
+useful.
+
+Persist selected and rejected boards as project knowledge in
+`docs/frontend/visual-references/interpretation.md`, separating positive and
+negative signals. Store actual image assets under
+`docs/frontend/visual-references/positive/` and
+`docs/frontend/visual-references/negative/` when assets exist.
+
+## Final Design Identity
+
+After visual exploration and owner feedback, finalize
+`docs/frontend/design-identity.md`.
+
+It should include, as relevant:
+
+- core feeling;
+- personality;
+- desired perception;
+- visual tension;
+- signature traits;
+- anti-identity.
+
+Future frontend decisions must be evaluated against this identity.
+
+## Controlled Differentiation
+
+Prevent unrelated projects from converging toward the same recognizable
+AI-generated interface. Do not randomize colors, radii, typography, or layout
+for novelty.
+
+Differentiation must emerge from:
+
+```text
+Product
++
+Audience
++
+Domain
++
+Existing Project
++
+User Preferences
++
+Design Identity
++
+Visual Exploration
++
+References
++
+Brand Constraints
+=
+Visual Direction
+```
+
+The result should be distinctive for understandable reasons.
+
+## Signature Traits And Anti-Identity
+
+The final identity should establish a small number of recognizable signature
+traits. They should appear consistently enough to create recognition without
+becoming decorative gimmicks.
+
+Also record what the product must not become. Negative constraints are valuable
+because they counter common AI-generated defaults.
+
+Examples are allowed in local identity files, but examples must not become
+global defaults.
+
+## Reference Decomposition
+
+When users provide references, decompose them into properties instead of copying
+templates.
+
+For each reference, record:
+
+- what is liked;
+- what is disliked;
+- what should not be copied;
+- which product-specific principle the reference supports.
+
+References are signals, not permission to clone another product.
+
+## Design System
+
+After Design Identity is finalized, establish or update
+`docs/frontend/design-system.md`.
+
+```text
+DESIGN IDENTITY
+      |
+DESIGN SYSTEM
+      |
+SCREENS + COMPONENTS
+```
+
+The Design System can define typography, spacing, colors, semantic color usage,
+surfaces, borders, radii, shadows/elevation, density, iconography, motion,
+forms, tables, charts, responsive principles, and semantic states.
+
+Reuse established values. Do not invent one-off visual values for every task.
+
+UI libraries are part of frontend context and must be respected, but a UI
+library is not the product Design System. The Design Identity and Design System
+determine how primitives are composed, styled, and used.
+
+## Component Reuse Protocol
+
+Before creating a new component, reason in this order:
+
+```text
+Need UI
+  |
+Existing project component?
+  |
+Existing UI-library primitive?
+  |
+Can existing primitives be composed?
+  |
+Design a new component
+  |
+Implement
+  |
+Register
+```
+
+Creating a new primitive is the last option. Record meaningful reusable
+components, purpose, location, and usage constraints in
+`docs/frontend/component-registry.md`.
+
+## UX Flows
+
+Represent navigation relationships and complex user flows separately from
+visual design. Markdown and Mermaid are sufficient for many cases.
+
+Flows answer where the user can go, under what conditions, and how. Store them
+under `docs/frontend/flows/`.
+
+## Screen Contracts
+
+Meaningful screens should have persistent Markdown contracts under
+`docs/frontend/screens/`. They serve as agent-readable UX specs, wireframes, and
+memory.
+
+A screen contract should include, as relevant:
+
+- purpose;
+- user goals;
+- primary action;
+- information hierarchy;
+- layout;
+- sections;
+- components;
+- states: loading, normal, empty, error, disabled, overflow, partial data;
+- responsive behavior;
+- visual emphasis;
+- related screens.
+
+Before materially changing a screen, update the contract when necessary, then
+implement.
+
+## Significant UI Changes
+
+For substantial new UI, do not automatically implement the first idea. Compare
+candidate approaches against Design Identity, then select, combine, or refine.
+
+Approaches should differ materially in hierarchy, composition, density,
+interaction model, or another relevant design dimension, not merely color. The
+number of alternatives is task-dependent.
+
+## Design Decisions
+
+Persist important frontend decisions under `docs/frontend/decisions/` in a
+lightweight ADR-like form:
+
+```md
+# Decision Title
+
+## Context
+
+## Decision
+
+## Consequences
+```
+
+Future agents must understand why the interface was designed this way, not only
+what it does.
+
+## Implementation Rules
+
+Only after the needed design work should agents modify production code.
+Implementation must respect:
+
+- Frontend Context;
+- Design Identity;
+- positive and negative visual references;
+- Design System;
+- Screen Contracts;
+- Component Registry;
+- Design Decisions;
+- existing project conventions.
+
+Keep workflow proportional:
+
+```text
+Tiny change -> implement -> inspect
+New component -> design -> implement states -> inspect
+New screen -> UX -> screen contract -> exploration -> implement -> inspect
+Major redesign -> deep design process -> implement -> full review
+```
+
+Avoid bureaucracy for its own sake.
+
+## Render, Inspect, Fix
+
+A frontend task is not complete merely because code compiles, lint passes, or
+tests succeed.
+
+Run the application, render the real UI, inspect it with available browser,
+screenshot, multimodal, or equivalent capability, fix problems, and inspect
+again when needed.
+
+## Visual Review Protocol
+
+Use an explicit rubric instead of asking whether the result "looks good".
+Evaluate relevant dimensions:
+
+- visual hierarchy;
+- spacing rhythm;
+- alignment;
+- typography hierarchy;
+- information density;
+- composition;
+- component consistency;
+- color semantics;
+- unnecessary decoration;
+- excessive card nesting;
+- responsive behavior;
+- loading, empty, error, disabled, overflow, and partial-data states;
+- accessibility;
+- consistency with Design Identity;
+- use of Signature Traits;
+- Anti-Identity violations;
+- consistency with positive references;
+- accidental resemblance to rejected references.
+
+One final review question should be: is this merely a clean interface, or does
+it clearly belong to this particular product?
+
+If inadequate, fix and review again.
+
+## Anti-AI-Slop Rules
+
+Do not use common AI-generated UI defaults without product-specific
+justification:
+
+- excessive rounded cards;
+- cards nested inside cards;
+- meaningless gradients;
+- decorative glow;
+- giant headings inside application screens;
+- pill-shaped elements everywhere;
+- icons beside every label;
+- arbitrary shadows;
+- excessive whitespace;
+- generic dashboard metric-card layouts;
+- generic "Welcome back" sections;
+- glassmorphism;
+- unnecessary explanatory copy.
+
+These are not absolute bans. A technique is allowed when it follows from the
+Design Identity and serves a clear purpose.
+
+## Responsive Behavior And States
+
+Responsive behavior and UI states are design work. For meaningful screens,
+account for relevant device classes such as desktop, tablet, and mobile.
+
+Components and screens should account for default, hover, focus, loading, empty,
+error, disabled, overflow, and partial-data states when those states are
+meaningful.
+
+## Persistent Frontend Memory
+
+The canonical persistent structure is:
+
+```text
+docs/frontend/
+|-- context.md
+|-- design-identity.md
+|-- design-system.md
+|-- component-registry.md
+|-- visual-references/
+|   |-- interpretation.md
+|   |-- positive/
+|   `-- negative/
+|-- flows/
+|-- screens/
+|-- decisions/
+`-- reviews/
+```
+
+Separation of responsibilities matters more than this exact file layout:
+
+- Context: what already exists;
+- Design Identity: what kind of product this is;
+- Visual References: what that identity looks like in practice;
+- Design System: technical visual rules;
+- Flows: how UX connects;
+- Screens: how individual interfaces are structured;
+- Components: reusable building blocks;
+- Decisions: why important choices were made;
+- Reviews: whether the real product still matches the intended design.
+
+## Lifecycle Summary
+
+First use:
+
+```text
+DISCOVER EXISTING FRONTEND
+        |
+INFER EXISTING DECISIONS
+        |
+DEEP DESIGN INTERVIEW
+        |
+ABSTRACT IDENTITY QUESTIONS WITH EXAMPLES
+        |
+PRELIMINARY DESIGN IDENTITY
+        |
+GENERATE 5 VISUAL DIRECTION BOARDS
+        |
+USER SELECTS / MIXES / REJECTS
+        |
+TARGETED FOLLOW-UP IF NECESSARY
+        |
+FINAL DESIGN IDENTITY
+        |
+SIGNATURE TRAITS + ANTI-IDENTITY
+        |
+DESIGN SYSTEM
+        |
+PERSIST TEXTUAL + VISUAL KNOWLEDGE
+```
+
+Every future frontend task:
+
+```text
+CLASSIFY CHANGE
+        |
+LOAD ONLY RELEVANT FRONTEND CONTEXT
+        |
+UPDATE UX / SCREEN MODEL IF NECESSARY
+        |
+EXPLORE ALTERNATIVES IF NECESSARY
+        |
+REUSE EXISTING COMPONENTS
+        |
+IMPLEMENT
+        |
+RENDER REAL INTERFACE
+        |
+VISUAL + IDENTITY REVIEW
+        |
+FIX UNTIL ACCEPTABLE
+        |
+UPDATE PERSISTENT FRONTEND KNOWLEDGE
+        |
+DONE
+```
+
+The subsystem gives agents a design process, long-term design memory, explicit
+product identity, positive and negative visual anchors, reusable design rules,
+component awareness, persistent reasoning, rendered inspection, and a feedback
+loop for correcting visual problems.

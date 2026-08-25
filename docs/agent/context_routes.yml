@@ -104,6 +104,40 @@ routes:
       - Hard rules stay as text, not embeddings or images.
       - Vector/image retrieval can assist discovery, but cannot be source truth.
 
+  frontend_design:
+    match:
+      - frontend
+      - ui
+      - ux
+      - design
+      - screen
+      - component
+      - visual
+      - responsive
+      - browser
+      - screenshot
+      - storybook
+      - shadcn
+      - lucide
+    cards:
+      - docs/agent/frontend_design_subsystem.card.md
+      - docs/agent/operating_rules.card.md
+    full_docs:
+      - docs/agent/frontend_design_subsystem.md
+      - docs/frontend/context.md
+      - docs/frontend/design-identity.md
+      - docs/frontend/design-system.md
+      - docs/frontend/component-registry.md
+      - docs/frontend/visual-references/interpretation.md
+      - docs/frontend/flows/
+      - docs/frontend/screens/
+      - docs/frontend/decisions/
+      - docs/frontend/reviews/
+    notes:
+      - Frontend work uses proportional design before implementation.
+      - Rendered visual inspection is required for meaningful UI changes.
+      - Persistent frontend memory lives under docs/frontend/.
+
   architecture_or_adr:
     match:
       - adr

@@ -6,6 +6,23 @@ Format: newest on top, date in `YYYY-MM-DD`.
 
 ---
 
+## 2026-08-25 - Frontend design subsystem
+
+- Added a portable frontend design subsystem for AI agents in
+  `docs/agent/frontend_design_subsystem.md`, covering proportional design
+  depth, first-use discovery, design onboarding, visual exploration, persistent
+  identity, component reuse, screen contracts, rendered inspection, visual
+  review, anti-AI-default UI checks, responsive behavior, and state design.
+- Added `docs/agent/frontend_design_subsystem.card.md` and routed frontend/UI
+  tasks through `docs/agent/context_routes.yml`.
+- Added persistent frontend memory scaffolding under `docs/frontend/` for
+  context, design identity, design system, component registry, visual
+  references, flows, screen contracts, decisions, and visual reviews.
+- Recorded the new canonical frontend subsystem paths in
+  `docs/state/current.yml`.
+
+---
+
 ## 2026-08-11 — Phase-C reconciliation boundary and first artifacts
 
 - Added `--load-from` to `backtester run` so live replay checks can load a
