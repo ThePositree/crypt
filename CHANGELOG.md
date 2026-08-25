@@ -8,6 +8,15 @@ Format: newest on top, date in `YYYY-MM-DD`.
 
 ## 2026-08-25 - Frontend design subsystem
 
+- Added Product Knowledge Discovery, Product Surface Model, and Product
+  Completeness Review so substantial frontend work first determines what users
+  must understand and do before visual screen design begins.
+- Added Responsive Design Pass and Responsive Transformation Reasoning:
+  responsive work must evaluate each important viewport as an intentional
+  composition, not only a layout that survived without overflow.
+- Split final substantial frontend verification into Functional QA, Visual QA,
+  and Product Completeness Review, with each check covering a different failure
+  mode.
 - Updated frontend onboarding to ask questions in small adaptive rounds instead
   of dumping every possible design question at once.
 - Added an explicit implementation-stack gate for new site/app work when the

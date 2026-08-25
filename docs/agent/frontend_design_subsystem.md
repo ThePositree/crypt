@@ -39,6 +39,15 @@ Classify frontend tasks before acting:
 Tiny changes should not trigger a full ceremony. New screens, major redesigns,
 or a new frontend/product should.
 
+For substantial new frontend work, there are three separate final questions:
+
+- Functional QA: does it work?
+- Visual QA: does it look and feel right, including every important viewport?
+- Product Completeness Review: is there enough product surface for the
+  requested scope?
+
+One check does not replace another.
+
 ## Non-Negotiable Gates
 
 For a new frontend/product or major redesign, the agent must not proceed to
@@ -114,6 +123,102 @@ PERSIST
 ```
 
 Persist inferred decisions in `docs/frontend/context.md`.
+
+## Product Knowledge Discovery
+
+For a new site/app, major redesign, or substantial new product surface, the
+agent must understand the product before deciding what screens and content
+belong in the frontend.
+
+Do not ask the owner to repeat product information that already exists in the
+repository. First search for existing product knowledge sources, such as:
+
+- `product.md` or `PRODUCT.md`;
+- `README.md`;
+- project documentation;
+- requirements and specifications;
+- project knowledge directories;
+- task context and current state docs;
+- any other obvious source of general product information.
+
+If one canonical product source exists, use it as the primary source. If several
+sources exist, identify the most authoritative and current one, use the rest as
+supporting context, and note contradictions. Ask the owner only about important
+product information that is missing, ambiguous, or contradicted.
+
+Use the same rule as frontend discovery:
+
+```text
+DISCOVER
+  |
+INFER FROM EXISTING PRODUCT KNOWLEDGE
+  |
+ASK ONLY UNRESOLVED IMPORTANT QUESTIONS
+  |
+PERSIST
+```
+
+Persist durable product-surface understanding in
+`docs/frontend/product-surface-model.md`.
+
+## Product Surface Model
+
+Before designing screens for a new site/app or substantial product surface,
+build a Product Surface Model. The model answers what the user must be able to
+do with the frontend, not only which pages the owner named.
+
+Derive the model from the actual product, requested scope, stage of the product,
+existing knowledge, and owner answers. Do not hardcode a universal set of pages
+or features.
+
+Reason in this order:
+
+```text
+Product knowledge
+  |
+User capabilities and goals
+  |
+Required content and features
+  |
+User journeys
+  |
+Information architecture
+  |
+Pages or screens
+  |
+Sections and components
+```
+
+Completeness comes before decoration. Before treating a frontend as designed,
+mentally remove the CSS and ask whether a complete useful product surface still
+remains for the requested scope. The frontend must not merely demonstrate the
+chosen visual direction. It must represent a complete useful product surface
+appropriate to the requested scope.
+
+This does not mean every MVP must become large. Completeness is proportional to
+the explicit request, product knowledge, user goals, and product stage.
+
+## Product Completeness Review
+
+For a new site/app, major redesign, or substantial product surface, run Product
+Completeness Review separately from Functional QA and Visual QA.
+
+Check whether:
+
+- primary user goals are covered;
+- important secondary goals are covered when they are in scope;
+- navigation and information architecture are complete enough;
+- necessary content is present, not only decorative or placeholder copy;
+- required core interactions exist;
+- important user journeys have sensible endpoints;
+- obvious placeholder or demo-only surfaces have been removed or explicitly
+  marked as out of scope;
+- required loading, empty, error, disabled, overflow, and partial-data states
+  exist where relevant;
+- the frontend is not merely a demonstration of the visual direction.
+
+If the answer is incomplete for the requested scope, fix the product surface,
+not only the styling.
 
 ## Design Onboarding
 
@@ -447,6 +552,51 @@ toggle, form control, carousel control, and other focusable/clickable element.
 Verify the resulting state, navigation target, URL/hash, enabled/disabled
 behavior, focus state, error state, and console output as relevant.
 
+## Responsive Design Pass
+
+Responsive design is not layout survival. A page that has no overflow,
+overlap, or broken buttons can still fail responsive design.
+
+For meaningful responsive work, run a Responsive Design Pass. Each important
+viewport should feel like an intentionally designed composition of the same
+product, not a desktop layout that CSS managed to compress.
+
+Evaluate each important viewport for:
+
+- visual hierarchy;
+- intentional composition for that width;
+- information density;
+- navigation, header, and content proportions relative to the viewport;
+- alignment and spacing rhythm;
+- interaction model fit for the device;
+- content priorities;
+- whether anything should be hidden, collapsed, moved, combined, or changed;
+- consistency with Design Identity.
+
+Use the existing structured visual critique approach. Do not try to reduce
+visual quality to a numeric formula.
+
+### Responsive Transformation Reasoning
+
+When a layout or interaction changes substantially between viewports, treat that
+transformation as a small design task.
+
+Examples of substantial transformations include:
+
+- sidebar to tabs, drawer, select, accordion, compact navigation, or another
+  mobile information architecture;
+- table to cards, rows, summaries, or a disclosure pattern;
+- toolbar to menu, segmented controls, or contextual actions;
+- multi-column layout to one column;
+- persistent controls to collapsed controls.
+
+Do not assume the most obvious technical substitution is correct. Ask which
+interaction or layout pattern best preserves the function of the original
+element at this viewport.
+
+Visual QA after implementation must inspect each important viewport as its own
+composition, not only as a regression check against desktop.
+
 ## Visual Review Protocol
 
 Use an explicit rubric instead of asking whether the result "looks good".
@@ -463,6 +613,9 @@ Evaluate relevant dimensions:
 - unnecessary decoration;
 - excessive card nesting;
 - responsive behavior;
+- responsive composition quality at each important viewport;
+- responsive transformations are justified by function, not only by available
+  CSS mechanics;
 - loading, empty, error, disabled, overflow, and partial-data states;
 - accessibility;
 - consistency with Design Identity;
@@ -518,6 +671,7 @@ The canonical persistent structure is:
 ```text
 docs/frontend/
 |-- context.md
+|-- product-surface-model.md
 |-- design-identity.md
 |-- design-system.md
 |-- component-registry.md
@@ -534,6 +688,7 @@ docs/frontend/
 Separation of responsibilities matters more than this exact file layout:
 
 - Context: what already exists;
+- Product Surface Model: what the frontend must let users understand and do;
 - Design Identity: what kind of product this is;
 - Visual References: what that identity looks like in practice;
 - Design System: technical visual rules;
@@ -551,6 +706,10 @@ First use:
 DISCOVER EXISTING FRONTEND
         |
 INFER EXISTING DECISIONS
+        |
+DISCOVER EXISTING PRODUCT KNOWLEDGE
+        |
+BUILD PRODUCT SURFACE MODEL WHEN SCOPE REQUIRES
         |
 DEEP DESIGN INTERVIEW
         |
@@ -580,6 +739,8 @@ CLASSIFY CHANGE
         |
 LOAD ONLY RELEVANT FRONTEND CONTEXT
         |
+LOAD PRODUCT SURFACE MODEL WHEN SCOPE REQUIRES
+        |
 UPDATE UX / SCREEN MODEL IF NECESSARY
         |
 EXPLORE ALTERNATIVES IF NECESSARY
@@ -590,7 +751,13 @@ IMPLEMENT
         |
 RENDER REAL INTERFACE
         |
+RESPONSIVE DESIGN PASS WHEN SCOPE REQUIRES
+        |
+FUNCTIONAL QA
+        |
 VISUAL + IDENTITY REVIEW
+        |
+PRODUCT COMPLETENESS REVIEW WHEN SCOPE REQUIRES
         |
 FIX UNTIL ACCEPTABLE
         |

@@ -125,6 +125,7 @@ routes:
     full_docs:
       - docs/agent/frontend_design_subsystem.md
       - docs/frontend/context.md
+      - docs/frontend/product-surface-model.md
       - docs/frontend/design-identity.md
       - docs/frontend/design-system.md
       - docs/frontend/component-registry.md

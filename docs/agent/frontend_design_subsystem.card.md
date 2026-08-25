@@ -25,6 +25,9 @@ Core lifecycle:
 - Use proportional design before implementation. Tiny fixes can go straight to
   implementation plus inspection; new screens and redesigns need UX modeling,
   contracts, and exploration first.
+- For a new site/app, major redesign, or substantial new product surface,
+  discover existing product knowledge before asking the owner to repeat it.
+  Build a Product Surface Model before screen design.
 - First inspect existing frontend choices and infer stable decisions. Ask only
   for unresolved choices that cannot reasonably be inferred.
 - If product design identity is not established, run a deep one-time design
@@ -36,8 +39,13 @@ Core lifecycle:
 - Render the real interface after implementation and visually inspect it. Code
   compilation is not enough. Check desktop, mobile, intermediate, and large
   viewport breakpoints relevant to the layout.
+- Run a Responsive Design Pass for meaningful responsive work. Responsive
+  design is not layout survival: each important viewport must feel intentionally
+  composed for that product and width.
 - Exercise every added interactive element: buttons, links, tabs, menus, forms,
   toggles, keyboard/focus states, and post-interaction behavior.
+- Run Functional QA, Visual QA, and Product Completeness Review as separate
+  checks when the work is substantial. One does not replace the others.
 
 Visual review rubric:
 
@@ -45,6 +53,8 @@ Visual review rubric:
 - component consistency, semantic color, state handling, accessibility;
 - responsive behavior across relevant viewport sizes, including large screens
   when the layout could stretch;
+- responsive transformations preserve hierarchy, density, priorities,
+  interaction model, spacing rhythm, and Design Identity;
 - interaction correctness for every added clickable or focusable control;
 - consistency with Design Identity, Signature Traits, Anti-Identity, and visual
   references;
@@ -55,3 +65,5 @@ Visual review rubric:
 Final check:
 
 - Ask whether the UI merely looks clean or clearly belongs to this product.
+- Ask whether removing CSS would still leave a complete useful product surface
+  for the requested scope.

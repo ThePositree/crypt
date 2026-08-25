@@ -270,3 +270,85 @@ def test_frontend_design_subsystem_requires_stack_and_interaction_qa() -> None:
         assert term in full
     for term in required_card_terms:
         assert term in card
+
+
+def test_frontend_design_subsystem_requires_product_surface_model() -> None:
+    full = " ".join(
+        (ROOT / "docs/agent/frontend_design_subsystem.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    card = " ".join(
+        (ROOT / "docs/agent/frontend_design_subsystem.card.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    model = " ".join(
+        (ROOT / "docs/frontend/product-surface-model.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+
+    required_full_terms = [
+        "Product Knowledge Discovery",
+        "Product Surface Model",
+        "DISCOVER | INFER FROM EXISTING PRODUCT KNOWLEDGE",
+        "Completeness comes before decoration",
+        "Product Completeness Review",
+        "The frontend must not merely demonstrate the chosen visual direction",
+        "Functional QA: does it work?",
+        "Visual QA: does it look and feel right",
+    ]
+    required_card_terms = [
+        "discover existing product knowledge",
+        "Build a Product Surface Model",
+        "Product Completeness Review",
+        "removing CSS would still leave a complete useful product surface",
+    ]
+    required_model_terms = [
+        "Product Knowledge Sources",
+        "User Capabilities And Goals",
+        "Required Content And Features",
+        "Information Architecture",
+        "Completeness Review",
+    ]
+
+    for term in required_full_terms:
+        assert term in full
+    for term in required_card_terms:
+        assert term in card
+    for term in required_model_terms:
+        assert term in model
+
+
+def test_frontend_design_subsystem_requires_responsive_design_pass() -> None:
+    full = " ".join(
+        (ROOT / "docs/agent/frontend_design_subsystem.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    card = " ".join(
+        (ROOT / "docs/agent/frontend_design_subsystem.card.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+
+    required_full_terms = [
+        "Responsive Design Pass",
+        "Responsive design is not layout survival",
+        "intentionally designed composition",
+        "Responsive Transformation Reasoning",
+        "Do not assume the most obvious technical substitution is correct",
+        "each important viewport as its own composition",
+    ]
+    required_card_terms = [
+        "Responsive Design Pass",
+        "Responsive design is not layout survival",
+        "intentionally composed for that product and width",
+        "responsive transformations preserve hierarchy",
+    ]
+
+    for term in required_full_terms:
+        assert term in full
+    for term in required_card_terms:
+        assert term in card
