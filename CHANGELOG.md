@@ -8,6 +8,12 @@ Format: newest on top, date in `YYYY-MM-DD`.
 
 ## 2026-08-25 - Frontend design subsystem
 
+- Tightened the frontend subsystem with explicit non-negotiable onboarding
+  gates: agents must stop before implementation for a new frontend/product when
+  Design Identity is not established, unless the owner waives onboarding or
+  prior frontend memory already proves the direction.
+- Added a docs regression test so the frontend onboarding stop gate remains
+  present in both the full subsystem document and compact card.
 - Added a portable frontend design subsystem for AI agents in
   `docs/agent/frontend_design_subsystem.md`, covering proportional design
   depth, first-use discovery, design onboarding, visual exploration, persistent

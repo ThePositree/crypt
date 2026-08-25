@@ -39,6 +39,39 @@ Classify frontend tasks before acting:
 Tiny changes should not trigger a full ceremony. New screens, major redesigns,
 or a new frontend/product should.
 
+## Non-Negotiable Gates
+
+For a new frontend/product or major redesign, the agent must not proceed to
+production implementation when `docs/frontend/design-identity.md` is still
+`Status: not established`, unless one of these is true:
+
+- the owner explicitly waives design onboarding for this task;
+- prior frontend memory already contains enough project-specific identity,
+  visual references, design-system rules, and screen contracts to support the
+  change.
+
+If neither condition is true, the correct output is not a site or app. The
+correct output is:
+
+1. repository frontend discovery;
+2. a short statement that Design Identity is not established;
+3. a design onboarding interview with examples for abstract questions;
+4. no production frontend implementation yet.
+
+Agents must not fill Design Identity, Visual Direction Boards, selected or
+rejected references, or final design-system choices from their own taste alone.
+Those artifacts require owner answers, inferred existing product evidence, or
+explicit owner approval.
+
+After the owner answers the interview, the next gate is visual exploration. For
+new frontend/product onboarding, generate the default five Visual Direction
+Boards before finalizing Design Identity, unless the owner explicitly skips or
+narrows that stage.
+
+Do not convert a test of this methodology into a production frontend artifact.
+When the owner appears to be testing agent behavior, explain the gated next step
+and wait for the required input instead of silently implementing.
+
 ## First-Use Discovery
 
 Before establishing new frontend rules for a project, inspect the repository and

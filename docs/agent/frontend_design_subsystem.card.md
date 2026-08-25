@@ -10,6 +10,12 @@ Core lifecycle:
 
 - Classify the frontend change by depth: visual bug, small UI modification, new
   component, new section, new screen, major redesign, or new frontend/product.
+- For a new frontend/product or major redesign with no established Design
+  Identity, stop after discovery and ask the owner for design onboarding input.
+  Do not implement the site/app in the same turn unless the owner explicitly
+  waives onboarding or prior frontend memory already proves the identity.
+- Do not fill product Design Identity, Visual Direction Boards, positive or
+  negative references, or final design-system choices from agent taste alone.
 - Use proportional design before implementation. Tiny fixes can go straight to
   implementation plus inspection; new screens and redesigns need UX modeling,
   contracts, and exploration first.

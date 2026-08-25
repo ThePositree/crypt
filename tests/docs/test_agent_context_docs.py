@@ -203,3 +203,35 @@ def test_agent_context_image_pack_refuses_hard_rule_docs(tmp_path: Path) -> None
 
     assert result.returncode != 0
     assert "not allowed for image-pack experiments" in result.stderr
+
+
+def test_frontend_design_subsystem_has_onboarding_stop_gate() -> None:
+    full = " ".join(
+        (ROOT / "docs/agent/frontend_design_subsystem.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    card = " ".join(
+        (ROOT / "docs/agent/frontend_design_subsystem.card.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+
+    required_full_terms = [
+        "Non-Negotiable Gates",
+        "must not proceed to production implementation",
+        "Status: not established",
+        "design onboarding interview",
+        "five Visual Direction Boards",
+        "must not fill Design Identity",
+    ]
+    required_card_terms = [
+        "stop after discovery",
+        "Do not implement the site/app in the same turn",
+        "Do not fill product Design Identity",
+    ]
+
+    for term in required_full_terms:
+        assert term in full
+    for term in required_card_terms:
+        assert term in card
