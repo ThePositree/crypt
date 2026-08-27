@@ -135,6 +135,51 @@ a framework-based app, specific UI libraries, or another stack preference before
 choosing. Do not assume the absence of a framework requirement means that heavy
 frameworks or UI libraries are unwanted.
 
+## Owner Decision Gates
+
+Some frontend phases require explicit owner feedback and cannot be completed
+autonomously. The agent must treat these states as distinct:
+
+```text
+Interview completed
+!=
+Onboarding completed
+!=
+Design approved
+!=
+Ready for implementation
+```
+
+Completing the verbal interview means only that the interview stage is done.
+It does not complete onboarding, approve design direction, approve scope, or
+authorize implementation. Onboarding is complete only after the required owner
+decision gates have passed, durable design memory has been updated, and the
+task is explicitly ready for the next phase.
+
+Minimum owner gates:
+
+- Stack Gate: for a new site or application, get explicit owner selection or
+  confirmation of the stack when the repository does not already define it.
+- Product Surface Gate: for a complete site or product surface, draft the
+  Product Surface Model, information architecture, page inventory, journeys,
+  content, and functionality, then show it to the owner for confirmation before
+  screen design or implementation.
+- Visual Direction Gate: after generating Visual Direction Boards, stop and get
+  owner feedback. The agent must not choose a direction, mix variants, finalize
+  Design Identity, create Design System, or start implementation without owner
+  response.
+- Scope/Completeness Gate: for production-ready, complete-site, or many-page
+  requests, record the first implementation scope: pages, journeys, content,
+  and functionality that are in scope.
+- Final Pre-Implementation Gate: before large implementation, show the selected
+  stack, product surface, visual direction, pages or screens, and
+  implementation plan, then wait for confirmation or explicit permission to
+  continue.
+
+Do not implement before required owner gates pass. A prior broad instruction
+such as "make the site" does not automatically waive later gates unless the
+owner explicitly says to skip them or to let the agent decide.
+
 ## Phase Handoff Strategy
 
 Large frontend tasks must be split into phases instead of attempting one
@@ -443,8 +488,9 @@ Visual exploration is the final interactive onboarding stage. Use available
 image-generation or visual tools when useful. The default is five Visual
 Direction Boards.
 
-The boards are not five finished versions of the same website or screen. They
-are visual-language studies combining, as relevant:
+Visual Direction Boards are not production assets, page illustrations, final
+site images, or five finished versions of the same website or screen. They are
+direction studies for choosing visual language, combining, as relevant:
 
 - moodboard signals;
 - miniature design-system exploration;
@@ -463,11 +509,22 @@ composition, typography, density, geometry, surfaces, hierarchy, navigation,
 data presentation, imagery, emphasis, and signature ideas when those axes are
 relevant. Do not hardcode named styles as required directions.
 
+After generating boards, the agent must stop. Visual Direction Boards require
+owner feedback before any downstream design or implementation phase. The agent
+must not:
+
+- convert boards into production assets;
+- use boards as if the direction has already been selected;
+- finalize Design Identity before owner feedback;
+- create Design System from the agent's own selected direction;
+- start implementation after boards without approval.
+
 The owner may select one direction, combine several, prefer individual
 properties, reject properties, reject every board, or describe what is missing.
 Treat feedback as additional design information. If all directions are rejected,
 determine why, revise the interpretation, and generate another exploration when
-useful.
+useful. Only after this feedback may the agent form Final Design Identity and
+Design System.
 
 Persist selected and rejected boards as project knowledge in
 `docs/frontend/visual-references/interpretation.md`, separating positive and

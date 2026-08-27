@@ -6,6 +6,22 @@ Format: newest on top, date in `YYYY-MM-DD`.
 
 ---
 
+## 2026-08-27 - Frontend owner decision gates
+
+- Added Owner Decision Gates to separate completed interviews from completed
+  onboarding, design approval, and readiness for implementation.
+- Required explicit owner confirmation for stack selection, product surface,
+  visual direction, scope/completeness, and final pre-implementation approval on
+  substantial frontend work.
+- Strengthened Visual Exploration so Visual Direction Boards require owner
+  feedback, remain direction studies rather than production assets, and cannot
+  be used to finalize Design Identity, Design System, or implementation without
+  approval.
+- Updated the compact frontend subsystem card and docs regression tests for the
+  new gate semantics.
+
+---
+
 ## 2026-08-27 - Frontend phase handoff strategy
 
 - Added Phase Handoff Strategy to the frontend design subsystem so large

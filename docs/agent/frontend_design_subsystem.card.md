@@ -2,19 +2,18 @@
 
 Full source: `docs/agent/frontend_design_subsystem.md`
 
-Use this card when a task touches frontend UX, visual design, UI components,
-screen contracts, rendered inspection, design memory, or product identity.
+Use this card when a task touches frontend UX, visual design, UI components, screen contracts, rendered inspection, design memory, or product identity.
 
 Core lifecycle:
-- Classify depth: visual bug, small UI modification, new component, new section,
-  new screen, major redesign, or new frontend/product.
+- Classify depth: visual bug, small UI modification, new component, new section, new screen, major redesign, or new frontend/product.
 - If frontend memory is not established, stop substantial frontend work after
-  discovery and run full onboarding before implementation. This applies to the
-  first serious frontend task in the repository, not only to a new site/app.
+  discovery and run full onboarding before implementation; this applies to the
+  first serious frontend task, not only a new site/app.
+- Interview completed is not onboarding completed, design approved, or ready for
+  implementation. Owner Decision Gates must pass before implementation.
 - An owner's first answer to onboarding questions is not enough to establish
-  frontend memory. Continue adaptive interview, Product Surface Model,
-  preliminary identity, visual exploration, feedback, final identity, and design
-  system before implementation unless waived.
+  frontend memory. Continue interview, Product Surface Model, visual exploration
+  and feedback, final identity, and design system unless waived.
 - Do not fill product Design Identity, Visual Direction Boards, positive or
   negative references, or final design-system choices from agent taste alone.
 - First-time frontend onboarding is deep, not short: 30 questions total,
@@ -26,7 +25,8 @@ Core lifecycle:
   synthesis, visual exploration, or persistence step instead.
 - For a new site/app or major frontend surface, ask whether the owner wants a
   lightweight static stack or a framework/UI-library stack unless the repo
-  already decides.
+  already decides; this is the Stack Gate.
+- Product Surface, Visual Direction, Scope/Completeness, and Final Pre-Implementation Gates require owner confirmation for substantial work.
 - Large frontend tasks must be split into phases when onboarding, product
   modeling, design, implementation, and QA would overload active context; use
   Phase Handoff Strategy for production-ready sites/apps, many screens, major
@@ -47,8 +47,8 @@ Core lifecycle:
   for unresolved choices.
 - If product design identity is not established, run a deep one-time design
   onboarding before major UI work.
-- Visual exploration boards are direction studies for owner feedback, not
-  production assets. Do not replace the default five boards with one hero image.
+- Visual exploration boards are direction studies; Visual Direction Boards require owner feedback and are not production assets. Do not replace the default five boards with one hero image.
+- Do not finalize Design Identity before owner feedback or implement before required owner gates pass.
 - Persist design identity, system, references, screen contracts, component
   registry, decisions, and reviews under `docs/frontend/`.
 - Before creating components, prefer existing project components, then UI

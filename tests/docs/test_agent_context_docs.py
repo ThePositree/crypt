@@ -410,3 +410,43 @@ def test_frontend_design_subsystem_requires_phase_handoff_strategy() -> None:
         assert term in full
     for term in required_card_terms:
         assert term in card
+
+
+def test_frontend_design_subsystem_requires_owner_decision_gates() -> None:
+    full = " ".join(
+        (ROOT / "docs/agent/frontend_design_subsystem.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    card = " ".join(
+        (ROOT / "docs/agent/frontend_design_subsystem.card.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+
+    required_full_terms = [
+        "Owner Decision Gates",
+        "Interview completed != Onboarding completed != Design approved != Ready for implementation",
+        "Stack Gate",
+        "Product Surface Gate",
+        "Visual Direction Gate",
+        "Scope/Completeness Gate",
+        "Final Pre-Implementation Gate",
+        "Visual Direction Boards require owner feedback",
+        "Visual Direction Boards are not production assets",
+        "finalize Design Identity before owner feedback",
+        "Do not implement before required owner gates pass",
+    ]
+    required_card_terms = [
+        "Interview completed is not onboarding completed",
+        "Owner Decision Gates",
+        "Visual Direction Boards require owner feedback",
+        "not production assets",
+        "Do not finalize Design Identity before owner feedback",
+        "implement before required owner gates pass",
+    ]
+
+    for term in required_full_terms:
+        assert term in full
+    for term in required_card_terms:
+        assert term in card
