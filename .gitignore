@@ -39,6 +39,7 @@ node_modules/
 .next/
 out/
 pnpm-debug.log*
+next-env.d.ts
 
 # Project data (runtime artefacts — root-level only, not src/crypt/data/)
 /data/
