@@ -6,6 +6,22 @@ Format: newest on top, date in `YYYY-MM-DD`.
 
 ---
 
+## 2026-08-27 - Public docs site
+
+- Added a local Next.js/Tailwind public documentation site for `crypt` with a
+  pastel lo-fi Cartoon Execution Room identity, generated hero illustration,
+  curated docs routes, sidebar navigation, full-text search, safety callouts,
+  syntax-styled code blocks, and web-native runtime/architecture diagrams.
+- Copied curated source-backed markdown into `content/docs/` for public docs
+  pages while keeping changelog, task files, secrets, private runtime state, and
+  unpublished operational details out of the site.
+- Added frontend tooling with `pnpm`, `oxlint`, `oxfmt`, Ultracite, and local
+  validation scripts, plus README commands for running the docs site locally.
+- Updated frontend component registry with the implemented docs shell,
+  markdown renderer, search, navigation, callout, and diagram components.
+
+---
+
 ## 2026-08-27 - Frontend owner decision gates
 
 - Added Owner Decision Gates to separate completed interviews from completed

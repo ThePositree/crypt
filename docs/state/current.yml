@@ -3,8 +3,16 @@ updated: 2026-08-11
 
 project:
   name: crypt
-  shape: research workbench plus live OKX execution for owner-selected crypto perpetual strategies
+  shape: research workbench plus live OKX execution for owner-selected crypto perpetual strategies, with a local public documentation site
   language_policy: English in code/docs, Russian in owner chat
+
+frontend:
+  active_surface: local public documentation site
+  stack: Next.js, Tailwind CSS, pnpm, oxlint, oxfmt, Ultracite
+  content_source: curated markdown copied or transformed into content/docs
+  visual_direction: pastel lo-fi Cartoon Execution Room
+  local_dev_command: pnpm dev
+  deployment_status: local-only; not deployed by default
 
 runtime_truth:
   live_config_source: EXECUTION_STRATEGY_CONFIG and loaded runtime env

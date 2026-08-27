@@ -35,8 +35,6 @@ configuration disagree, stop and ask the owner instead of guessing.
 - `pandas`, `pyarrow`, `pydantic` v2
 - `APScheduler`, `aiogram`, `loguru`
 - `pytest`, `ruff`, `mypy`
-- Local public docs site: Next.js, Tailwind CSS, `pnpm`, `oxlint`, `oxfmt`,
-  Ultracite.
 
 ## Setup
 
@@ -122,21 +120,3 @@ uv run pytest tests -q
 
 Do not run long research commands silently. Any command expected to take more
 than roughly one minute must expose progress and ETA.
-
-## Local docs site
-
-The repository includes a local-only public documentation site for curated
-project docs. It is not deployed by default.
-
-```bash
-pnpm install
-pnpm dev
-```
-
-Validation:
-
-```bash
-pnpm lint
-pnpm format
-pnpm build
-```
