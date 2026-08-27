@@ -135,6 +135,118 @@ a framework-based app, specific UI libraries, or another stack preference before
 choosing. Do not assume the absence of a framework requirement means that heavy
 frameworks or UI libraries are unwanted.
 
+## Phase Handoff Strategy
+
+Large frontend tasks must be split into phases instead of attempting one
+continuous pass in an overloaded context. The agent should determine the phases
+from the requested scope, but common phase boundaries include:
+
+- product understanding and onboarding;
+- Product Surface Model and information architecture;
+- Design Identity and Visual Exploration;
+- Design System and screen contracts;
+- implementation work units;
+- responsive, functional, visual, and product completeness QA.
+
+Use phase handoff for large frontend tasks, including:
+
+- a new production-ready site or application;
+- many pages or screens in one request;
+- first frontend onboarding, design identity, and implementation in one task;
+- major redesigns;
+- frontend plus backend surface work in one task;
+- any task where onboarding, product model, design, implementation, and QA are
+  all in scope;
+- any situation where the agent expects active context to become too large.
+
+Do not force phase handoff onto small work. Tiny visual fixes, small UI
+modifications, and narrow component changes should continue to use the
+proportional workflow unless context is already overloaded.
+
+At the end of each phase, create a durable handoff artifact only when there is a
+next phase or the work must continue in a new session or subagent. If the
+entire frontend task is complete, do not create a handoff unless the current
+workflow needs a temporary transition report.
+
+The handoff must record:
+
+- which phase was completed;
+- what was done;
+- decisions made;
+- canonical files created or updated;
+- open questions;
+- goal of the next phase;
+- files and instruction documents the next phase must read;
+- files and instruction documents the next phase must not load without need;
+- important constraints, risks, and context;
+- what is the source of truth going forward.
+
+Raw conversation from the previous phase must not be the only source of truth.
+Every important decision, constraint, result, product fact, design fact, or
+implementation contract that must survive the phase must be persisted to a
+canonical project file, such as product documentation,
+`docs/frontend/product-surface-model.md`, `docs/frontend/design-identity.md`,
+`docs/frontend/design-system.md`, screen contracts, component registry, design
+decisions, `docs/state/current.yml`, `CHANGELOG.md`, or another appropriate
+durable document.
+
+Handoff files are temporary technical artifacts. They are not permanent design
+memory and must not become the only place where important information lives.
+The next phase, subagent, or fresh session must read the handoff first, then
+read the required files listed inside it. After the next phase has consumed the
+handoff and moved or confirmed all durable information in canonical files, it
+must delete the consumed handoff file. If a handoff only supports transition
+between phases, it must be deleted after the final phase completes.
+
+Do not leave old handoff files in the project "just in case." Keeping handoff
+history for audit or debugging requires a separate documented decision. Before
+ending any large frontend task, verify that no temporary frontend handoff files
+remain unless such retention is explicitly allowed by a documented decision.
+
+When choosing how to continue after a phase, use this priority:
+
+1. durable phase output and canonical files;
+2. isolated subagent, if supported and reliable;
+3. fresh user session handoff;
+4. continue in the current session only if context remains manageable.
+
+If subagents are available, the agent knows how to use them, the current tools
+and instructions support them, and the agent can reliably control their context,
+prefer assigning the next phase to an isolated subagent. This is an optional
+optimization, not a dependency of the subsystem.
+
+The subagent prompt must include:
+
+- output of the current phase;
+- path to the handoff artifact;
+- next phase goal;
+- required instruction files for that phase;
+- relevant project state files;
+- instruction not to load unrelated previous-phase methodology without need;
+- requirement to create the same durable handoff if another phase remains;
+- requirement to delete the consumed handoff after durable information is
+  persisted to canonical files;
+- requirement to either delegate the next phase to a new isolated subagent when
+  phases remain and subagents are available, or report completion to the owner.
+
+If subagents are not available, not understood, not reliable, or not controllable
+in the current environment, the agent must not silently continue the next large
+phase in an overloaded context. It should finish the current phase, write the
+handoff, and tell the owner to open a new session with a short practical
+instruction such as:
+
+```text
+Phase complete. Handoff saved at <path>. To avoid overloading context, open a
+new session and write: Continue from <path> and perform the next phase using the
+required instructions listed there.
+```
+
+The agent must not pretend it can remove previous conversation history from
+context. It can stop treating raw conversation as source of truth, persist
+canonical state, use a fresh session, use harness compaction when available, or
+use an isolated subagent when available. It cannot physically delete already
+loaded conversation history by instruction.
+
 ## First-Use Discovery
 
 Before establishing new frontend rules for a project, inspect the repository and
@@ -788,6 +900,8 @@ Every future frontend task:
 ```text
 CLASSIFY CHANGE
         |
+SPLIT LARGE FRONTEND TASKS INTO PHASES WHEN CONTEXT WOULD GROW TOO LARGE
+        |
 LOAD ONLY RELEVANT FRONTEND CONTEXT
         |
 LOAD PRODUCT SURFACE MODEL WHEN SCOPE REQUIRES
@@ -813,6 +927,8 @@ PRODUCT COMPLETENESS REVIEW WHEN SCOPE REQUIRES
 FIX UNTIL ACCEPTABLE
         |
 UPDATE PERSISTENT FRONTEND KNOWLEDGE
+        |
+DELETE CONSUMED TEMPORARY HANDOFFS WHEN PHASED WORK IS COMPLETE
         |
 DONE
 ```

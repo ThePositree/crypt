@@ -3,77 +3,77 @@
 Full source: `docs/agent/frontend_design_subsystem.md`
 
 Use this card when a task touches frontend UX, visual design, UI components,
-screen contracts, rendered inspection, design memory, or product-specific
-interface identity.
+screen contracts, rendered inspection, design memory, or product identity.
 
 Core lifecycle:
-
-- Classify the frontend change by depth: visual bug, small UI modification, new
-  component, new section, new screen, major redesign, or new frontend/product.
+- Classify depth: visual bug, small UI modification, new component, new section,
+  new screen, major redesign, or new frontend/product.
 - If frontend memory is not established, stop substantial frontend work after
   discovery and run full onboarding before implementation. This applies to the
   first serious frontend task in the repository, not only to a new site/app.
 - An owner's first answer to onboarding questions is not enough to establish
   frontend memory. Continue adaptive interview, Product Surface Model,
   preliminary identity, visual exploration, feedback, final identity, and design
-  system before implementation unless the owner explicitly waives steps.
+  system before implementation unless waived.
 - Do not fill product Design Identity, Visual Direction Boards, positive or
   negative references, or final design-system choices from agent taste alone.
 - First-time frontend onboarding is deep, not short: 30 questions total,
-  delivered as 6 adaptive rounds of 5 questions. Do not describe it as quick,
-  brief, or lightweight. Do not ask all 30 at once.
+  delivered as 6 adaptive rounds of 5 questions. Do not ask all 30 at once.
 - The agent chooses each round's 5 questions dynamically from product context
   and prior answers; there is no fixed questionnaire.
 - Do not promise implementation immediately after the owner's next answer while
   frontend memory is still not established. Promise the next onboarding step,
   synthesis, visual exploration, or persistence step instead.
-- For a new site/app or major frontend surface, explicitly ask whether the owner
-  wants a lightweight static stack or a framework/UI-library stack before
-  choosing implementation technology, unless the repo already makes that choice
-  unambiguous.
+- For a new site/app or major frontend surface, ask whether the owner wants a
+  lightweight static stack or a framework/UI-library stack unless the repo
+  already decides.
+- Large frontend tasks must be split into phases when onboarding, product
+  modeling, design, implementation, and QA would overload active context; use
+  Phase Handoff Strategy for production-ready sites/apps, many screens, major
+  redesigns, or any case where context stops being manageable.
+- End each phase with a durable handoff artifact when another phase/session or
+  subagent must continue. Handoff is temporary and must not be the only source
+  of truth: persist durable facts, then delete consumed handoff files.
+- Continue by priority: canonical phase output, isolated subagent if supported
+  and reliable, fresh user session handoff, or current session only if context
+  remains manageable. The agent must not pretend it can remove previous
+  conversation history from context.
 - Use proportional design before implementation. Tiny fixes can go straight to
-  implementation plus inspection; new screens and redesigns need UX modeling,
-  contracts, and exploration first.
+  implementation plus inspection; new screens/redesigns need UX modeling first.
 - For a new site/app, major redesign, or substantial new product surface,
-  discover existing product knowledge before asking the owner to repeat it.
-  Build a Product Surface Model before screen design.
+  discover existing product knowledge and Build a Product Surface Model before
+  screen design.
 - First inspect existing frontend choices and infer stable decisions. Ask only
-  for unresolved choices that cannot reasonably be inferred.
+  for unresolved choices.
 - If product design identity is not established, run a deep one-time design
   onboarding before major UI work.
 - Visual exploration boards are direction studies for owner feedback, not
   production assets. Do not replace the default five boards with one hero image.
-- Persist the resulting design identity, system, references, screen contracts,
-  component registry, decisions, and reviews under `docs/frontend/`.
+- Persist design identity, system, references, screen contracts, component
+  registry, decisions, and reviews under `docs/frontend/`.
 - Before creating components, prefer existing project components, then UI
   library primitives, then composed primitives; new primitives are last.
-- Render the real interface after implementation and visually inspect it. Code
-  compilation is not enough. Check desktop, mobile, intermediate, and large
-  viewport breakpoints relevant to the layout.
-- Run a Responsive Design Pass for meaningful responsive work. Responsive
-  design is not layout survival: each important viewport must feel intentionally
+- Render the real interface after implementation; code compilation is not
+  enough. Check desktop, mobile, intermediate, and large viewport breakpoints.
+- Run a Responsive Design Pass for meaningful responsive work. Responsive design
+  is not layout survival: each important viewport must feel intentionally
   composed for that product and width.
 - Exercise every added interactive element: buttons, links, tabs, menus, forms,
   toggles, keyboard/focus states, and post-interaction behavior.
 - Run Functional QA, Visual QA, and Product Completeness Review as separate
-  checks when the work is substantial. One does not replace the others.
+  checks for substantial work.
 
 Visual review rubric:
-
 - hierarchy, spacing, alignment, typography, density, composition;
 - component consistency, semantic color, state handling, accessibility;
-- responsive behavior across relevant viewport sizes, including large screens
-  when the layout could stretch;
-- responsive transformations preserve hierarchy, density, priorities,
-  interaction model, spacing rhythm, and Design Identity;
+- responsive behavior across relevant viewport sizes, including large screens;
+- responsive transformations preserve hierarchy, density, priorities, interaction
+  model, spacing rhythm, and Design Identity;
 - interaction correctness for every added clickable or focusable control;
-- consistency with Design Identity, Signature Traits, Anti-Identity, and visual
-  references;
+- consistency with Design Identity, Signature Traits, Anti-Identity, and references;
 - no unexamined AI-default UI such as excessive cards, meaningless gradients,
-  decorative glow, giant in-app headings, pill overload, or generic dashboard
-  metric-card layouts.
+  decorative glow, giant in-app headings, pill overload, or generic dashboards.
 
 Final check:
-
 - Ask whether the UI merely looks clean or clearly belongs to this product.
 - Ask whether removing CSS would still leave a complete useful product surface.

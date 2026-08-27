@@ -6,6 +6,21 @@ Format: newest on top, date in `YYYY-MM-DD`.
 
 ---
 
+## 2026-08-27 - Frontend phase handoff strategy
+
+- Added Phase Handoff Strategy to the frontend design subsystem so large
+  frontend tasks are split into explicit phases instead of overloading one
+  continuous agent context.
+- Defined temporary durable handoff artifacts, required handoff contents,
+  canonical source-of-truth persistence, consumed-handoff deletion, optional
+  isolated subagent continuation, fresh-session fallback, and the rule that
+  agents must not pretend they can remove prior conversation history from
+  context.
+- Updated the compact frontend subsystem card and docs regression tests so the
+  phase handoff rules remain visible through selective routing.
+
+---
+
 ## 2026-08-25 - Frontend design subsystem
 
 - Clarified that first-time frontend onboarding is deep, not short: agents must

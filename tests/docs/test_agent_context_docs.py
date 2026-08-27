@@ -367,3 +367,46 @@ def test_frontend_design_subsystem_requires_responsive_design_pass() -> None:
         assert term in full
     for term in required_card_terms:
         assert term in card
+
+
+def test_frontend_design_subsystem_requires_phase_handoff_strategy() -> None:
+    full = " ".join(
+        (ROOT / "docs/agent/frontend_design_subsystem.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    card = " ".join(
+        (ROOT / "docs/agent/frontend_design_subsystem.card.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+
+    required_full_terms = [
+        "Phase Handoff Strategy",
+        "Large frontend tasks must be split into phases",
+        "durable handoff artifact",
+        "Handoff files are temporary technical artifacts",
+        "delete the consumed handoff file",
+        "must not be the only source of truth",
+        "isolated subagent",
+        "fresh user session handoff",
+        "must not pretend it can remove previous conversation history",
+        "continue in the current session only if context remains manageable",
+    ]
+    required_card_terms = [
+        "Large frontend tasks must be split into phases",
+        "Phase Handoff Strategy",
+        "durable handoff artifact",
+        "Handoff is temporary",
+        "must not be the only source of truth",
+        "delete consumed handoff files",
+        "isolated subagent if supported and reliable",
+        "fresh user session handoff",
+        "must not pretend it can remove previous conversation history",
+        "current session only if context remains manageable",
+    ]
+
+    for term in required_full_terms:
+        assert term in full
+    for term in required_card_terms:
+        assert term in card
