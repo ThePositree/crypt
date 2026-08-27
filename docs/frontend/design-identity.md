@@ -1,16 +1,16 @@
 # Design Identity
 
-Status: established for the first local production documentation site.
+Status: draft, awaiting remaining onboarding and visual direction approval.
 
-Selected visual direction: `Board 5: Cartoon Execution Room` from
-`docs/frontend/visual-direction-boards.md`, chosen by the owner on
-2026-08-27.
+This repository does not currently contain an active frontend product surface.
+Before significant frontend work, run the onboarding workflow in
+`docs/agent/frontend_design_subsystem.md` and replace this placeholder with the
+final product-specific identity.
 
 ## Core Feeling
 
-Lo-fi cartoon execution room in pastel tones: a public documentation platform
-where research, backtests, exchange sync, strategy config, and Telegram
-reporting feel visible, controlled, and understandable.
+Lo-fi cartoon documentation platform in pastel tones: approachable, technical,
+and calm rather than finance-bro aggressive or generic enterprise SaaS.
 
 ## Personality
 
@@ -18,28 +18,22 @@ reporting feel visible, controlled, and understandable.
 - Developer-friendly.
 - Crypto-native without meme-first clutter.
 - Soft, playful, and legible.
-- Operationally serious despite the approachable visual language.
 
 ## Desired Perception
 
 Readers should feel that `crypt` is a serious automated strategy research and
-execution workbench with an active live execution path, and that the docs
-surface gives them enough structure to evaluate it without reading every
-repository file first.
+execution workbench, but the docs surface is intentionally welcoming and easy
+to navigate.
 
 ## Visual Tension
 
-The live runtime is the signature visual, but it must not overpower the broader
-research workbench. Pastel lo-fi warmth must not obscure the safety-critical
-nature of live execution, benchmark interpretation, and reproducibility rules.
+Pastel lo-fi warmth must not obscure the safety-critical nature of live
+execution, benchmark interpretation, and reproducibility rules.
 
 ## Signature Traits
 
 - Fast documentation entry on the first screen.
 - Primary lo-fi/cartoon hero illustration on the first screen.
-- Hero concept: a public-safe cartoon operations room with panels for OKX sync,
-  strategy config, backtester replay, docs, and Telegram reporting. It must not
-  show real balances, private credentials, or implied financial promises.
 - Product docs platform structure with separate pages for major domains.
 - Public live execution overview presented without private operational details.
 - Safety callouts for live execution, backtester correctness, exchange truth,
@@ -48,8 +42,6 @@ nature of live execution, benchmark interpretation, and reproducibility rules.
   precise technical content.
 - AI-generated lo-fi/cartoon illustration assets are allowed when they support
   navigation, orientation, and tone.
-- Web-native diagrams should look like clear product docs components, not
-  screenshots of a trading terminal.
 
 ## Anti-Identity
 
@@ -58,4 +50,3 @@ nature of live execution, benchmark interpretation, and reproducibility rules.
 - Corporate whitepaper site.
 - Dense wiki with no product framing.
 - Decorative cartoons that make live-money material look unserious.
-- Financial performance marketing or any visual promise of profit.

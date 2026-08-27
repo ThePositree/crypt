@@ -1,6 +1,6 @@
 # Product Surface Model
 
-Status: established for first implementation.
+Status: draft, awaiting owner confirmation.
 
 Use this file for durable frontend product-surface understanding. It should be
 filled before substantial new site/app work, major redesigns, or broad product
@@ -18,9 +18,9 @@ project docs, requirements, specs, current state, task context, or a canonical
 - Supporting: `docs/architecture.md`, `docs/strategy_benchmark.card.md`,
   `docs/backtester_regression.card.md`, `docs/execution/live_execution.card.md`.
 - Contradictions or gaps: the repository previously had no active frontend
-  surface. First-screen priority, stack, information architecture, content
-  strategy, public/private boundaries, and visual direction are confirmed for
-  first implementation.
+  surface. The first screen priority is confirmed as a short intro followed by
+  fast documentation entry. Detailed page-level content extraction and final
+  visual system remain unconfirmed.
 
 ## User Capabilities And Goals
 
