@@ -281,13 +281,14 @@ def test_frontend_design_subsystem_requires_stack_and_interaction_qa() -> None:
         "completed Visual QA",
         "completed Responsive Design Pass",
         "completed Product Completeness Review",
+        "completed Visual Review Protocol rubric review",
     ]
     required_card_terms = [
         "adaptive rounds of 5",
         "lightweight static stack or a framework/UI-library stack",
         "desktop, mobile, intermediate, and large viewport breakpoints",
         "Exercise every added interactive element",
-        "Complete Functional QA, Visual QA, Responsive Design Pass, and Product Completeness Review",
+        "Complete Functional QA, Visual QA, Visual Review Protocol rubric review, Responsive Design Pass, and Product Completeness Review",
     ]
 
     for term in required_full_terms:

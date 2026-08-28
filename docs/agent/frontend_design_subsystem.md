@@ -783,9 +783,10 @@ Keep the workflow proportional.
 Frontend completion includes compiled code, passing relevant checks, completed
 Functional QA, completed Visual QA, completed Responsive Design Pass when the
 scope requires it, completed Product Completeness Review when the scope
-requires it, and a rendered inspection of the real UI. Run the application,
-inspect it with available browser, screenshot, multimodal, or equivalent
-capability, fix problems, and inspect again when needed.
+requires it, completed Visual Review Protocol rubric review, and a rendered
+inspection of the real UI. Run the application, inspect it with available
+browser, screenshot, multimodal, or equivalent capability, fix problems, and
+inspect again when needed.
 
 Rendered QA covers viewport sizes that are meaningful for the layout. At
 minimum for a new site/app, check:

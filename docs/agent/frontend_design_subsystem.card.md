@@ -63,9 +63,9 @@ Core lifecycle:
 - Before creating components, prefer existing project components, then UI
   library primitives, then composed primitives; new primitives are last.
 - Render the real interface after implementation; code compilation is not
-  enough. Complete Functional QA, Visual QA, Responsive Design Pass, and Product
-  Completeness Review. Check desktop, mobile, intermediate, and large viewport
-  breakpoints.
+  enough. Complete Functional QA, Visual QA, Visual Review Protocol rubric
+  review, Responsive Design Pass, and Product Completeness Review. Check desktop,
+  mobile, intermediate, and large viewport breakpoints.
 - Run a Responsive Design Pass for meaningful responsive work. Responsive design
   goes beyond layout survival: each viewport feels intentionally composed.
 - Exercise every added interactive element: buttons, links, tabs, menus, forms,
