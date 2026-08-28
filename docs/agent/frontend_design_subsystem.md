@@ -36,8 +36,34 @@ Classify frontend tasks before acting:
 - major redesign;
 - new frontend/product.
 
-Tiny changes should not trigger a full ceremony. New screens, major redesigns,
-or a new frontend/product should.
+All frontend task classes use the same deliberate lifecycle. Smaller changes
+use local evidence and focused artifacts, while new screens, major redesigns,
+or a new frontend/product use the full lifecycle and owner gates.
+
+## Frontend Work Rhythm
+
+Frontend work in this repository is phase-based product work. The value of a
+frontend task comes from completing the required discovery, product modeling,
+design, contract, implementation, rendered inspection, and review phases in
+order.
+
+Agents should assume the owner values correctness, product fit, visual quality,
+and durable frontend memory more than immediate implementation. It is normal
+and acceptable for a frontend session to complete only discovery, onboarding,
+product modeling, visual direction, wireframes, review, or a handoff without
+starting production UI code.
+
+When context becomes large during frontend work, the continuation path is to
+persist the completed phase into canonical docs or a handoff artifact and
+continue in the next phase, subagent, or fresh session. Ending a session before
+implementation can be successful progress when the completed phase and next
+gate are clear.
+
+Every frontend task, from a small CSS adjustment to a new site, starts by
+understanding the existing product surface, affected screen or component
+contract, layout intent, relevant states, and responsive behavior. The depth of
+each phase scales with the task, but the phase order remains the default way
+frontend work is done.
 
 For substantial new frontend work, there are three separate final questions:
 
@@ -180,6 +206,94 @@ Required owner gates pass through explicit owner confirmation, a documented
 owner waiver, or existing canonical project evidence that already decides the
 gate.
 
+### Gate Names And Approval Scope
+
+Every owner-facing gate has a name, an artifact, and a recorded result. When
+asking for approval, name the exact gate and list the artifact paths being
+approved. Owner approval applies to the named gate in that message.
+
+Use these gate names for substantial frontend work:
+
+- Product Surface Approval;
+- Visual Direction Approval;
+- Wireframe Approval;
+- Final Implementation Approval.
+
+When the owner gives approval, record which named gate passed and the next
+named gate that will be prepared. Production implementation starts after Final
+Implementation Approval, using the approved Product Surface Model, Visual
+Direction, wireframes, screen contracts, and design-system summary.
+
+### Scoped Waivers
+
+Waivers are explicit, named, and scoped to specific gates or artifacts. A
+waiver records:
+
+- the gate or artifact covered;
+- the reason the owner accepted a shorter path;
+- the next gate that remains active;
+- any safety, auth, live-money, infrastructure, account, deployment, or
+  external-service contracts that remain required for the scope.
+
+### Uncertainty Check
+
+After the first 30 onboarding questions, write an Uncertainty Check before
+moving to visual boards or implementation planning. Use this format:
+
+```md
+## Uncertainty Check
+
+- Product scope:
+- Stack:
+- Data and API:
+- Auth and permissions:
+- Content:
+- Visual direction:
+- Interaction and states:
+- Accessibility and responsive behavior:
+- Success criteria:
+
+## Verdict
+
+- Next phase:
+- Reason:
+- Required owner gate:
+```
+
+Set `Next phase` to the phase the current evidence supports. Continue the
+interview in another 5-question round when a material line remains unresolved.
+
+### Action Contract Gate
+
+For mutating actions, especially money, infrastructure, auth, account,
+deployment, external-service, or destructive actions, prepare an Action Contract
+before implementing the UI or API surface for those actions. The contract
+records:
+
+- authorized actor and permission model;
+- confirmation flow;
+- exact mutation;
+- runtime source of truth;
+- audit log;
+- success result;
+- error and recovery model;
+- rollback or compensating action where applicable;
+- tests and validation;
+- operator-facing feedback states.
+
+UI, API, and backend work for those actions starts from the approved Action
+Contract and keeps the runtime source of truth explicit.
+
+### Completion Labeling
+
+Final responses and review artifacts label the delivered scope precisely.
+When the implementation uses mocks, fallback data, local intent files,
+disabled controls, placeholder content, or future integration seams, describe
+the result as the corresponding prototype, partial implementation, or approved
+placeholder state. End-to-end behavior is marked complete when the requested
+user journey works through its real data, permissions, state changes, and
+feedback loop.
+
 ## Phase Handoff Strategy
 
 Large frontend tasks are split into phases rather than one continuous pass in
@@ -204,9 +318,10 @@ Use phase handoff for large frontend tasks, including:
   all in scope;
 - any situation where the agent expects active context to become too large.
 
-Small work keeps the proportional workflow. Tiny visual fixes, small UI
-modifications, and narrow component changes use phase handoff only when context
-is already overloaded.
+Small work keeps the same phase order with focused artifacts and focused
+inspection. Visual fixes, small UI modifications, and narrow component changes
+still include context review, contract awareness, rendered inspection, and
+responsive consideration before completion.
 
 Before every substantial frontend phase, run a Subagent Availability Check.
 Record it in chat for the active turn and in the durable review or handoff
@@ -509,6 +624,29 @@ language. Each board combines, as relevant:
 - iconographic direction;
 - one or more representative interface fragments.
 
+Each Visual Direction Board includes a component primitive board area. The board
+shows enough primitive and composed UI elements to evaluate the future design
+system, including:
+
+- navigation treatment;
+- buttons and icon buttons;
+- links;
+- tabs or segmented controls;
+- filters and form controls;
+- toggles or checkboxes;
+- cards, panels, and lists;
+- table or leaderboard rows;
+- chart treatment;
+- metric or status modules;
+- alert, warning, success, loading, empty, disabled, and error states;
+- modal, drawer, popover, or confirmation treatment when the product scope uses
+  them;
+- mascot, illustration, iconography, and content-example treatment.
+
+Hero or landing fragments are one part of a board. The board gives the owner
+enough visual evidence to choose a design system direction for real screens and
+components.
+
 All five boards must remain plausible interpretations of the owner's answers
 and preliminary identity. Variation should be meaningful, not random. Explore
 composition, typography, density, geometry, surfaces, hierarchy, navigation,
@@ -518,6 +656,12 @@ relevant. Named styles are optional labels, not required directions.
 After generating boards, the next phase is owner feedback. The board package is
 complete when the owner can compare five rendered directions and respond with a
 selection, mix, rejection, or request for another iteration.
+
+Before asking for Visual Direction Approval, render and inspect each board at
+desktop and mobile sizes. Fix obvious overlap, blank areas, unreadable text,
+broken responsive structure, and component examples that fail to communicate
+the design-system direction. Record the checked sizes in the board notes or the
+visual references interpretation.
 
 The owner may select one direction, combine several, prefer individual
 properties, reject properties, reject every board, or describe what is missing.
@@ -693,6 +837,11 @@ responsive structure are approved. Future UI edits start by reading and updating
 the affected Mermaid flows and wireframes, then proceed to production code after
 owner approval.
 
+Before asking for Wireframe Approval, render and inspect the wireframes at the
+important desktop and mobile sizes for the task. Update layout labels,
+interaction notes, responsive structure, and state coverage before presenting
+them as approval-ready artifacts.
+
 ## Screen Contracts
 
 Meaningful screens should have persistent Markdown contracts under
@@ -766,6 +915,40 @@ stack must be supported by one of:
 - explicit owner preference;
 - a documented trade-off in `docs/frontend/decisions/`;
 - an explicit owner waiver allowing the agent to choose.
+
+### Final Pre-Implementation Gate Format
+
+Before production implementation for a new site, app, major redesign, or broad
+frontend surface, show this summary and wait for Final Implementation Approval:
+
+```md
+## Final Pre-Implementation Gate
+
+- Stack:
+- Pages and screens:
+- Product surface:
+- Data sources:
+- Auth and action model:
+- Action contracts:
+- Visual direction:
+- Design system:
+- Wireframes:
+- Screen contracts:
+- Known exclusions:
+- Validation plan:
+
+## Waiting For
+
+Final Implementation Approval.
+```
+
+### Large Phase Cadence
+
+For a new multi-page frontend or product surface, complete the work through
+named phases. Each phase ends with canonical artifacts, a named next gate, and
+the next owner or agent action. A single turn may continue into production
+implementation after the required artifacts are approved and the owner gives
+Final Implementation Approval for that implementation scope.
 
 Keep workflow proportional:
 
@@ -883,6 +1066,11 @@ hierarchy, density, navigation fit, spacing, content priority, and interaction
 model. The final review asks whether the UI clearly belongs to this product. If
 the verdict is inadequate, fix and review again.
 
+Substantial frontend implementation ends with a durable review under
+`docs/frontend/reviews/`. The review records viewport sizes, screenshots or
+artifact paths, interactions tested, console status, API and data states,
+accessibility notes, known gaps, and the Product Completeness Review verdict.
+
 ## Product-Specific UI Rules
 
 Use visual choices that follow from the Design Identity and product function.
@@ -970,13 +1158,13 @@ ABSTRACT IDENTITY QUESTIONS WITH EXAMPLES
         |
 PRELIMINARY DESIGN IDENTITY
         |
-GENERATE 5 RENDERED VISUAL DIRECTION BOARDS
+GENERATE 5 RENDERED VISUAL DIRECTION BOARDS WITH COMPONENT PRIMITIVE AREAS
         |
-USER SELECTS / MIXES / REJECTS
+VISUAL DIRECTION APPROVAL
         |
 BUILD SEPARATE GRAY-BLOCK HTML/CSS/JS WIREFRAMES FOR EACH REAL PAGE AND BREAKPOINT + MERMAID FLOWS
         |
-OWNER APPROVES WIREFRAMES
+WIREFRAME APPROVAL
         |
 TARGETED FOLLOW-UP IF NECESSARY
         |
@@ -987,6 +1175,10 @@ SIGNATURE TRAITS + ANTI-IDENTITY
 DESIGN SYSTEM
         |
 PERSIST TEXTUAL + VISUAL KNOWLEDGE
+        |
+FINAL PRE-IMPLEMENTATION GATE
+        |
+FINAL IMPLEMENTATION APPROVAL
 ```
 
 Every future frontend task:

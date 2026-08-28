@@ -6,12 +6,13 @@ compact cards.
 
 ## Goals
 
-- Agents should not load every large markdown file at session start.
+- Agents load the routed subset of large markdown files needed for the current
+  task.
 - Hard rules must remain exact, searchable, and readable as text.
 - Routing must be deterministic enough that future agents can reproduce why a
   doc was loaded.
-- Retrieval systems may help discovery, but cannot replace canonical docs for
-  rules, live money truth, or backtester checkpoints.
+- Retrieval systems may help discovery; canonical docs remain the source for
+  rules, live money truth, and backtester checkpoints.
 
 ## Layers
 
@@ -19,8 +20,9 @@ compact cards.
 2. `docs/state/current.yml`: compact current project, production, and
    checkpoint snapshot.
 3. `docs/agent/context_routes.yml`: maps task keywords to cards and full docs.
-4. `.card.md` files: 30-80 line summaries for large docs, with exact links to
-   full source docs.
+4. `.card.md` files: compact summaries for large docs, with exact links to
+   full source docs. Each card stays materially smaller than its source doc so
+   routing remains lightweight.
 5. Full markdown docs: source truth for detailed behavior, commands, evidence,
    and runbooks.
 6. Archives and experiments: old changelog, old ADRs, old reconciliation docs,
@@ -40,9 +42,11 @@ python scripts/agent_context.py image-pack \
 
 ## Accuracy Rules
 
-- Do not put hard rules only in embeddings, images, or generated summaries.
-- Treat cards as entry points, not final authority, when money, production, or
-  regression verdicts depend on exact commands or numbers.
+- Keep hard rules in canonical markdown in addition to embeddings, images, or
+  generated summaries.
+- Treat full source docs, runtime config, OKX state, and exact command output as
+  final authority when money, production, or regression verdicts depend on exact
+  commands or numbers. Use cards as entry points.
 - Use YAML routing before semantic/vector retrieval.
 - Use `rg` on canonical text when a task needs exact names, paths, commits, or
   dollar values.
@@ -67,14 +71,13 @@ Use the smallest durable place that preserves accuracy:
 - Reference-only old material: vector/image retrieval may index it later, but
   the canonical source remains markdown.
 
-Do not:
+Keep knowledge expansion complete and compact:
 
-- create a large doc without a route when future agents must find it;
-- create a route to a large doc without a compact card;
-- put active production truth only in changelog, archive, vector DB, image pack,
-  or chat memory;
-- let `.card.md` files grow into full docs. Cards should stay below 80 lines
-  and link to exactly one full source.
+- Large docs that future agents need have a route.
+- Routes to large docs include a compact card.
+- Active production truth lives in current canonical state and runtime sources.
+- `.card.md` files remain summaries that are a smaller percentage of their
+  source doc and link to exactly one full source.
 
 After expanding the knowledge base, run:
 
@@ -86,28 +89,27 @@ UV_CACHE_DIR=/tmp/uv-cache PYTHONPATH=src uv run pytest tests/docs/test_agent_co
 
 ## Vector Retrieval
 
-Vector DB is a later stage, not the first implementation. If added, use it only
-for discovery over archive/reference material:
+Vector DB is a later-stage discovery tool for archive/reference material:
 
 - old ADRs;
 - old reconciliation reports;
 - old changelog archive;
 - candidate/router archive READMEs.
 
-The vector result must point back to canonical text paths. It must not be the
-only place where a rule or checkpoint exists.
+Vector results point back to canonical text paths. Rules and checkpoints live in
+canonical markdown.
 
 ## Text-As-Image Experiment
 
-Text-as-image can be tested only for archival/reference material where exact
-instruction compliance is not required:
+Text-as-image experiments apply to archival/reference material where exact
+instruction compliance is handled by canonical markdown:
 
 - `CHANGELOG_ARCHIVE.md`;
 - superseded ADRs;
 - old reconciliation reports;
 - old candidate/router archive notes.
 
-Do not image-pack:
+Keep these sources as readable canonical text:
 
 - `AGENTS.md`;
 - `docs/state/current.yml`;

@@ -74,9 +74,18 @@ def test_agent_cards_point_to_their_full_source_docs() -> None:
 def test_agent_cards_stay_compact() -> None:
     oversized = []
     for card in sorted((ROOT / "docs").rglob("*.card.md")):
-        line_count = len(card.read_text(encoding="utf-8").splitlines())
-        if line_count > 80:
-            oversized.append(f"{card.relative_to(ROOT)}: {line_count}")
+        text = card.read_text(encoding="utf-8")
+        source_line = next(
+            line for line in text.splitlines() if line.startswith("Full source: `")
+        )
+        source = source_line.removeprefix("Full source: `").removesuffix("`")
+        source_lines = len((ROOT / source).read_text(encoding="utf-8").splitlines())
+        card_lines = len(text.splitlines())
+        max_lines = max(40, int(source_lines * 0.45))
+        if card_lines > max_lines or card_lines >= source_lines:
+            oversized.append(
+                f"{card.relative_to(ROOT)}: {card_lines}/{source_lines}, max {max_lines}"
+            )
 
     assert oversized == []
 
@@ -297,6 +306,44 @@ def test_frontend_design_subsystem_requires_stack_and_interaction_qa() -> None:
         assert term in card
 
 
+def test_frontend_design_subsystem_frames_frontend_as_phase_based_work() -> None:
+    full = " ".join(
+        (ROOT / "docs/agent/frontend_design_subsystem.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    card = " ".join(
+        (ROOT / "docs/agent/frontend_design_subsystem.card.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+
+    required_full_terms = [
+        "Frontend Work Rhythm",
+        "phase-based product work",
+        "correctness, product fit, visual quality, and durable frontend memory more than immediate implementation",
+        "normal and acceptable for a frontend session to complete only discovery",
+        "without starting production UI code",
+        "Ending a session before implementation can be successful progress",
+        "Every frontend task, from a small CSS adjustment to a new site",
+        "the phase order remains the default way frontend work is done",
+        "Small work keeps the same phase order with focused artifacts",
+    ]
+    required_card_terms = [
+        "Frontend work is phase-based product work",
+        "more than immediate implementation",
+        "Every frontend task, from a small CSS adjustment to a new site",
+        "same phase order",
+        "without starting production UI code",
+        "Small fixes keep the same phase order",
+    ]
+
+    for term in required_full_terms:
+        assert term in full
+    for term in required_card_terms:
+        assert term in card
+
+
 def test_frontend_design_subsystem_requires_product_surface_model() -> None:
     full = " ".join(
         (ROOT / "docs/agent/frontend_design_subsystem.md")
@@ -453,6 +500,12 @@ def test_frontend_design_subsystem_requires_owner_decision_gates() -> None:
         "Visual Direction Gate",
         "Scope/Completeness Gate",
         "Final Pre-Implementation Gate",
+        "Product Surface Approval",
+        "Visual Direction Approval",
+        "Wireframe Approval",
+        "Final Implementation Approval",
+        "Owner approval applies to the named gate in that message",
+        "Production implementation starts after Final Implementation Approval",
         "collect owner feedback",
         "rendered Visual Direction Boards",
         "Final Pre-Implementation Gate",
@@ -461,9 +514,92 @@ def test_frontend_design_subsystem_requires_owner_decision_gates() -> None:
     required_card_terms = [
         "Interview completed is not onboarding completed",
         "Owner Decision Gates",
+        "Approvals are named and scoped",
+        "Final Implementation Approval",
         "Owner feedback selects, mixes, rejects, or iterates them",
         "picture artifacts plus notes",
         "Final Design Identity, Design System, and implementation follow the required owner gates",
+    ]
+
+    for term in required_full_terms:
+        assert term in full
+    for term in required_card_terms:
+        assert term in card
+
+
+def test_frontend_design_subsystem_requires_named_frontend_gate_artifacts() -> None:
+    full = " ".join(
+        (ROOT / "docs/agent/frontend_design_subsystem.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    card = " ".join(
+        (ROOT / "docs/agent/frontend_design_subsystem.card.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+
+    required_full_terms = [
+        "Gate Names And Approval Scope",
+        "Scoped Waivers",
+        "Uncertainty Check",
+        "Product scope:",
+        "Data and API:",
+        "Auth and permissions:",
+        "Action Contract Gate",
+        "authorized actor and permission model",
+        "exact mutation",
+        "runtime source of truth",
+        "operator-facing feedback states",
+        "Completion Labeling",
+        "Final Pre-Implementation Gate Format",
+        "Final Implementation Approval.",
+        "Large Phase Cadence",
+        "Substantial frontend implementation ends with a durable review under `docs/frontend/reviews/`",
+    ]
+    required_card_terms = [
+        "Uncertainty Check covering product scope, stack, data/API, auth, content, visual direction",
+        "Action Contract covering actor, permissions, confirmation, exact mutation",
+        "Final responses label delivered scope precisely",
+        "durable review under `docs/frontend/reviews/`",
+    ]
+
+    for term in required_full_terms:
+        assert term in full
+    for term in required_card_terms:
+        assert term in card
+
+
+def test_frontend_visual_direction_boards_cover_component_primitives() -> None:
+    full = " ".join(
+        (ROOT / "docs/agent/frontend_design_subsystem.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    card = " ".join(
+        (ROOT / "docs/agent/frontend_design_subsystem.card.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+
+    required_full_terms = [
+        "Each Visual Direction Board includes a component primitive board area",
+        "navigation treatment",
+        "buttons and icon buttons",
+        "tabs or segmented controls",
+        "filters and form controls",
+        "table or leaderboard rows",
+        "chart treatment",
+        "alert, warning, success, loading, empty, disabled, and error states",
+        "Hero or landing fragments are one part of a board",
+        "enough visual evidence to choose a design system direction",
+        "Before asking for Visual Direction Approval, render and inspect each board at desktop and mobile sizes",
+        "Record the checked sizes in the board notes or the visual references interpretation",
+    ]
+    required_card_terms = [
+        "component primitives",
+        "states",
+        "Before Visual Direction Approval or Wireframe Approval, render and inspect artifacts at desktop and mobile sizes",
     ]
 
     for term in required_full_terms:

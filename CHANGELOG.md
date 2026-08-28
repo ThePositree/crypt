@@ -4,6 +4,31 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
+## 2026-08-28 - Frontend gate protocol hardening
+
+- Strengthened the frontend subsystem with named approval gates, scoped
+  waivers, mandatory Uncertainty Check structure, Action Contract requirements,
+  precise completion labeling, final pre-implementation summaries, rendered
+  artifact review, durable implementation reviews, and component-primitive
+  coverage for Visual Direction Boards.
+- Replaced the fixed `.card.md` line-count rule with a relative compactness
+  check so cards remain materially smaller than their full source docs.
+- Updated docs regression coverage for the new frontend gate protocol and
+  relative card compactness rule.
+
+---
+
+## 2026-08-28 - Frontend phase-based work rhythm
+
+- Added a positive frontend work rhythm that frames all frontend tasks as
+  deliberate phase-based product work where correctness, product fit, visual
+  quality, and durable memory outrank immediate implementation.
+- Clarified that a frontend session can be successful when it completes
+  discovery, onboarding, product modeling, visual direction, wireframes, review,
+  or handoff without starting production UI code.
+- Updated docs regression coverage so the full subsystem and compact card keep
+  the phase-based framing visible to future agents.
+
 ---
 
 ## 2026-08-28 - Frontend subagent continuation

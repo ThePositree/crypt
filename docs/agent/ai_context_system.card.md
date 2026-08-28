@@ -11,10 +11,11 @@ Key rules:
 - Use `docs/agent/context_routes.yml` before broad doc reading.
 - When adding durable knowledge, update routes/cards/current state/benchmark as
   applicable.
-- Use `.card.md` files as entry points, not final authority for money or
-  regression details.
+- Use `.card.md` files as entry points; exact money or regression details come
+  from full source docs, runtime config, OKX state, or command output.
 - Vector DB is discovery-only until proven by a benchmark.
-- Text-as-image is archive-only and must not hold mandatory instructions.
+- Text-as-image is archive-only; mandatory instructions stay in canonical
+  markdown.
 - Exact facts still come from canonical markdown, runtime config, OKX, or `rg`.
 
 Implemented layers:
@@ -23,7 +24,8 @@ Implemented layers:
 - `docs/state/current.yml`: compact project/live/checkpoint state.
 - `docs/agent/context_routes.yml`: deterministic routing manifest.
 - `docs/agent/context_benchmark.yml`: machine-readable 20-question benchmark.
-- `.card.md`: summaries for high-token docs.
+- `.card.md`: summaries for high-token docs, materially smaller than their
+  full source docs.
 - Full docs: canonical source truth.
 - `scripts/agent_context.py`: validate, route, budget, benchmark, and
   archive-only image-pack helper.
