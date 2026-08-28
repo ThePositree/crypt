@@ -244,14 +244,17 @@ debugging requires a separate documented decision.
 When choosing how to continue after a phase, use this priority:
 
 1. durable phase output and canonical files;
-2. isolated subagent, if supported and reliable;
+2. isolated subagent, when subagents are available and the agent knows how to
+   operate them;
 3. fresh user session handoff;
 4. continue in the current session only if context remains manageable.
 
-If subagents are available, the agent knows how to use them, the current tools
-and instructions support them, and the agent can reliably control their context,
-prefer assigning the next phase to an isolated subagent. This is an optional
-optimization, not a dependency of the subsystem.
+For phased frontend work, use isolated subagents whenever the current
+environment provides them and the agent knows how to operate them. The agent
+does not need a separate task-specific reason beyond having another substantial
+phase to execute. Subagents are the normal continuation path for capable agents;
+fresh-session handoff is the fallback when subagents are unavailable or outside
+the agent's reliable control.
 
 The subagent prompt must include:
 
@@ -267,10 +270,9 @@ The subagent prompt must include:
 - requirement to either delegate the next phase to a new isolated subagent when
   phases remain and subagents are available, or report completion to the owner.
 
-If subagents are not available, not understood, not reliable, or not controllable
-in the current environment, finish the current phase, write the handoff, and
-tell the owner to open a new session with a short practical instruction such
-as:
+If subagents are not available or outside the agent's reliable control, finish
+the current phase, write the handoff, and tell the owner to open a new session
+with a short practical instruction such as:
 
 ```text
 Phase complete. Handoff saved at <path>. To avoid overloading context, open a

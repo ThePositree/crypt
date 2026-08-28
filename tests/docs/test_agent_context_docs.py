@@ -386,10 +386,12 @@ def test_frontend_design_subsystem_requires_phase_handoff_strategy() -> None:
         "Handoff files are temporary technical artifacts",
         "delete the consumed handoff file",
         "Canonical files are the source of truth after each phase",
-        "isolated subagent",
+        "isolated subagent, when subagents are available and the agent knows how to operate them",
         "fresh user session handoff",
         "Already loaded conversation history remains physically present",
         "continue in the current session only if context remains manageable",
+        "use isolated subagents whenever the current environment provides them",
+        "Subagents are the normal continuation path for capable agents",
     ]
     required_card_terms = [
         "Large frontend tasks must be split into phases",
@@ -398,7 +400,7 @@ def test_frontend_design_subsystem_requires_phase_handoff_strategy() -> None:
         "Handoff is temporary",
         "canonical files are source of truth",
         "consumed handoff files are deleted",
-        "isolated subagent if supported and reliable",
+        "isolated subagent whenever the agent knows how to operate subagents",
         "fresh user session handoff",
         "Loaded conversation remains until compaction/replacement",
         "current session only if context remains manageable",

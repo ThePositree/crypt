@@ -6,6 +6,16 @@ Format: newest on top, date in `YYYY-MM-DD`.
 
 ---
 
+## 2026-08-28 - Frontend subagent continuation
+
+- Strengthened frontend phase continuation so capable agents use isolated
+  subagents for substantial next phases whenever subagents are available, with
+  fresh-session handoff as the fallback.
+- Updated the compact frontend card and docs regression coverage for the
+  subagent continuation rule.
+
+---
+
 ## 2026-08-28 - Frontend wireframe contracts
 
 - Added persistent HTML/CSS/JS wireframes as a UI contract gate after rendered

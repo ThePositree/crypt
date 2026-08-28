@@ -30,9 +30,10 @@ Core lifecycle:
 - End each phase with a durable handoff artifact when another phase/session or
   subagent must continue. Handoff is temporary: canonical files are source of
   truth, durable facts are persisted, and consumed handoff files are deleted.
-- Continue by priority: canonical phase output, isolated subagent if supported
-  and reliable, fresh user session handoff, or current session only if context
-  remains manageable. Loaded conversation remains until compaction/replacement.
+- Continue by priority: canonical phase output, isolated subagent whenever the
+  agent knows how to operate subagents, fresh user session handoff, or current
+  session only if context remains manageable. Loaded conversation remains until
+  compaction/replacement.
 - Use proportional design before implementation. Tiny fixes can go straight to
   implementation plus inspection; new screens/redesigns need UX modeling first.
 - For a new site/app, major redesign, or substantial new product surface,
