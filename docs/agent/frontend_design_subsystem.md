@@ -68,9 +68,10 @@ for the task are still placeholders, for example:
 The agent may proceed only when one of these is true:
 
 - the owner explicitly waives design onboarding for this task;
-- existing frontend memory already contains enough project-specific product
-  surface, identity, visual references, design-system rules, and screen
-  contracts to support the change.
+- existing frontend memory contains the complete project-specific product
+  surface, identity, visual references, design-system rules, screen contracts,
+  and recorded evidence that the relevant onboarding has been completed for
+  this product surface.
 
 If neither condition is true, the phase output is:
 
@@ -206,6 +207,17 @@ Use phase handoff for large frontend tasks, including:
 Small work keeps the proportional workflow. Tiny visual fixes, small UI
 modifications, and narrow component changes use phase handoff only when context
 is already overloaded.
+
+Before every substantial frontend phase, run a Subagent Availability Check.
+Record it in chat for the active turn and in the durable review or handoff
+artifact when the phase creates one. The check includes:
+
+- current phase name;
+- isolated subagent availability in the current environment;
+- selected subagent path for the next substantial phase or independent review
+  when subagents are available and the agent knows how to operate them;
+- selected single-agent path and concrete reason when the agent proceeds in
+  the current session.
 
 At the end of each phase with a next phase, new session, or subagent, create a
 durable handoff artifact. Fully complete frontend tasks end with canonical
@@ -479,6 +491,10 @@ Visual exploration is the final interactive onboarding stage. Use available
 image-generation or visual tools when useful. The default is five Visual
 Direction Boards.
 
+Each board is a picture artifact plus notes. Preferred output is generated
+images through available image-generation or visual tools. HTML fallback output
+is five separate rendered HTML board pages.
+
 Visual Direction Boards are rendered direction studies for choosing visual
 language. Each board combines, as relevant:
 
@@ -649,10 +665,13 @@ starts by checking whether the relevant Mermaid flow contracts need updates.
 
 Wireframes are persistent screen contracts stored under
 `docs/frontend/wireframes/`. They are lightweight HTML/CSS/JS artifacts that
-render gray-box page layouts before production UI implementation.
+render gray-box page layouts before production UI implementation. Wireframes
+use plain gray blocks as layout contracts: blocks show where content, controls,
+data, navigation, media, and calls to action will be placed, with text labels
+and notes describing each block's purpose and important behavior.
 
-Each page or meaningful screen gets a wireframe before production UI work. A
-complete wireframe shows:
+Each real site page or meaningful screen gets its own separate HTML wireframe
+before production UI work. A complete wireframe page shows:
 
 - page regions as labeled gray blocks;
 - navigation, content, controls, images, data areas, and calls to action;
@@ -661,6 +680,11 @@ complete wireframe shows:
   search, animation, loading, empty, error, and partial-data behavior;
 - responsive states for the important viewport widths;
 - links to related Mermaid flows and screen contracts.
+
+For every real page, create wireframe coverage for all relevant project
+breakpoints. The breakpoint wireframes may be separate HTML files or clearly
+separated views inside that page's wireframe package, with each breakpoint
+rendering the actual layout contract for that width.
 
 Wireframe artifacts are shown to the owner after Visual Direction Boards and
 before Design System finalization, screen-detail work, or production UI code.
@@ -756,10 +780,12 @@ Keep the workflow proportional.
 
 ## Render, Inspect, Fix
 
-Frontend completion includes compiled code, passing relevant checks, and a
-rendered inspection of the real UI. Run the application, inspect it with
-available browser, screenshot, multimodal, or equivalent capability, fix
-problems, and inspect again when needed.
+Frontend completion includes compiled code, passing relevant checks, completed
+Functional QA, completed Visual QA, completed Responsive Design Pass when the
+scope requires it, completed Product Completeness Review when the scope
+requires it, and a rendered inspection of the real UI. Run the application,
+inspect it with available browser, screenshot, multimodal, or equivalent
+capability, fix problems, and inspect again when needed.
 
 Rendered QA covers viewport sizes that are meaningful for the layout. At
 minimum for a new site/app, check:
@@ -947,7 +973,7 @@ GENERATE 5 RENDERED VISUAL DIRECTION BOARDS
         |
 USER SELECTS / MIXES / REJECTS
         |
-BUILD HTML/CSS/JS WIREFRAMES + MERMAID FLOWS
+BUILD SEPARATE GRAY-BLOCK HTML/CSS/JS WIREFRAMES FOR EACH REAL PAGE AND BREAKPOINT + MERMAID FLOWS
         |
 OWNER APPROVES WIREFRAMES
         |
@@ -975,7 +1001,7 @@ LOAD PRODUCT SURFACE MODEL WHEN SCOPE REQUIRES
         |
 UPDATE UX / SCREEN MODEL IF NECESSARY
         |
-UPDATE MERMAID FLOWS + HTML WIREFRAMES WHEN UI STRUCTURE CHANGES
+UPDATE MERMAID FLOWS + SEPARATE GRAY-BLOCK HTML WIREFRAMES WHEN UI STRUCTURE CHANGES
         |
 OWNER APPROVES UPDATED UI CONTRACTS
         |

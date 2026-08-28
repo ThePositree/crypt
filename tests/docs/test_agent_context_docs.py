@@ -223,23 +223,29 @@ def test_frontend_design_subsystem_has_onboarding_stop_gate() -> None:
         "state-based gate, not only a new-site gate",
         "first serious frontend task",
         "owner answering the first onboarding round does not mean frontend memory is established",
+        "complete project-specific product surface",
+        "onboarding has been completed for this product surface",
         "First-time frontend onboarding is a deep multi-step discovery process",
         "asks at least 30 questions",
         "Uncertainty Check",
         "There is no fixed questionnaire",
-        "Each Visual Direction Board is a rendered visual artifact plus short notes",
+        "Each board is a picture artifact",
+        "HTML fallback output is five separate rendered HTML board pages",
         "design onboarding interview",
         "five Visual Direction Boards",
         "grounded in owner answers, inferred existing product evidence, or explicit owner approval",
     ]
     required_card_terms = [
         "If frontend memory is not established",
+        "Established frontend memory means complete product surface",
+        "onboarding completion evidence",
         "first serious frontend task",
         "An owner's first answer to onboarding questions is not enough",
         "First-time frontend onboarding is deep",
         "at least 30 questions",
         "Uncertainty Check",
-        "Visual Direction Boards are rendered direction studies plus notes",
+        "Visual Direction Boards are picture artifacts plus notes",
+        "HTML fallback output is five separate rendered HTML board pages",
         "Owner feedback selects, mixes, rejects, or iterates them",
     ]
 
@@ -271,12 +277,17 @@ def test_frontend_design_subsystem_requires_stack_and_interaction_qa() -> None:
         "large desktop or wide monitor",
         "exercises every added interactive zone",
         "Click or activate every added button, link, tab, menu",
+        "completed Functional QA",
+        "completed Visual QA",
+        "completed Responsive Design Pass",
+        "completed Product Completeness Review",
     ]
     required_card_terms = [
         "adaptive rounds of 5",
         "lightweight static stack or a framework/UI-library stack",
         "desktop, mobile, intermediate, and large viewport breakpoints",
         "Exercise every added interactive element",
+        "Complete Functional QA, Visual QA, Responsive Design Pass, and Product Completeness Review",
     ]
 
     for term in required_full_terms:
@@ -316,7 +327,7 @@ def test_frontend_design_subsystem_requires_product_surface_model() -> None:
         "discover existing product knowledge",
         "Build a Product Surface Model",
         "Product Completeness Review",
-        "removing CSS would still leave a complete useful product surface",
+        "removing CSS leaves a useful product surface",
     ]
     required_model_terms = [
         "Product Knowledge Sources",
@@ -392,6 +403,11 @@ def test_frontend_design_subsystem_requires_phase_handoff_strategy() -> None:
         "continue in the current session only if context remains manageable",
         "use isolated subagents whenever the current environment provides them",
         "Subagents are the normal continuation path for capable agents",
+        "Subagent Availability Check",
+        "current phase name",
+        "isolated subagent availability in the current environment",
+        "selected subagent path for the next substantial phase or independent review",
+        "selected single-agent path and concrete reason",
     ]
     required_card_terms = [
         "Large frontend tasks must be split into phases",
@@ -404,6 +420,10 @@ def test_frontend_design_subsystem_requires_phase_handoff_strategy() -> None:
         "fresh user session handoff",
         "Loaded conversation remains until compaction/replacement",
         "current session only if context remains manageable",
+        "Subagent Availability Check",
+        "name the phase",
+        "check isolated subagent availability",
+        "independent review when available",
     ]
 
     for term in required_full_terms:
@@ -441,7 +461,7 @@ def test_frontend_design_subsystem_requires_owner_decision_gates() -> None:
         "Interview completed is not onboarding completed",
         "Owner Decision Gates",
         "Owner feedback selects, mixes, rejects, or iterates them",
-        "rendered direction studies",
+        "picture artifacts plus notes",
         "Final Design Identity, Design System, and implementation follow the required owner gates",
     ]
 
@@ -480,6 +500,9 @@ def test_frontend_design_subsystem_requires_mermaid_and_wireframe_contracts() ->
         "Mermaid is the default format for user flows, navigation maps, and state diagrams",
         "Wireframes are persistent screen contracts",
         "render gray-box page layouts",
+        "plain gray blocks as layout contracts",
+        "Each real site page or meaningful screen gets its own separate HTML wireframe",
+        "wireframe coverage for all relevant project breakpoints",
         "block-level descriptions for complex elements",
         "interaction notes for accordions, tabs, collapses",
         "responsive states for the important viewport widths",
@@ -489,7 +512,8 @@ def test_frontend_design_subsystem_requires_mermaid_and_wireframe_contracts() ->
     required_card_terms = [
         "UI Contract Gate",
         "Mermaid user flow, navigation, or state diagrams",
-        "HTML/CSS/JS wireframes",
+        "separate gray-block HTML/CSS/JS wireframes",
+        "each real page and relevant breakpoint",
         "get owner approval before production UI code changes",
     ]
     required_route_paths = [
@@ -508,7 +532,9 @@ def test_frontend_design_subsystem_requires_mermaid_and_wireframe_contracts() ->
     for term in [
         "persistent HTML/CSS/JS wireframes",
         "durable UI contracts",
-        "labeled blocks",
+        "labeled gray blocks",
+        "Each real site page or meaningful screen gets its own separate HTML wireframe",
+        "wireframe coverage for all relevant project breakpoints",
         "Show rendered wireframes to the owner",
     ]:
         assert term in wireframes
