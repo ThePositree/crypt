@@ -1,7 +1,8 @@
 # Screen Contracts
 
-Store persistent screen contracts here. Before materially changing a meaningful
-screen, update the relevant contract when necessary, then implement.
+Store persistent screen contracts here. Before changing UI, read or update the
+related Mermaid flows and HTML/CSS/JS wireframes, then keep the screen contract
+aligned before implementation.
 
 Use this structure when applicable:
 
@@ -37,4 +38,6 @@ Use this structure when applicable:
 ## Visual Emphasis
 
 ## Related Screens
+
+## Related Flows And Wireframes
 ```

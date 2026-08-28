@@ -6,25 +6,23 @@ Use this card when a task touches frontend UX, visual design, UI components, scr
 
 Core lifecycle:
 - Classify depth: visual bug, small UI modification, new component, new section, new screen, major redesign, or new frontend/product.
-- If frontend memory is not established, substantial frontend work starts with
-  discovery and full onboarding; this applies to the first serious frontend
-  task, not only a new site/app.
+- If frontend memory is not established, substantial frontend work starts with discovery and full onboarding; this applies to the first serious frontend task.
 - Interview completed is not onboarding completed, design approved, or ready for
   implementation. Owner Decision Gates must pass before implementation.
-- An owner's first answer to onboarding questions is not enough to establish
-  frontend memory. Continue interview, Product Surface Model, visual exploration
-  and feedback, final identity, and design system unless waived.
+- An owner's first answer to onboarding questions is not enough to establish frontend memory. Continue interview, Product Surface Model, visual exploration and feedback, final identity, and design system unless waived.
 - Design Identity, Visual Direction Boards, references, and final design-system
   choices are grounded in owner answers, product evidence, or owner approval.
 - First-time frontend onboarding is deep: at least 30 questions in adaptive
   rounds of 5, followed by an Uncertainty Check and more rounds when needed.
-- The agent chooses each round's 5 questions dynamically from product context
-  and prior answers; there is no fixed questionnaire.
+- The agent chooses each round's 5 questions dynamically from product context and prior answers; there is no fixed questionnaire.
 - While frontend memory is still not established, name the next onboarding, synthesis, visual exploration, or persistence step.
 - For a new site/app or major frontend surface, ask whether the owner wants a
   lightweight static stack or a framework/UI-library stack unless the repo
   already decides; this is the Stack Gate.
 - Product Surface, Visual Direction, Scope/Completeness, and Final Pre-Implementation Gates require owner confirmation for substantial work.
+- UI Contract Gate: every UI edit starts from current Mermaid user flow,
+  navigation, or state diagrams plus HTML/CSS/JS wireframes; render wireframes
+  and get owner approval before production UI code changes.
 - Large frontend tasks must be split into phases when onboarding, product
   modeling, design, implementation, and QA would overload active context; use
   Phase Handoff Strategy for production-ready sites/apps, many screens, major
@@ -49,8 +47,8 @@ Core lifecycle:
   signature ideas. Owner feedback selects, mixes, rejects, or iterates them.
 - Final Design Identity, Design System, and implementation follow the required
   owner gates.
-- Persist design identity, system, references, screen contracts, component
-  registry, decisions, and reviews under `docs/frontend/`.
+- Persist design identity, system, references, Mermaid flows, wireframes, screen
+  contracts, registry, decisions, and reviews under `docs/frontend/`.
 - Before creating components, prefer existing project components, then UI
   library primitives, then composed primitives; new primitives are last.
 - Render the real interface after implementation; code compilation is not

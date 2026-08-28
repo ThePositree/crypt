@@ -447,3 +447,72 @@ def test_frontend_design_subsystem_requires_owner_decision_gates() -> None:
         assert term in full
     for term in required_card_terms:
         assert term in card
+
+
+def test_frontend_design_subsystem_requires_mermaid_and_wireframe_contracts() -> None:
+    full = " ".join(
+        (ROOT / "docs/agent/frontend_design_subsystem.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    card = " ".join(
+        (ROOT / "docs/agent/frontend_design_subsystem.card.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    flows = " ".join(
+        (ROOT / "docs/frontend/flows/README.md").read_text(encoding="utf-8").split()
+    )
+    wireframes = " ".join(
+        (ROOT / "docs/frontend/wireframes/README.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    screens = " ".join(
+        (ROOT / "docs/frontend/screens/README.md").read_text(encoding="utf-8").split()
+    )
+
+    required_full_terms = [
+        "UI Contract Gate",
+        "Mermaid flow contracts and HTML/CSS/JS wireframes",
+        "Mermaid is the default format for user flows, navigation maps, and state diagrams",
+        "Wireframes are persistent screen contracts",
+        "render gray-box page layouts",
+        "block-level descriptions for complex elements",
+        "interaction notes for accordions, tabs, collapses",
+        "responsive states for the important viewport widths",
+        "Owner feedback updates the wireframes",
+        "owner approval",
+    ]
+    required_card_terms = [
+        "UI Contract Gate",
+        "Mermaid user flow, navigation, or state diagrams",
+        "HTML/CSS/JS wireframes",
+        "get owner approval before production UI code changes",
+    ]
+    required_route_paths = [
+        "docs/frontend/wireframes/",
+    ]
+
+    for term in required_full_terms:
+        assert term in full
+    for term in required_card_terms:
+        assert term in card
+    for term in [
+        "Mermaid is the default format for user flows, navigation maps, and state diagrams",
+        "Keep them current with related wireframes and screen contracts",
+    ]:
+        assert term in flows
+    for term in [
+        "persistent HTML/CSS/JS wireframes",
+        "durable UI contracts",
+        "labeled blocks",
+        "Show rendered wireframes to the owner",
+    ]:
+        assert term in wireframes
+    assert "related Mermaid flows and HTML/CSS/JS wireframes" in screens
+
+    routes = _load_routes()
+    frontend_full_docs = routes["routes"]["frontend_design"]["full_docs"]
+    for path in required_route_paths:
+        assert path in frontend_full_docs

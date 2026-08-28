@@ -6,6 +6,19 @@ Format: newest on top, date in `YYYY-MM-DD`.
 
 ---
 
+## 2026-08-28 - Frontend wireframe contracts
+
+- Added persistent HTML/CSS/JS wireframes as a UI contract gate after rendered
+  Visual Direction Boards and before production UI code changes.
+- Clarified Mermaid as the default format for frontend user flows, navigation
+  maps, and state diagrams, kept current alongside wireframes and screen
+  contracts.
+- Routed `docs/frontend/wireframes/` through frontend context and added docs
+  regression coverage for Mermaid flows, wireframes, owner approval, and
+  production UI gating.
+
+---
+
 ## 2026-08-28 - Frontend positive workflow contracts
 
 - Reworked frontend subsystem wording toward concrete positive completion

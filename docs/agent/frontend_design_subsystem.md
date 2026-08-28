@@ -171,6 +171,9 @@ Minimum owner gates and completion criteria:
   stack, product surface, visual direction, pages or screens, and
   implementation plan. Implementation begins after owner confirmation or
   explicit permission to continue.
+- UI Contract Gate: every UI edit starts from the current Mermaid flow
+  contracts and HTML/CSS/JS wireframes. Create or update them first, render the
+  wireframes, and use owner approval as the start signal for production UI code.
 
 Required owner gates pass through explicit owner confirmation, a documented
 owner waiver, or existing canonical project evidence that already decides the
@@ -185,7 +188,7 @@ from the requested scope, but common phase boundaries include:
 - product understanding and onboarding;
 - Product Surface Model and information architecture;
 - Design Identity and Visual Exploration;
-- Design System and screen contracts;
+- Design System, Mermaid flows, HTML wireframes, and screen contracts;
 - implementation work units;
 - responsive, functional, visual, and product completeness QA.
 
@@ -227,9 +230,9 @@ decision, constraint, result, product fact, design fact, or implementation
 contract that must survive the phase is persisted to a canonical project file,
 such as product documentation,
 `docs/frontend/product-surface-model.md`, `docs/frontend/design-identity.md`,
-`docs/frontend/design-system.md`, screen contracts, component registry, design
-decisions, `docs/state/current.yml`, `CHANGELOG.md`, or another appropriate
-durable document.
+`docs/frontend/design-system.md`, Mermaid flows, HTML wireframes, screen
+contracts, component registry, design decisions, `docs/state/current.yml`,
+`CHANGELOG.md`, or another appropriate durable document.
 
 Handoff files are temporary technical artifacts. The next phase, subagent, or
 fresh session reads the handoff first, then the required files listed inside it.
@@ -632,17 +635,43 @@ Record meaningful reusable components, purpose, location, and usage constraints 
 
 ## UX Flows
 
-Represent navigation relationships and complex user flows separately from
-visual design. Markdown and Mermaid are sufficient for many cases.
+Represent navigation relationships, user journeys, and state transitions
+separately from visual design. Mermaid is the default format for user flows,
+navigation maps, and state diagrams.
 
-Flows answer where the user can go, under what conditions, and how. Store them
-under `docs/frontend/flows/`.
+Flows answer where the user can go, under what conditions, how states change,
+and where journeys end. Store them under `docs/frontend/flows/`. Every UI edit
+starts by checking whether the relevant Mermaid flow contracts need updates.
+
+## Wireframes
+
+Wireframes are persistent screen contracts stored under
+`docs/frontend/wireframes/`. They are lightweight HTML/CSS/JS artifacts that
+render gray-box page layouts before production UI implementation.
+
+Each page or meaningful screen gets a wireframe before production UI work. A
+complete wireframe shows:
+
+- page regions as labeled gray blocks;
+- navigation, content, controls, images, data areas, and calls to action;
+- block-level descriptions for complex elements;
+- interaction notes for accordions, tabs, collapses, menus, forms, filters,
+  search, animation, loading, empty, error, and partial-data behavior;
+- responsive states for the important viewport widths;
+- links to related Mermaid flows and screen contracts.
+
+Wireframe artifacts are shown to the owner after Visual Direction Boards and
+before Design System finalization, screen-detail work, or production UI code.
+Owner feedback updates the wireframes until the layout, interactions, and
+responsive structure are approved. Future UI edits start by reading and updating
+the affected Mermaid flows and wireframes, then proceed to production code after
+owner approval.
 
 ## Screen Contracts
 
 Meaningful screens should have persistent Markdown contracts under
-`docs/frontend/screens/`. They serve as agent-readable UX specs, wireframes, and
-memory.
+`docs/frontend/screens/`. They serve as agent-readable UX specs and memory
+beside Mermaid flows and HTML/CSS/JS wireframes.
 
 A screen contract should include, as relevant:
 
@@ -657,9 +686,10 @@ A screen contract should include, as relevant:
 - responsive behavior;
 - visual emphasis;
 - related screens.
+- related flows and wireframes.
 
-Before materially changing a screen, update the contract when necessary, then
-implement.
+Before changing a screen, update the related Mermaid flow, wireframe, and
+screen contract, then implement after owner approval.
 
 ## Significant UI Changes
 
@@ -696,6 +726,8 @@ Implementation starts after the needed design work. It respects:
 - Design Identity;
 - positive and negative visual references;
 - Design System;
+- Mermaid Flows;
+- HTML/CSS/JS Wireframes;
 - Screen Contracts;
 - Component Registry;
 - Design Decisions;
@@ -714,8 +746,8 @@ Keep workflow proportional:
 ```text
 Tiny change -> implement -> inspect
 New component -> design -> implement states -> inspect
-New screen -> UX -> screen contract -> exploration -> implement -> inspect
-Major redesign -> deep design process -> implement -> full review
+New screen -> UX -> Mermaid flow -> HTML wireframe -> owner approval -> implement -> inspect
+Major redesign -> deep design process -> rendered boards -> wireframes -> owner approval -> implement -> full review
 ```
 
 Keep the workflow proportional.
@@ -868,6 +900,7 @@ docs/frontend/
 |   |-- interpretation.md
 |   |-- positive/
 |   `-- negative/
+|-- wireframes/
 |-- flows/
 |-- screens/
 |-- decisions/
@@ -882,6 +915,8 @@ Separation of responsibilities matters more than this exact file layout:
 - Visual References: what that identity looks like in practice;
 - Design System: technical visual rules;
 - Flows: how UX connects;
+- Wireframes: where screen regions, controls, content, interactions, animation,
+  and responsive structure live before production UI code;
 - Screens: how individual interfaces are structured;
 - Components: reusable building blocks;
 - Decisions: why important choices were made;
@@ -910,6 +945,10 @@ GENERATE 5 RENDERED VISUAL DIRECTION BOARDS
         |
 USER SELECTS / MIXES / REJECTS
         |
+BUILD HTML/CSS/JS WIREFRAMES + MERMAID FLOWS
+        |
+OWNER APPROVES WIREFRAMES
+        |
 TARGETED FOLLOW-UP IF NECESSARY
         |
 FINAL DESIGN IDENTITY
@@ -933,6 +972,10 @@ LOAD ONLY RELEVANT FRONTEND CONTEXT
 LOAD PRODUCT SURFACE MODEL WHEN SCOPE REQUIRES
         |
 UPDATE UX / SCREEN MODEL IF NECESSARY
+        |
+UPDATE MERMAID FLOWS + HTML WIREFRAMES WHEN UI STRUCTURE CHANGES
+        |
+OWNER APPROVES UPDATED UI CONTRACTS
         |
 EXPLORE ALTERNATIVES IF NECESSARY
         |

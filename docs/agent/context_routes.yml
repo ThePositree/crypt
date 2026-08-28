@@ -130,6 +130,7 @@ routes:
       - docs/frontend/design-system.md
       - docs/frontend/component-registry.md
       - docs/frontend/visual-references/interpretation.md
+      - docs/frontend/wireframes/
       - docs/frontend/flows/
       - docs/frontend/screens/
       - docs/frontend/decisions/
