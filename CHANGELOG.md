@@ -6,6 +6,18 @@ Format: newest on top, date in `YYYY-MM-DD`.
 
 ---
 
+## 2026-08-28 - Frontend positive workflow contracts
+
+- Reworked frontend subsystem wording toward concrete positive completion
+  criteria: phase outputs, minimum interview depth with uncertainty checks,
+  rendered visual direction boards, owner-gate completion, canonical handoff
+  truth, and responsive composition verdicts.
+- Updated compact frontend card and docs regression tests to preserve the
+  positive workflow contracts instead of relying on negative instruction
+  phrases.
+
+---
+
 ## 2026-08-27 - Frontend owner decision gates
 
 - Added Owner Decision Gates to separate completed interviews from completed

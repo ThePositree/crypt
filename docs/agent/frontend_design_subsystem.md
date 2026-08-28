@@ -50,11 +50,10 @@ One check does not replace another.
 
 ## Non-Negotiable Gates
 
-For substantial frontend work, the agent must not proceed to production
-implementation when frontend memory is not established. This is a state-based
-gate, not only a new-site gate. It applies to the first serious frontend task in
-the repository even when the user asks for something that sounds implementable
-immediately.
+For substantial frontend work, production implementation starts from established
+frontend memory. This is a state-based gate, not only a new-site gate. It
+applies to the first serious frontend task in the repository even when the user
+asks for something that sounds implementable immediately.
 
 Frontend memory is not established when any of the durable foundations needed
 for the task are still placeholders, for example:
@@ -73,15 +72,14 @@ The agent may proceed only when one of these is true:
   surface, identity, visual references, design-system rules, and screen
   contracts to support the change.
 
-If neither condition is true, the correct output is not implementation. The
-correct output is:
+If neither condition is true, the phase output is:
 
 1. repository frontend discovery;
 2. product knowledge discovery;
 3. a short statement that frontend memory is not established;
 4. the next adaptive design onboarding interview round with examples for
    abstract questions;
-5. no production frontend implementation yet.
+5. a clear statement of which gate or artifact unlocks the next phase.
 
 The owner answering the first onboarding round does not mean frontend memory is
 established. After the first answer, the agent must synthesize what was learned,
@@ -90,27 +88,26 @@ draft or update the Product Surface Model, draft preliminary Design Identity,
 perform visual exploration when the task needs visual direction, collect owner
 feedback, finalize Design Identity and Design System, and only then implement.
 
-First-time frontend onboarding is deep, not short. Do not describe it as quick,
-brief, lightweight, or a short round. The agent should set expectations that
-this is a multi-step discovery process because the repository has no established
-frontend memory yet.
+First-time frontend onboarding is a deep multi-step discovery process because
+the repository has no established frontend memory yet. Set that expectation
+before asking the first round.
 
-The full first-time onboarding interview is 30 questions total, delivered as 6
-adaptive rounds of 5 questions. Do not ask all 30 questions at once. Do not stop
-after one round unless the owner explicitly waives the rest of onboarding. The
-agent decides the exact 5 questions in each round dynamically from repository
-context, product knowledge, previous answers, and remaining uncertainty. There
-is no fixed questionnaire.
+The first-time onboarding interview asks at least 30 questions, delivered as
+adaptive rounds of 5 questions. After question 30, run an Uncertainty Check:
+continue with additional 5-question rounds while material product, stack,
+scope, visual, content, interaction, accessibility, or success-criteria
+decisions remain unresolved. The agent decides each round dynamically from
+repository context, product knowledge, previous answers, and remaining
+uncertainty. There is no fixed questionnaire.
 
-Do not promise implementation immediately after the owner's next answer while
-frontend memory is still not established. The next owner answer can advance the
-process, but it does not automatically unlock implementation. Promise the next
-onboarding step, synthesis, visual exploration, or persistence step instead.
+While frontend memory is still not established, describe the next onboarding,
+synthesis, visual exploration, or persistence step. The next owner answer can
+advance the process, and implementation unlocks only after the required gates
+and artifacts are complete.
 
-Agents must not fill Design Identity, Visual Direction Boards, selected or
-rejected references, or final design-system choices from their own taste alone.
-Those artifacts require owner answers, inferred existing product evidence, or
-explicit owner approval.
+Design Identity, Visual Direction Boards, selected and rejected references, and
+final design-system choices are grounded in owner answers, inferred existing
+product evidence, or explicit owner approval.
 
 After the owner answers enough interview rounds to support a preliminary
 identity, the next gate is visual exploration. For first-time frontend
@@ -118,27 +115,26 @@ onboarding or any substantial task that needs visual direction, generate the
 default five Visual Direction Boards before finalizing Design Identity, unless
 the owner explicitly skips or narrows that stage.
 
-Visual Direction Boards are direction studies for owner feedback. They are not
-production assets. Do not replace the five boards with one hero image, one
-illustration, one mockup, or an asset intended directly for the site/app. After
-presenting boards, stop for owner selection, mixing, rejection, or correction
-before finalizing Design Identity and implementing.
+Each Visual Direction Board is a rendered visual artifact plus short notes. A
+complete board shows a concrete direction study for composition, typography,
+density, geometry, surfaces, color, representative UI fragments, imagery or
+illustration approach, and signature ideas. After presenting boards, the next
+phase is owner selection, mixing, rejection, or correction.
 
-Do not convert a test of this methodology into a production frontend artifact.
-When the owner appears to be testing agent behavior, explain the gated next step
-and wait for the required input instead of silently implementing.
+When the owner appears to be testing agent behavior, treat the result as a
+methodology test: explain the gated next step and wait for the required input.
 
 For a new site, app, or major frontend surface, implementation technology is
 also a gated decision. If the existing repository does not clearly establish the
 frontend stack, ask whether the owner wants a lightweight static implementation,
 a framework-based app, specific UI libraries, or another stack preference before
-choosing. Do not assume the absence of a framework requirement means that heavy
-frameworks or UI libraries are unwanted.
+choosing. Missing framework requirements are treated as unresolved stack input,
+not as a preference for or against heavy frameworks or UI libraries.
 
 ## Owner Decision Gates
 
-Some frontend phases require explicit owner feedback and cannot be completed
-autonomously. The agent must treat these states as distinct:
+Some frontend phases require explicit owner feedback. Treat these states as
+distinct:
 
 ```text
 Interview completed
@@ -156,34 +152,34 @@ authorize implementation. Onboarding is complete only after the required owner
 decision gates have passed, durable design memory has been updated, and the
 task is explicitly ready for the next phase.
 
-Minimum owner gates:
+Minimum owner gates and completion criteria:
 
-- Stack Gate: for a new site or application, get explicit owner selection or
-  confirmation of the stack when the repository does not already define it.
+- Stack Gate: for a new site or application, record the owner-confirmed stack
+  when the repository does not already define it.
 - Product Surface Gate: for a complete site or product surface, draft the
   Product Surface Model, information architecture, page inventory, journeys,
-  content, and functionality, then show it to the owner for confirmation before
-  screen design or implementation.
-- Visual Direction Gate: after generating Visual Direction Boards, stop and get
-  owner feedback. The agent must not choose a direction, mix variants, finalize
-  Design Identity, create Design System, or start implementation without owner
-  response.
+  content, and functionality, then get owner confirmation before screen design
+  or implementation.
+- Visual Direction Gate: after generating rendered Visual Direction Boards,
+  collect owner feedback. The feedback identifies the selected direction,
+  elements to mix, rejected properties, or the need for another exploration
+  round.
 - Scope/Completeness Gate: for production-ready, complete-site, or many-page
   requests, record the first implementation scope: pages, journeys, content,
   and functionality that are in scope.
 - Final Pre-Implementation Gate: before large implementation, show the selected
   stack, product surface, visual direction, pages or screens, and
-  implementation plan, then wait for confirmation or explicit permission to
-  continue.
+  implementation plan. Implementation begins after owner confirmation or
+  explicit permission to continue.
 
-Do not implement before required owner gates pass. A prior broad instruction
-such as "make the site" does not automatically waive later gates unless the
-owner explicitly says to skip them or to let the agent decide.
+Required owner gates pass through explicit owner confirmation, a documented
+owner waiver, or existing canonical project evidence that already decides the
+gate.
 
 ## Phase Handoff Strategy
 
-Large frontend tasks must be split into phases instead of attempting one
-continuous pass in an overloaded context. The agent should determine the phases
+Large frontend tasks are split into phases rather than one continuous pass in
+an overloaded context. The agent should determine the phases
 from the requested scope, but common phase boundaries include:
 
 - product understanding and onboarding;
@@ -204,14 +200,13 @@ Use phase handoff for large frontend tasks, including:
   all in scope;
 - any situation where the agent expects active context to become too large.
 
-Do not force phase handoff onto small work. Tiny visual fixes, small UI
-modifications, and narrow component changes should continue to use the
-proportional workflow unless context is already overloaded.
+Small work keeps the proportional workflow. Tiny visual fixes, small UI
+modifications, and narrow component changes use phase handoff only when context
+is already overloaded.
 
-At the end of each phase, create a durable handoff artifact only when there is a
-next phase or the work must continue in a new session or subagent. If the
-entire frontend task is complete, do not create a handoff unless the current
-workflow needs a temporary transition report.
+At the end of each phase with a next phase, new session, or subagent, create a
+durable handoff artifact. Fully complete frontend tasks end with canonical
+files and reviews rather than a new handoff.
 
 The handoff must record:
 
@@ -222,31 +217,26 @@ The handoff must record:
 - open questions;
 - goal of the next phase;
 - files and instruction documents the next phase must read;
-- files and instruction documents the next phase must not load without need;
+- files and instruction documents that are optional or deferred for the next
+  phase;
 - important constraints, risks, and context;
 - what is the source of truth going forward.
 
-Raw conversation from the previous phase must not be the only source of truth.
-Every important decision, constraint, result, product fact, design fact, or
-implementation contract that must survive the phase must be persisted to a
-canonical project file, such as product documentation,
+Canonical files are the source of truth after each phase. Every important
+decision, constraint, result, product fact, design fact, or implementation
+contract that must survive the phase is persisted to a canonical project file,
+such as product documentation,
 `docs/frontend/product-surface-model.md`, `docs/frontend/design-identity.md`,
 `docs/frontend/design-system.md`, screen contracts, component registry, design
 decisions, `docs/state/current.yml`, `CHANGELOG.md`, or another appropriate
 durable document.
 
-Handoff files are temporary technical artifacts. They are not permanent design
-memory and must not become the only place where important information lives.
-The next phase, subagent, or fresh session must read the handoff first, then
-read the required files listed inside it. After the next phase has consumed the
-handoff and moved or confirmed all durable information in canonical files, it
-must delete the consumed handoff file. If a handoff only supports transition
-between phases, it must be deleted after the final phase completes.
-
-Do not leave old handoff files in the project "just in case." Keeping handoff
-history for audit or debugging requires a separate documented decision. Before
-ending any large frontend task, verify that no temporary frontend handoff files
-remain unless such retention is explicitly allowed by a documented decision.
+Handoff files are temporary technical artifacts. The next phase, subagent, or
+fresh session reads the handoff first, then the required files listed inside it.
+After durable information is moved or confirmed in canonical files, delete the
+consumed handoff file. Before ending any large frontend task, verify that no
+temporary frontend handoff files remain. Keeping handoff history for audit or
+debugging requires a separate documented decision.
 
 When choosing how to continue after a phase, use this priority:
 
@@ -267,7 +257,7 @@ The subagent prompt must include:
 - next phase goal;
 - required instruction files for that phase;
 - relevant project state files;
-- instruction not to load unrelated previous-phase methodology without need;
+- scoped instructions for which previous-phase methodology is relevant;
 - requirement to create the same durable handoff if another phase remains;
 - requirement to delete the consumed handoff after durable information is
   persisted to canonical files;
@@ -275,10 +265,9 @@ The subagent prompt must include:
   phases remain and subagents are available, or report completion to the owner.
 
 If subagents are not available, not understood, not reliable, or not controllable
-in the current environment, the agent must not silently continue the next large
-phase in an overloaded context. It should finish the current phase, write the
-handoff, and tell the owner to open a new session with a short practical
-instruction such as:
+in the current environment, finish the current phase, write the handoff, and
+tell the owner to open a new session with a short practical instruction such
+as:
 
 ```text
 Phase complete. Handoff saved at <path>. To avoid overloading context, open a
@@ -286,16 +275,16 @@ new session and write: Continue from <path> and perform the next phase using the
 required instructions listed there.
 ```
 
-The agent must not pretend it can remove previous conversation history from
-context. It can stop treating raw conversation as source of truth, persist
-canonical state, use a fresh session, use harness compaction when available, or
-use an isolated subagent when available. It cannot physically delete already
-loaded conversation history by instruction.
+The agent manages previous conversation by making canonical files the source of
+truth, using fresh sessions, using harness compaction when available, or using
+isolated subagents when available. Already loaded conversation history remains
+physically present in the active context until the harness compacts or replaces
+the context.
 
 ## First-Use Discovery
 
 Before establishing new frontend rules for a project, inspect the repository and
-infer existing decisions without asking the owner by default.
+infer existing decisions from local evidence first.
 
 Identify:
 
@@ -314,9 +303,9 @@ Identify:
 - apparent legacy areas, migrations, and inconsistencies.
 
 Stable, actively used choices are intentional by default. Continue an obvious
-local stack without asking. Ask only when evidence shows a meaningful unresolved
-choice, such as competing active UI libraries, an unfinished migration, strong
-legacy/current conflicts, or genuinely ambiguous brand direction.
+local stack. Ask when evidence shows a meaningful unresolved choice, such as
+competing active UI libraries, an unfinished migration, strong legacy/current
+conflicts, or genuinely ambiguous brand direction.
 
 ```text
 INFER
@@ -334,8 +323,8 @@ For a new site/app, major redesign, or substantial new product surface, the
 agent must understand the product before deciding what screens and content
 belong in the frontend.
 
-Do not ask the owner to repeat product information that already exists in the
-repository. First search for existing product knowledge sources, such as:
+First search for existing product knowledge sources before asking the owner to
+repeat product information, such as:
 
 - `product.md` or `PRODUCT.md`;
 - `README.md`;
@@ -372,8 +361,8 @@ build a Product Surface Model. The model answers what the user must be able to
 do with the frontend, not only which pages the owner named.
 
 Derive the model from the actual product, requested scope, stage of the product,
-existing knowledge, and owner answers. Do not hardcode a universal set of pages
-or features.
+existing knowledge, and owner answers. Use product-specific evidence for pages
+and features.
 
 Reason in this order:
 
@@ -395,9 +384,9 @@ Sections and components
 
 Completeness comes before decoration. Before treating a frontend as designed,
 mentally remove the CSS and ask whether a complete useful product surface still
-remains for the requested scope. The frontend must not merely demonstrate the
-chosen visual direction. It must represent a complete useful product surface
-appropriate to the requested scope.
+remains for the requested scope. The frontend represents a complete useful
+product surface appropriate to the requested scope, with visual direction
+serving that surface.
 
 This does not mean every MVP must become large. Completeness is proportional to
 the explicit request, product knowledge, user goals, and product stage.
@@ -428,9 +417,8 @@ not only the styling.
 
 When the project lacks a sufficiently established design identity and the task
 is significant, run a deep one-time design onboarding before implementation.
-Do not use a fixed questionnaire or a fixed number of questions. Generate
-questions dynamically for the product and adapt follow-ups to the owner's
-answers.
+Generate questions dynamically for the product and adapt follow-ups to the
+owner's answers.
 
 Understand:
 
@@ -456,15 +444,13 @@ custom option. The suggestions are conveniences, not restrictions.
 Abstract visual or emotional questions must include examples. The owner should
 not need design expertise to participate.
 
-Ask design onboarding questions in the 6-round / 5-question protocol defined in
-Non-Negotiable Gates. Each round should cover the highest-leverage remaining
-unknowns across product purpose, audience, desired surface, visual direction,
-stack constraints, references, and success criteria. The first round must be 5
-questions, not a token three-question preflight. After each owner answer,
-synthesize what was learned, identify the remaining uncertainty, and ask the
-next 5-question round. Do not dump every possible question at once. Later rounds
-must depend on earlier answers so the agent can build a more accurate product
-model.
+Ask design onboarding questions in the minimum-30 / 5-question-round protocol
+defined in Non-Negotiable Gates. Each round covers the highest-leverage
+remaining unknowns across product purpose, audience, desired surface, visual
+direction, stack constraints, references, and success criteria. After each
+owner answer, synthesize what was learned, identify remaining uncertainty, and
+ask the next 5-question round. Later rounds depend on earlier answers so the
+agent can build a more accurate product model.
 
 For a new site/app, include implementation-stack preferences in an early round
 when the repository does not already decide them. Clarify whether the owner
@@ -488,9 +474,8 @@ Visual exploration is the final interactive onboarding stage. Use available
 image-generation or visual tools when useful. The default is five Visual
 Direction Boards.
 
-Visual Direction Boards are not production assets, page illustrations, final
-site images, or five finished versions of the same website or screen. They are
-direction studies for choosing visual language, combining, as relevant:
+Visual Direction Boards are rendered direction studies for choosing visual
+language. Each board combines, as relevant:
 
 - moodboard signals;
 - miniature design-system exploration;
@@ -507,17 +492,11 @@ All five boards must remain plausible interpretations of the owner's answers
 and preliminary identity. Variation should be meaningful, not random. Explore
 composition, typography, density, geometry, surfaces, hierarchy, navigation,
 data presentation, imagery, emphasis, and signature ideas when those axes are
-relevant. Do not hardcode named styles as required directions.
+relevant. Named styles are optional labels, not required directions.
 
-After generating boards, the agent must stop. Visual Direction Boards require
-owner feedback before any downstream design or implementation phase. The agent
-must not:
-
-- convert boards into production assets;
-- use boards as if the direction has already been selected;
-- finalize Design Identity before owner feedback;
-- create Design System from the agent's own selected direction;
-- start implementation after boards without approval.
+After generating boards, the next phase is owner feedback. The board package is
+complete when the owner can compare five rendered directions and respond with a
+selection, mix, rejection, or request for another iteration.
 
 The owner may select one direction, combine several, prefer individual
 properties, reject properties, reject every board, or describe what is missing.
@@ -551,8 +530,8 @@ Future frontend decisions must be evaluated against this identity.
 ## Controlled Differentiation
 
 Prevent unrelated projects from converging toward the same recognizable
-AI-generated interface. Do not randomize colors, radii, typography, or layout
-for novelty.
+AI-generated interface. Colors, radii, typography, and layout vary when the
+product reasoning calls for it.
 
 Differentiation must emerge from:
 
@@ -583,28 +562,27 @@ The result should be distinctive for understandable reasons.
 ## Signature Traits And Anti-Identity
 
 The final identity should establish a small number of recognizable signature
-traits. They should appear consistently enough to create recognition without
-becoming decorative gimmicks.
+traits. They should appear consistently enough to create recognition while
+remaining functional rather than decorative gimmicks.
 
-Also record what the product must not become. Negative constraints are valuable
-because they counter common AI-generated defaults.
+Also record the product's anti-identity: the states and associations that would
+break the intended identity.
 
-Examples are allowed in local identity files, but examples must not become
-global defaults.
+Examples in local identity files stay local to that product.
 
 ## Reference Decomposition
 
-When users provide references, decompose them into properties instead of copying
-templates.
+When users provide references, decompose them into properties and product
+principles.
 
 For each reference, record:
 
 - what is liked;
 - what is disliked;
-- what should not be copied;
+- what remains product-specific to the reference;
 - which product-specific principle the reference supports.
 
-References are signals, not permission to clone another product.
+References are signals for product-specific principles.
 
 ## Design System
 
@@ -623,7 +601,7 @@ The Design System can define typography, spacing, colors, semantic color usage,
 surfaces, borders, radii, shadows/elevation, density, iconography, motion,
 forms, tables, charts, responsive principles, and semantic states.
 
-Reuse established values. Do not invent one-off visual values for every task.
+Reuse established values across tasks.
 
 UI libraries are part of frontend context and must be respected, but a UI
 library is not the product Design System. The Design Identity and Design System
@@ -649,8 +627,7 @@ Implement
 Register
 ```
 
-Creating a new primitive is the last option. Record meaningful reusable
-components, purpose, location, and usage constraints in
+Record meaningful reusable components, purpose, location, and usage constraints in
 `docs/frontend/component-registry.md`.
 
 ## UX Flows
@@ -686,8 +663,8 @@ implement.
 
 ## Significant UI Changes
 
-For substantial new UI, do not automatically implement the first idea. Compare
-candidate approaches against Design Identity, then select, combine, or refine.
+For substantial new UI, compare candidate approaches against Design Identity,
+then select, combine, or refine.
 
 Approaches should differ materially in hierarchy, composition, density,
 interaction model, or another relevant design dimension, not merely color. The
@@ -713,8 +690,7 @@ what it does.
 
 ## Implementation Rules
 
-Only after the needed design work should agents modify production code.
-Implementation must respect:
+Implementation starts after the needed design work. It respects:
 
 - Frontend Context;
 - Design Identity;
@@ -742,19 +718,17 @@ New screen -> UX -> screen contract -> exploration -> implement -> inspect
 Major redesign -> deep design process -> implement -> full review
 ```
 
-Avoid bureaucracy for its own sake.
+Keep the workflow proportional.
 
 ## Render, Inspect, Fix
 
-A frontend task is not complete merely because code compiles, lint passes, or
-tests succeed.
+Frontend completion includes compiled code, passing relevant checks, and a
+rendered inspection of the real UI. Run the application, inspect it with
+available browser, screenshot, multimodal, or equivalent capability, fix
+problems, and inspect again when needed.
 
-Run the application, render the real UI, inspect it with available browser,
-screenshot, multimodal, or equivalent capability, fix problems, and inspect
-again when needed.
-
-Rendered QA must cover viewport sizes that are meaningful for the layout, not
-only one desktop and one mobile width. At minimum for a new site/app, check:
+Rendered QA covers viewport sizes that are meaningful for the layout. At
+minimum for a new site/app, check:
 
 - narrow mobile;
 - wide mobile or small tablet;
@@ -766,20 +740,17 @@ only one desktop and one mobile width. At minimum for a new site/app, check:
 Record the checked viewport sizes in the review notes when the review is
 durable.
 
-Rendered QA must also exercise every added interactive zone, not just verify
-that it is visible. Click or activate every added button, link, tab, menu,
-toggle, form control, carousel control, and other focusable/clickable element.
-Verify the resulting state, navigation target, URL/hash, enabled/disabled
-behavior, focus state, error state, and console output as relevant.
+Rendered QA also exercises every added interactive zone. Click or activate every
+added button, link, tab, menu, toggle, form control, carousel control, and other
+focusable/clickable element. Verify the resulting state, navigation target,
+URL/hash, enabled/disabled behavior, focus state, error state, and console
+output as relevant.
 
 ## Responsive Design Pass
 
-Responsive design is not layout survival. A page that has no overflow,
-overlap, or broken buttons can still fail responsive design.
-
-For meaningful responsive work, run a Responsive Design Pass. Each important
-viewport should feel like an intentionally designed composition of the same
-product, not a desktop layout that CSS managed to compress.
+Responsive design is intentional composition beyond layout survival. For
+meaningful responsive work, run a Responsive Design Pass. Each important
+viewport should feel like a designed composition of the same product.
 
 Evaluate each important viewport for:
 
@@ -793,8 +764,8 @@ Evaluate each important viewport for:
 - whether anything should be hidden, collapsed, moved, combined, or changed;
 - consistency with Design Identity.
 
-Use the existing structured visual critique approach. Do not try to reduce
-visual quality to a numeric formula.
+Use the existing structured visual critique approach. Visual quality is captured
+as a written critique rather than a numeric formula.
 
 ### Responsive Transformation Reasoning
 
@@ -810,17 +781,15 @@ Examples of substantial transformations include:
 - multi-column layout to one column;
 - persistent controls to collapsed controls.
 
-Do not assume the most obvious technical substitution is correct. Ask which
-interaction or layout pattern best preserves the function of the original
-element at this viewport.
+Choose the interaction or layout pattern that best preserves the function of the
+original element at this viewport.
 
-Visual QA after implementation must inspect each important viewport as its own
-composition, not only as a regression check against desktop.
+Visual QA after implementation inspects each important viewport as its own
+composition and records how it differs from desktop.
 
 ## Visual Review Protocol
 
-Use an explicit rubric instead of asking whether the result "looks good".
-Evaluate relevant dimensions:
+Use an explicit rubric. Evaluate relevant dimensions:
 
 - visual hierarchy;
 - spacing rhythm;
@@ -834,8 +803,8 @@ Evaluate relevant dimensions:
 - excessive card nesting;
 - responsive behavior;
 - responsive composition quality at each important viewport;
-- responsive transformations are justified by function, not only by available
-  CSS mechanics;
+- responsive transformations are justified by function and available CSS
+  mechanics;
 - loading, empty, error, disabled, overflow, and partial-data states;
 - accessibility;
 - consistency with Design Identity;
@@ -848,15 +817,15 @@ Evaluate relevant dimensions:
 - all added links and buttons either perform the intended action or are
   intentionally disabled/placeholder states documented in the screen contract.
 
-One final review question should be: is this merely a clean interface, or does
-it clearly belong to this particular product?
+Each meaningful viewport receives a short composition verdict covering
+hierarchy, density, navigation fit, spacing, content priority, and interaction
+model. The final review asks whether the UI clearly belongs to this product. If
+the verdict is inadequate, fix and review again.
 
-If inadequate, fix and review again.
+## Product-Specific UI Rules
 
-## Anti-AI-Slop Rules
-
-Do not use common AI-generated UI defaults without product-specific
-justification:
+Use visual choices that follow from the Design Identity and product function.
+Common AI-default patterns need a product reason before use:
 
 - excessive rounded cards;
 - cards nested inside cards;
@@ -872,8 +841,8 @@ justification:
 - glassmorphism;
 - unnecessary explanatory copy.
 
-These are not absolute bans. A technique is allowed when it follows from the
-Design Identity and serves a clear purpose.
+Techniques are acceptable when they follow from the Design Identity and serve a
+clear purpose.
 
 ## Responsive Behavior And States
 
@@ -931,13 +900,13 @@ DISCOVER EXISTING PRODUCT KNOWLEDGE
         |
 BUILD PRODUCT SURFACE MODEL WHEN SCOPE REQUIRES
         |
-DEEP DESIGN INTERVIEW
+DEEP DESIGN INTERVIEW: AT LEAST 30 QUESTIONS + UNCERTAINTY CHECK
         |
 ABSTRACT IDENTITY QUESTIONS WITH EXAMPLES
         |
 PRELIMINARY DESIGN IDENTITY
         |
-GENERATE 5 VISUAL DIRECTION BOARDS
+GENERATE 5 RENDERED VISUAL DIRECTION BOARDS
         |
 USER SELECTS / MIXES / REJECTS
         |

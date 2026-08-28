@@ -223,26 +223,24 @@ def test_frontend_design_subsystem_has_onboarding_stop_gate() -> None:
         "state-based gate, not only a new-site gate",
         "first serious frontend task",
         "owner answering the first onboarding round does not mean frontend memory is established",
-        "First-time frontend onboarding is deep, not short",
-        "30 questions total, delivered as 6 adaptive rounds of 5 questions",
-        "Do not ask all 30 questions at once",
+        "First-time frontend onboarding is a deep multi-step discovery process",
+        "asks at least 30 questions",
+        "Uncertainty Check",
         "There is no fixed questionnaire",
-        "Do not promise implementation immediately after the owner's next answer",
-        "Do not replace the five boards with one hero image",
+        "Each Visual Direction Board is a rendered visual artifact plus short notes",
         "design onboarding interview",
         "five Visual Direction Boards",
-        "must not fill Design Identity",
+        "grounded in owner answers, inferred existing product evidence, or explicit owner approval",
     ]
     required_card_terms = [
         "If frontend memory is not established",
         "first serious frontend task",
         "An owner's first answer to onboarding questions is not enough",
-        "First-time frontend onboarding is deep, not short",
-        "30 questions total",
-        "6 adaptive rounds of 5 questions",
-        "Do not promise implementation immediately after the owner's next answer",
-        "Visual exploration boards are direction studies",
-        "Do not replace the default five boards with one hero image",
+        "First-time frontend onboarding is deep",
+        "at least 30 questions",
+        "Uncertainty Check",
+        "Visual Direction Boards are rendered direction studies plus notes",
+        "Owner feedback selects, mixes, rejects, or iterates them",
     ]
 
     for term in required_full_terms:
@@ -264,18 +262,18 @@ def test_frontend_design_subsystem_requires_stack_and_interaction_qa() -> None:
     )
 
     required_full_terms = [
-        "6-round / 5-question protocol",
-        "Do not dump every possible question at once",
-        "not a token three-question preflight",
+        "minimum-30 / 5-question-round protocol",
+        "remaining unknowns",
+        "ask the next 5-question round",
         "implementation technology is also a gated decision",
-        "Do not assume the absence of a framework requirement",
+        "Missing framework requirements are treated as unresolved stack input",
         "narrow mobile",
         "large desktop or wide monitor",
-        "exercise every added interactive zone",
+        "exercises every added interactive zone",
         "Click or activate every added button, link, tab, menu",
     ]
     required_card_terms = [
-        "6 adaptive rounds of 5 questions",
+        "adaptive rounds of 5",
         "lightweight static stack or a framework/UI-library stack",
         "desktop, mobile, intermediate, and large viewport breakpoints",
         "Exercise every added interactive element",
@@ -310,7 +308,7 @@ def test_frontend_design_subsystem_requires_product_surface_model() -> None:
         "DISCOVER | INFER FROM EXISTING PRODUCT KNOWLEDGE",
         "Completeness comes before decoration",
         "Product Completeness Review",
-        "The frontend must not merely demonstrate the chosen visual direction",
+        "visual direction serving that surface",
         "Functional QA: does it work?",
         "Visual QA: does it look and feel right",
     ]
@@ -350,16 +348,16 @@ def test_frontend_design_subsystem_requires_responsive_design_pass() -> None:
 
     required_full_terms = [
         "Responsive Design Pass",
-        "Responsive design is not layout survival",
-        "intentionally designed composition",
+        "Responsive design is intentional composition beyond layout survival",
+        "designed composition of the same product",
         "Responsive Transformation Reasoning",
-        "Do not assume the most obvious technical substitution is correct",
+        "best preserves the function of the original element",
         "each important viewport as its own composition",
     ]
     required_card_terms = [
         "Responsive Design Pass",
-        "Responsive design is not layout survival",
-        "intentionally composed for that product and width",
+        "Responsive design goes beyond layout survival",
+        "each viewport feels intentionally composed",
         "responsive transformations preserve hierarchy",
     ]
 
@@ -383,14 +381,14 @@ def test_frontend_design_subsystem_requires_phase_handoff_strategy() -> None:
 
     required_full_terms = [
         "Phase Handoff Strategy",
-        "Large frontend tasks must be split into phases",
+        "Large frontend tasks are split into phases",
         "durable handoff artifact",
         "Handoff files are temporary technical artifacts",
         "delete the consumed handoff file",
-        "must not be the only source of truth",
+        "Canonical files are the source of truth after each phase",
         "isolated subagent",
         "fresh user session handoff",
-        "must not pretend it can remove previous conversation history",
+        "Already loaded conversation history remains physically present",
         "continue in the current session only if context remains manageable",
     ]
     required_card_terms = [
@@ -398,11 +396,11 @@ def test_frontend_design_subsystem_requires_phase_handoff_strategy() -> None:
         "Phase Handoff Strategy",
         "durable handoff artifact",
         "Handoff is temporary",
-        "must not be the only source of truth",
-        "delete consumed handoff files",
+        "canonical files are source of truth",
+        "consumed handoff files are deleted",
         "isolated subagent if supported and reliable",
         "fresh user session handoff",
-        "must not pretend it can remove previous conversation history",
+        "Loaded conversation remains until compaction/replacement",
         "current session only if context remains manageable",
     ]
 
@@ -432,18 +430,17 @@ def test_frontend_design_subsystem_requires_owner_decision_gates() -> None:
         "Visual Direction Gate",
         "Scope/Completeness Gate",
         "Final Pre-Implementation Gate",
-        "Visual Direction Boards require owner feedback",
-        "Visual Direction Boards are not production assets",
-        "finalize Design Identity before owner feedback",
-        "Do not implement before required owner gates pass",
+        "collect owner feedback",
+        "rendered Visual Direction Boards",
+        "Final Pre-Implementation Gate",
+        "Implementation begins after owner confirmation",
     ]
     required_card_terms = [
         "Interview completed is not onboarding completed",
         "Owner Decision Gates",
-        "Visual Direction Boards require owner feedback",
-        "not production assets",
-        "Do not finalize Design Identity before owner feedback",
-        "implement before required owner gates pass",
+        "Owner feedback selects, mixes, rejects, or iterates them",
+        "rendered direction studies",
+        "Final Design Identity, Design System, and implementation follow the required owner gates",
     ]
 
     for term in required_full_terms:
