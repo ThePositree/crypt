@@ -1,6 +1,6 @@
 # Visual Direction Boards
 
-Status: ready for owner comparison; Visual Direction Approval pending.
+Status: Pocket Field Lab selected; Visual Direction Approval complete.
 Product Surface source: revision 1, approved 2026-08-30.
 Preliminary Design Identity source: revision 1.
 
@@ -54,6 +54,9 @@ design evidence, not production pages or reusable application code.
 
 Visual Direction Approval is required after rendering, inspection, independent
 review, and owner comparison. No board is approved by its creation alone.
+
+The owner selected `03-pocket-field-lab.html` without an approved mix on
+2026-08-30. The other boards remain unselected exploration evidence.
 
 ## QA Summary
 

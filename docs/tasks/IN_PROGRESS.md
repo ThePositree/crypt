@@ -5,19 +5,20 @@ Only active work belongs here. Historical research notes belong in
 
 ## Public documentation portal visual direction
 
-**What:** select or mix one of five responsive visual direction boards for the
-approved public English documentation portal.
+**What:** turn the approved Pocket Field Lab direction into a production plan
+and implementation for the public English documentation portal.
 
-**Current state:** Product Surface revision 1 is approved. Five standalone
-boards are implemented and QA-reviewed under
-`docs/frontend/visual-directions/`; the consolidated verdict is in
-`docs/frontend/reviews/2026-08-30-visual-direction-boards.md`.
+**Current state:** Product Surface revision 1 and Design Identity revision 2
+are approved. The owner selected Pocket Field Lab without a mix. Five boards
+and the consolidated verdict remain under `docs/frontend/` as design evidence.
 
-**Next step:** owner Visual Direction Approval. Choose one board, name a lead
-plus donor traits, or reject all five. Production implementation has not begun.
+**Next step:** choose the production stack and content pipeline, write the
+responsive page/component architecture, then implement the approved portal.
+Production implementation has not begun.
 
-**Acceptance:** the selected visual direction and any allowed mix are recorded
-in the visual references and Design Identity before application code starts.
+**Acceptance:** the public portal implements the approved content surface and
+Pocket Field Lab identity, passes responsive/accessibility QA, and contains no
+visitor-facing operational trading controls.
 
 ## Live execution / backtest reconciliation audit
 

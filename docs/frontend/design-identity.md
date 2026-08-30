@@ -1,9 +1,9 @@
 # Design Identity
 
-Status: preliminary; visual exploration not yet approved.
-Revision: 1.
-Approval source: owner onboarding on 2026-08-30; final approval pending visual
-direction boards.
+Status: approved.
+Revision: 2.
+Approval source: owner selected Pocket Field Lab on 2026-08-30 after reviewing
+five rendered visual direction boards.
 
 ## Core Feeling
 
@@ -49,6 +49,21 @@ direction boards.
 - Product purpose: communicates domain at a glance without imitating an
   exchange dashboard.
 
+- Trait: tactile field-notebook structure with specimen cards, index tabs,
+  taped diagrams, clipped samples, and restrained stamped labels.
+- Product purpose: makes a large technical system feel browsable and collected
+  through evidence rather than presented as a generic documentation template.
+
+- Trait: vertically browsable research specimens with an intentionally guided
+  single-column mobile trail.
+- Product purpose: preserves equal mobile and desktop quality while supporting
+  both sequential learning and quick retrieval.
+
+- Trait: dusty mint, warm sand, muted coral, and faded ink as the primary
+  palette, with a coordinated dark-paper theme.
+- Product purpose: delivers the approved pastel lo-fi character while keeping
+  charts, code, states, and body text technically legible.
+
 ## Anti-Identity
 
 - Avoid: dark fintech terminal clichés, neon casino styling, luxury trading
@@ -69,11 +84,11 @@ direction boards.
 
 ## Model-Dependent Exploration Record
 
-- Model and tools used: onboarding synthesis by Codex; independent read-only
-  information architecture review by Cursor Grok 4.6 High Fast through Orca
-  CLI. Visual tools not used yet.
+- Model and tools used: onboarding synthesis by Codex; five isolated visual
+  boards by native Codex workers; browser QA through Orca `orca-ide`; and an
+  independent read-only comparison by Cursor Grok 4.6 High Fast.
 - Date: 2026-08-30
-- Approved Visual Direction revision: none
-- Known limitations: identity remains preliminary until five rendered desktop
-  and mobile direction boards are inspected and the owner selects, mixes, or
-  rejects them.
+- Approved Visual Direction revision: Pocket Field Lab, revision 1
+- Known limitations: the board is design evidence rather than reusable
+  production code. Framework, hosting, content pipeline, exact public facts,
+  and final mascot naming consistency remain production-planning decisions.

@@ -13,6 +13,9 @@
   corrected the mobile interaction blockers it found in directions 02 and 05.
 - Recorded the comparison and left Visual Direction Approval as the next gate;
   no production frontend implementation has started.
+- The owner selected Pocket Field Lab as the primary visual direction without
+  a mix, approving Design Identity revision 2 and unlocking production
+  planning.
 
 Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
