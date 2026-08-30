@@ -12,9 +12,9 @@ and implementation for the public English documentation portal.
 are approved. The owner selected Pocket Field Lab without a mix. Five boards
 and the consolidated verdict remain under `docs/frontend/` as design evidence.
 
-**Next step:** owner Wireframe Approval for revision 2 under
-`docs/frontend/wireframes/`. Revision 2 adds a real Pocket Field Lab hero image,
-strong asymmetric overlap, and irregular specimen flow. Approval accepts the
+**Next step:** owner Wireframe Approval for revision 3 under
+`docs/frontend/wireframes/`. Revision 3 gives all eight pages real Pocket Field
+Lab imagery, asymmetric overlap, and page-specific visual rhythm. Approval accepts the
 eight-page structure and Next.js + Tailwind baseline, then unlocks production
 code.
 

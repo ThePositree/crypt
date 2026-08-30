@@ -1,8 +1,8 @@
 # Public Portal Wireframe Review
 
 Date: 2026-08-30
-Status: revision 1 rejected; revision 2 ready for owner Wireframe Approval
-Artifact revision: 2
+Status: revisions 1-2 superseded; revision 3 ready for owner Wireframe Approval
+Artifact revision: 3
 
 ## Scope
 
@@ -16,6 +16,13 @@ Pocket Field Lab hero illustration as a full-bleed field wall, with typography,
 an index tab, and the explanation-only boundary overlapping the image. Content
 continues through an uneven specimen river rather than repeated horizontal
 text/image bands.
+
+Revision 3 responds to the follow-up that liveliness must apply to every page,
+not only Overview. Three additional generated scenes provide architecture,
+evidence-bench, and archive-vault visual narratives. All seven remaining pages
+now open with alternating, overlapping, asymmetrically cropped chapter scenes;
+the same image is reused only when the underlying metaphor is shared, with
+page-specific crop, direction, tab, description, and downstream composition.
 
 ## Browser Evidence
 
@@ -53,6 +60,16 @@ data/evidence, and optional-illustration fallback.
 
 Select one stable name for the recurring human field researcher before final
 copy freeze. This does not block layout approval.
+
+## Image Generation Record
+
+- Tool: built-in image generation through the `imagegen` skill.
+- Assets: `mira-pocket-field-lab-hero-v1.png`,
+  `mira-architecture-flow-v1.png`, `mira-evidence-bench-v1.png`, and
+  `mira-archive-vault-v1.png` under `wireframes/assets/`.
+- Shared invariants: Mira Vale, dusty mint field jacket, editorial gouache and
+  pencil, paper collage, visible crypto/candlestick evidence, no readable
+  generated text, no dashboard, no live controls, no profit imagery.
 
 ## Stack Revision
 

@@ -1,1 +1,70 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Search wireframe</title><link rel="stylesheet" href="wireframe.css"></head><body><header class="top"><div class="top-inner"><a class="brand" href="overview.html">crypt / field guide</a><nav class="nav"><a href="overview.html">Overview</a><a href="architecture.html">Architecture</a><a href="research.html">Research</a><a href="concepts.html">Concepts</a></nav><div class="tools"><button class="button menu" data-menu>Menu</button></div></div></header><main class="page"><p class="label">Global search</p><h1>Find a field note.</h1><section class="block"><label for="q"><b>Search all documentation</b></label><input class="button" id="q" type="search" value="closed candle"><button class="button">Search</button><p aria-live="polite">6 results for “closed candle”</p></section><div class="search-layout"><aside class="block"><b>Filter</b><p>Chapter</p><p>Concept</p><p>Example</p><p>Evidence</p><button class="button">Clear filters</button></aside><section><article class="result"><b>Closed-candle decisions</b><p>Architecture · matched excerpt · related concepts</p></article><article class="result"><b>Safe causal research</b><p>Research · matched excerpt · CLI example</p></article><article class="result"><b>Closed candle</b><p>Concept · definition</p></article><div class="state-row"><div class="state">Loading local index</div><div class="state">No results + suggestions</div><div class="state">Index error + chapter map</div><div class="state">Partial index warning</div></div></section></div><p class="notes">Mobile: filters collapse above the single-column result list. No external search request.</p></main><footer>Search wireframe revision 1</footer><script src="wireframe.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<title>Search wireframe</title>
+<link rel="stylesheet" href="wireframe.css">
+</head>
+<body>
+<header class="top">
+<div class="top-inner">
+<a class="brand" href="overview.html">crypt / field guide</a>
+<nav class="nav">
+<a href="overview.html">Overview</a>
+<a href="architecture.html">Architecture</a>
+<a href="research.html">Research</a>
+<a href="concepts.html">Concepts</a>
+</nav>
+<div class="tools">
+<button class="button menu" data-menu>Menu</button>
+</div>
+</div>
+</header>
+<main class="page">
+<section class="chapter-mast crop-tall"><img src="assets/mira-evidence-bench-v1.png" alt="Mira uses a magnifying glass across an uneven field of charts, notes, and indexed samples"><span class="chapter-tab">FINDER 07</span><div class="chapter-title"><p class="label">Global search</p><h1>Find a field note.</h1><p>Search feels like inspecting a working evidence bench; result clusters inherit the irregular specimen rhythm.</p></div></section>
+<section class="block" style="margin-right:16vw;transform:rotate(-.4deg)">
+<label for="q">
+<b>Search all documentation</b>
+</label>
+<input class="button" id="q" type="search" value="closed candle">
+<button class="button">Search</button>
+<p aria-live="polite">6 results for “closed candle”</p>
+</section>
+<div class="search-layout">
+<aside class="block">
+<b>Filter</b>
+<p>Chapter</p>
+<p>Concept</p>
+<p>Example</p>
+<p>Evidence</p>
+<button class="button">Clear filters</button>
+</aside>
+<section>
+<article class="result">
+<b>Closed-candle decisions</b>
+<p>Architecture · matched excerpt · related concepts</p>
+</article>
+<article class="result">
+<b>Safe causal research</b>
+<p>Research · matched excerpt · CLI example</p>
+</article>
+<article class="result">
+<b>Closed candle</b>
+<p>Concept · definition</p>
+</article>
+<div class="state-row">
+<div class="state">Loading local index</div>
+<div class="state">No results + suggestions</div>
+<div class="state">Index error + chapter map</div>
+<div class="state">Partial index warning</div>
+</div>
+</section>
+</div>
+<p class="notes">Mobile: filters collapse above the single-column result list. No external search request.</p>
+</main>
+<footer>Search wireframe revision 1</footer>
+<script src="wireframe.js">
+</script>
+</body>
+</html>

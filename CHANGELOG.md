@@ -26,6 +26,10 @@
 - Added a generated Pocket Field Lab hero illustration and rebuilt Overview
   wireframe revision 2 around full-bleed art, overlaps, offset specimens, and
   deliberately uneven column spans rather than a text-left/image-right split.
+- Extended wireframe revision 3 across every portal page with three additional
+  generated Mira scenes, alternating image crops, overlapping chapter titles,
+  uneven specimen groupings, and distinct architecture/evidence/archive visual
+  metaphors.
 
 Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
