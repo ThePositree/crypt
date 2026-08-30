@@ -12,9 +12,9 @@ and implementation for the public English documentation portal.
 are approved. The owner selected Pocket Field Lab without a mix. Five boards
 and the consolidated verdict remain under `docs/frontend/` as design evidence.
 
-**Next step:** choose the production stack and content pipeline, write the
-responsive page/component architecture, then implement the approved portal.
-Production implementation has not begun.
+**Next step:** owner Wireframe Approval for revision 1 under
+`docs/frontend/wireframes/`. Approval accepts the eight-page structure and the
+generated-static implementation baseline, then unlocks production code.
 
 **Acceptance:** the public portal implements the approved content surface and
 Pocket Field Lab identity, passes responsive/accessibility QA, and contains no

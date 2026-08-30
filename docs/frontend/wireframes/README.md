@@ -29,3 +29,24 @@ result in the Task Contract.
 Before Wireframe Approval, record artifact revision, rendered viewport sizes,
 covered states, open questions, and the exact implementation scope approval
 unlocks.
+
+## Public Portal Wireframe Set
+
+Status: ready for owner Wireframe Approval.
+Revision: 1.
+
+- `overview.html`
+- `architecture.html`
+- `research.html`
+- `strategies.html`
+- `execution.html`
+- `concepts.html`
+- `history.html`
+- `search.html`
+
+Shared evidence: `wireframe.css` and `wireframe.js`.
+
+Target render sizes: 390 x 844, 768 x 1024, 1440 x 1000, and 1728 x 1117.
+Covered states: normal, loading, empty, error, disabled, overflow, and partial
+evidence. Open question: final recurring guide name. Approval unlocks the
+generated static production implementation for all eight pages.

@@ -16,6 +16,11 @@
 - The owner selected Pocket Field Lab as the primary visual direction without
   a mix, approving Design Identity revision 2 and unlocking production
   planning.
+- Added Design System revision 1, navigation flow, three screen contracts, and
+  separate responsive wireframes for all eight portal pages.
+- Proposed a generated-static HTML/CSS/native-JavaScript baseline and recorded
+  clean Orca browser loading, navigation, console, and local-network evidence
+  for Wireframe Approval.
 
 Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
