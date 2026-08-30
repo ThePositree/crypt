@@ -3,25 +3,6 @@
 Only active work belongs here. Historical research notes belong in
 `CHANGELOG.md`, `CHANGELOG_ARCHIVE.md`, or archive docs.
 
-## Public documentation portal visual direction
-
-**What:** turn the approved Pocket Field Lab direction into a production plan
-and implementation for the public English documentation portal.
-
-**Current state:** Product Surface revision 1 and Design Identity revision 2
-are approved. The owner selected Pocket Field Lab without a mix. Five boards
-and the consolidated verdict remain under `docs/frontend/` as design evidence.
-
-**Next step:** owner Wireframe Approval for revision 3 under
-`docs/frontend/wireframes/`. Revision 3 gives all eight pages real Pocket Field
-Lab imagery, asymmetric overlap, and page-specific visual rhythm. Approval accepts the
-eight-page structure and Next.js + Tailwind baseline, then unlocks production
-code.
-
-**Acceptance:** the public portal implements the approved content surface and
-Pocket Field Lab identity, passes responsive/accessibility QA, and contains no
-visitor-facing operational trading controls.
-
 ## Live execution / backtest reconciliation audit
 
 **What:** finish the evidence-backed reconciliation of the live SOL portfolio
