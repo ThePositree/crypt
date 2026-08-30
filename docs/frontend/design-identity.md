@@ -1,6 +1,8 @@
 # Design Identity
 
 Status: not established.
+Revision: 0
+Approval source: none.
 
 This repository does not currently contain an active frontend product surface.
 Before significant frontend work, run the onboarding workflow in
@@ -9,24 +11,37 @@ final product-specific identity.
 
 ## Core Feeling
 
-To be defined from discovery, owner interview, and visual exploration.
+- Decision:
+- Evidence:
 
 ## Personality
 
-To be defined.
+- Decision:
+- Evidence:
 
 ## Desired Perception
 
-To be defined.
+- Decision:
+- Evidence:
 
 ## Visual Tension
 
-To be defined.
+- Decision:
+- Evidence:
 
 ## Signature Traits
 
-To be defined.
+- Trait:
+- Product purpose:
 
 ## Anti-Identity
 
-To be defined.
+- Avoid:
+- Reason:
+
+## Model-Dependent Exploration Record
+
+- Model and tools used:
+- Date:
+- Approved Visual Direction revision:
+- Known limitations:

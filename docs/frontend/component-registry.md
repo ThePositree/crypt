@@ -17,7 +17,11 @@ Use this format:
 - Location:
 - Purpose:
 - Built from:
+- Why existing primitives were insufficient:
 - Usage constraints:
 - States:
+- Accessibility behavior:
+- Responsive behavior:
 - Related screens:
+- Validation evidence:
 ```

@@ -4,6 +4,43 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
+## 2026-08-30 - Frontend collaboration and owner steering contracts
+
+- Added an Owner Steering Contract that tells the owner they may interrupt,
+  correct assumptions, reject or replace a direction, change priorities, skip
+  onboarding questions, or introduce their own direction at any time.
+- Added a Collaboration Check for D2/D3 and context-heavy frontend work: detect
+  the available subagent system and required interface/provider/model, define a
+  bounded delegated outcome and review path, then ask the owner whether to use
+  subagents for that scope.
+- Clarified that silence is not delegation approval, declining subagents does
+  not block single-agent progress, and workers are created only after the
+  owner's answer.
+- Extended frontend product and review templates plus regression tests for the
+  new collaboration records.
+
+---
+
+## 2026-08-30 - Frontend instruction system v2
+
+- Rewrote the canonical frontend subsystem and compact route card around an
+  explicit Task Contract: outcome, scope, sources of truth, constraints,
+  acceptance evidence, and unresolved material decisions.
+- Preserved the established frontend practices: product discovery, minimum
+  30-question adaptive onboarding, five rendered Visual Direction Boards,
+  named owner gates, Mermaid flows, persistent HTML wireframes, screen
+  contracts, Action Contracts, responsive/functional/visual/completeness QA,
+  phased handoffs, independent review, and durable frontend memory.
+- Added D0-D3 depth classification, task-proportional artifact triggers,
+  instruction/data separation, model/tool revision metadata, explicit
+  assumption handling, and evidence-based QA records.
+- Updated every frontend memory template to capture revisions, evidence,
+  trust boundaries, acceptance criteria, validation, and approval state.
+- Replaced brittle exact-sentence regression tests with structural and
+  behavioral invariants for the preserved workflow and new prompt contracts.
+
+---
+
 ## 2026-08-28 - Frontend gate protocol hardening
 
 - Strengthened the frontend subsystem with named approval gates, scoped

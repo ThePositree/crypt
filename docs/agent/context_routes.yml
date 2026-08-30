@@ -136,7 +136,8 @@ routes:
       - docs/frontend/decisions/
       - docs/frontend/reviews/
     notes:
-      - Frontend work uses proportional design before implementation.
+      - Start with an outcome/scope/source/constraint/evidence/unknowns Task Contract.
+      - Frontend depth D0-D3 determines proportional artifacts and approvals.
       - Rendered visual inspection is required for meaningful UI changes.
       - Persistent frontend memory lives under docs/frontend/.
 

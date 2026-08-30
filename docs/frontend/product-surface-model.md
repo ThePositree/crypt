@@ -1,6 +1,8 @@
 # Product Surface Model
 
 Status: not established.
+Revision: 0
+Approval: not requested.
 
 Use this file for durable frontend product-surface understanding. It should be
 filled before substantial new site/app work, major redesigns, or broad product
@@ -17,6 +19,14 @@ project docs, requirements, specs, current state, task context, or a canonical
 - Supporting:
 - Contradictions or gaps:
 
+## Scope Contract
+
+- Outcome:
+- In scope:
+- Explicitly out of scope:
+- Assumptions:
+- Unresolved decisions:
+
 ## User Capabilities And Goals
 
 - Primary goals:
@@ -29,8 +39,11 @@ project docs, requirements, specs, current state, task context, or a canonical
 
 ## User Journeys
 
-- Journey:
-- Endpoint:
+- Actor and starting state:
+- Goal:
+- Steps and decisions:
+- Error or recovery path:
+- Endpoint and feedback:
 
 ## Information Architecture
 
@@ -52,3 +65,19 @@ project docs, requirements, specs, current state, task context, or a canonical
 - Journey endpoints clear:
 - Placeholder/demo-only surfaces removed or marked out of scope:
 - Required states covered:
+
+## Approval Record
+
+- Product Surface revision:
+- Decision: pending / approved / waived / rejected
+- Owner feedback or waiver scope:
+- Date:
+- Next phase unlocked:
+
+## Collaboration Record
+
+- Subagent system available: yes / no / unknown
+- Required interface/provider/model:
+- Proposed delegated scope:
+- Owner decision: pending / approved / declined
+- Fallback:

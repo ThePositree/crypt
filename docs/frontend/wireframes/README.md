@@ -22,5 +22,10 @@ views inside that page's wireframe package.
 For every UI edit, read the affected wireframes first. Update or create
 wireframes before production implementation when layout, navigation,
 interaction, state behavior, visual hierarchy, or responsive structure changes.
-Show rendered wireframes to the owner and proceed to production UI code after
-approval.
+For an isolated copy, token, or visual correction that changes none of those
+properties, verify that the existing wireframe remains accurate and record the
+result in the Task Contract.
+
+Before Wireframe Approval, record artifact revision, rendered viewport sizes,
+covered states, open questions, and the exact implementation scope approval
+unlocks.

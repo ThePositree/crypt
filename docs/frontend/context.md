@@ -1,12 +1,25 @@
 # Frontend Context
 
+Status: not established.
+Last verified: not yet verified.
+
 This repository currently has no active frontend application checked into the
 main project tree. When frontend code appears, inspect it before establishing
 project-specific frontend rules.
 
-Record discovered decisions here:
+Record each discovered choice with its evidence rather than inferring a full
+stack from one dependency or abandoned file.
+
+## Sources Inspected
+
+- Source:
+- Observation:
+- Confidence:
+
+## Active Stack
 
 - frontend framework;
+- build, package, and test tooling;
 - styling approach;
 - UI libraries and local primitives;
 - design tokens and CSS variables;
@@ -21,5 +34,12 @@ Record discovered decisions here:
 - established screen and component patterns;
 - legacy areas, migrations, and inconsistencies.
 
-Stable, actively used choices should be treated as intentional unless evidence
-shows otherwise.
+## Unresolved Or Conflicting Evidence
+
+- Decision affected:
+- Evidence:
+- Required resolution:
+
+Stable, actively used choices are intentional unless stronger evidence shows
+otherwise. Include the date observed because dependencies and conventions can
+change.

@@ -23,6 +23,8 @@ Use this structure when applicable:
 
 ## Components
 
+## Data Sources And Trust Boundaries
+
 ## States
 
 - loading
@@ -35,9 +37,18 @@ Use this structure when applicable:
 
 ## Responsive Behavior
 
+## Accessibility Requirements
+
 ## Visual Emphasis
 
 ## Related Screens
 
 ## Related Flows And Wireframes
+
+## Acceptance Criteria
+
+- Observable behavior:
+- Required states:
+- Rendered evidence:
+- Automated checks:
 ```
