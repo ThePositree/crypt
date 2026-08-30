@@ -21,6 +21,11 @@
 - Proposed a generated-static HTML/CSS/native-JavaScript baseline and recorded
   clean Orca browser loading, navigation, console, and local-network evidence
   for Wireframe Approval.
+- Rejected the overly symmetrical revision 1 presentation after owner review;
+  selected Next.js App Router and Tailwind CSS for production.
+- Added a generated Pocket Field Lab hero illustration and rebuilt Overview
+  wireframe revision 2 around full-bleed art, overlaps, offset specimens, and
+  deliberately uneven column spans rather than a text-left/image-right split.
 
 Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 

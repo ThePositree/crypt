@@ -1,28 +1,28 @@
-# Static Portal Baseline
+# Next.js And Tailwind Portal Baseline
 
 - Date: 2026-08-30
 - Status: proposed
 
 ## Decision
 
-Use a generated static site with semantic HTML, shared CSS, and small native
-JavaScript modules as the implementation baseline. Keep authored content and
-page metadata separate from generated output. Add a framework only if a
-wireframe or content-authoring requirement proves that the zero-runtime
-baseline is insufficient.
+Use Next.js with TypeScript, App Router, and Tailwind CSS v4. Prefer Server
+Components and static generation for documentation content; introduce Client
+Components only for search, theme, mobile navigation, and focused playful
+interactions. Keep the output compatible with static export unless a later
+approved requirement needs a server runtime.
 
 ## Rationale
 
-The portal is public, read-only, self-contained, and has no authenticated or
-live-data surface. A static baseline minimizes security, maintenance, runtime,
-and hosting constraints while supporting search, themes, diagrams, and all
-approved journeys.
+The owner explicitly selected Next.js and Tailwind CSS. App Router provides
+durable page/layout structure, while Tailwind supports a custom token-driven
+Pocket Field Lab system without adding a component-library identity. Static
+generation preserves the original portability and read-only safety goals.
 
 ## Consequences
 
-- No external client framework, remote font, analytics, or content API is
-  required for the first release.
+- Next.js, React, Tailwind CSS, PostCSS, TypeScript, and ESLint are the expected
+  build dependencies. No remote font, analytics, or content API is required.
 - Search uses a generated local index.
-- Hosting remains portable across ordinary static hosts.
-- This proposal becomes accepted when Wireframe Approval unlocks production
-  implementation, unless the owner explicitly requests another stack.
+- Hosting remains portable when static export is retained.
+- The setup follows the current official Next.js App Router and Tailwind CSS
+  v4 PostCSS guidance verified on 2026-08-30.

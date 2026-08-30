@@ -38,9 +38,10 @@ state checks; clean console/network inspection; product completeness review.
 
 ## Current Unknowns
 
-Hosting remains unspecified. The implementation baseline is a generated static
-site with no client framework or external runtime dependency; this remains
-reversible until production implementation begins.
+Hosting remains unspecified. The owner selected Next.js App Router and
+Tailwind CSS; static export remains the preferred deployment shape until a
+server-only requirement is approved. The final recurring guide name remains a
+copy decision.
 
 ## Collaboration Check
 

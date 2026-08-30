@@ -1,6 +1,6 @@
 # Frontend Context
 
-Status: implementation baseline proposed; no production frontend yet.
+Status: production stack selected; no production frontend yet.
 Last verified: 2026-08-30.
 
 This repository currently has no active frontend application checked into the
@@ -25,8 +25,9 @@ stack from one dependency or abandoned file.
 ## Active Stack
 
 - Production frontend: none yet.
-- Proposed baseline: generated static semantic HTML, shared CSS, and small
-  native JavaScript modules; no client framework or external runtime library.
+- Selected baseline: Next.js, TypeScript, App Router, Tailwind CSS v4, ESLint,
+  and PostCSS. Prefer Server Components and static output; use Client
+  Components only for genuine interaction.
 - Styling: custom properties and component classes derived from Design System
   revision 1.
 - Themes: accessible light/dark variables; system reduced-motion behavior.

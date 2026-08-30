@@ -1,14 +1,21 @@
 # Public Portal Wireframe Review
 
 Date: 2026-08-30
-Status: ready for owner Wireframe Approval
-Artifact revision: 1
+Status: revision 1 rejected; revision 2 ready for owner Wireframe Approval
+Artifact revision: 2
 
 ## Scope
 
 Overview, Architecture, Research, Strategies, Execution, Concepts, History,
 and Search wireframes; shared responsive navigation; page-family screen
 contracts; navigation flow; proposed static implementation baseline.
+
+Revision 2 responds to owner feedback that revision 1 was too symmetrical and
+showed placeholders instead of real imagery. The Overview now uses a generated
+Pocket Field Lab hero illustration as a full-bleed field wall, with typography,
+an index tab, and the explanation-only boundary overlapping the image. Content
+continues through an uneven specimen river rather than repeated horizontal
+text/image bands.
 
 ## Browser Evidence
 
@@ -47,9 +54,17 @@ data/evidence, and optional-illustration fallback.
 Select one stable name for the recurring human field researcher before final
 copy freeze. This does not block layout approval.
 
+## Stack Revision
+
+The owner selected Next.js App Router with TypeScript and Tailwind CSS. The
+production plan uses Server Components and static generation by default, with
+small Client Components for search, theme, mobile navigation, and focused
+interactions. Current official Next.js and Tailwind v4 PostCSS setup guidance
+was checked on 2026-08-30 because Context7 was unavailable.
+
 ## Gate
 
 Wireframe Approval unlocks production implementation of all eight pages using
-the proposed generated-static baseline. Approval does not waive later
+Next.js App Router and Tailwind CSS. Approval does not waive later
 Functional QA, Visual QA, Product Completeness Review, or Final Implementation
 Approval.

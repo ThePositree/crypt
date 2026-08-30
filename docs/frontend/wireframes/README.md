@@ -33,7 +33,7 @@ unlocks.
 ## Public Portal Wireframe Set
 
 Status: ready for owner Wireframe Approval.
-Revision: 1.
+Revision: 2.
 
 - `overview.html`
 - `architecture.html`
@@ -48,5 +48,7 @@ Shared evidence: `wireframe.css` and `wireframe.js`.
 
 Target render sizes: 390 x 844, 768 x 1024, 1440 x 1000, and 1728 x 1117.
 Covered states: normal, loading, empty, error, disabled, overflow, and partial
-evidence. Open question: final recurring guide name. Approval unlocks the
-generated static production implementation for all eight pages.
+evidence. Revision 2 adds generated hero illustration and an asymmetric,
+overlapping Overview composition. Open question: final recurring guide name.
+Approval unlocks the Next.js App Router + Tailwind CSS production
+implementation for all eight pages.
