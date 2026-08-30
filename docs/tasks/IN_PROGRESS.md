@@ -3,6 +3,22 @@
 Only active work belongs here. Historical research notes belong in
 `CHANGELOG.md`, `CHANGELOG_ARCHIVE.md`, or archive docs.
 
+## Public documentation portal visual direction
+
+**What:** select or mix one of five responsive visual direction boards for the
+approved public English documentation portal.
+
+**Current state:** Product Surface revision 1 is approved. Five standalone
+boards are implemented and QA-reviewed under
+`docs/frontend/visual-directions/`; the consolidated verdict is in
+`docs/frontend/reviews/2026-08-30-visual-direction-boards.md`.
+
+**Next step:** owner Visual Direction Approval. Choose one board, name a lead
+plus donor traits, or reject all five. Production implementation has not begun.
+
+**Acceptance:** the selected visual direction and any allowed mix are recorded
+in the visual references and Design Identity before application code starts.
+
 ## Live execution / backtest reconciliation audit
 
 **What:** finish the evidence-backed reconciliation of the live SOL portfolio

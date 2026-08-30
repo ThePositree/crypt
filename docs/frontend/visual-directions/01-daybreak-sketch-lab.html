@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Daybreak Sketch Lab visual direction board for the crypt documentation portal.">
+  <title>Daybreak Sketch Lab — crypt visual direction</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #fffaf0; --paper-2: #f8efdF; --ink: #2f3537; --muted: #68706e;
+      --peach: #f4bda7; --peach-soft: #fbe2d4; --blue: #a9ccdc; --blue-soft: #dcecf1;
+      --sage: #afc9b1; --sage-soft: #e1ecdf; --yellow: #f2dc92; --red: #c95f59;
+      --line: #53605d; --shadow: rgba(54, 61, 59, .13); --focus: #176d85;
+      --display: Georgia, "Times New Roman", serif; --body: "Trebuchet MS", Arial, sans-serif;
+    }
+    [data-theme="dark"] {
+      color-scheme: dark; --paper: #202827; --paper-2: #293331; --ink: #f7eedf; --muted: #bdc6c1;
+      --peach: #c98773; --peach-soft: #573f37; --blue: #79a9bb; --blue-soft: #304954;
+      --sage: #87a98b; --sage-soft: #364b3a; --yellow: #d0b96e; --red: #ee9288;
+      --line: #c2cdc7; --shadow: rgba(0,0,0,.28); --focus: #8dd8ee;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.55 var(--body); }
+    body::before { content:""; position:fixed; inset:0; pointer-events:none; opacity:.25; background-image:radial-gradient(var(--line) .45px, transparent .6px); background-size:8px 8px; z-index:10; }
+    button, input { font: inherit; }
+    button, a { -webkit-tap-highlight-color: transparent; }
+    button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+    a { color: inherit; }
+    .skip { position:absolute; left:-999px; top:1rem; z-index:30; padding:.7rem 1rem; background:var(--ink); color:var(--paper); }
+    .skip:focus { left:1rem; }
+    .site-header { position:sticky; top:0; z-index:20; display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:2rem; padding:1rem clamp(1rem,4vw,4rem); border-bottom:1.5px solid var(--line); background:color-mix(in srgb,var(--paper) 94%,transparent); backdrop-filter:blur(10px); }
+    .brand { display:flex; align-items:center; gap:.65rem; text-decoration:none; font:700 1.2rem var(--display); }
+    .brand-mark { width:38px; height:38px; display:grid; place-items:center; border:1.5px solid var(--line); border-radius:48% 52% 45% 55%; background:var(--yellow); transform:rotate(-3deg); }
+    nav ul { display:flex; justify-content:center; gap:clamp(.7rem,2vw,1.8rem); margin:0; padding:0; list-style:none; }
+    nav a { text-decoration:none; font-size:.88rem; }
+    nav a[aria-current="page"] { border-bottom:3px wavy var(--peach); font-weight:700; }
+    .tools { display:flex; gap:.55rem; }
+    .icon-btn, .button { border:1.5px solid var(--line); background:var(--paper); color:var(--ink); border-radius:999px; min-height:42px; padding:.55rem .85rem; cursor:pointer; box-shadow:2px 3px 0 var(--line); }
+    .button.primary { background:var(--ink); color:var(--paper); }
+    .button:active, .icon-btn:active { transform:translate(2px,2px); box-shadow:none; }
+    .mobile-toggle { display:none; }
+    .wrap { width:min(1530px, calc(100% - 2rem)); margin:auto; }
+    .hero { min-height:680px; display:grid; grid-template-columns:1.1fr .9fr; gap:clamp(2rem,7vw,8rem); align-items:center; padding:6rem clamp(1rem,6vw,6rem) 4rem; position:relative; overflow:hidden; }
+    .eyebrow { margin:0 0 1rem; font-weight:700; letter-spacing:.16em; text-transform:uppercase; font-size:.75rem; color:var(--muted); }
+    h1,h2,h3 { font-family:var(--display); line-height:1.05; }
+    h1 { font-size:clamp(3.8rem,8vw,8rem); margin:0; letter-spacing:-.055em; font-weight:500; max-width:880px; }
+    h1 em { font-weight:400; text-decoration:underline wavy var(--peach) 4px; text-underline-offset:9px; }
+    .lede { font-size:clamp(1.05rem,1.5vw,1.35rem); max-width:690px; margin:2rem 0; }
+    .hero-actions { display:flex; flex-wrap:wrap; gap:1rem; align-items:center; }
+    .tiny-note { max-width:310px; color:var(--muted); font-size:.82rem; transform:rotate(-1deg); }
+    .mascot-stage { position:relative; min-height:480px; display:grid; place-items:center; }
+    .sun { position:absolute; width:350px; aspect-ratio:1; border-radius:50%; background:var(--peach-soft); right:7%; top:3%; }
+    .mascot { width:min(100%,440px); position:relative; filter:drop-shadow(12px 18px 0 var(--blue-soft)); animation:float 5s ease-in-out infinite; }
+    @keyframes float { 50% { transform:translateY(-10px) rotate(.6deg); } }
+    .mascot-caption { position:absolute; right:0; bottom:5%; width:195px; padding:1rem; background:var(--paper); border:1.5px solid var(--line); transform:rotate(2deg); box-shadow:5px 6px 0 var(--sage); }
+    .mascot-caption strong { display:block; font-family:var(--display); font-size:1.15rem; }
+    .scribble { position:absolute; font:italic 1rem var(--display); color:var(--muted); }
+    .scribble.one { top:12%; left:3%; transform:rotate(-8deg); }
+    .scribble.two { right:4%; top:42%; transform:rotate(6deg); }
+    .tape { display:inline-block; padding:.15rem .6rem; background:var(--yellow); transform:rotate(-2deg); }
+    .chapter { padding:clamp(4rem,8vw,8rem) clamp(1rem,6vw,6rem); border-top:1.5px solid var(--line); }
+    .chapter-head { display:grid; grid-template-columns:1fr 1fr; gap:2rem; align-items:end; margin-bottom:3rem; }
+    .chapter h2 { margin:0; font-size:clamp(2.5rem,5vw,5.5rem); font-weight:500; letter-spacing:-.04em; }
+    .chapter-intro { max-width:570px; justify-self:end; }
+    .map-shell { display:grid; grid-template-columns:160px 1fr 180px; gap:1.5rem; align-items:start; }
+    .margin-note { font:italic .92rem/1.45 var(--display); padding-top:1rem; color:var(--muted); }
+    .margin-note b { color:var(--ink); }
+    .system-map { background:var(--paper-2); border:2px solid var(--line); border-radius:46% 54% 49% 51% / 3% 4% 3% 4%; padding:2rem; box-shadow:9px 10px 0 var(--blue-soft); overflow:hidden; }
+    .map-flow { display:grid; grid-template-columns:repeat(5,1fr); gap:1rem; align-items:stretch; }
+    .node { position:relative; min-height:170px; padding:1.15rem; display:flex; flex-direction:column; justify-content:space-between; border:1.5px solid var(--line); background:var(--paper); border-radius:8px 19px 10px 17px; }
+    .node:nth-child(2) { background:var(--blue-soft); transform:rotate(1deg); }
+    .node:nth-child(3) { background:var(--sage-soft); transform:rotate(-1deg); }
+    .node.branch { background:var(--peach-soft); }
+    .node:not(:last-child)::after { content:"→"; position:absolute; right:-1.1rem; top:45%; z-index:2; font-size:1.45rem; }
+    .node-num { width:28px; height:28px; display:grid; place-items:center; border:1px solid; border-radius:50%; font-weight:700; }
+    .node h3 { margin:.6rem 0; font-size:1.2rem; }
+    .node p { margin:0; font-size:.82rem; }
+    .forks { display:grid; gap:.7rem; }
+    .fork { padding:.55rem; border:1px dashed var(--line); background:var(--paper); font-size:.78rem; }
+    .boundary { margin-top:1.5rem; padding:1rem; display:flex; justify-content:space-between; gap:1rem; border-top:2px dashed var(--line); font-size:.85rem; }
+    .pulse { display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--sage); animation:pulse 1.8s infinite; }
+    @keyframes pulse { 50% { box-shadow:0 0 0 8px color-mix(in srgb,var(--sage) 25%,transparent); } }
+    .grid-two { display:grid; grid-template-columns:1.15fr .85fr; gap:2rem; align-items:start; }
+    .paper-card { background:var(--paper-2); border:1.5px solid var(--line); padding:clamp(1.2rem,3vw,2.2rem); box-shadow:7px 8px 0 var(--shadow); }
+    .paper-card h3 { font-size:1.7rem; margin:0 0 1rem; }
+    .chart-wrap { overflow-x:auto; }
+    .chart { min-width:620px; width:100%; height:auto; display:block; }
+    .legend { display:flex; flex-wrap:wrap; gap:1rem; font-size:.78rem; color:var(--muted); }
+    .legend i { display:inline-block; width:18px; height:4px; margin-right:.35rem; vertical-align:middle; }
+    .code { background:var(--ink); color:var(--paper); padding:1.3rem; border-radius:6px 16px 6px 14px; overflow:auto; font: .85rem/1.7 ui-monospace,SFMono-Regular,Consolas,monospace; white-space:pre; }
+    .code .comment { color:var(--blue); }
+    .safety { border-left:5px solid var(--sage); padding:.7rem 1rem; background:var(--sage-soft); margin:1rem 0; font-size:.88rem; }
+    table { width:100%; border-collapse:collapse; font-size:.9rem; }
+    th,td { padding:.8rem .5rem; border-bottom:1px dashed var(--line); text-align:left; vertical-align:top; }
+    th { font-family:var(--display); font-size:1rem; }
+    .state { display:inline-flex; align-items:center; gap:.4rem; border:1px solid currentColor; border-radius:999px; padding:.2rem .55rem; font-size:.75rem; font-weight:700; }
+    .success { color:#39724b; } [data-theme="dark"] .success{color:#99d5a7}
+    .warning { color:#8a6200; } [data-theme="dark"] .warning{color:#f1d175}
+    .error { color:var(--red); }
+    .loading-line { height:12px; border-radius:10px; background:linear-gradient(90deg,var(--blue-soft),var(--paper),var(--blue-soft)); background-size:200%; animation:shimmer 1.7s infinite; }
+    @keyframes shimmer { to { background-position:-200% 0; } }
+    .state-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:1rem; margin-top:1.5rem; }
+    .state-card { padding:1rem; min-height:140px; border:1px dashed var(--line); background:var(--paper); }
+    .state-card h4 { margin:.7rem 0 .3rem; }
+    .partial { background:repeating-linear-gradient(-45deg,var(--paper),var(--paper) 8px,var(--yellow) 9px,var(--yellow) 10px); }
+    .form-row { display:grid; grid-template-columns:1fr auto; gap:.7rem; }
+    label { display:block; font-weight:700; margin-bottom:.4rem; }
+    input { width:100%; min-height:45px; border:1.5px solid var(--line); background:var(--paper); color:var(--ink); padding:.65rem .8rem; border-radius:4px 13px 5px 12px; }
+    button:disabled { opacity:.45; cursor:not-allowed; box-shadow:none; }
+    .glossary { display:grid; grid-template-columns:repeat(3,1fr); gap:1rem; margin-top:2rem; }
+    .term { padding:1.2rem; border-top:2px solid var(--line); }
+    .term dt { font:700 1.2rem var(--display); }
+    .term dd { margin:.5rem 0 0; color:var(--muted); font-size:.88rem; }
+    .tooltip-wrap { position:relative; display:inline-block; }
+    .tip { border:0; border-bottom:2px dotted var(--line); background:none; color:inherit; padding:0; cursor:help; }
+    .tooltip { position:absolute; width:230px; left:50%; bottom:calc(100% + 12px); transform:translateX(-50%); background:var(--ink); color:var(--paper); padding:.7rem; font-size:.78rem; border-radius:4px; opacity:0; visibility:hidden; transition:.2s; z-index:5; }
+    .tooltip-wrap:hover .tooltip,.tooltip-wrap:focus-within .tooltip { opacity:1; visibility:visible; }
+    .notes { background:var(--blue-soft); }
+    .notes-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--line); border:1px solid var(--line); }
+    .notes-grid article { background:var(--paper); padding:1.35rem; }
+    .notes-grid h3 { margin:0 0 .55rem; font-size:1.1rem; }
+    .notes-grid p { margin:0; font-size:.84rem; color:var(--muted); }
+    footer { padding:2.5rem clamp(1rem,6vw,6rem); display:flex; justify-content:space-between; gap:2rem; font-size:.8rem; border-top:1.5px solid var(--line); }
+    .overlay { position:fixed; inset:0; z-index:50; display:none; align-items:flex-start; justify-content:center; padding:9vh 1rem; background:rgba(36,42,41,.67); }
+    .overlay.open { display:flex; }
+    .search-panel { width:min(700px,100%); background:var(--paper); color:var(--ink); border:2px solid var(--line); padding:1.5rem; box-shadow:12px 14px 0 var(--peach); }
+    .search-top { display:flex; gap:.7rem; align-items:center; }
+    .search-top input { font-size:1.1rem; }
+    .result { margin-top:1rem; padding:1rem; background:var(--blue-soft); border-left:4px solid var(--blue); }
+    .result small { color:var(--muted); }
+    .mobile-demo { display:none; }
+    .grid-two > *, .paper-card { min-width:0; }
+    .chart-wrap { max-width:100%; }
+    @media (max-width: 1000px) {
+      nav { display:none; position:absolute; top:100%; left:0; right:0; background:var(--paper); border-bottom:1.5px solid var(--line); padding:1.2rem; }
+      nav.open { display:block; } nav ul { align-items:flex-start; flex-direction:column; }
+      .mobile-toggle { display:block; } .site-header { grid-template-columns:1fr auto; } .tools { grid-column:1/-1; }
+      .hero { grid-template-columns:1fr; padding-top:4rem; } .mascot-stage { min-height:390px; }
+      .map-shell { grid-template-columns:1fr; } .margin-note { max-width:600px; }
+      .map-flow { grid-template-columns:1fr 1fr; } .node:not(:last-child)::after { display:none; }
+      .grid-two { grid-template-columns:1fr; } .notes-grid { grid-template-columns:1fr 1fr; }
+    }
+    @media (max-width: 600px) {
+      .site-header { padding:.7rem 1rem; } .brand-mark { width:34px;height:34px; } .brand span:last-child { font-size:1rem; }
+      .tools { display:grid; grid-template-columns:1fr auto; } .tools .icon-btn:first-child { text-align:left; }
+      .hero { min-height:auto; padding:3.5rem 1rem 3rem; gap:1rem; } h1 { font-size:3.55rem; } .lede { margin:1.5rem 0; }
+      .hero-actions .button { width:100%; text-align:center; } .tiny-note { max-width:none; }
+      .mascot-stage { min-height:345px; } .mascot { width:300px; } .sun { width:260px; right:3%; } .mascot-caption { width:170px; right:2%; bottom:0; }
+      .scribble.two { display:none; } .chapter { padding:4rem 1rem; } .chapter-head { grid-template-columns:1fr; }
+      .chapter-intro { justify-self:start; } .chapter h2 { font-size:2.9rem; }
+      .system-map { padding:1rem; border-radius:20px 8px 18px 9px; } .map-flow { grid-template-columns:1fr; }
+      .node { min-height:125px; } .boundary { flex-direction:column; }
+      .state-grid,.glossary,.notes-grid { grid-template-columns:1fr; } .form-row { grid-template-columns:1fr; }
+      footer { flex-direction:column; } .mobile-demo { display:block; margin-top:1rem; padding:.6rem; background:var(--yellow); font-size:.78rem; transform:rotate(-1deg); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *,*::before,*::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; scroll-behavior:auto !important; transition-duration:.01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="#top"><span class="brand-mark">₿</span><span>crypt field notes</span></a>
+    <nav id="primary-nav" aria-label="Primary navigation"><ul>
+      <li><a href="#top" aria-current="page">Overview</a></li><li><a href="#architecture">Architecture</a></li>
+      <li><a href="#research">Research</a></li><li><a href="#concepts">Concepts</a></li><li><a href="#notes">Board notes</a></li>
+    </ul></nav>
+    <div class="tools">
+      <button class="icon-btn" id="search-open" type="button" aria-haspopup="dialog">⌕ Search <span aria-hidden="true">⌘K</span></button>
+      <button class="icon-btn" id="theme-toggle" type="button" aria-label="Switch to dark theme">☾</button>
+      <button class="icon-btn mobile-toggle" id="menu-toggle" type="button" aria-controls="primary-nav" aria-expanded="false">Menu</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero wrap" id="top">
+      <div>
+        <p class="eyebrow">Visual direction 01 · Daybreak Sketch Lab</p>
+        <h1>Trace the system, <em>not the hype.</em></h1>
+        <p class="lede"><strong>crypt is a Python research workbench</strong> for studying automated crypto-perpetual strategies. It turns closed market candles into decisions that can be replayed in backtests—and, on a separate owner-selected path, executed through OKX.</p>
+        <div class="hero-actions">
+          <a class="button primary" href="#architecture">Follow one candle →</a>
+          <button class="button" type="button" id="explain-open">What this portal cannot do</button>
+          <p class="tiny-note">No accounts, trading controls, live commands, or promises. Just a careful map of how the code behaves.</p>
+        </div>
+        <p class="mobile-demo">Pocket composition: navigation collapses, chapters stack, and exact charts scroll without shrinking their labels.</p>
+      </div>
+      <div class="mascot-stage" aria-label="Mira Vale, the notebook illustrator, studies a closed candle">
+        <div class="sun"></div><span class="scribble one">meet the guide ↘</span><span class="scribble two">closed means finished!</span>
+        <svg class="mascot" viewBox="0 0 420 470" role="img" aria-labelledby="mira-title mira-desc">
+          <title id="mira-title">Mira Vale, notebook researcher</title><desc id="mira-desc">A human illustrator in a sage lab coat holds a notebook beside a floating candlestick sketch.</desc>
+          <path d="M91 435c13-87 28-148 67-170 28-16 100-14 130 8 38 29 44 96 52 162" fill="var(--sage)" stroke="var(--line)" stroke-width="4"/>
+          <path d="M169 271l37 40 42-42" fill="var(--paper)" stroke="var(--line)" stroke-width="4"/>
+          <ellipse cx="209" cy="166" rx="78" ry="91" fill="var(--peach-soft)" stroke="var(--line)" stroke-width="4"/>
+          <path d="M135 166c-5-81 44-119 98-108 49 10 72 49 57 103-13-30-27-44-64-54-29 31-60 45-91 46" fill="var(--ink)" stroke="var(--line)" stroke-width="4"/>
+          <path d="M162 175q18-10 36 0M222 175q18-10 35 0" fill="none" stroke="var(--line)" stroke-width="4" stroke-linecap="round"/>
+          <circle cx="181" cy="178" r="4" fill="var(--ink)"/><circle cx="240" cy="178" r="4" fill="var(--ink)"/>
+          <path d="M194 216q18 14 38-2" fill="none" stroke="var(--line)" stroke-width="4" stroke-linecap="round"/>
+          <path d="M104 359q-50-13-61-71" fill="none" stroke="var(--line)" stroke-width="25" stroke-linecap="round"/><circle cx="41" cy="274" r="14" fill="var(--peach-soft)" stroke="var(--line)" stroke-width="3"/>
+          <g transform="translate(18 110) rotate(-5)"><rect x="0" y="0" width="80" height="115" rx="4" fill="var(--paper)" stroke="var(--line)" stroke-width="4"/><path d="M16 24h49M16 43h38M16 62h45M16 81h30" stroke="var(--blue)" stroke-width="5"/></g>
+          <path d="M304 342q54-49 70-103" fill="none" stroke="var(--line)" stroke-width="25" stroke-linecap="round"/><circle cx="379" cy="224" r="14" fill="var(--peach-soft)" stroke="var(--line)" stroke-width="3"/>
+          <g transform="translate(330 77)"><path d="M24 5v133" stroke="var(--line)" stroke-width="4"/><rect x="6" y="35" width="36" height="60" fill="var(--peach)" stroke="var(--line)" stroke-width="4"/><path d="M74 22v123" stroke="var(--line)" stroke-width="4"/><rect x="56" y="59" width="36" height="49" fill="var(--blue)" stroke="var(--line)" stroke-width="4"/></g>
+        </svg>
+        <div class="mascot-caption"><strong>Mira Vale</strong>Notebook illustrator, question-asker, and recurring guide to honest evidence.</div>
+      </div>
+    </section>
+
+    <section class="chapter" id="architecture">
+      <div class="wrap">
+        <div class="chapter-head"><div><p class="eyebrow">01 / The big annotated map</p><h2>One decision,<br>two bounded paths.</h2></div><p class="chapter-intro">Both research and execution should reuse the same pure decision logic where possible. The crucial rule arrives first: indicators only see <span class="tooltip-wrap"><button class="tip" type="button">closed candles</button><span class="tooltip" role="tooltip">A completed market interval. The still-forming candle is excluded to prevent look-ahead.</span></span>.</p></div>
+        <div class="map-shell">
+          <aside class="margin-note"><b>Margin note A</b><br>Missing candle data never becomes a confident guess. It blocks an entry, produces a neutral signal, or surfaces an explicit operator error.</aside>
+          <figure class="system-map">
+            <div class="map-flow">
+              <article class="node"><span class="node-num">1</span><div><h3>Market candles</h3><p>Time-bounded OHLCV observations. Only finished intervals advance.</p></div></article>
+              <article class="node"><span class="node-num">2</span><div><h3>Data checks</h3><p>Continuity, timestamp, schema, and warm-up availability.</p></div></article>
+              <article class="node"><span class="node-num">3</span><div><h3>Pure decision</h3><p>Shared features and strategy rules produce a deterministic intent.</p></div></article>
+              <article class="node branch"><span class="node-num">4</span><div><h3>Bounded fork</h3><div class="forks"><span class="fork">Research → deterministic backtest</span><span class="fork">Owner-selected → live safeguards</span></div></div></article>
+              <article class="node"><span class="node-num">5</span><div><h3>Evidence</h3><p>Reports explain assumptions. OKX remains truth for live fills, fees, positions, and equity.</p></div></article>
+            </div>
+            <figcaption class="boundary"><span><span class="pulse"></span> Animated path indicates information flow, not live activity.</span><strong>Benchmark = reporting target, not production gate.</strong></figcaption>
+          </figure>
+          <aside class="margin-note"><b>Margin note B</b><br>The owner may promote a strategy even when it misses a benchmark. Evidence and risk remain documented; runtime configuration remains operational truth.</aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="chapter" id="research">
+      <div class="wrap">
+        <div class="chapter-head"><div><p class="eyebrow">02 / Evidence at human scale</p><h2>Exact marks,<br>soft materials.</h2></div><p class="chapter-intro">Pastel does not mean vague. Every chart carries units, labels, methodology context, and a readable fallback.</p></div>
+        <div class="grid-two">
+          <article class="paper-card">
+            <h3>Illustrative closed-candle coverage</h3>
+            <p>Invented values for layout evaluation only · six UTC intervals · coverage %, not strategy performance.</p>
+            <div class="chart-wrap"><svg class="chart" viewBox="0 0 700 350" role="img" aria-labelledby="chart-title chart-desc">
+              <title id="chart-title">Illustrative closed-candle coverage</title><desc id="chart-desc">Coverage is 96, 98, 91, 100, 97, and 99 percent from August 24 through August 29.</desc>
+              <g stroke="var(--line)" stroke-width="1"><path d="M70 35V285H660" fill="none" stroke-width="2"/><path d="M70 235H660M70 185H660M70 135H660M70 85H660M70 35H660" opacity=".3"/></g>
+              <g fill="var(--muted)" font-family="var(--body)" font-size="13"><text x="34" y="290">75%</text><text x="34" y="240">80%</text><text x="34" y="190">85%</text><text x="34" y="140">90%</text><text x="34" y="90">95%</text><text x="27" y="40">100%</text>
+              <text x="62" y="320">Aug 24</text><text x="160" y="320">Aug 25</text><text x="258" y="320">Aug 26</text><text x="356" y="320">Aug 27</text><text x="454" y="320">Aug 28</text><text x="552" y="320">Aug 29</text></g>
+              <path d="M70 115L168 75L266 215L364 35L462 95L560 55" fill="none" stroke="var(--blue)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+              <g fill="var(--paper)" stroke="var(--line)" stroke-width="3"><circle cx="70" cy="115" r="7"/><circle cx="168" cy="75" r="7"/><circle cx="266" cy="215" r="7"/><circle cx="364" cy="35" r="7"/><circle cx="462" cy="95" r="7"/><circle cx="560" cy="55" r="7"/></g>
+              <g fill="var(--ink)" font-family="var(--body)" font-weight="700" font-size="13"><text x="58" y="101">96</text><text x="157" y="61">98</text><text x="255" y="201">91</text><text x="350" y="25">100</text><text x="451" y="81">97</text><text x="549" y="41">99</text></g>
+            </svg></div>
+            <div class="legend"><span><i style="background:var(--blue)"></i>Closed-candle coverage (%)</span><span>Values: 96, 98, 91, 100, 97, 99</span><strong>ILLUSTRATIVE</strong></div>
+          </article>
+          <div>
+            <article class="paper-card"><h3>Decision sketch</h3><div class="code"><span class="comment"># pseudocode — explanatory, not source</span>
+on_closed_candle(candle):
+  if data_missing_or_stale(candle):
+    return NEUTRAL_OR_BLOCKED
+  features = compute_without_future_data(candle)
+  intent = shared_strategy_decision(features)
+  return intent</div></article>
+            <article class="paper-card" style="margin-top:2rem"><h3>Safe research example</h3><p class="safety">Backtest-only example. It does not start live execution or mutate an exchange account.</p><div class="code"><span class="comment"># after local project setup and historical data preparation</span>
+UV_CACHE_DIR=/tmp/uv-cache uv run python -m backtester.cli \
+  --strategy strategies/example.json \
+  --from 2025-01-01 --to 2025-01-31</div><p><span class="state warning">! Prerequisite</span> Historical candles and the referenced local strategy file must exist. Missing inputs should fail explicitly.</p></article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="chapter">
+      <div class="wrap grid-two">
+        <article class="paper-card">
+          <p class="eyebrow">Evidence ledger</p><h3>How a reader judges a result</h3>
+          <table><thead><tr><th>Check</th><th>Meaning</th><th>Example state</th></tr></thead><tbody>
+            <tr><td>Closed candles</td><td>No still-forming interval enters features.</td><td><span class="state success">✓ verified</span></td></tr>
+            <tr><td>Data continuity</td><td>Gaps block or degrade the decision.</td><td><span class="state warning">! partial</span></td></tr>
+            <tr><td>Live truth</td><td>Exchange facts supersede prose summaries.</td><td><span class="state error">× unavailable</span></td></tr>
+            <tr><td>Benchmark</td><td>Reporting comparison, not promotion veto.</td><td><span class="state">not a gate</span></td></tr>
+          </tbody></table>
+        </article>
+        <article class="paper-card">
+          <p class="eyebrow">Small interaction specimen</p><h3>Find a concept</h3>
+          <form id="concept-form"><label for="concept-input">Glossary term</label><div class="form-row"><input id="concept-input" placeholder="Try “closed candle”" autocomplete="off"><button class="button primary" type="submit">Look up</button></div></form>
+          <p id="concept-message" aria-live="polite">Definitions appear in context and link to the full Concepts chapter.</p>
+          <button class="button" type="button" disabled>Live data unavailable</button>
+        </article>
+      </div>
+      <div class="wrap state-grid" aria-label="Content state specimens">
+        <article class="state-card"><span class="state success">success</span><h4>Diagram ready</h4><p>Accessible summary and visual map agree.</p></article>
+        <article class="state-card partial"><span class="state warning">partial data</span><h4>Optional illustration missing</h4><p>The explanation remains complete without it.</p></article>
+        <article class="state-card"><span class="state error">index error</span><h4>Search unavailable</h4><p>Use the chapter map or glossary instead.</p><div class="loading-line" aria-label="Loading preview"></div></article>
+      </div>
+    </section>
+
+    <section class="chapter" id="concepts">
+      <div class="wrap"><div class="chapter-head"><div><p class="eyebrow">03 / A glossary in the margins</p><h2>Words worth<br>pinning down.</h2></div><p class="chapter-intro">Short definitions help without replacing the precise chapter. Empty search recovery should always route back here.</p></div>
+        <dl class="glossary">
+          <div class="term"><dt>Closed candle</dt><dd>A completed time interval. Using it preserves causal ordering.</dd></div>
+          <div class="term"><dt>Backtest</dt><dd>A deterministic replay of a strategy over historical market data.</dd></div>
+          <div class="term"><dt>Parity</dt><dd>Agreement between equivalent decision paths under matched inputs and boundaries.</dd></div>
+          <div class="term"><dt>Neutral signal</dt><dd>An explicit decision to take no entry when evidence is insufficient.</dd></div>
+          <div class="term"><dt>Production gate</dt><dd>A mandatory pass condition. The project benchmark is not one; it is a reporting target.</dd></div>
+          <div class="term"><dt>Runtime truth</dt><dd>Loaded configuration and exchange state that govern or record actual live behavior.</dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="chapter notes" id="notes">
+      <div class="wrap"><div class="chapter-head"><div><p class="eyebrow">Board notes / inspection contract</p><h2>Why this<br>direction exists.</h2></div><p class="chapter-intro">A visual hypothesis for comparison, not a proposed component library or production implementation.</p></div>
+        <div class="notes-grid">
+          <article><h3>Hypothesis</h3><p>An editorial sketchbook can make architecture welcoming while preserving exact technical evidence.</p></article>
+          <article><h3>Product rationale</h3><p>The public needs a mental model before source detail. Mira and margin notes explain boundaries without implying operational control.</p></article>
+          <article><h3>Composition</h3><p>Asymmetric magazine hero, oversized annotated map, alternating evidence spreads, and generous breathing room.</p></article>
+          <article><h3>Hierarchy</h3><p>Large serif chapter statements lead; plain-language summaries bridge to diagrams, exact specimens, then footnotes.</p></article>
+          <article><h3>Typography</h3><p>System Georgia supplies editorial warmth; system sans and monospace keep prose, labels, and examples robust without remote fonts.</p></article>
+          <article><h3>Density</h3><p>Moderate in evidence panels, deliberately low between chapters. Mobile stacks into a guided reading sequence.</p></article>
+          <article><h3>Geometry</h3><p>Imperfect radii, wavy underlines, dashed rules, small rotations, and graphite outlines mimic a working notebook.</p></article>
+          <article><h3>Surfaces</h3><p>Warm paper, taped notes, inked cards, and flat pastel fields. No glass, blur-heavy cards, or dashboard grid.</p></article>
+          <article><h3>Color</h3><p>Pale peach, powder blue, sage, yellow tape, and graphite. Dark mode becomes charcoal paper with muted pigments.</p></article>
+          <article><h3>Iconography</h3><p>Inline drawn symbols, arrows, candle marks, and a human illustrator; no external icon or image dependency.</p></article>
+          <article><h3>Motion</h3><p>Mira floats subtly, a data dot pulses, and loading shimmers. Reduced-motion stops all three while preserving meaning.</p></article>
+          <article><h3>Intentionally excluded</h3><p>Trading controls, accounts, exchange dashboard patterns, live commands, profit claims, GitHub dependency, and dark-terminal aesthetics.</p></article>
+          <article><h3>Inspected targets</h3><p>Designed for coordinator inspection at 1440×1000, 390×844, and 1728×1117. Mobile uses a distinct stacked composition and scroll-safe chart.</p></article>
+          <article><h3>Known visual risk</h3><p>System serif metrics vary by platform; the wide chart intentionally scrolls on narrow screens and needs rendered label inspection.</p></article>
+          <article><h3>Direction status</h3><p>Exploration only. Rendering, responsive QA, comparison, and Visual Direction Approval remain with the coordinator and owner.</p></article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer><strong>crypt field notes · Daybreak Sketch Lab</strong><span>Educational documentation concept · Historical evidence is not a guarantee · Updated 30 Aug 2026</span></footer>
+
+  <div class="overlay" id="search-overlay" role="dialog" aria-modal="true" aria-labelledby="search-title">
+    <div class="search-panel"><div class="search-top"><input id="global-search" aria-labelledby="search-title" placeholder="Search architecture, candle, parity…"><button class="icon-btn" id="search-close" type="button" aria-label="Close search">×</button></div><h2 id="search-title">Search the field notes</h2><div id="search-results"><div class="result"><strong>Closed candles prevent look-ahead</strong><br><small>Architecture · 3 min read</small></div><div class="result"><strong>Why missing data blocks an entry</strong><br><small>Research · glossary linked</small></div></div></div>
+  </div>
+  <div class="overlay" id="explain-overlay" role="dialog" aria-modal="true" aria-labelledby="explain-title">
+    <div class="search-panel"><button class="icon-btn" style="float:right" id="explain-close" type="button" aria-label="Close explanation">×</button><p class="eyebrow">Scope boundary</p><h2 id="explain-title">A window into the code, not a cockpit.</h2><p>This portal cannot access accounts, show positions, edit strategies, deploy services, or send orders. It explains the research workbench and the separate owner-selected OKX execution path without exposing operational controls.</p></div>
+  </div>
+  <script>
+    const root=document.documentElement, theme=document.querySelector('#theme-toggle');
+    theme.addEventListener('click',()=>{const dark=root.dataset.theme!=='dark';root.dataset.theme=dark?'dark':'light';theme.textContent=dark?'☀':'☾';theme.setAttribute('aria-label',dark?'Switch to light theme':'Switch to dark theme')});
+    const menu=document.querySelector('#menu-toggle'),nav=document.querySelector('#primary-nav');
+    menu.addEventListener('click',()=>{const open=nav.classList.toggle('open');menu.setAttribute('aria-expanded',open)});
+    const wire=(openId,closeId,triggerId,focusId)=>{const box=document.querySelector(openId),trigger=document.querySelector(triggerId);trigger.addEventListener('click',()=>{box.classList.add('open');document.querySelector(focusId)?.focus()});document.querySelector(closeId).addEventListener('click',()=>{box.classList.remove('open');trigger.focus()});box.addEventListener('click',e=>{if(e.target===box){box.classList.remove('open');trigger.focus()}})};
+    wire('#search-overlay','#search-close','#search-open','#global-search'); wire('#explain-overlay','#explain-close','#explain-open','#explain-close');
+    document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();document.querySelector('#search-open').click()}if(e.key==='Escape')document.querySelectorAll('.overlay.open').forEach(x=>x.classList.remove('open'))});
+    document.querySelector('#global-search').addEventListener('input',e=>{document.querySelector('#search-results').innerHTML=e.target.value.toLowerCase().includes('moon')?'<div class="result"><strong>No field note found.</strong><br><small>Try “closed candle”, browse Concepts, or return to the system map.</small></div>':'<div class="result"><strong>Closed candles prevent look-ahead</strong><br><small>Architecture · 3 min read</small></div><div class="result"><strong>Missing data blocks or degrades explicitly</strong><br><small>Research · glossary linked</small></div>'});
+    document.querySelector('#concept-form').addEventListener('submit',e=>{e.preventDefault();const q=document.querySelector('#concept-input').value.trim();document.querySelector('#concept-message').textContent=q?`“${q}” would open a short definition, then link to Concepts. This board keeps the lookup local.`:'Type a term first; empty input does not trigger a search.'});
+  </script>
+</body>
+</html>

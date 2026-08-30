@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-30 — Public docs portal visual directions
+
+- Approved Product Surface revision 1 for a public, accessible, self-contained
+  English documentation portal explaining how the `crypt` code works.
+- Added five materially different responsive visual direction boards created
+  by isolated Codex workers: Daybreak Sketch Lab, Night Shift Observatory,
+  Pocket Field Lab, Kinetic Systems Workshop, and Soft Data Greenhouse.
+- Verified mobile containment, standalone HTML parsing, clean browser
+  console/network behavior, and the documentation context test suite.
+- Used Cursor Grok 4.6 High Fast for an independent read-only comparison and
+  corrected the mobile interaction blockers it found in directions 02 and 05.
+- Recorded the comparison and left Visual Direction Approval as the next gate;
+  no production frontend implementation has started.
+
 Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
