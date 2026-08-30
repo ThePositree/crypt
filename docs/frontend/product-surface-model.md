@@ -1,8 +1,8 @@
 # Product Surface Model
 
-Status: proposed.
+Status: approved.
 Revision: 1.
-Approval: requested.
+Approval: owner approved on 2026-08-30.
 
 ## Product Knowledge Sources
 
@@ -249,11 +249,11 @@ Approval: requested.
 ## Approval Record
 
 - Product Surface revision: 1
-- Decision: pending
-- Owner feedback or waiver scope: none yet
+- Decision: approved
+- Owner feedback or waiver scope: approved without changes in owner chat
 - Date: 2026-08-30
-- Next phase unlocked: five rendered Visual Direction Boards and visual
-  direction approval.
+- Next phase unlocked: five rendered Visual Direction Boards and Visual
+  Direction Approval.
 
 ## Collaboration Record
 

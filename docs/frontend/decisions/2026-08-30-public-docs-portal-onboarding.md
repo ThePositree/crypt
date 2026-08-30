@@ -1,7 +1,7 @@
 # Public Documentation Portal Onboarding
 
 - Date: 2026-08-30
-- Status: proposed
+- Status: approved
 - Affected artifact revisions: Product Surface Model revision 1; preliminary
   Design Identity revision 1
 
@@ -36,6 +36,13 @@ account or strategy, deploy code, or control live execution.
 - Research and backtest examples may be executable; live-money commands are
   excluded.
 - The portal cannot use stale `docs/architecture.md` claims as current truth.
+
+## Approval
+
+The owner approved Product Surface Model revision 1 without changes on
+2026-08-30. This unlocks preliminary visual exploration; it does not approve a
+visual direction, design system, wireframe, stack, or production
+implementation.
 
 ## Validation Or Revisit Trigger
 
