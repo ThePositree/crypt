@@ -19,7 +19,7 @@ stack from one dependency or abandoned file.
 ## Active Stack
 
 - frontend framework;
-- build, package, and test tooling;
+- build, package, and validation setup;
 - styling approach;
 - UI libraries and local primitives;
 - design tokens and CSS variables;
@@ -30,7 +30,7 @@ stack from one dependency or abandoned file.
 - responsive conventions;
 - layout patterns;
 - assets and imagery;
-- Storybook or component documentation;
+- component documentation, examples, or catalogs;
 - established screen and component patterns;
 - legacy areas, migrations, and inconsistencies.
 

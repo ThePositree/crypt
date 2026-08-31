@@ -37,6 +37,16 @@ project docs, requirements, specs, current state, task context, or a canonical
 - In scope:
 - Explicitly out of scope:
 
+## Messaging Requirements
+
+- Starting user state:
+- Intended leaving state:
+- Main idea:
+- Required proof:
+- Objections to answer:
+- Natural action:
+- Generic-copy risks:
+
 ## User Journeys
 
 - Actor and starting state:
@@ -61,6 +71,9 @@ project docs, requirements, specs, current state, task context, or a canonical
 - Primary goals covered:
 - Secondary goals covered:
 - Necessary content present:
+- Messaging trajectory present:
+- Claims backed by proof or softened:
+- Objections answered where they arise:
 - Core interactions present:
 - Journey endpoints clear:
 - Placeholder/demo-only surfaces removed or marked out of scope:
@@ -76,8 +89,8 @@ project docs, requirements, specs, current state, task context, or a canonical
 
 ## Collaboration Record
 
-- Subagent system available: yes / no / unknown
-- Required interface/provider/model:
+- Delegation available: yes / no / unknown
+- Required collaboration/runtime interface:
 - Proposed delegated scope:
 - Owner decision: pending / approved / declined
 - Fallback:

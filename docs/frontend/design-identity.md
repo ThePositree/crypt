@@ -39,9 +39,9 @@ final product-specific identity.
 - Avoid:
 - Reason:
 
-## Model-Dependent Exploration Record
+## Implementation-Dependent Exploration Record
 
-- Model and tools used:
+- Execution context and methods used:
 - Date:
 - Approved Visual Direction revision:
 - Known limitations:

@@ -116,9 +116,7 @@ routes:
       - responsive
       - browser
       - screenshot
-      - storybook
-      - shadcn
-      - lucide
+      - component docs
     cards:
       - docs/agent/frontend_design_subsystem.card.md
       - docs/agent/operating_rules.card.md
@@ -126,6 +124,7 @@ routes:
       - docs/agent/frontend_design_subsystem.md
       - docs/frontend/context.md
       - docs/frontend/product-surface-model.md
+      - docs/frontend/messaging.md
       - docs/frontend/design-identity.md
       - docs/frontend/design-system.md
       - docs/frontend/component-registry.md
@@ -138,6 +137,8 @@ routes:
     notes:
       - Start with an outcome/scope/source/constraint/evidence/unknowns Task Contract.
       - Frontend depth D0-D3 determines proportional artifacts and approvals.
+      - Important frontend text needs Messaging Identity, Messaging Contract, proof,
+        objection handling, and Copy QA proportional to scope.
       - Rendered visual inspection is required for meaningful UI changes.
       - Persistent frontend memory lives under docs/frontend/.
 

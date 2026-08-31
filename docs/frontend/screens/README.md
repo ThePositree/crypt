@@ -1,7 +1,7 @@
 # Screen Contracts
 
 Store persistent screen contracts here. Before changing UI, read or update the
-related Mermaid flows and HTML/CSS/JS wireframes, then keep the screen contract
+related flows and wireframes, then keep the screen contract
 aligned before implementation.
 
 Use this structure when applicable:
@@ -16,6 +16,16 @@ Use this structure when applicable:
 ## Primary Action
 
 ## Information Hierarchy
+
+## Messaging Contract
+
+- Starting user state:
+- Intended leaving state:
+- Main idea:
+- Required proof:
+- Objections:
+- Natural action:
+- Generic-copy risks:
 
 ## Layout
 
@@ -38,6 +48,8 @@ Use this structure when applicable:
 ## Responsive Behavior
 
 ## Accessibility Requirements
+
+## Copy And Microcopy Requirements
 
 ## Visual Emphasis
 

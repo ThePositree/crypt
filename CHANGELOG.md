@@ -4,6 +4,19 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
+## 2026-08-31 - Frontend messaging system
+
+- Added a portable frontend messaging system that treats copy as a product
+  layer rather than filler content.
+- Added Messaging Identity, Messaging Contract, page message trajectory, text
+  hierarchy, proof, objection mapping, microcopy, anti-slop review, and Copy QA
+  requirements to the canonical frontend subsystem.
+- Added `docs/frontend/messaging.md` and connected messaging requirements to
+  product surface models, screen contracts, wireframes, flows, reviews,
+  routing, and current state.
+
+---
+
 ## 2026-08-30 - Frontend collaboration and owner steering contracts
 
 - Added an Owner Steering Contract that tells the owner they may interrupt,
