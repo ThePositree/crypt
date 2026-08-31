@@ -5,6 +5,11 @@ full frontend instruction and memory set. The system itself explains what
 applies to the current task, depth, surface, state, and risk. Follow the
 applicable instructions throughout the work.
 
+PRODUCTION STANDARD: every frontend surface is user-visible product quality
+from its first delivered version. Build complete, accurate, polished,
+accessible, responsive, and internally consistent behavior within the approved
+scope.
+
 Full source: `docs/agent/frontend_design_subsystem.md`
 
 Use this route for frontend product, UX, visual design, implementation,

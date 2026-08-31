@@ -1,17 +1,18 @@
 # Product Surface Model
 
-Status: initial static site established.
+Status: initial static site artifact requires owner review.
 Revision: 1
-Approval: scoped implementation without separate owner gate.
+Approval: review required before treating this surface as approved product
+state.
 
 Use this file for durable frontend product-surface understanding. It should be
 filled before substantial new site/app work, major redesigns, or broad product
 surfaces.
 
-Do not ask the owner to repeat product information that already exists in the
-repository. First discover product knowledge from sources such as `README.md`,
-project docs, requirements, specs, current state, task context, or a canonical
-`product.md`/`PRODUCT.md` when present.
+First discover product knowledge from sources such as `README.md`, project
+docs, requirements, specs, current state, task context, or a canonical
+`product.md`/`PRODUCT.md` when present. Ask the owner for product information
+that remains unresolved after repository discovery.
 
 ## Product Knowledge Sources
 
@@ -118,9 +119,10 @@ project docs, requirements, specs, current state, task context, or a canonical
 ## Approval Record
 
 - Product Surface revision: 1.
-- Decision: implemented as a narrow static MVP from owner request "делаем сайт".
-- Owner feedback or waiver scope: no separate approval was requested for this
-  narrow read-only implementation.
+- Decision: implemented as a narrow static initial surface from owner request
+  "делаем сайт".
+- Owner feedback or waiver scope: owner review is required before treating this
+  read-only implementation as an approved frontend surface.
 - Date: 2026-08-31.
 - Next phase unlocked: owner review and optional dynamic frontend planning.
 

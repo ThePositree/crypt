@@ -6,6 +6,12 @@ the current task, depth, surface, state, and risk. Follow the applicable
 instructions throughout discovery, planning, design, implementation, rendered
 inspection, review, and final reporting.
 
+PRODUCTION STANDARD: every frontend surface is user-visible product quality
+from its first delivered version. Plan and build for complete, accurate,
+polished, accessible, responsive, and internally consistent behavior within the
+approved scope. Treat rough drafts, vague copy, visual glitches, broken states,
+unverified assumptions, and approximate flows as unfinished frontend work.
+
 Version: 3
 Updated: 2026-08-31
 
@@ -224,7 +230,8 @@ product evidence
 
 The model must distinguish approved scope, boundaries, assumptions, and
 unresolved decisions. Completeness is proportional to the approved product
-stage; an MVP may be small but must still complete its promised journeys.
+stage; an initial release may be small but must still complete its promised
+journeys at production quality.
 
 Before approval, mentally strip styling from the structure. When the remaining
 structure fails to form a useful product surface, repair the surface before
