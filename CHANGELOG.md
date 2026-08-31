@@ -4,6 +4,13 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
+## 2026-08-31 - Documentation regression tests removed
+
+- Removed repository documentation regression tests so docs and instruction
+  files are no longer enforced by exact structural test expectations.
+
+---
+
 ## 2026-08-31 - Frontend messaging system
 
 - Added a portable frontend messaging system that treats copy as a product
