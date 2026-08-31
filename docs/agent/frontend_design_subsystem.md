@@ -229,9 +229,8 @@ product evidence
 ```
 
 The model must distinguish approved scope, boundaries, assumptions, and
-unresolved decisions. Completeness is proportional to the approved product
-stage; a scoped release may be small but must still complete its promised
-journeys at production quality.
+unresolved decisions. Completeness means the approved product surface fulfills
+its promised journeys at production quality.
 
 Before approval, mentally strip styling from the structure. When the remaining
 structure fails to form a useful product surface, repair the surface before
