@@ -1,5 +1,9 @@
 # Frontend Design Subsystem Card
 
+MANDATORY: before any frontend work, read this card, the full source, and every
+frontend instruction or memory file that applies to the current task, depth,
+surface, state, and risk. Apply the relevant instructions throughout the work.
+
 Full source: `docs/agent/frontend_design_subsystem.md`
 
 Use this route for frontend product, UX, visual design, implementation,

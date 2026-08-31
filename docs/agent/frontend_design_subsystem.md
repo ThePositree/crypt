@@ -1,5 +1,11 @@
 # Frontend Design Subsystem
 
+MANDATORY: before any frontend work, read this full document and every
+frontend instruction or memory file that applies to the current task, depth,
+surface, state, and risk. Apply the relevant instructions throughout discovery,
+planning, design, implementation, rendered inspection, review, and final
+reporting.
+
 Version: 3
 Updated: 2026-08-31
 
