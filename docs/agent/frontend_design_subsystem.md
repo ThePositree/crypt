@@ -230,7 +230,7 @@ product evidence
 
 The model must distinguish approved scope, boundaries, assumptions, and
 unresolved decisions. Completeness is proportional to the approved product
-stage; an initial release may be small but must still complete its promised
+stage; a scoped release may be small but must still complete its promised
 journeys at production quality.
 
 Before approval, mentally strip styling from the structure. When the remaining
