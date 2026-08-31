@@ -1,8 +1,9 @@
 # Frontend Design Subsystem Card
 
-MANDATORY: before any frontend work, read this card, the full source, and every
-frontend instruction or memory file that applies to the current task, depth,
-surface, state, and risk. Apply the relevant instructions throughout the work.
+MANDATORY: before any frontend work, read this card, the full source, and the
+full frontend instruction and memory set. The system itself explains what
+applies to the current task, depth, surface, state, and risk. Follow the
+applicable instructions throughout the work.
 
 Full source: `docs/agent/frontend_design_subsystem.md`
 
