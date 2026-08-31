@@ -6,6 +6,14 @@ the current task, depth, surface, state, and risk. Follow the applicable
 instructions throughout discovery, planning, design, implementation, rendered
 inspection, review, and final reporting.
 
+READ RECEIPT GATE: before planning, editing, generating artifacts, launching
+rendered checks, or delegating frontend work, publish a concise receipt in chat.
+The receipt names every frontend instruction and memory file read, line counts,
+full-file ranges covered, top-level headings observed, the classified depth,
+the active gates, and the first owner approval gate that controls the next
+action. Frontend action begins after this receipt exists and identifies the
+currently applicable instruction set.
+
 PRODUCTION STANDARD: every frontend surface is user-visible product quality
 from its first delivered version. Plan and build for complete, accurate,
 polished, accessible, responsive, and internally consistent behavior within the
@@ -55,6 +63,36 @@ Frontend prompts and handoffs should include the execution context and date
 when results may vary by implementation. Re-evaluate reusable prompts after
 execution context, rendering environment, framework, or component-library
 changes instead of assuming that an old prompt remains optimal.
+
+## Instruction Control Protocol
+
+Use this protocol as the execution control layer for frontend work.
+
+The pre-action Read Receipt records:
+
+- every file in the frontend instruction and memory set;
+- line count for each file;
+- full-file read range for each file, from first line through last line;
+- top-level headings or declared empty-state purpose for each file;
+- current task depth and why that depth fits;
+- active approvals, waivers, and review gates;
+- first gate that controls the next action;
+- frontend memory entries that are established, pending, or awaiting owner
+  input.
+
+Start implementation, artifact generation, rendered inspection, delegation, or
+durable memory updates only after the Read Receipt identifies the active gates.
+When the first active gate requires owner approval, present the required
+artifact or question and wait for the owner decision before continuing past
+that gate.
+
+Before final response, perform a Final Instruction Audit. The audit states
+which frontend instruction files were applied, which memory files influenced
+the result, which gates passed or remain active, which approvals or waivers were
+recorded, and which evidence supports the delivered scope. Include the audit or
+a compact version of it in the final response for any frontend task that
+changes code, copy, visual direction, product surface, screen contracts,
+wireframes, flows, frontend memory, or review artifacts.
 
 ## Depth Classification
 
@@ -151,7 +189,8 @@ Three completion questions remain separate:
 
 ## Context Loading
 
-Load only the context required by the classified depth and affected surface.
+Read the full frontend instruction and memory set before applying
+depth-specific context.
 
 Always begin with the repository bootstrap and routed frontend card. Then read:
 
@@ -164,10 +203,11 @@ Always begin with the repository bootstrap and routed frontend card. Then read:
   is affected;
 - action/runtime sources of truth when the UI can mutate important state.
 
-Load the frontend artifacts required by the classified depth and affected
-surface. Resolve contradictions before implementation. Runtime configuration
-and real service state govern operational behavior; approved product/design
-artifacts govern intended UI behavior until explicitly superseded.
+After full reading, select the artifacts and rules that apply to the classified
+depth and affected surface. Resolve contradictions before implementation.
+Runtime configuration and real service state govern operational behavior;
+approved product/design artifacts govern intended UI behavior until explicitly
+superseded.
 
 ## First-Use Discovery
 
@@ -861,6 +901,7 @@ Record evidence with verdicts:
 - Copy QA verdict:
 - Responsive Design verdict:
 - Product Completeness verdict:
+- Instruction Control Audit:
 - Known gaps and exact next action:
 ```
 
@@ -929,6 +970,7 @@ reviews record validation evidence.
 
 A frontend task is complete when:
 
+- the Read Receipt was published before frontend action;
 - the requested outcome and approved scope are delivered;
 - required gates or scoped waivers are recorded;
 - relevant contracts match the implementation;
@@ -936,6 +978,8 @@ A frontend task is complete when:
   completeness checks proportional to depth have evidence;
 - placeholders and integration seams are labeled accurately;
 - durable knowledge is current and temporary handoffs are removed;
+- the Final Instruction Audit names applied instructions, memory, gates,
+  approvals, and evidence;
 - validation passes or remaining failures are reported with cause and next command.
 
 Optimize this process through evaluation: compare the delivered behavior and

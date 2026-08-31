@@ -5,6 +5,12 @@ full frontend instruction and memory set. The system itself explains what
 applies to the current task, depth, surface, state, and risk. Follow the
 applicable instructions throughout the work.
 
+READ RECEIPT GATE: before planning, editing, generating artifacts, rendered
+checks, or delegation, publish a concise receipt naming every frontend
+instruction and memory file read, line counts, full-file ranges, headings,
+classified depth, active gates, and the first owner approval gate controlling
+the next action. Begin frontend action after the receipt exists.
+
 PRODUCTION STANDARD: every frontend surface is user-visible product quality
 from its first delivered version. Build complete, accurate, polished,
 accessible, responsive, and internally consistent behavior within the approved
@@ -47,8 +53,9 @@ single-agent work.
 
 ## Established Practices
 
-- Discover repository and product evidence before asking questions. Load only
-  context relevant to the affected surface.
+- Discover repository and product evidence before asking questions. Read the
+  full frontend instruction and memory set, then apply context relevant to the
+  affected surface.
 - For non-trivial external libraries/APIs, consult current authoritative
   documentation before implementation.
 - D2/D3 work uses a Product Surface Model and Messaging Contract, then
@@ -85,7 +92,8 @@ single-agent work.
   intentional compositions beyond overflow checks.
 - Substantial work ends with evidence under `docs/frontend/reviews/`: validated
   scope, viewports, screenshots, interactions, checks, console/network status,
-  accessibility, copy review, verdicts, gaps, and next action.
+  accessibility, copy review, instruction audit, verdicts, gaps, and next
+  action.
 - Split context-heavy phases and, after owner approval in the Collaboration
   Check, use fully specified delegated-work prompts through the available
   collaboration interface. Persist durable facts canonically and archive or
