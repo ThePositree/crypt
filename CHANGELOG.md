@@ -4,17 +4,6 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
-## 2026-08-31 - Initial static website
-
-- Added a read-only static website under `site/` for the `crypt` research
-  workbench and live OKX execution module.
-- Documented the initial frontend stack, product surface, messaging, design
-  identity, design-system rules, and homepage screen contract.
-- Kept live-money operations out of scope; the site links to canonical docs and
-  marks the strategy chart as illustrative.
-
----
-
 ## 2026-08-31 - Documentation regression tests removed
 
 - Removed repository documentation regression tests so docs and instruction
