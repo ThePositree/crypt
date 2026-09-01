@@ -84,9 +84,34 @@ copy review findings.
 - Confirmations:
 - Tooltips and badges:
 
+## Text Inventory
+
+Every user-visible text fragment must be inventoried for D2/D3 work and for
+any implementation that changes copy. Do not sample only important text.
+
+- Page / screen / state:
+- Location / component:
+- Exact text or repeated text pattern:
+- Text category:
+- Semantic job:
+- Messaging Contract link:
+- User starting state:
+- Intended leaving state or local action:
+- Claim made:
+- Proof nearby:
+- Objection or friction handled:
+- Action expectation:
+- Microcopy state:
+- Keep / rewrite / cut decision:
+- Reviewer verdict:
+- Evidence:
+
 ## Copy Review
 
 - Scope reviewed:
+- Text Inventory coverage:
+- Pages/screens/states covered:
+- Navigation/action/microcopy covered:
 - Clarity:
 - Specificity:
 - Information depth:

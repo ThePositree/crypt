@@ -4,6 +4,21 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
+## 2026-09-01 - Independent frontend QA gate
+
+- Reverted the generated documentation site commit so the repository returns to
+  instruction-only frontend hardening before further process changes.
+- Required frontend implementation QA to be performed outside the implementation
+  session by read-only delegated reviewers, or by an owner-run fresh-session QA
+  fallback when subagents are unavailable.
+- Added Independent QA Brief requirements with explicit route, interaction,
+  viewport, discovery, accessibility, text, evidence, and pass/fail criteria
+  written for literal reviewers.
+- Strengthened copy review around exhaustive Text Inventory coverage for every
+  user-visible text fragment, not only prominent or important text.
+
+---
+
 ## 2026-09-01 - Frontend phase transition gates
 
 - Required refreshed frontend Read Receipts after resumes, interruptions,

@@ -147,6 +147,8 @@ Canonical frontend obligations:
 - Discovery QA;
 - Six viewport classes;
 - Accessibility checks;
+- Independent Frontend QA Gate;
+- Independent QA Brief;
 - Frontend Rubric Review;
 - Rendered evidence;
 - Durable frontend memory updates;
@@ -463,6 +465,23 @@ text fragment across every page, screen, state, navigation area, action,
 microcopy point, data label, empty/error/loading/success message, and repeated
 content pattern. Record the applied pass in the Task Contract, screen contract,
 or review evidence.
+
+The text pass is exhaustive, not importance-based. Do not limit it to hero
+copy, public marketing copy, important paragraphs, or high-risk messages. Every
+visible fragment counts: navigation labels, breadcrumbs, tabs, filters,
+buttons, links, headings, card titles, card bodies, badges, tooltips, alt text,
+form labels, placeholders, helper text, validation messages, loading text,
+empty states, error states, success states, disabled labels, table headers,
+chart labels, legend text, metadata labels, footer text, legal text, command
+labels, keyboard shortcut hints, toast text, dialog titles, menu items, and
+repeated generated labels.
+
+Before implementation, create a Text Inventory for every planned page, screen,
+state, action, and repeated pattern. After implementation, reconcile that
+inventory against the rendered interface and source code. Record for each item:
+location, exact text or text pattern, semantic job, Messaging Contract link,
+claim/proof status, objection or friction handled when relevant, final decision
+keep/rewrite/cut, and reviewer verdict.
 
 ### Messaging Identity
 
@@ -1068,16 +1087,34 @@ region that a user can click, tap, focus, type into, drag, scroll as a local
 control, hover for information, open, close, expand, collapse, select, submit,
 copy, navigate through, or operate with a keyboard shortcut. Include visual
 areas that look interactive and stateful areas expected to emit events,
-navigation, data loading, feedback, animation, or UI changes.
+navigation, data loading, feedback, animation, UI changes, route changes, URL
+parameter changes, network requests, copied content, focus movement, or visible
+state changes.
 
-Exercise every inventory item in the rendered interface: buttons, links, tabs,
-menus, forms, filters, toggles, dialogs, accordions, content tiles with click
-behavior, maps, charts, tables, search fields, pagination, command controls,
-copy buttons, overlays, drawers, media controls, keyboard/focus behavior, and
-post-interaction states. For each item, record expected response, actual
-response, URL or route changes, state changes, emitted request or event when
-observable, focus behavior, loading feedback, success feedback, and recovery
-behavior.
+The implementer prepares the inventory; independent QA exercises it. The
+inventory must be concrete enough for a literal reviewer with no product
+intuition. For each item, record:
+
+- stable selector or visible label;
+- page, screen, and state where it appears;
+- user action to perform;
+- expected response;
+- expected URL or route change;
+- expected state change;
+- expected request, event, or copied value when observable;
+- keyboard and focus expectation;
+- loading, success, failure, disabled, empty, overflow, and recovery behavior
+  when applicable;
+- evidence required to mark it passed.
+
+Independent QA must exercise every inventory item in the rendered interface:
+buttons, links, tabs, menus, forms, filters, toggles, dialogs, accordions,
+content tiles with click behavior, maps, charts, tables, search fields,
+pagination, command controls, copy buttons, overlays, drawers, media controls,
+keyboard/focus behavior, and post-interaction states. For each item, record
+expected response, actual response, URL or route changes, state changes,
+emitted request or event when observable, focus behavior, loading feedback,
+success feedback, and recovery behavior.
 
 Validate success, failure, loading, empty, disabled, overflow, and partial-data
 paths that are reachable in scope. Verify every internal navigation target,
@@ -1097,6 +1134,86 @@ topic queries, metadata filters, combined filters, high-value target items,
 empty query behavior, zero-result behavior, keyboard operation, result
 selection, ranking/grouping expectations, and snippet or explanation quality.
 Record queries, filters, expected results, actual results, and fixes.
+
+## Independent Frontend QA Gate
+
+Frontend implementation QA is independent work. The same agent/session that
+implemented the frontend may run local preflight checks, builds, linting,
+typechecks, route smoke tests, and exploratory sanity checks, but those checks
+do not satisfy final QA and must not be presented as completion evidence.
+
+After implementation and before claiming the frontend task complete, run the
+Independent Frontend QA Gate:
+
+1. Prepare an Independent QA Brief.
+2. Prefer delegated read-only QA workers when subagents or orchestration are
+   available.
+3. If subagents are unavailable, stop and ask the owner to open a fresh session
+   for QA. Provide the exact prompt that would have been given to the delegated
+   reviewer and ask the owner to return the findings.
+4. Fix every blocking finding in the implementation session.
+5. Repeat independent QA on the changed surface until blocking findings are
+   cleared or the owner explicitly grants a scoped `FRONTEND WAIVER:`.
+
+The implementer decides the number of QA workers. For D2/D3, many-screen, or
+interaction-heavy work, decompose aggressively instead of using one broad
+review. Default independent QA lanes:
+
+- functional interaction, link, navigation, event, keyboard, and state QA;
+- responsive visual, rendered layout, screenshots, accessibility, and console
+  or network QA;
+- copy, Messaging System, Text Inventory, content coverage, and discovery QA;
+- instruction compliance, artifact path mapping, gates, waivers, and rubric
+  audit.
+
+Use fewer lanes only when the surface is small enough that decomposition would
+not improve evidence quality. Use more lanes when specialized surfaces need
+separate review, such as editor tools, dashboards, games, checkout flows,
+authentication, data visualization, media, realtime updates, or admin actions.
+
+Independent QA workers are read-only by default. They inspect files, run the
+app when needed, exercise behavior, capture evidence, and report findings.
+They do not edit files unless the owner explicitly approves a write-scoped
+delegation.
+
+The Independent QA Brief must be self-contained and written for a literal,
+ultra-obedient reviewer who follows instructions exactly but does not infer
+common-sense coverage. Include:
+
+- repository path, current commit or working-tree state, and whether changes
+  are committed or uncommitted;
+- local setup commands, server command, URL, ports, environment assumptions,
+  and known unavailable tools;
+- exact files and artifact paths to read before testing;
+- approved owner scope, gates, waivers, visual direction, wireframes, screen
+  contracts, content/capability contract, discovery contract, and Messaging
+  Identity references;
+- page, route, screen, state, component, and viewport lists to cover;
+- Interaction Inventory with every clickable, focusable, typed, hoverable,
+  draggable, scroll-controlled, stateful, eventful, navigational, or
+  apparently interactive region;
+- full Text Inventory and the required Messaging System checks for every
+  user-visible text fragment;
+- explicit Discovery QA query/filter set and expected outcomes;
+- exact viewport classes and concrete viewport sizes to inspect;
+- exact accessibility, keyboard, focus, console, network, and error-state
+  expectations;
+- explicit pass/fail criteria for each checklist item;
+- severity definitions;
+- required evidence format: route, viewport, action, expected result, actual
+  result, screenshot or log path when applicable, file/line reference when
+  applicable, severity, and fix recommendation.
+
+The independent reviewer must not accept vague assertions such as "looks good",
+"links seem fine", "search works", "responsive checked", or "copy is clear".
+Each passed area needs named evidence. Each failed area needs reproduction
+steps and expected versus actual behavior.
+
+If no independent QA result is available, the frontend task is not complete.
+Do not move mandatory QA to backlog. Do not label the implementation
+production-ready. The final response must say `Control Verdict: STOP`, include
+the Independent QA Brief prompt for the owner to run in a separate session, and
+state that completion is blocked on returned independent QA findings.
 
 ## Visual QA And Review Protocol
 
@@ -1126,6 +1243,12 @@ Every frontend task ends with a rubric review. For D0/D1, run the rubric
 against the affected component, state, text, route, or viewport. For D2/D3, run
 it against every delivered page, meaningful screen, flow, repeated component
 pattern, and changed state.
+
+For implementation work, the final rubric verdict must include independent QA
+evidence from a separate delegated reviewer or separate session. The
+implementer may draft a self-rubric as preflight, but self-rubric does not
+close the gate. If no independent result exists, the rubric status is
+`blocked: independent QA not returned`.
 
 For D3 artifact phases, run the rubric before requesting Product Surface
 Approval, Wireframe Approval, and Final Implementation Approval. Apply the
@@ -1158,7 +1281,8 @@ Record a verdict and evidence for each category:
   and final audit match this subsystem.
 
 The final response for frontend work includes a compact rubric summary with
-category verdicts and named evidence.
+category verdicts and named evidence. For implementation work, also name the
+independent QA reviewer/session or the fallback owner-run QA prompt path.
 
 ## Copy QA And Review Protocol
 
@@ -1194,9 +1318,12 @@ For every user-visible text fragment, ask what job it performs. If the answer
 is unclear, rewrite it or cut it. If a strong claim needs proof, add proof,
 weaken the claim, or retire the claim.
 
-Copy QA is complete when the review names the pages, screens, states, actions,
-and repeated patterns inspected; records the rubric result for each; and maps
-rewrite decisions to the Messaging System concept that required the change.
+Copy QA is complete only when the review names every page, screen, state,
+action, repeated pattern, and Text Inventory item inspected; records the rubric
+result for each; maps rewrite decisions to the Messaging System concept that
+required the change; and includes an independent reviewer verdict. Partial
+sampling is allowed only with a scoped owner message containing
+`FRONTEND WAIVER:`.
 
 ## Product Completeness Review
 
@@ -1227,6 +1354,11 @@ Record evidence with verdicts:
 - Task Contract revision:
 - Execution context and methods:
 - Commit or working-tree state:
+- Implementer session:
+- Independent QA owner/session:
+- Independent QA Brief:
+- Independent QA iteration:
+- Independent QA decomposition:
 - Scope validated:
 - Pre-implementation Content Coverage Audit:
 - Post-implementation Content Coverage Audit:
@@ -1242,6 +1374,8 @@ Record evidence with verdicts:
 - Data/API states:
 - Accessibility checks:
 - Messaging System pass:
+- Text Inventory coverage:
+- Copy/content reviewer verdict:
 - Rubric Review:
 - Functional QA verdict:
 - Visual QA verdict:
@@ -1258,16 +1392,23 @@ scope precisely in the final response.
 ## Phase Handoffs And Independent Review
 
 Split D3 work, many-screen work, or any context-heavy task into bounded phases.
-Use an isolated delegated worker for an independently verifiable phase or
-review only after the Collaboration Check records availability, the required
-collaboration interface, the delegated contract, and owner approval.
-Delegation also needs independent verifiability and owner approval.
+Use isolated delegated workers for independently verifiable implementation
+reviews after the Collaboration Check records availability, the required
+collaboration interface, the delegated contract, and whether the owner
+requested single-agent execution. Delegation for mandatory frontend QA does not
+replace owner approval gates and does not authorize workers to write files.
 
 A delegated-work prompt must state the exact outcome, allowed files,
 scope boundaries, required sources, approved decisions, acceptance evidence,
 validation commands, and response format. Include the current Task Contract and
 execution context when relevant. Provide the context the worker needs for the
 assigned outcome.
+
+For independent QA, include the Independent QA Brief defined above. The prompt
+must be more explicit than a normal engineering handoff: list every route,
+interaction, viewport, text inventory category, discovery query, expected
+state, and output field that must be checked. Assume the reviewer will miss
+anything not listed.
 
 When a phase must continue in another session or worktree, create a temporary
 handoff containing:
@@ -1335,6 +1476,11 @@ A frontend task is complete when:
   and microcopy point;
 - the Interaction Inventory was exercised across links, controls, stateful
   regions, navigation, keyboard behavior, and expected events;
+- independent frontend QA was performed by a separate delegated reviewer or
+  separate session from the implementation session;
+- every blocking independent QA finding was fixed and independently rechecked,
+  or a scoped owner message containing `FRONTEND WAIVER:` records why it
+  remains;
 - the required six viewport classes were inspected or a narrower owner-approved
   viewport scope was recorded;
 - promised content, data, capability, and discovery coverage have evidence;
@@ -1344,7 +1490,7 @@ A frontend task is complete when:
   filters, zero-result states, result selection, ranking/grouping behavior, and
   keyboard operation;
 - the Frontend Rubric Review has verdicts and evidence for every applicable
-  category;
+  category and includes the independent QA verdict for implementation work;
 - functional, rendered visual, copy, responsive, accessibility, and
   completeness checks proportional to depth have evidence;
 - placeholders and integration seams are labeled accurately;
