@@ -1,10 +1,12 @@
 # Frontend Design Subsystem
 
 MANDATORY: before any frontend work, read this full document and the full
-frontend instruction and memory set. The system itself explains what applies to
-the current task, depth, surface, state, and risk. Follow the applicable
-instructions throughout discovery, planning, design, implementation, rendered
-inspection, review, and final reporting.
+frontend instruction and memory set. Follow this subsystem exactly throughout
+discovery, planning, design, implementation, rendered inspection, review, and
+final reporting. Apply every instruction whose trigger matches the current
+task, depth, surface, state, and risk. The agent may narrow, skip, reorder, or
+replace a required frontend instruction only after an explicit owner waiver
+uses the waiver phrase defined in this document.
 
 READ RECEIPT GATE: before planning, editing, generating artifacts, launching
 rendered checks, or delegating frontend work, publish a concise receipt in chat.
@@ -13,8 +15,8 @@ full-file ranges covered, top-level headings observed, the classified depth,
 the active gates, the active obligations, and the first owner approval gate
 that controls the next action. It ends with `Control Verdict: STOP` or
 `Control Verdict: PROCEED`. Frontend action begins after this receipt exists,
-identifies the currently applicable instruction set and obligations, and
-returns `PROCEED`.
+identifies the currently applicable instruction set and canonical obligations,
+and returns `PROCEED`.
 
 PRODUCTION STANDARD: every frontend surface is user-visible product quality
 from its first delivered version. Plan and build for complete, accurate,
@@ -110,27 +112,60 @@ Approval, Visual Direction Approval, Wireframe Approval, Action Contract
 Approval, and Final Implementation Approval.
 
 `Active Obligations` are execution requirements that remain active even when
-the current gate is `STOP`. Name every applicable obligation, including full
-Messaging System for all user-visible text, Content Coverage Audit,
-Content And Capability Contract, Discovery Contract, page-level wireframes,
-screen contracts, Interaction Inventory, full link/navigation coverage,
-Discovery QA, six viewport classes, accessibility checks, Frontend Rubric
-Review, rendered evidence, durable memory updates, and Final Instruction
-Audit.
+the current gate is `STOP`. Use the exact canonical obligation names below and
+mark each one `applies`, `not applicable`, `satisfied`, `blocked`, or
+`waived by owner`. Add a one-line reason for every `not applicable`, `blocked`,
+or `waived by owner` status.
+
+Canonical frontend obligations:
+
+- Full Messaging System for all user-visible text;
+- Pre-implementation Content Coverage Audit;
+- Post-implementation Content Coverage Audit;
+- Product Surface Model;
+- Content And Capability Contract;
+- Discovery Contract;
+- Messaging Identity and Messaging Contracts;
+- Design Identity and Design System;
+- Five raster Visual Direction Boards;
+- Visual Direction Approval;
+- Flows;
+- Page-level wireframes for every real page or meaningful screen;
+- Wireframe Approval;
+- Screen contracts for every real page or meaningful screen;
+- Action Contract;
+- Final Implementation Approval;
+- Interaction Inventory;
+- Full link and navigation coverage;
+- Discovery QA;
+- Six viewport classes;
+- Accessibility checks;
+- Frontend Rubric Review;
+- Rendered evidence;
+- Durable frontend memory updates;
+- Final Instruction Audit.
 
 Start implementation, artifact generation, rendered inspection, delegation, or
 durable memory updates only after the Read Receipt identifies the active gates,
-active obligations, and returns `PROCEED`. When the first active gate requires
-owner approval, the Read Receipt returns `STOP`; the next action is presenting
-the required artifact or question and waiting for the owner decision.
+canonical active obligations, and returns `PROCEED`. A `PROCEED` verdict is
+valid only when every applicable canonical obligation is listed with a current
+status. When the first active gate requires owner approval, the Read Receipt
+returns `STOP`; the next action is presenting the required artifact or question
+and waiting for the owner decision.
 
-Only explicit owner messages grant approvals and scoped waivers. The agent
-records owner-granted waivers and approvals after they are given. The agent
-does its own scope, risk, and depth analysis, then presents the active gate for
-owner decision when a gate controls the next action. Waiver requests describe
-the exact artifact, obligation, risk, and decision being waived plus the
-evidence that remains required. Waiver framing uses concrete scope and risk
-language rather than speed, shortcut, or reduced-quality framing.
+Only explicit owner messages grant approvals and scoped waivers. A scoped
+waiver is valid only when the owner message contains the exact phrase
+`FRONTEND WAIVER:` followed by the artifact, obligation, gate, or instruction
+being waived. The agent records owner-granted waivers and approvals after they
+are given. The agent does its own scope, risk, and depth analysis, then
+presents the active gate for owner decision when a gate controls the next
+action. Waiver requests describe the exact artifact, obligation, risk, and
+decision being waived plus the evidence that remains required. Waiver framing
+uses concrete scope and risk language rather than speed, shortcut, or
+reduced-quality framing. Owner approval words such as "yes", "approved",
+"continue", "do it", "go ahead", or answers to onboarding questions approve
+only the current named gate or answer the current question; they do not waive
+frontend instructions.
 
 Short owner requests preserve the depth and approval requirements implied by
 the requested surface. A request such as "create a site", "make the app",
@@ -139,6 +174,12 @@ memory says the product surface, Messaging Identity, Design Identity, Design
 System, or active frontend context is `not established`, `pending`, or awaiting
 owner input. In that state, the Read Receipt verdict is `STOP: D3 onboarding
 and approval gate required`.
+
+Owner answers that define product direction, stack preference, language,
+content scope, search, visual style, pages, or interaction needs become input
+to the next artifact phase. They do not unlock implementation until the
+canonical D3 sequence reaches Final Implementation Approval or the owner grants
+a scoped `FRONTEND WAIVER:` for the skipped gates and obligations.
 
 Owner words that imply scale, completeness, quality, depth, richness, working
 behavior, production readiness, or broad coverage become acceptance
@@ -941,6 +982,13 @@ meaningful screen to its flow, wireframe path, screen-contract path, content
 coverage, discovery coverage when relevant, and implementation unit. A waiver
 must name what is waived, why, what remains required, and the next active gate.
 
+For D3, implementation commands, file creation, package installation, source
+generation, or production-code edits begin after Final Implementation Approval
+or a valid `FRONTEND WAIVER:` that names the skipped approval and remaining
+evidence. Approval of a questionnaire answer, product direction, stack choice,
+language, page list, visual style, or search requirement moves the artifact
+sequence forward and does not approve implementation.
+
 ## Implementation
 
 Implement against the approved contract. Preserve established stack and
@@ -1231,6 +1279,11 @@ A frontend task is complete when:
 
 - the Read Receipt was published before frontend action;
 - the Read Receipt named active gates and active obligations separately;
+- the Read Receipt used canonical obligation names and statuses;
+- every skipped, narrowed, reordered, or replaced frontend instruction has a
+  recorded owner message containing `FRONTEND WAIVER:`;
+- D3 implementation began after Final Implementation Approval or a valid
+  `FRONTEND WAIVER:` for that approval;
 - the requested outcome and approved scope are delivered;
 - required gates or scoped waivers are recorded;
 - relevant contracts match the implementation;

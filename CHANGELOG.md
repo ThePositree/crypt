@@ -4,6 +4,18 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
+## 2026-09-01 - Frontend explicit waiver phrase
+
+- Required frontend agents to follow the full subsystem exactly unless the
+  owner grants a scoped waiver with the exact phrase `FRONTEND WAIVER:`.
+- Added canonical Active Obligations names and statuses to the frontend Read
+  Receipt so agents cannot replace required obligations with vague summaries.
+- Clarified that onboarding answers, stack choices, page lists, language
+  choices, visual direction, and search requirements move the artifact
+  sequence forward and do not approve implementation by themselves.
+
+---
+
 ## 2026-09-01 - Frontend read receipt obligations
 
 - Required frontend Read Receipts to separate owner-decision gates from active

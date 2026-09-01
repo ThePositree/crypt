@@ -39,3 +39,8 @@ requests or events, keyboard behavior, feedback, and recovery behavior.
 Use the six viewport classes from the frontend subsystem for D2/D3 reviews
 unless an owner-approved viewport boundary narrows the surface. Record the
 Frontend Rubric Review verdicts and evidence for every applicable category.
+
+Record instruction control with the canonical obligation names from the
+frontend subsystem, their final statuses, and any owner messages containing
+`FRONTEND WAIVER:` that skipped, narrowed, reordered, or replaced an otherwise
+applicable instruction.
