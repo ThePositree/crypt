@@ -64,12 +64,8 @@ final product-specific identity.
 
 ## Implementation-Dependent Exploration Record
 
-- Execution context and methods used: five raster Visual Direction Boards were
-  generated with the built-in `image_gen` tool and inspected locally:
-  Pastel Lab Map, Notebook Garden, Block Kit Framework, Strategy Atlas, and
-  Docs Town.
+- Execution context and methods used: pending rendered visual direction boards.
 - Date: 2026-09-01
 - Approved Visual Direction revision: pending.
 - Known limitations: no production frontend exists yet; exact mascot shape,
-  palette, typography, and interaction style require owner Visual Direction
-  Approval.
+  palette, typography, and interaction style require visual direction approval.

@@ -26,14 +26,6 @@ coherent product.
   `docs/frontend/design-identity.md`,
   `docs/frontend/design-system.md`, and
   `docs/frontend/decisions/0001-public-docs-platform-direction.md`.
-- Product Surface Model revision 1 and the public docs platform direction were
-  approved by the owner on `2026-09-01`.
-- Five raster Visual Direction Boards were generated and inspected:
-  `docs/frontend/visual-references/boards/board-01-pastel-lab-map.png`,
-  `docs/frontend/visual-references/boards/board-02-notebook-garden.png`,
-  `docs/frontend/visual-references/boards/board-03-block-kit-framework.png`,
-  `docs/frontend/visual-references/boards/board-04-strategy-atlas.png`, and
-  `docs/frontend/visual-references/boards/board-05-docs-town.png`.
 - Orca CLI was attempted via
   `/home/n-tretyakov/.config/orca/linux-orca-cli-shim/orca` but failed with
   `/tmp/.mount_orca-lPgvcFl/orca-ide: bad option: --no-sandbox`; use raw local
@@ -41,13 +33,15 @@ coherent product.
 
 **Next steps:**
 
-1. Get owner Visual Direction Approval: select one board, mix specific boards,
-   reject them, or request a targeted iteration.
-2. Create flows, rendered wireframes, screen contracts, and final
+1. Get owner approval or corrections for Product Surface Model revision 1 and
+   the proposed public docs platform direction.
+2. Create five rendered visual direction boards for the lo-fi mascot docs
+   platform and request Visual Direction Approval.
+3. Create flows, rendered wireframes, screen contracts, and final
    implementation approval for the first production slice.
-3. Implement the Next.js/Tailwind site under `site/`, including backend search
+4. Implement the Next.js/Tailwind site under `site/`, including backend search
    and version-aware curated content.
-4. Validate with build, route/search checks, rendered desktop/mobile
+5. Validate with build, route/search checks, rendered desktop/mobile
    inspection, and frontend review evidence.
 
 **Acceptance:** the deployed site has curated coverage for all approved major

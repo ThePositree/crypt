@@ -4,18 +4,6 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
-## 2026-09-01 - Public docs visual boards
-
-- Recorded owner approval for the public docs platform Product Surface Model
-  revision 1 and direction.
-- Generated five raster Visual Direction Boards for the lo-fi pastel curated
-  docs portal: Pastel Lab Map, Notebook Garden, Block Kit Framework, Strategy
-  Atlas, and Docs Town.
-- Added pending board interpretation and inspection notes for Visual Direction
-  Approval.
-
----
-
 ## 2026-09-01 - Public docs platform direction proposed
 
 - Recorded the owner-selected direction for a public curated `crypt` docs
