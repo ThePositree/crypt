@@ -4,20 +4,6 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
-## 2026-09-01 - Public docs site implemented
-
-- Built the first production-ready public docs portal under `site/` with
-  Next.js App Router, Tailwind CSS, local Docs Town components, semver
-  selector, curated pages, interactive system map, guide steps, glossary
-  content, and backend search API.
-- Added README instructions, component registry entries, frontend context
-  updates, implementation review evidence, and Playwright desktop/mobile
-  screenshots.
-- Validated with `npm run typecheck`, `npm run build`, search API checks,
-  rendered Playwright QA, and a public-content privacy scan.
-
----
-
 ## 2026-09-01 - Public docs wireframe contracts
 
 - Added the public docs platform flow, screen contract, and low-fi rendered

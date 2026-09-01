@@ -36,12 +36,11 @@ For every material rule, record one of:
 
 ## Validation
 
-- Viewports checked: implementation screenshots at desktop 1440x1100 and
-  mobile-resized Playwright viewport.
-- Components/screens sampled: system map, navigation, search trigger/API/search
-  route, guide step, glossary entry content, version selector, and risk callout.
-- Accessibility checks: semantic header/nav/main, real links/buttons/combobox,
-  visible focus outlines, reduced-motion media query, and Playwright snapshots.
+- Viewports checked: pending rendered boards, wireframes, and implementation.
+- Components/screens sampled: pending system map, navigation, search, guide
+  step, glossary entry, version selector, and risk callout.
+- Accessibility checks: pending contrast, keyboard navigation, focus states,
+  semantic structure, and reduced-motion handling.
 - Known exceptions: final CSS tokens may be adjusted during implementation only
   to satisfy rendered readability, accessibility, and responsive constraints.
 
