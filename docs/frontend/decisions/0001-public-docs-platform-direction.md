@@ -1,7 +1,7 @@
 # Public Docs Platform Direction
 
 - Date: 2026-09-01
-- Status: proposed
+- Status: approved
 - Affected artifact revisions: Product Surface Model revision 1, Messaging
   revision 1, Design Identity revision 1, Design System revision 1
 
@@ -37,3 +37,8 @@ information architecture from the first release.
 Revisit if the owner changes the target audience, makes the site private,
 removes backend search, chooses a different stack, or approves publishing
 specific live-money/runtime details.
+
+## Approval
+
+Approved by owner on 2026-09-01 with "делай" after the Product Surface Model
+revision 1 and proposed direction were presented.
