@@ -4,6 +4,20 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
+## 2026-09-01 - Documentation portal product surface proposal
+
+- Completed D3 onboarding for a public Russian-language `crypt` documentation
+  portal built from curated Next.js and Tailwind CSS pages.
+- Proposed a 13-page product surface covering quick start, architecture, data,
+  strategies, backtesting, research, live execution, references, development,
+  and troubleshooting without publishing strategy performance results.
+- Established the content, discovery, messaging, responsive, visual, and
+  read-only product boundaries before frontend implementation.
+- Recorded that current source and specialized execution contracts override the
+  historical signal-only overview in `docs/architecture.md`.
+
+---
+
 ## 2026-09-01 - Independent frontend QA gate
 
 - Reverted the generated documentation site commit so the repository returns to
