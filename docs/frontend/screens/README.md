@@ -33,6 +33,24 @@ Use this structure when applicable:
 
 ## Components
 
+## Content And Capability Contract
+
+- Source corpus, data source, asset set, or capability inventory:
+- Required coverage:
+- Required depth:
+- Source-of-truth proof:
+- Coverage evidence:
+
+## Discovery Contract
+
+- Search, filter, navigation, recommendation, map, index, or catalog surfaces:
+- Corpus and indexed fields:
+- Body-content coverage:
+- Ranking, grouping, sorting, or result explanation:
+- Empty and zero-result behavior:
+- Representative queries or discovery tasks:
+- Coverage evidence:
+
 ## Data Sources And Trust Boundaries
 
 ## States
@@ -60,6 +78,8 @@ Use this structure when applicable:
 ## Acceptance Criteria
 
 - Observable behavior:
+- Content/capability coverage:
+- Discovery/search coverage:
 - Required states:
 - Rendered evidence:
 - Automated checks:

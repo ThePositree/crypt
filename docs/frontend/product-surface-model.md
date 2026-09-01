@@ -37,6 +37,29 @@ project docs, requirements, specs, current state, task context, or a canonical
 - In scope:
 - Explicitly out of scope:
 
+## Content And Capability Contract
+
+- Source corpus, data source, asset set, or capability inventory:
+- User-facing coverage promised by the request and product surface:
+- Included entities, sections, items, states, levels, views, or workflows:
+- Boundaries requiring owner approval:
+- Required depth by important page, panel, step, result, or interaction:
+- Source-of-truth proof:
+- Freshness, update, or synchronization expectations:
+- Measurable coverage evidence:
+
+## Discovery Contract
+
+- Discovery surfaces:
+- Searchable or filterable corpus:
+- Indexed fields and body-content coverage:
+- Ranking, grouping, sorting, or recommendation behavior:
+- Result snippets, labels, or explanations:
+- Empty and zero-result behavior:
+- Keyboard and focus behavior:
+- Representative queries or discovery tasks:
+- Coverage evidence:
+
 ## Messaging Requirements
 
 - Starting user state:
@@ -71,6 +94,8 @@ project docs, requirements, specs, current state, task context, or a canonical
 - Primary goals covered:
 - Secondary goals covered:
 - Necessary content present:
+- Content and capability coverage proven:
+- Discovery/search coverage proven:
 - Messaging trajectory present:
 - Claims backed by proof or softened:
 - Objections answered where they arise:

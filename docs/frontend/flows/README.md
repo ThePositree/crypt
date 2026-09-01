@@ -8,6 +8,11 @@ Flows answer where the user can go, under what conditions, how states change,
 and where journeys end. Keep them current with related wireframes and screen
 contracts before production UI code changes.
 
+When a flow depends on information, content, data, media, levels, tools,
+workflows, search, filtering, recommendations, maps, indexes, catalogs, or
+generated output, name the coverage the user expects and the evidence that the
+flow exposes enough of it to complete the journey.
+
 When a flow depends on user understanding or persuasion, include the relevant
 message transition: what the user knows or doubts before the step, what the
 interface must explain, and what decision or action becomes easier after
@@ -18,6 +23,7 @@ Each meaningful flow should name:
 - actor and starting state;
 - action;
 - decision, permission, or data condition;
+- content, capability, or discovery coverage required by the step;
 - resulting state and user-visible feedback;
 - failure and recovery path;
 - endpoint.

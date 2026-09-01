@@ -20,6 +20,8 @@ Use this format:
 - Why existing primitives were insufficient:
 - Usage constraints:
 - States:
+- Content, data, or capability coverage:
+- Discovery/search behavior:
 - Accessibility behavior:
 - Responsive behavior:
 - Related screens:

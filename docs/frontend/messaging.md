@@ -89,6 +89,7 @@ copy review findings.
 - Scope reviewed:
 - Clarity:
 - Specificity:
+- Information depth:
 - Messaging Identity fit:
 - Claim/proof fit:
 - Objection coverage:
@@ -96,6 +97,7 @@ copy review findings.
 - Microcopy usefulness:
 - Scannability:
 - Density:
+- Coverage gaps:
 - Slop risks:
 - Decision:
 - Date:

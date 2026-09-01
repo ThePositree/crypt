@@ -18,8 +18,12 @@ applicable instruction set, and returns `PROCEED`.
 PRODUCTION STANDARD: every frontend surface is user-visible product quality
 from its first delivered version. Plan and build for complete, accurate,
 polished, accessible, responsive, and internally consistent behavior within the
-approved scope. Treat rough drafts, vague copy, visual glitches, broken states,
-unverified assumptions, and approximate flows as unfinished frontend work.
+approved scope. Production quality includes content depth, data coverage,
+interaction completeness, search or filtering quality when present, and
+credible product substance behind the visual shell. Treat rough drafts, vague
+copy, visual glitches, broken states, unverified assumptions, approximate
+flows, shallow content, partial indexes, and decorative-only product surfaces
+as unfinished frontend work.
 
 Version: 3
 Updated: 2026-08-31
@@ -101,6 +105,13 @@ memory says the product surface, Messaging Identity, Design Identity, Design
 System, or active frontend context is `not established`, `pending`, or awaiting
 owner input. In that state, the Read Receipt verdict is `STOP: D3 onboarding
 and approval gate required`.
+
+Owner words that imply scale, completeness, quality, depth, richness, working
+behavior, production readiness, or broad coverage become acceptance
+requirements. Translate those words into concrete coverage criteria before
+implementation. Narrower scope, representative samples, curated subsets,
+placeholder content, simplified ranking, deferred pages, or reduced interaction
+depth require explicit owner approval before implementation.
 
 Before final response, perform a Final Instruction Audit. The audit states
 which frontend instruction files were applied, which memory files influenced
@@ -291,6 +302,35 @@ its promised journeys at production quality.
 Before approval, mentally strip styling from the structure. When the remaining
 structure fails to form a useful product surface, repair the surface before
 visual design.
+
+## Content And Capability Completeness
+
+Any frontend surface that presents information, data, media, levels, items,
+tools, workflows, catalog entries, generated output, or interactive states
+needs a Content And Capability Contract before production implementation. The
+contract defines:
+
+- source corpus, data source, asset set, or capability inventory;
+- user-facing coverage promised by the owner request and product surface;
+- included entities, sections, items, states, levels, views, or workflows;
+- boundaries that require owner approval;
+- depth required for each important page, panel, step, result, or interaction;
+- proof that content comes from canonical sources or approved product
+  decisions;
+- freshness, update, or synchronization expectations when content can change;
+- measurable coverage evidence before final handoff.
+
+For search, filtering, navigation, recommendations, maps, indexes, generated
+lists, catalogs, or any discovery interface, define a Discovery Contract. It
+states the searchable corpus, indexed fields, body-text or metadata coverage,
+ranking or grouping behavior, snippets or result explanations, empty and
+zero-result states, keyboard behavior, and representative queries that prove
+the user can find important content.
+
+Visual polish, build success, screenshots, and console cleanliness validate
+rendering quality. Content depth, corpus coverage, data correctness,
+interaction breadth, and discovery quality need their own evidence. A beautiful
+shell with shallow substance remains incomplete frontend work.
 
 ## Messaging System
 
@@ -788,6 +828,8 @@ decisions required owner approval, present one bounded summary:
 - Approved Product Surface revision:
 - Approved Visual Direction revision:
 - Approved flows, wireframes, and screen contracts:
+- Content And Capability Contract, if applicable:
+- Discovery Contract, if applicable:
 - Action Contract, if applicable:
 - Implementation units:
 - Acceptance evidence to collect:
@@ -869,6 +911,7 @@ Inspect:
 
 - clarity of the main promise and page trajectory;
 - specificity to the product, audience, workflow, and current state;
+- enough concrete information to satisfy the promised surface;
 - alignment with Messaging Identity;
 - whether section headings advance the argument;
 - whether supporting text adds mechanism, example, distinction, constraint, or
@@ -890,9 +933,12 @@ weaken the claim, or retire the claim.
 
 For D2/D3 work, verify that approved primary goals, relevant secondary goals,
 navigation, messaging trajectory, content, interactions, endpoints, and states
-exist. Label placeholder/demo-only surfaces or replace them. Distinguish prototype
-seams, mock data, disabled controls, and future integrations from complete
-end-to-end behavior.
+exist. Verify Content And Capability Contract coverage and Discovery Contract
+behavior when the surface includes information, data, media, tools, workflows,
+search, filtering, navigation, recommendations, maps, indexes, generated lists,
+catalogs, or other discovery interfaces. Label placeholder/demo-only surfaces
+or replace them. Distinguish planned seams, mock data, disabled controls, and
+future integrations from complete end-to-end behavior.
 
 ## QA Evidence Record
 
@@ -906,6 +952,8 @@ Record evidence with verdicts:
 - Execution context and methods:
 - Commit or working-tree state:
 - Scope validated:
+- Content/capability coverage:
+- Discovery/search coverage:
 - Viewports and screenshots:
 - Interactions exercised:
 - Automated checks:
@@ -990,6 +1038,7 @@ A frontend task is complete when:
 - the requested outcome and approved scope are delivered;
 - required gates or scoped waivers are recorded;
 - relevant contracts match the implementation;
+- promised content, data, capability, and discovery coverage have evidence;
 - functional, rendered visual, copy, responsive, accessibility, and
   completeness checks proportional to depth have evidence;
 - placeholders and integration seams are labeled accurately;

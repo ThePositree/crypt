@@ -10,6 +10,9 @@ Use plain gray-box rendering:
   and calls to action;
 - short descriptions for complex blocks;
 - notes for the semantic job of important copy blocks;
+- coverage notes for content, data, media, levels, tools, workflows, search,
+  filtering, navigation, recommendations, maps, indexes, catalogs, and
+  generated output when the surface promises them;
 - interaction notes for accordions, tabs, collapses, menus, forms, filters,
   search, animation, loading, empty, error, and partial-data behavior;
 - responsive states for important viewport widths;

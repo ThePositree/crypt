@@ -7,8 +7,9 @@ Use the evidence schema from `docs/agent/frontend_design_subsystem.md`. A review
 records the Task Contract revision, execution context and methods, tested
 commit or working-tree state, scope, viewport sizes and screenshots, exercised
 interactions, automated checks, console/network status, data/API states,
-accessibility checks, copy review, separate QA verdicts, known gaps, and the
-exact next action.
+accessibility checks, copy review, content/capability coverage,
+discovery/search coverage, separate QA verdicts, known gaps, and the exact next
+action.
 
 For D2/D3 or context-heavy work, also record the Collaboration Check:
 delegation availability, required collaboration/runtime interface, proposed
@@ -24,3 +25,8 @@ references, and rejected-reference avoidance.
 Apply the copy rubric to message trajectory, text hierarchy, specificity,
 Messaging Identity fit, claim/proof proximity, objection coverage, action-copy
 specificity, microcopy usefulness, density, and generic-copy risk.
+
+Apply the content and discovery rubric to the surface promised by the owner:
+corpus or data coverage, information depth, included entities or states,
+searchable body content, ranking or grouping behavior, representative queries,
+empty results, and evidence that users can find and use the important material.

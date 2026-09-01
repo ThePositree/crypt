@@ -4,6 +4,19 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
+## 2026-09-01 - Frontend content and discovery completeness
+
+- Required frontend work to translate owner quality, depth, completeness,
+  coverage, and production-readiness language into concrete acceptance
+  criteria before implementation.
+- Added generic Content And Capability Contract and Discovery Contract coverage
+  to the canonical frontend subsystem and durable frontend artifact templates.
+- Clarified that visual polish, successful builds, screenshots, and clean
+  consoles do not prove completion when the promised frontend surface requires
+  substantial content, data, interaction breadth, or discovery quality.
+
+---
+
 ## 2026-09-01 - Frontend gate control verdicts
 
 - Added explicit `STOP` / `PROCEED` Read Receipt verdicts for frontend work.
