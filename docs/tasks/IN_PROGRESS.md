@@ -34,6 +34,17 @@ coherent product.
   `docs/frontend/visual-references/boards/board-03-block-kit-framework.png`,
   `docs/frontend/visual-references/boards/board-04-strategy-atlas.png`, and
   `docs/frontend/visual-references/boards/board-05-docs-town.png`.
+- Visual Direction Approval: owner selected
+  `docs/frontend/visual-references/boards/board-05-docs-town.png` with
+  "берем все из 5" on `2026-09-01`.
+- D3 pre-implementation contracts now exist:
+  `docs/frontend/flows/public-docs-platform.md`,
+  `docs/frontend/screens/public-docs-platform.md`, and
+  `docs/frontend/wireframes/public-docs-platform.html`.
+- Wireframe rendered evidence was captured with Playwright:
+  `docs/frontend/reviews/evidence/public-docs-wireframe-desktop.png`,
+  `docs/frontend/reviews/evidence/public-docs-wireframe-mobile.png`, and
+  `docs/frontend/reviews/public-docs-wireframe-review.md`.
 - Orca CLI was attempted via
   `/home/n-tretyakov/.config/orca/linux-orca-cli-shim/orca` but failed with
   `/tmp/.mount_orca-lPgvcFl/orca-ide: bad option: --no-sandbox`; use raw local
@@ -41,13 +52,10 @@ coherent product.
 
 **Next steps:**
 
-1. Get owner Visual Direction Approval: select one board, mix specific boards,
-   reject them, or request a targeted iteration.
-2. Create flows, rendered wireframes, screen contracts, and final
-   implementation approval for the first production slice.
-3. Implement the Next.js/Tailwind site under `site/`, including backend search
+1. Get Final Implementation Approval for the first production slice.
+2. Implement the Next.js/Tailwind site under `site/`, including backend search
    and version-aware curated content.
-4. Validate with build, route/search checks, rendered desktop/mobile
+3. Validate with build, route/search checks, rendered desktop/mobile
    inspection, and frontend review evidence.
 
 **Acceptance:** the deployed site has curated coverage for all approved major

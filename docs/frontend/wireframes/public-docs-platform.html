@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>crypt Public Docs Platform Wireframe</title>
+    <link rel="icon" href="data:," />
+    <style>
+      :root {
+        color: #18242f;
+        background: #f8f4ec;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 24px;
+      }
+
+      .frame {
+        max-width: 1360px;
+        margin: 0 auto;
+        border: 2px solid #4d5b66;
+        border-radius: 8px;
+        background: #fffaf1;
+        overflow: hidden;
+      }
+
+      .topbar,
+      .footer,
+      .state-strip {
+        display: grid;
+        gap: 12px;
+        padding: 16px;
+        border-bottom: 1px solid #b8b1a3;
+      }
+
+      .topbar {
+        grid-template-columns: 160px 1fr 120px 56px;
+        align-items: center;
+      }
+
+      .brand,
+      .block {
+        border: 1px solid #8e958f;
+        border-radius: 8px;
+        background: #f1eee6;
+        padding: 12px;
+      }
+
+      .search {
+        min-height: 44px;
+        border: 2px solid #56636f;
+        border-radius: 8px;
+        background: #ffffff;
+        padding: 10px 14px;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 220px 1fr 260px;
+        min-height: 720px;
+      }
+
+      .sidebar,
+      .rail {
+        padding: 16px;
+        background: #f6fbf7;
+      }
+
+      .rail {
+        background: #f7fbff;
+      }
+
+      .navitem {
+        margin-bottom: 10px;
+        border: 1px solid #a8b2ae;
+        border-radius: 8px;
+        padding: 9px;
+        background: #ffffff;
+      }
+
+      .main {
+        padding: 20px;
+        border-left: 1px solid #b8b1a3;
+        border-right: 1px solid #b8b1a3;
+      }
+
+      .map {
+        position: relative;
+        min-height: 440px;
+        border: 2px dashed #7c8a92;
+        border-radius: 8px;
+        background:
+          linear-gradient(135deg, rgba(173, 224, 211, 0.3), transparent 38%),
+          linear-gradient(45deg, transparent 52%, rgba(246, 194, 169, 0.28)),
+          #fffdf6;
+      }
+
+      .node {
+        position: absolute;
+        width: 170px;
+        min-height: 76px;
+        border: 2px solid #5f707b;
+        border-radius: 8px;
+        background: #ffffff;
+        padding: 10px;
+        font-size: 14px;
+      }
+
+      .node small {
+        display: block;
+        margin-top: 6px;
+        color: #5a6670;
+      }
+
+      .node.data {
+        top: 38px;
+        left: 60px;
+        background: #dff4ed;
+      }
+
+      .node.engine {
+        top: 44px;
+        left: 330px;
+        background: #ffe4d5;
+      }
+
+      .node.strategy {
+        top: 48px;
+        right: 68px;
+        background: #e9e1ff;
+      }
+
+      .node.backtest {
+        top: 210px;
+        left: 210px;
+        background: #fff1bf;
+      }
+
+      .node.execution {
+        top: 238px;
+        right: 238px;
+        background: #ddebff;
+      }
+
+      .node.results {
+        bottom: 54px;
+        right: 96px;
+        background: #e5f4dc;
+      }
+
+      .node.risk {
+        bottom: 42px;
+        left: 84px;
+        background: #ffe1e6;
+      }
+
+      .mascot {
+        position: absolute;
+        right: 28px;
+        bottom: 18px;
+        width: 82px;
+        height: 82px;
+        border: 2px solid #596872;
+        border-radius: 50%;
+        background: #d9efe3;
+        display: grid;
+        place-items: center;
+        font-weight: 700;
+      }
+
+      .tiles,
+      .guide {
+        display: grid;
+        gap: 12px;
+        margin-top: 16px;
+      }
+
+      .tiles {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .guide {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .panel {
+        border: 1px solid #a9b0a7;
+        border-radius: 8px;
+        background: #ffffff;
+        padding: 12px;
+        min-height: 92px;
+      }
+
+      .state-strip {
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        border-top: 1px solid #b8b1a3;
+        border-bottom: 0;
+      }
+
+      .mobile {
+        display: none;
+        margin: 24px auto 0;
+        max-width: 390px;
+        border: 2px solid #4d5b66;
+        border-radius: 28px;
+        padding: 14px;
+        background: #fffaf1;
+      }
+
+      .mobile .layout {
+        display: block;
+        min-height: auto;
+      }
+
+      .mobile .sidebar,
+      .mobile .rail {
+        display: none;
+      }
+
+      .mobile .main {
+        border: 0;
+        padding: 12px 0 0;
+      }
+
+      .mobile .map {
+        min-height: 520px;
+      }
+
+      .mobile .node {
+        position: static;
+        width: auto;
+        margin: 10px;
+      }
+
+      .mobile .tiles,
+      .mobile .guide {
+        grid-template-columns: 1fr;
+      }
+
+      @media (max-width: 900px) {
+        body {
+          padding: 12px;
+        }
+
+        .frame {
+          display: none;
+        }
+
+        .mobile {
+          display: block;
+        }
+
+        .topbar,
+        .layout,
+        .tiles,
+        .guide,
+        .state-strip {
+          grid-template-columns: 1fr;
+        }
+
+        .layout {
+          display: block;
+        }
+
+        .main {
+          border: 0;
+        }
+
+        .node {
+          position: static;
+          width: auto;
+          margin: 10px;
+        }
+
+        .map {
+          min-height: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <section class="frame" aria-label="Desktop wireframe">
+      <header class="topbar">
+        <div class="brand"><strong>crypt</strong><br />Docs Town</div>
+        <div class="search">Search all public docs</div>
+        <div class="block">v0.1.0</div>
+        <div class="block">theme</div>
+      </header>
+      <div class="layout">
+        <nav class="sidebar" aria-label="Topic navigation">
+          <div class="navitem">Overview</div>
+          <div class="navitem">Architecture</div>
+          <div class="navitem">Strategy Lifecycle</div>
+          <div class="navitem">Backtester</div>
+          <div class="navitem">Live Execution</div>
+          <div class="navitem">Glossary</div>
+          <div class="navitem">For Developers</div>
+          <div class="navitem">For Crypto Traders</div>
+          <div class="navitem">Risk & Limits</div>
+        </nav>
+        <main class="main">
+          <h1>Docs Town</h1>
+          <p>
+            First viewport: interactive map of curated public docs. Each node
+            highlights, links to a page, and exposes related guides.
+          </p>
+          <section class="map" aria-label="Interactive system map">
+            <div class="node data">Data Station<small>Market data and schemas</small></div>
+            <div class="node engine">Engine Workshop<small>Signals and features</small></div>
+            <div class="node strategy">Strategy Studio<small>Reusable strategy logic</small></div>
+            <div class="node backtest">Backtest Lab<small>Historical execution checks</small></div>
+            <div class="node execution">Execution Boundary Bridge<small>Neutral integration model</small></div>
+            <div class="node results">Report Library<small>Readable result artifacts</small></div>
+            <div class="node risk">Risk Clinic<small>Limits and non-promises</small></div>
+            <div class="mascot">helper</div>
+          </section>
+          <section class="tiles" aria-label="Curated page tiles">
+            <div class="panel">Overview</div>
+            <div class="panel">Architecture</div>
+            <div class="panel">Strategy Lifecycle</div>
+            <div class="panel">Backtester</div>
+            <div class="panel">Live Execution</div>
+            <div class="panel">Glossary</div>
+            <div class="panel">For Developers</div>
+            <div class="panel">For Crypto Traders</div>
+          </section>
+          <section class="guide" aria-label="Guide pattern">
+            <div class="panel">Command<br /><code>uv run backtester ...</code></div>
+            <div class="panel">Expected Output<br />completed run summary</div>
+            <div class="panel">Explanation<br />what changed and where to read next</div>
+          </section>
+        </main>
+        <aside class="rail" aria-label="Context rail">
+          <div class="panel">Journey: Developer / Crypto Trader</div>
+          <div class="panel">Related docs</div>
+          <div class="panel">Glossary terms</div>
+          <div class="panel">Risk & Limits callout</div>
+        </aside>
+      </div>
+      <section class="state-strip" aria-label="Required UI states">
+        <div class="panel">Search loading</div>
+        <div class="panel">Search results</div>
+        <div class="panel">No results</div>
+        <div class="panel">Search error</div>
+        <div class="panel">Map hover / selected</div>
+        <div class="panel">Copied command</div>
+      </section>
+    </section>
+
+    <section class="mobile" aria-label="Mobile wireframe">
+      <header class="topbar">
+        <div class="brand"><strong>crypt</strong></div>
+        <div class="search">Search</div>
+        <div class="block">v0.1.0</div>
+      </header>
+      <div class="layout">
+        <main class="main">
+          <h2>Docs Town Mobile</h2>
+          <section class="map">
+            <div class="node data">Data Station</div>
+            <div class="node engine">Engine Workshop</div>
+            <div class="node strategy">Strategy Studio</div>
+            <div class="node backtest">Backtest Lab</div>
+            <div class="node execution">Execution Boundary Bridge</div>
+            <div class="node risk">Risk Clinic</div>
+          </section>
+          <section class="tiles">
+            <div class="panel">Quick Start</div>
+            <div class="panel">Search modal opens full screen</div>
+          </section>
+        </main>
+      </div>
+    </section>
+  </body>
+</html>

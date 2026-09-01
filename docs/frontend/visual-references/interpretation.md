@@ -1,6 +1,6 @@
 # Visual References Interpretation
 
-Status: visual direction boards pending owner selection.
+Status: visual direction approved.
 Revision: 1
 
 Persist selected and rejected visual direction boards here after frontend
@@ -168,7 +168,23 @@ LOCAL PRODUCT PRINCIPLE:
   place, route, and role in the research workflow.
 
 APPROVAL:
-- pending
+- approved by owner on 2026-09-01 as the full visual basis: "берем все из 5"
+
+## Approved Visual Direction
+
+- Selected board: Docs Town.
+- Source path:
+  `docs/frontend/visual-references/boards/board-05-docs-town.png`.
+- Owner approval: 2026-09-01, "берем все из 5".
+- Implementation consequences: use Docs Town as the primary direction for the
+  public docs portal: a cute lo-fi pastel docs-town map, abstract helper
+  mascots, large interactive first-viewport map, left topic navigation, top
+  backend search, semver selector, mobile-first compressed map, curated page
+  tiles, guide pattern cards, component states, and a dedicated risk callout.
+- Required translation: generated board text, commands, output, and values are
+  visual placeholders only. Production copy must be curated from repository
+  truth and avoid trading advice, private runtime data, and performance
+  promises.
 
 ## Visual Board Inspection
 

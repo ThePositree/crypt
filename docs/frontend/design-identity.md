@@ -1,8 +1,8 @@
 # Design Identity
 
-Status: proposed.
+Status: approved.
 Revision: 1
-Approval source: pending owner approval.
+Approval source: owner approval on 2026-09-01.
 
 This repository does not currently contain an active frontend product surface.
 Before significant frontend work, run the onboarding workflow in
@@ -11,7 +11,8 @@ final product-specific identity.
 
 ## Core Feeling
 
-- Decision: cute lo-fi crypto research desk in soft pastel tones.
+- Decision: cute lo-fi crypto research desk presented as a public Docs Town in
+  soft pastel tones.
 - Evidence: owner requested a lo-fi cartoon pastel docs platform with cute
   abstract mascots on 2026-09-01.
 
@@ -69,7 +70,8 @@ final product-specific identity.
   Pastel Lab Map, Notebook Garden, Block Kit Framework, Strategy Atlas, and
   Docs Town.
 - Date: 2026-09-01
-- Approved Visual Direction revision: pending.
-- Known limitations: no production frontend exists yet; exact mascot shape,
-  palette, typography, and interaction style require owner Visual Direction
-  Approval.
+- Approved Visual Direction revision: Docs Town, approved by owner on
+  2026-09-01.
+- Known limitations: no production frontend exists yet; exact implementation
+  of map interaction, mascot drawing, and responsive behavior remains subject
+  to wireframe, screen-contract, and rendered QA evidence.

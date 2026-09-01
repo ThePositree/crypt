@@ -4,6 +4,26 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
+## 2026-09-01 - Public docs wireframe contracts
+
+- Added the public docs platform flow, screen contract, and low-fi rendered
+  wireframe for the approved Docs Town direction.
+- Captured Playwright desktop and mobile wireframe screenshots as frontend
+  review evidence.
+- Recorded the remaining D3 gate: Final Implementation Approval before
+  building the Next.js/Tailwind site under `site/`.
+
+---
+
+## 2026-09-01 - Docs Town visual direction approved
+
+- Recorded owner approval of the Docs Town visual direction for the public
+  curated docs portal.
+- Promoted Design Identity and Design System revision 1 from proposed to
+  approved, with Docs Town as the implementation basis.
+
+---
+
 ## 2026-09-01 - Public docs visual boards
 
 - Recorded owner approval for the public docs platform Product Surface Model
