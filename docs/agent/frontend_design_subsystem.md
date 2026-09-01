@@ -157,6 +157,13 @@ make each phase output explicit. A phase may legitimately finish before
 production code when an owner decision is required or the next phase needs a
 fresh bounded context.
 
+For D3, process quality outranks implementation speed. Complete each required
+artifact phase with inspectable files, rendered evidence, owner-facing
+decision options, and a recorded owner decision before moving to the next
+phase. A summary can explain an artifact, but the gate is satisfied by the
+artifact itself: existing files, paths, rendered views, coverage notes, and the
+decision record.
+
 ## Owner Steering Contract
 
 At the start of meaningful frontend work, tell the owner that collaboration is
@@ -680,6 +687,13 @@ Render and inspect every board before presenting it. Fix overlap, blank areas,
 unreadable text, broken responsive composition, or insufficient component
 evidence. Boards are direction studies before production assets.
 
+Visual Direction Board completion requires five existing rendered artifacts
+with stable paths, inspected desktop and mobile views, visible representative
+UI fragments, component-primitives coverage, and concise comparison notes.
+Text-only descriptions, mood summaries, and written design contracts support
+the discussion after the boards exist. This gate is complete when the rendered
+board artifacts and comparison evidence are present.
+
 ### Visual Direction Approval
 
 Ask the owner to select, mix, decline, or request iteration. Present the board
@@ -774,6 +788,12 @@ wireframe remains accurate and record that fact in the Task Contract.
 Render and inspect affected wireframes at their declared viewports before
 requesting approval.
 
+Wireframe completion requires persistent rendered artifacts at stable paths for
+the affected pages or meaningful screens, including the declared breakpoint
+views and required states. Written screen descriptions and layout summaries
+link to the wireframes. This gate is complete when the rendered wireframe
+artifacts and inspection evidence are present.
+
 ### Wireframe Approval
 
 Required for D2/D3 production work and any lower-depth change that materially
@@ -836,8 +856,13 @@ decisions required owner approval, present one bounded summary:
 - Known risks and assumptions:
 ```
 
-Implementation begins after approval or a recorded scoped waiver. A waiver
-must name what is waived, why, what remains required, and the next active gate.
+Implementation begins after approval or a recorded scoped waiver. For D3,
+request this approval after Product Surface Approval, Visual Direction
+Approval, finalized Design Identity and Design System, flows, rendered
+wireframes, screen contracts, Content And Capability Contract, Discovery
+Contract when relevant, Action Contract when relevant, and their decision
+records exist at named paths. A waiver must name what is waived, why, what
+remains required, and the next active gate.
 
 ## Implementation
 
@@ -1038,6 +1063,8 @@ A frontend task is complete when:
 - the requested outcome and approved scope are delivered;
 - required gates or scoped waivers are recorded;
 - relevant contracts match the implementation;
+- D3 visual boards, rendered wireframes, and screen contracts exist at named
+  paths before implementation approval;
 - promised content, data, capability, and discovery coverage have evidence;
 - functional, rendered visual, copy, responsive, accessibility, and
   completeness checks proportional to depth have evidence;

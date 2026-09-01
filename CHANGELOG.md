@@ -4,6 +4,18 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
+## 2026-09-01 - Frontend rendered artifact gates
+
+- Clarified that D3 frontend phases prioritize completed gate evidence over
+  implementation speed.
+- Required Visual Direction Boards and wireframes to exist as rendered
+  artifacts with stable paths, inspected viewports, coverage notes, and owner
+  decision records before implementation approval.
+- Clarified that summaries and written contracts explain rendered artifacts
+  while the gate is completed by the artifact evidence itself.
+
+---
+
 ## 2026-09-01 - Frontend content and discovery completeness
 
 - Required frontend work to translate owner quality, depth, completeness,
