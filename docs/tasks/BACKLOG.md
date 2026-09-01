@@ -12,6 +12,46 @@ Priority labels:
 Read `docs/strategy_benchmark.md` before strategy evaluation. The benchmark is
 the main optimization target, not a hard limit on owner production selection.
 
+## P2 — Complete manual docs-portal click-through
+
+**What:** manually exercise the public `crypt docs` portal interactions in a
+browser: search dialog keyboard behavior, search suggestions, map node
+selection, glossary filters, overview/deep-dive tabs, accordions, signal steps,
+mobile drawer, and theme toggle.
+
+**Why now:** the first Next + Tailwind implementation passed build, route,
+search API, rendered screenshot, and console checks, but the available
+Playwright tool set in the implementation session did not expose click or
+keyboard actions.
+
+**Expected gain:** close the last interaction QA gap and confirm that the
+production UI behaves as intended beyond route/render checks.
+
+**Acceptance:** a review note records each interaction, expected behavior,
+actual behavior, viewport, keyboard/focus behavior, and any fixes.
+
+**Links:** `site/`, `docs/frontend/reviews/2026-09-01-docs-portal-implementation.md`.
+
+## P2 — Generate individual docs-portal character assets
+
+**What:** create separate raster character assets for the approved section-role
+helpers: architecture guide, data/source keeper, strategy logic guide, signal
+courier, backtester inspector, live execution operator, glossary librarian, and
+extension engineer.
+
+**Why now:** the portal already has a generated Storybook Control Room hero
+asset and CSS character placeholders. Separate assets would strengthen the
+approved multi-character identity.
+
+**Expected gain:** richer visual continuity across section pages without
+turning article content into decoration.
+
+**Acceptance:** assets are saved under `site/public/visual/`, used in the
+relevant page components, and pass responsive/rendered inspection.
+
+**Links:** `docs/frontend/design-identity.md`,
+`site/components/portal-widgets.tsx`.
+
 ## P0 — Make backfill fail when required downloads fail
 
 **What:** make `python -m crypt.backfill` return a non-zero exit code and a

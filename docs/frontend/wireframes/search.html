@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Wireframe - Search</title>
+<style>
+body{margin:0;font:14px system-ui;background:#f6f1e8}.top,.box,.result,.filter{border:1px solid #999;background:#fffdf7;border-radius:8px}.top{display:flex;gap:12px;padding:12px 20px}.wrap{display:grid;grid-template-columns:260px 1fr;gap:16px;padding:16px}.box{padding:16px}.results{display:grid;gap:10px}.result{padding:12px}.filters{display:flex;gap:8px;flex-wrap:wrap}.filter{padding:8px 10px}@media(max-width:767px){.wrap{grid-template-columns:1fr}.top{overflow:auto}.filters{overflow:auto;flex-wrap:nowrap}.result{min-height:70px}}
+</style>
+<body><div class="top"><strong>crypt docs</strong><input aria-label="Поиск" value="signal"><button>Очистить</button><button>Тема</button></div><div class="wrap"><aside class="box"><h2>Фильтры</h2><div class="filters"><button class="filter">Все</button><button class="filter">Страницы</button><button class="filter">Глоссарий</button><button class="filter">Рецепты</button></div><h3>Состояния</h3><p>empty, loading, zero-result, error, focus.</p></aside><main class="box"><h1>Результаты поиска</h1><p>Подсветка совпадений и группировка по разделам.</p><div class="results"><a class="result">Стратегии - фрагмент с <mark>signal</mark></a><a class="result">Путь сигнала - <mark>signal</mark> journey</a><a class="result">Глоссарий - термин <mark>signal</mark></a><div class="result">Ничего не найдено: покажи маршруты и глоссарий</div><div class="result">Ошибка индекса: повторить или перейти к разделам</div></div></main></div></body>
+</html>

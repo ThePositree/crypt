@@ -4,6 +4,75 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
+## 2026-09-01 - Documentation portal implementation
+
+- Implemented the public curated Russian `crypt docs` portal under `site/`
+  with Next.js App Router, TypeScript, Tailwind CSS, and lucide icons.
+- Added 11 approved routes, global/top and left-tree navigation, light/dark
+  theme switching, server-side search API, search result page, interactive
+  system map, signal journey, curated article template, glossary explorer,
+  recipes, contracts, failure modes, and source-evidence sections.
+- Added a generated production homepage illustration under `site/public/visual/`
+  and kept the approved visual-board asset available for reference.
+- Added frontend validation evidence and component registry entries for the
+  delivered portal.
+
+---
+
+## 2026-09-01 - Documentation portal implementation approval package
+
+- Recorded owner approval of the documentation portal wireframe package.
+- Added the Final Implementation Approval package for the Next + Tailwind
+  portal implementation.
+- Checked current Next.js and Tailwind CSS setup guidance through Context7 for
+  App Router route handlers and Tailwind v4 CSS-first configuration.
+
+---
+
+## 2026-09-01 - Documentation portal wireframe package
+
+- Added the documentation portal navigation and learning flow.
+- Added a screen index and screen contracts for the approved route set:
+  home, search, overview, architecture, data, strategies, backtesting, live
+  execution, operations, glossary, and signal journey.
+- Added low-fidelity HTML wireframes for all 11 routes and recorded rendered
+  inspection evidence for representative desktop/mobile viewports.
+
+---
+
+## 2026-09-01 - Documentation portal visual direction selected
+
+- Recorded owner selection of Visual Direction Board 2,
+  `Storybook Control Room`, as the primary portal direction.
+- Added the visual direction decision record.
+- Established Design Identity revision 1 and Design System revision 1 for the
+  curated documentation portal.
+
+---
+
+## 2026-09-01 - Documentation portal visual boards
+
+- Recorded owner approval for Product Surface Model revision 1.
+- Generated five raster Visual Direction Boards for the curated documentation
+  portal and saved them under `docs/frontend/visual-references/positive/`.
+- Updated visual reference interpretation notes with strengths, trade-offs,
+  and pending approval status for each board.
+
+---
+
+## 2026-09-01 - Documentation portal product surface
+
+- Established the frontend context for a public Russian curated documentation
+  portal under `site/`, using Next + Tailwind with light/dark themes.
+- Proposed Product Surface Model revision 1 for a full framework-style docs
+  portal covering architecture, data, strategies, backtester, live execution,
+  operations, glossary, search, maps, signal journey, and extension recipes.
+- Proposed the portal messaging identity and home-page messaging contract,
+  including boundaries against runtime result display and direct Markdown
+  rendering.
+
+---
+
 ## 2026-09-01 - Frontend phase transition gates
 
 - Required refreshed frontend Read Receipts after resumes, interruptions,

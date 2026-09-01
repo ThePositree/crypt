@@ -34,6 +34,11 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 
+# Frontend
+site/node_modules/
+site/.next/
+site/tsconfig.tsbuildinfo
+
 # Project data (runtime artefacts — root-level only, not src/crypt/data/)
 /data/
 /logs/

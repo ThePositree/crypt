@@ -1,0 +1,22 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - strong [ref=e3]: crypt docs
+    - textbox "Поиск" [ref=e4]
+    - generic [ref=e5]: Путь сигнала
+    - button "Тема" [ref=e6]
+  - main [ref=e8]:
+    - heading "Путь сигнала" [level=1] [ref=e9]
+    - button "Backtest branch" [ref=e10]
+    - button "Live branch" [ref=e11]
+    - generic [ref=e12]:
+      - button "Data" [ref=e13]
+      - button "Normalize" [ref=e14]
+      - button "Features" [ref=e15]
+      - button "Decision" [ref=e16]
+      - button "Risk" [ref=e17]
+      - button "Order/sim" [ref=e18]
+      - button "Feedback" [ref=e19]
+    - group [ref=e20]:
+      - generic "Selected step contract" [ref=e21]
+      - paragraph [ref=e22]: Inputs, outputs, failure modes.
+    - generic [ref=e23]: Blocked entry / partial data state.

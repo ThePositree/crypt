@@ -1,0 +1,203 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - link "crypt docs home" [ref=e3] [cursor=pointer]:
+      - /url: /
+      - generic [ref=e4]: cd
+      - generic [ref=e5]: crypt docs
+    - generic [ref=e6]:
+      - button "Поиск ⌘K" [ref=e7] [cursor=pointer]:
+        - generic [ref=e11]: Поиск
+        - generic [ref=e12]: ⌘K
+      - button "Переключить тему" [ref=e13] [cursor=pointer]
+      - button "Открыть навигацию" [ref=e16] [cursor=pointer]
+  - generic [ref=e18]:
+    - complementary "Дерево документации" [ref=e19]:
+      - paragraph [ref=e20]: Документация
+      - link "Обзор" [ref=e21] [cursor=pointer]:
+        - /url: /overview
+      - link "Архитектура" [ref=e25] [cursor=pointer]:
+        - /url: /architecture
+      - link "Данные" [ref=e37] [cursor=pointer]:
+        - /url: /data
+      - link "Стратегии" [ref=e43] [cursor=pointer]:
+        - /url: /strategies
+      - link "Бэктестер" [ref=e46] [cursor=pointer]:
+        - /url: /backtesting
+      - link "Live Execution" [ref=e50] [cursor=pointer]:
+        - /url: /live-execution
+      - link "Операции" [ref=e58] [cursor=pointer]:
+        - /url: /operations
+      - link "Глоссарий" [ref=e62] [cursor=pointer]:
+        - /url: /glossary
+      - link "Путь сигнала" [ref=e66] [cursor=pointer]:
+        - /url: /signal-journey
+      - generic [ref=e72]:
+        - generic [ref=e73]: "?"
+        - strong [ref=e74]: Нужна ориентация?
+        - paragraph [ref=e75]: Начни с карты системы или открой путь сигнала.
+    - main [ref=e76]:
+      - generic [ref=e77]:
+        - generic [ref=e78]:
+          - generic [ref=e79]:
+            - paragraph [ref=e80]: Курируемая документация
+            - heading "crypt docs объясняет кодовую базу как контрольную комнату." [level=1] [ref=e81]
+            - paragraph [ref=e82]: "Здесь нет live PnL, runtime значений и Markdown-rendering. Портал вручную раскладывает систему на понятные комнаты: данные, стратегии, бэктестер, исполнение, операции и справочник терминов."
+            - generic [ref=e83]:
+              - link "Начать обзор" [ref=e84] [cursor=pointer]:
+                - /url: /overview
+              - link "Показать путь сигнала" [ref=e87] [cursor=pointer]:
+                - /url: /signal-journey
+          - img "Направление Storybook Control Room для crypt docs" [ref=e89]
+        - region [ref=e90]:
+          - generic [ref=e91]:
+            - generic [ref=e92]:
+              - paragraph [ref=e93]: Главная карта
+              - heading "Контрольная комната crypt" [level=2] [ref=e94]
+            - link "Полный обзор" [ref=e95] [cursor=pointer]:
+              - /url: /overview
+          - generic [ref=e98]:
+            - generic [ref=e99]:
+              - button "Обзор Обзор" [ref=e100] [cursor=pointer]:
+                - strong [ref=e103]: Обзор
+                - generic [ref=e104]: Обзор
+              - button "Архитектура Архитектура" [ref=e105] [cursor=pointer]:
+                - strong [ref=e116]: Архитектура
+                - generic [ref=e117]: Архитектура
+              - button "Данные Данные" [ref=e118] [cursor=pointer]:
+                - strong [ref=e123]: Данные
+                - generic [ref=e124]: Данные
+              - button "Стратегии Стратегии" [pressed] [ref=e125] [cursor=pointer]:
+                - strong [ref=e127]: Стратегии
+                - generic [ref=e128]: Стратегии
+              - button "Бэктестер Бэктестер" [ref=e129] [cursor=pointer]:
+                - strong [ref=e132]: Бэктестер
+                - generic [ref=e133]: Бэктестер
+              - button "Live Live Execution" [ref=e134] [cursor=pointer]:
+                - strong [ref=e141]: Live
+                - generic [ref=e142]: Live Execution
+              - button "Операции Операции" [ref=e143] [cursor=pointer]:
+                - strong [ref=e146]: Операции
+                - generic [ref=e147]: Операции
+              - button "Глоссарий Глоссарий" [ref=e148] [cursor=pointer]:
+                - strong [ref=e151]: Глоссарий
+                - generic [ref=e152]: Глоссарий
+              - button "Сигнал Путь сигнала" [ref=e153] [cursor=pointer]:
+                - strong [ref=e158]: Сигнал
+                - generic [ref=e159]: Путь сигнала
+            - generic [ref=e160]:
+              - paragraph [ref=e161]: Выбранная станция
+              - heading "Стратегии" [level=3] [ref=e162]
+              - paragraph [ref=e163]: Правила сигналов, фильтры, маршрутизаторы и архив кандидатов.
+              - generic [ref=e164]:
+                - generic [ref=e165]: Бэктестер
+                - generic [ref=e166]: Сигнал
+              - link "Открыть раздел" [ref=e167] [cursor=pointer]:
+                - /url: /strategies
+        - region [ref=e168]:
+          - generic [ref=e169]:
+            - generic [ref=e170]:
+              - paragraph [ref=e171]: Путь сигнала
+              - heading "От свечи до решения" [level=2] [ref=e172]
+            - link "Разобрать глубже" [ref=e173] [cursor=pointer]:
+              - /url: /signal-journey
+          - generic "Шаги пути сигнала" [ref=e176]:
+            - button "1 Данные получены" [ref=e177] [cursor=pointer]:
+              - generic [ref=e178]: "1"
+              - strong [ref=e179]: Данные получены
+            - button "2 Границы закрыты" [ref=e180] [cursor=pointer]:
+              - generic [ref=e181]: "2"
+              - strong [ref=e182]: Границы закрыты
+            - button "3 Стратегия думает" [ref=e183] [cursor=pointer]:
+              - generic [ref=e184]: "3"
+              - strong [ref=e185]: Стратегия думает
+            - button "4 Риск проверяет" [ref=e186] [cursor=pointer]:
+              - generic [ref=e187]: "4"
+              - strong [ref=e188]: Риск проверяет
+            - button "5 Бэктест ветвится" [ref=e189] [cursor=pointer]:
+              - generic [ref=e190]: "5"
+              - strong [ref=e191]: Бэктест ветвится
+            - button "6 Live ветвится" [ref=e192] [cursor=pointer]:
+              - generic [ref=e193]: "6"
+              - strong [ref=e194]: Live ветвится
+            - button "7 След остаётся" [ref=e195] [cursor=pointer]:
+              - generic [ref=e196]: "7"
+              - strong [ref=e197]: След остаётся
+          - generic [ref=e198]:
+            - generic [ref=e199]:
+              - paragraph [ref=e200]: Состояние
+              - heading "сырой market context" [level=3] [ref=e201]
+              - paragraph [ref=e202]: Система получает свечи и рыночный контекст из доступных источников.
+            - generic [ref=e203]: Нельзя считать данные доступными без проверки.
+            - link "Открыть связанный раздел" [ref=e208] [cursor=pointer]:
+              - /url: /data
+        - generic [ref=e209]:
+          - generic [ref=e211]:
+            - paragraph [ref=e212]: Маршруты
+            - heading "Читать как framework docs" [level=2] [ref=e213]
+          - region "Маршруты обучения" [ref=e214]:
+            - link "Сначала понять данные Closed candles, stores, context and missing-data behavior." [ref=e215] [cursor=pointer]:
+              - /url: /data
+              - strong [ref=e218]: Сначала понять данные
+              - generic [ref=e219]: Closed candles, stores, context and missing-data behavior.
+            - link "Потом стратегии Rules, filters, routing and candidate lifecycle." [ref=e220] [cursor=pointer]:
+              - /url: /strategies
+              - strong [ref=e223]: Потом стратегии
+              - generic [ref=e224]: Rules, filters, routing and candidate lifecycle.
+            - link "Затем бэктестер Simulation, accounting boundaries and regression checkpoints." [ref=e225] [cursor=pointer]:
+              - /url: /backtesting
+              - strong [ref=e228]: Затем бэктестер
+              - generic [ref=e229]: Simulation, accounting boundaries and regression checkpoints.
+            - link "После этого live Runtime config, OKX sync and execution boundaries." [ref=e230] [cursor=pointer]:
+              - /url: /live-execution
+              - strong [ref=e233]: После этого live
+              - generic [ref=e234]: Runtime config, OKX sync and execution boundaries.
+        - generic [ref=e235]:
+          - generic [ref=e237]:
+            - paragraph [ref=e238]: Разделы
+            - heading "Все комнаты портала" [level=2] [ref=e239]
+          - generic [ref=e240]:
+            - link "Обзор Карта проекта, роли подсистем и маршруты изучения." [ref=e241] [cursor=pointer]:
+              - /url: /overview
+              - strong [ref=e244]: Обзор
+              - generic [ref=e245]: Карта проекта, роли подсистем и маршруты изучения.
+            - link "Архитектура Границы между данными, стратегиями, бэктестером и live-кодом." [ref=e246] [cursor=pointer]:
+              - /url: /architecture
+              - strong [ref=e257]: Архитектура
+              - generic [ref=e258]: Границы между данными, стратегиями, бэктестером и live-кодом.
+            - link "Данные Свечи, контекст, загрузчики, хранилище и missing-data правила." [ref=e259] [cursor=pointer]:
+              - /url: /data
+              - strong [ref=e264]: Данные
+              - generic [ref=e265]: Свечи, контекст, загрузчики, хранилище и missing-data правила.
+            - link "Стратегии Правила сигналов, фильтры, маршрутизаторы и архив кандидатов." [ref=e266] [cursor=pointer]:
+              - /url: /strategies
+              - strong [ref=e268]: Стратегии
+              - generic [ref=e269]: Правила сигналов, фильтры, маршрутизаторы и архив кандидатов.
+            - link "Бэктестер Как проверяются решения, комиссии, warmup/accounting и parity." [ref=e270] [cursor=pointer]:
+              - /url: /backtesting
+              - strong [ref=e273]: Бэктестер
+              - generic [ref=e274]: Как проверяются решения, комиссии, warmup/accounting и parity.
+            - link "Live Execution Архитектура OKX исполнения без секретов и runtime значений." [ref=e275] [cursor=pointer]:
+              - /url: /live-execution
+              - strong [ref=e282]: Live Execution
+              - generic [ref=e283]: Архитектура OKX исполнения без секретов и runtime значений.
+            - link "Операции Dry-run, preflight, Railway, Telegram, observability и incidents." [ref=e284] [cursor=pointer]:
+              - /url: /operations
+              - strong [ref=e287]: Операции
+              - generic [ref=e288]: Dry-run, preflight, Railway, Telegram, observability и incidents.
+            - link "Глоссарий Термины проекта и связи между разделами." [ref=e289] [cursor=pointer]:
+              - /url: /glossary
+              - strong [ref=e292]: Глоссарий
+              - generic [ref=e293]: Термины проекта и связи между разделами.
+        - generic [ref=e294]:
+          - generic [ref=e295]:
+            - strong [ref=e298]: Страницы курируются вручную
+            - generic [ref=e299]: Markdown из репозитория используется как evidence, но не как renderer.
+          - generic [ref=e300]:
+            - strong [ref=e304]: Live границы сохранены
+            - generic [ref=e305]: Архитектура объясняется без секретов, балансов и runtime values.
+        - complementary [ref=e306]:
+          - generic [ref=e308]: К
+          - generic [ref=e309]:
+            - paragraph [ref=e310]: Постоянный помощник
+            - heading "Команда комнат" [level=3] [ref=e311]
+            - paragraph [ref=e312]: несколько постоянных помощников ведут читателя по разделам, recipes и glossary

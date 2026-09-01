@@ -1,0 +1,175 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - link "crypt docs home" [ref=e3] [cursor=pointer]:
+      - /url: /
+      - generic [ref=e4]: cd
+      - generic [ref=e5]: crypt docs
+    - generic [ref=e6]:
+      - button "Поиск ⌘K" [ref=e7] [cursor=pointer]:
+        - generic [ref=e11]: Поиск
+        - generic [ref=e12]: ⌘K
+      - button "Переключить тему" [ref=e13] [cursor=pointer]
+      - button "Открыть навигацию" [ref=e16] [cursor=pointer]
+  - generic [ref=e18]:
+    - complementary "Дерево документации" [ref=e19]:
+      - paragraph [ref=e20]: Документация
+      - link "Обзор" [ref=e21] [cursor=pointer]:
+        - /url: /overview
+      - link "Архитектура" [ref=e25] [cursor=pointer]:
+        - /url: /architecture
+      - link "Данные" [ref=e37] [cursor=pointer]:
+        - /url: /data
+      - link "Стратегии" [ref=e43] [cursor=pointer]:
+        - /url: /strategies
+      - link "Бэктестер" [ref=e46] [cursor=pointer]:
+        - /url: /backtesting
+      - link "Live Execution" [ref=e50] [cursor=pointer]:
+        - /url: /live-execution
+      - link "Операции" [ref=e58] [cursor=pointer]:
+        - /url: /operations
+      - link "Глоссарий" [ref=e62] [cursor=pointer]:
+        - /url: /glossary
+      - link "Путь сигнала" [ref=e66] [cursor=pointer]:
+        - /url: /signal-journey
+      - generic [ref=e72]:
+        - generic [ref=e73]: "?"
+        - strong [ref=e74]: Нужна ориентация?
+        - paragraph [ref=e75]: Начни с карты системы или открой путь сигнала.
+    - main [ref=e76]:
+      - generic [ref=e77]:
+        - region [ref=e78]:
+          - generic [ref=e80]:
+            - paragraph [ref=e81]: Путь сигнала
+            - heading "От свечи до решения" [level=2] [ref=e82]
+          - generic "Шаги пути сигнала" [ref=e83]:
+            - button "1 Данные получены" [ref=e84] [cursor=pointer]:
+              - generic [ref=e85]: "1"
+              - strong [ref=e86]: Данные получены
+            - button "2 Границы закрыты" [ref=e87] [cursor=pointer]:
+              - generic [ref=e88]: "2"
+              - strong [ref=e89]: Границы закрыты
+            - button "3 Стратегия думает" [ref=e90] [cursor=pointer]:
+              - generic [ref=e91]: "3"
+              - strong [ref=e92]: Стратегия думает
+            - button "4 Риск проверяет" [ref=e93] [cursor=pointer]:
+              - generic [ref=e94]: "4"
+              - strong [ref=e95]: Риск проверяет
+            - button "5 Бэктест ветвится" [ref=e96] [cursor=pointer]:
+              - generic [ref=e97]: "5"
+              - strong [ref=e98]: Бэктест ветвится
+            - button "6 Live ветвится" [ref=e99] [cursor=pointer]:
+              - generic [ref=e100]: "6"
+              - strong [ref=e101]: Live ветвится
+            - button "7 След остаётся" [ref=e102] [cursor=pointer]:
+              - generic [ref=e103]: "7"
+              - strong [ref=e104]: След остаётся
+          - generic [ref=e105]:
+            - generic [ref=e106]:
+              - paragraph [ref=e107]: Состояние
+              - heading "сырой market context" [level=3] [ref=e108]
+              - paragraph [ref=e109]: Система получает свечи и рыночный контекст из доступных источников.
+            - generic [ref=e110]: Нельзя считать данные доступными без проверки.
+            - link "Открыть связанный раздел" [ref=e115] [cursor=pointer]:
+              - /url: /data
+        - article [ref=e116]:
+          - link "К карте системы" [ref=e117] [cursor=pointer]:
+            - /url: /
+          - generic [ref=e121]:
+            - paragraph [ref=e122]: From data to action
+            - heading "Путь сигнала" [level=1] [ref=e123]
+            - paragraph [ref=e124]: Путь сигнала показывает, как данные превращаются в decision, затем в backtest simulation или optional live execution behavior.
+          - complementary [ref=e129]:
+            - generic [ref=e131]: К
+            - generic [ref=e132]:
+              - paragraph [ref=e133]: Постоянный помощник
+              - heading "Курьер сигнала" [level=3] [ref=e134]
+              - paragraph [ref=e135]: несёт событие через комнаты и показывает, где оно меняет форму
+          - generic [ref=e136]:
+            - tablist "Режим чтения" [ref=e137]:
+              - button "Обзор" [ref=e138] [cursor=pointer]
+              - button "Глубже" [ref=e139] [cursor=pointer]
+            - generic [ref=e140]:
+              - heading "Mental model" [level=2] [ref=e141]
+              - paragraph [ref=e142]: Signal journey - это учебная нить через весь проект. Она соединяет data availability, strategy rules, risk checks, simulation/live branch, notifications and reconciliation.
+              - generic [ref=e143]:
+                - article [ref=e144]:
+                  - paragraph [ref=e147]: Data is loaded and normalized.
+                - article [ref=e148]:
+                  - paragraph [ref=e151]: Features and indicators are calculated on closed candles.
+                - article [ref=e152]:
+                  - paragraph [ref=e155]: Strategy evaluates triggers and filters.
+                - article [ref=e156]:
+                  - paragraph [ref=e159]: Risk layer sizes or blocks the entry.
+                - article [ref=e160]:
+                  - paragraph [ref=e163]: Backtester simulates; live execution may route orders when enabled.
+                - article [ref=e164]:
+                  - paragraph [ref=e167]: Logs, notifications and reconciliation explain what happened.
+          - generic [ref=e168]:
+            - heading "Контракты и инварианты" [level=2] [ref=e169]
+            - group [ref=e170]:
+              - generic "1 A missing or partial input cannot become a confident entry" [ref=e171] [cursor=pointer]:
+                - generic [ref=e172]: "1"
+                - text: A missing or partial input cannot become a confident entry
+              - paragraph [ref=e173]: A missing or partial input cannot become a confident entry.
+            - group [ref=e174]:
+              - generic "2 Backtest and live should share decision code where possible" [ref=e175] [cursor=pointer]:
+                - generic [ref=e176]: "2"
+                - text: Backtest and live should share decision code where possible
+            - group [ref=e177]:
+              - generic "3 Live branch trusts runtime config and OKX facts" [ref=e178] [cursor=pointer]:
+                - generic [ref=e179]: "3"
+                - text: Live branch trusts runtime config and OKX facts
+            - group [ref=e180]:
+              - generic "4 The portal shows behavior path, not realized trading outcomes" [ref=e181] [cursor=pointer]:
+                - generic [ref=e182]: "4"
+                - text: The portal shows behavior path, not realized trading outcomes
+          - generic [ref=e183]:
+            - generic [ref=e185]:
+              - paragraph [ref=e186]: Recipes
+              - heading "Как расширять" [level=2] [ref=e187]
+            - article [ref=e189]:
+              - heading "Debug a blocked signal" [level=3] [ref=e190]
+              - paragraph [ref=e191]: Classify the stop point instead of guessing.
+              - list [ref=e192]:
+                - listitem [ref=e193]: Check whether source candles are available and closed.
+                - listitem [ref=e194]: Inspect strategy/filter conditions conceptually.
+                - listitem [ref=e195]: Determine whether risk or exchange sync blocked the entry.
+          - generic [ref=e199]:
+            - heading "Failure modes" [level=2] [ref=e200]
+            - list [ref=e201]:
+              - listitem [ref=e202]: Debugging live behavior from a backtest result alone.
+              - listitem [ref=e203]: Skipping data availability and looking only at strategy rules.
+              - listitem [ref=e204]: Treating notifications as final money truth.
+          - generic [ref=e205]:
+            - generic [ref=e206]:
+              - heading "Связанные разделы" [level=2] [ref=e207]
+              - generic [ref=e208]:
+                - link "Данные" [ref=e209] [cursor=pointer]:
+                  - /url: /data
+                - link "Стратегии" [ref=e210] [cursor=pointer]:
+                  - /url: /strategies
+                - link "Бэктестер" [ref=e211] [cursor=pointer]:
+                  - /url: /backtesting
+                - link "Live Execution" [ref=e212] [cursor=pointer]:
+                  - /url: /live-execution
+            - generic [ref=e213]:
+              - heading "Термины" [level=2] [ref=e214]
+              - generic [ref=e215]:
+                - link "signal" [ref=e216] [cursor=pointer]:
+                  - /url: /glossary?term=signal
+                - link "filter" [ref=e217] [cursor=pointer]:
+                  - /url: /glossary?term=filter
+                - link "risk" [ref=e218] [cursor=pointer]:
+                  - /url: /glossary?term=risk
+                - link "execution" [ref=e219] [cursor=pointer]:
+                  - /url: /glossary?term=execution
+                - link "reconciliation" [ref=e220] [cursor=pointer]:
+                  - /url: /glossary?term=reconciliation
+          - generic [ref=e221]:
+            - heading "Источник для курации" [level=2] [ref=e222]
+            - paragraph [ref=e223]: Эти документы и области кода использовались как evidence для страницы; UI не рендерит их напрямую.
+            - generic [ref=e224]:
+              - generic [ref=e225] [cursor=pointer]: src/crypt/execution/signal_runner.py
+              - generic [ref=e226] [cursor=pointer]: src/backtester
+              - generic [ref=e227] [cursor=pointer]: docs/execution/live_backtest_reconciliation_2026-07-28.md
+  - button "Open Next.js Dev Tools" [ref=e233] [cursor=pointer]

@@ -1,0 +1,77 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - link "crypt docs home" [ref=e3] [cursor=pointer]:
+      - /url: /
+      - generic [ref=e4]: cd
+      - generic [ref=e5]: crypt docs
+    - generic [ref=e6]:
+      - button "Поиск ⌘K" [ref=e7] [cursor=pointer]:
+        - generic [ref=e11]: Поиск
+        - generic [ref=e12]: ⌘K
+      - button "Переключить тему" [ref=e13] [cursor=pointer]
+      - button "Открыть навигацию" [ref=e16] [cursor=pointer]
+  - generic [ref=e18]:
+    - complementary "Дерево документации" [ref=e19]:
+      - paragraph [ref=e20]: Документация
+      - link "Обзор" [ref=e21] [cursor=pointer]:
+        - /url: /overview
+      - link "Архитектура" [ref=e25] [cursor=pointer]:
+        - /url: /architecture
+      - link "Данные" [ref=e37] [cursor=pointer]:
+        - /url: /data
+      - link "Стратегии" [ref=e43] [cursor=pointer]:
+        - /url: /strategies
+      - link "Бэктестер" [ref=e46] [cursor=pointer]:
+        - /url: /backtesting
+      - link "Live Execution" [ref=e50] [cursor=pointer]:
+        - /url: /live-execution
+      - link "Операции" [ref=e58] [cursor=pointer]:
+        - /url: /operations
+      - link "Глоссарий" [ref=e62] [cursor=pointer]:
+        - /url: /glossary
+      - link "Путь сигнала" [ref=e66] [cursor=pointer]:
+        - /url: /signal-journey
+      - generic [ref=e72]:
+        - generic [ref=e73]: "?"
+        - strong [ref=e74]: Нужна ориентация?
+        - paragraph [ref=e75]: Начни с карты системы или открой путь сигнала.
+    - main [ref=e76]:
+      - generic [ref=e77]:
+        - generic [ref=e79]:
+          - paragraph [ref=e80]: Reference room
+          - heading "Глоссарий проекта" [level=1] [ref=e81]
+          - paragraph [ref=e82]: Термины crypt связаны с разделами, где они реально используются. Это справочник для чтения кода, а не общая энциклопедия крипты.
+        - generic [ref=e83]:
+          - generic [ref=e84]:
+            - generic [ref=e85]:
+              - generic [ref=e86]: Фильтр
+              - textbox "Фильтр" [ref=e87]:
+                - /placeholder: signal, OKX...
+                - text: OKX
+            - generic [ref=e88]:
+              - button "Все" [ref=e89] [cursor=pointer]
+              - button "Архитектура" [ref=e90] [cursor=pointer]
+              - button "Данные" [ref=e91] [cursor=pointer]
+              - button "Стратегии" [ref=e92] [cursor=pointer]
+              - button "Бэктестер" [ref=e93] [cursor=pointer]
+              - button "Live" [ref=e94] [cursor=pointer]
+              - button "Операции" [ref=e95] [cursor=pointer]
+              - button "Глоссарий" [ref=e96] [cursor=pointer]
+          - generic [ref=e97]:
+            - listbox "Термины" [ref=e98]:
+              - button "OKX Live Execution" [ref=e99] [cursor=pointer]:
+                - strong [ref=e100]: OKX
+                - generic [ref=e101]: Live Execution
+              - button "Telegram sink Операции" [ref=e102] [cursor=pointer]:
+                - strong [ref=e103]: Telegram sink
+                - generic [ref=e104]: Операции
+            - article [ref=e105]:
+              - paragraph [ref=e106]: Live Execution
+              - heading "OKX" [level=2] [ref=e107]
+              - paragraph [ref=e108]: Биржевая система, которая является источником правды для fills, fees, positions, orders and equity.
+              - generic [ref=e109]:
+                - generic [ref=e110] [cursor=pointer]: exchange sync
+                - generic [ref=e111] [cursor=pointer]: runtime truth
+              - link "Открыть раздел" [ref=e112] [cursor=pointer]:
+                - /url: /live-execution
+  - button "Open Next.js Dev Tools" [ref=e118] [cursor=pointer]

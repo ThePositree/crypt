@@ -1,0 +1,138 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - link "crypt docs home" [ref=e3] [cursor=pointer]:
+      - /url: /
+      - generic [ref=e4]: cd
+      - generic [ref=e5]: crypt docs
+    - generic [ref=e6]:
+      - button "Поиск ⌘K" [ref=e7] [cursor=pointer]:
+        - generic [ref=e11]: Поиск
+        - generic [ref=e12]: ⌘K
+      - button "Переключить тему" [ref=e13] [cursor=pointer]
+      - button "Открыть навигацию" [ref=e16] [cursor=pointer]
+  - generic [ref=e18]:
+    - complementary "Дерево документации" [ref=e19]:
+      - paragraph [ref=e20]: Документация
+      - link "Обзор" [ref=e21] [cursor=pointer]:
+        - /url: /overview
+      - link "Архитектура" [ref=e25] [cursor=pointer]:
+        - /url: /architecture
+      - link "Данные" [ref=e37] [cursor=pointer]:
+        - /url: /data
+      - link "Стратегии" [ref=e43] [cursor=pointer]:
+        - /url: /strategies
+      - link "Бэктестер" [ref=e46] [cursor=pointer]:
+        - /url: /backtesting
+      - link "Live Execution" [ref=e50] [cursor=pointer]:
+        - /url: /live-execution
+      - link "Операции" [ref=e58] [cursor=pointer]:
+        - /url: /operations
+      - link "Глоссарий" [ref=e62] [cursor=pointer]:
+        - /url: /glossary
+      - link "Путь сигнала" [ref=e66] [cursor=pointer]:
+        - /url: /signal-journey
+      - generic [ref=e72]:
+        - generic [ref=e73]: "?"
+        - strong [ref=e74]: Нужна ориентация?
+        - paragraph [ref=e75]: Начни с карты системы или открой путь сигнала.
+    - main [ref=e76]:
+      - article [ref=e77]:
+        - link "К карте системы" [ref=e78] [cursor=pointer]:
+          - /url: /
+        - generic [ref=e82]:
+          - paragraph [ref=e83]: Границы системы
+          - heading "Архитектура как набор комнат" [level=1] [ref=e84]
+          - paragraph [ref=e85]: Раздел объясняет, где заканчиваются данные, где начинается decision logic, и почему exchange/runtime эффекты держатся отдельно.
+        - complementary [ref=e96]:
+          - generic [ref=e98]: А
+          - generic [ref=e99]:
+            - paragraph [ref=e100]: Постоянный помощник
+            - heading "Архитектор комнат" [level=3] [ref=e101]
+            - paragraph [ref=e102]: следит, чтобы каждая подсистема имела свою дверь и контракт
+        - generic [ref=e103]:
+          - tablist "Режим чтения" [ref=e104]:
+            - button "Обзор" [ref=e105] [cursor=pointer]
+            - button "Глубже" [ref=e106] [cursor=pointer]
+          - generic [ref=e107]:
+            - heading "Mental model" [level=2] [ref=e108]
+            - paragraph [ref=e109]: "Архитектура crypt строится вокруг явных границ: data слой поставляет закрытые свечи и контекст, engines/strategies формируют сигналы, backtester симулирует исполнение, runtime и execution работают с внешними эффектами."
+            - generic [ref=e110]:
+              - article [ref=e111]:
+                - paragraph [ref=e114]: Data modules отвечают за ingestion, store и контекст.
+              - article [ref=e115]:
+                - paragraph [ref=e118]: Engines описывают reusable рыночные признаки и сигнальные идеи.
+              - article [ref=e119]:
+                - paragraph [ref=e122]: Aggregator и decision filters собирают решения и ограничения.
+              - article [ref=e123]:
+                - paragraph [ref=e126]: Backtester применяет стратегию к истории с отдельным accounting.
+              - article [ref=e127]:
+                - paragraph [ref=e130]: Execution и exchange modules синхронизируют позиции, ордера и уведомления.
+              - article [ref=e131]:
+                - paragraph [ref=e134]: Sinks выводят события в консоль, JSON logs, Telegram или execution stub.
+        - generic [ref=e135]:
+          - heading "Контракты и инварианты" [level=2] [ref=e136]
+          - group [ref=e137]:
+            - generic "1 Pure decision code должен переиспользоваться между backtest и live там, где это возможно" [ref=e138] [cursor=pointer]:
+              - generic [ref=e139]: "1"
+              - text: Pure decision code должен переиспользоваться между backtest и live там, где это возможно
+            - paragraph [ref=e140]: Pure decision code должен переиспользоваться между backtest и live там, где это возможно.
+          - group [ref=e141]:
+            - generic "2 Внешние эффекты остаются на runtime/execution/exchange границе" [ref=e142] [cursor=pointer]:
+              - generic [ref=e143]: "2"
+              - text: Внешние эффекты остаются на runtime/execution/exchange границе
+          - group [ref=e144]:
+            - generic "3 OKX является источником правды для fills, fees, positions и equity" [ref=e145] [cursor=pointer]:
+              - generic [ref=e146]: "3"
+              - text: OKX является источником правды для fills, fees, positions и equity
+          - group [ref=e147]:
+            - generic "4 Missing data должно приводить к neutral signal, blocked entry или явной ошибке оператора" [ref=e148] [cursor=pointer]:
+              - generic [ref=e149]: "4"
+              - text: Missing data должно приводить к neutral signal, blocked entry или явной ошибке оператора
+        - generic [ref=e150]:
+          - generic [ref=e152]:
+            - paragraph [ref=e153]: Recipes
+            - heading "Как расширять" [level=2] [ref=e154]
+          - article [ref=e156]:
+            - heading "Добавить новый subsystem page" [level=3] [ref=e157]
+            - paragraph [ref=e158]: Новая страница должна объяснить роль, границы, contracts и related links.
+            - list [ref=e159]:
+              - listitem [ref=e160]: Определи, какую ответственность подсистема забирает у соседних модулей.
+              - listitem [ref=e161]: Запиши входы, выходы, failure modes и links на glossary.
+              - listitem [ref=e162]: Добавь страницу в curated content и поисковый corpus.
+        - generic [ref=e166]:
+          - heading "Failure modes" [level=2] [ref=e167]
+          - list [ref=e168]:
+            - listitem [ref=e169]: Смешать research scripts и live execution side effects.
+            - listitem [ref=e170]: Сделать стратегию зависимой от непроверенного runtime state.
+            - listitem [ref=e171]: Добавить abstraction без уменьшения реальной сложности.
+        - generic [ref=e172]:
+          - generic [ref=e173]:
+            - heading "Связанные разделы" [level=2] [ref=e174]
+            - generic [ref=e175]:
+              - link "Данные" [ref=e176] [cursor=pointer]:
+                - /url: /data
+              - link "Стратегии" [ref=e177] [cursor=pointer]:
+                - /url: /strategies
+              - link "Бэктестер" [ref=e178] [cursor=pointer]:
+                - /url: /backtesting
+              - link "Live Execution" [ref=e179] [cursor=pointer]:
+                - /url: /live-execution
+          - generic [ref=e180]:
+            - heading "Термины" [level=2] [ref=e181]
+            - generic [ref=e182]:
+              - link "engine" [ref=e183] [cursor=pointer]:
+                - /url: /glossary?term=engine
+              - link "sink" [ref=e184] [cursor=pointer]:
+                - /url: /glossary?term=sink
+              - link "runtime truth" [ref=e185] [cursor=pointer]:
+                - /url: /glossary?term=runtime%20truth
+              - link "exchange sync" [ref=e186] [cursor=pointer]:
+                - /url: /glossary?term=exchange%20sync
+        - generic [ref=e187]:
+          - heading "Источник для курации" [level=2] [ref=e188]
+          - paragraph [ref=e189]: Эти документы и области кода использовались как evidence для страницы; UI не рендерит их напрямую.
+          - generic [ref=e190]:
+            - generic [ref=e191] [cursor=pointer]: docs/architecture.md
+            - generic [ref=e192] [cursor=pointer]: docs/agent/context_routes.yml
+            - generic [ref=e193] [cursor=pointer]: src/crypt
+  - button "Open Next.js Dev Tools" [ref=e199] [cursor=pointer]
