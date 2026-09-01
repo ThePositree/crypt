@@ -4,6 +4,17 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
+## 2026-09-01 - Frontend visual board component showcase
+
+- Clarified that Visual Direction Boards are rendered Design System /
+  Component Showcase, Gallery, or Playground artifacts, not standalone mood
+  images.
+- Required boards to demonstrate representative UI fragments, component
+  coverage, state examples, responsive behavior, and any supporting imagery in
+  an interface context.
+
+---
+
 ## 2026-09-01 - Frontend rendered artifact gates
 
 - Clarified that D3 frontend phases prioritize completed gate evidence over
