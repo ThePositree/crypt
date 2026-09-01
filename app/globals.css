@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+:root {
+  --ink: #2d2a32;
+  --muted: #726a79;
+  --paper: #fff8ea;
+  --desk: #f5d8c8;
+  --mint: #bfe8d0;
+  --sky: #b9d8f2;
+  --lavender: #d7c6f1;
+  --rose: #f5b9c6;
+  --lemon: #f7e8a6;
+  --line: #3b3340;
+  --shadow: rgba(45, 42, 50, 0.18);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 8% 12%, rgba(191, 232, 208, 0.55), transparent 24rem),
+    radial-gradient(circle at 88% 6%, rgba(215, 198, 241, 0.5), transparent 22rem),
+    linear-gradient(135deg, #fff8ea 0%, #f9e9dc 46%, #e6f2ed 100%);
+  color: var(--ink);
+  font-family: ui-rounded, "SF Pro Rounded", "Avenir Next", Avenir, system-ui, sans-serif;
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+::selection {
+  background: var(--lemon);
+  color: var(--ink);
+}
+
+.desk-grid {
+  background-image:
+    linear-gradient(rgba(45, 42, 50, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(45, 42, 50, 0.06) 1px, transparent 1px);
+  background-size: 26px 26px;
+}
+
+.paper-card {
+  border: 2px solid var(--line);
+  box-shadow: 6px 6px 0 var(--shadow);
+}
+
+.hand-drawn {
+  border: 2px solid var(--line);
+  box-shadow: 4px 4px 0 rgba(45, 42, 50, 0.18);
+}
+
+.focus-ring:focus-visible {
+  outline: 3px solid #7b61a8;
+  outline-offset: 3px;
+}

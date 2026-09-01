@@ -35,6 +35,7 @@ configuration disagree, stop and ask the owner instead of guessing.
 - `pandas`, `pyarrow`, `pydantic` v2
 - `APScheduler`, `aiogram`, `loguru`
 - `pytest`, `ruff`, `mypy`
+- Local docs portal: Next.js, React, Tailwind CSS, `lucide-react`
 
 ## Setup
 
@@ -118,3 +119,16 @@ uv run pytest tests -q
 
 Do not run long research commands silently. Any command expected to take more
 than roughly one minute must expose progress and ETA.
+
+## Local docs portal
+
+The repository includes a manually curated Next.js documentation portal. It is
+not a markdown renderer and does not display live OKX state, account data, or
+backtest results.
+
+```bash
+npm install
+npm run dev
+```
+
+Open `http://127.0.0.1:3000` or the local URL printed by Next.js.

@@ -35,6 +35,7 @@ canonical_docs:
   frontend_design_subsystem: docs/agent/frontend_design_subsystem.md
   frontend_memory: docs/frontend/
   frontend_instruction_version: 3
+  frontend_portal: app/
   benchmark: docs/strategy_benchmark.md
   backtester_regression: docs/backtester_regression.md
   live_reconciliation: docs/execution/live_backtest_reconciliation_2026-07-28.md
@@ -52,3 +53,4 @@ known_constraints:
   rtk: documented but may be unavailable in this environment; use raw commands when rtk is missing
   long_jobs: stop and hand to owner if ETA is above 3 minutes or progress is invisible
   data_availability: fail fast or degrade explicitly; never assume candles/exchange data exist
+  frontend_portal: local Next.js docs portal only; no deployment config, live OKX data, account data, backtest results, or markdown rendering

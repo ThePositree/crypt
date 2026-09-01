@@ -4,6 +4,20 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
+## 2026-09-01 - Local curated docs portal
+
+- Added a local Next.js and Tailwind CSS docs portal for explaining the crypt
+  research workbench, backtester, candidate archive, strategy configuration,
+  risk controls, runbooks, and optional OKX execution runtime.
+- Added curated English page content, full-content local search, clickable
+  architecture map, pipeline stepper, module tabs, and a pastel lo-fi developer
+  desk visual language.
+- Established frontend product, messaging, design identity, design system,
+  flow, wireframe, screen contract, component registry, decision, and review
+  records for portal V1.
+
+---
+
 ## 2026-09-01 - Frontend gate control verdicts
 
 - Added explicit `STOP` / `PROCEED` Read Receipt verdicts for frontend work.
