@@ -4,6 +4,10 @@ Store persistent screen contracts here. Before changing UI, read or update the
 related flows and wireframes, then keep the screen contract
 aligned before implementation.
 
+Each real page or meaningful screen gets its own screen contract. Shared shell
+or layout contracts describe global structure and are linked from page-level
+contracts.
+
 Use this structure when applicable:
 
 ```md
@@ -26,6 +30,17 @@ Use this structure when applicable:
 - Objections:
 - Natural action:
 - Generic-copy risks:
+
+## Messaging System Pass
+
+- Messaging Identity:
+- Page or screen trajectory:
+- Text hierarchy:
+- Placement and density:
+- Proof:
+- Objections:
+- Microcopy:
+- Specificity risks:
 
 ## Layout
 
@@ -51,6 +66,14 @@ Use this structure when applicable:
 - Representative queries or discovery tasks:
 - Coverage evidence:
 
+## Interaction Inventory
+
+- Element or region:
+- Expected response:
+- URL, state, request, event, feedback, or recovery behavior:
+- Keyboard behavior:
+- Evidence:
+
 ## Data Sources And Trust Boundaries
 
 ## States
@@ -64,6 +87,14 @@ Use this structure when applicable:
 - partial data
 
 ## Responsive Behavior
+
+- Narrow mobile below 640px:
+- Mobile-wide or small tablet at 640px and above:
+- Tablet at 768px and above:
+- Desktop at 1024px and above:
+- Large desktop at 1280px and above:
+- Wide desktop at 1536px and above:
+- Additional project-specific viewports:
 
 ## Accessibility Requirements
 
@@ -80,6 +111,10 @@ Use this structure when applicable:
 - Observable behavior:
 - Content/capability coverage:
 - Discovery/search coverage:
+- Interaction coverage:
+- Links and navigation coverage:
+- Messaging System pass:
+- Rubric Review:
 - Required states:
 - Rendered evidence:
 - Automated checks:

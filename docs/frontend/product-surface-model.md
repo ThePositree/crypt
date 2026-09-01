@@ -94,8 +94,13 @@ project docs, requirements, specs, current state, task context, or a canonical
 - Primary goals covered:
 - Secondary goals covered:
 - Necessary content present:
+- Pre-implementation Content Coverage Audit:
+- Post-implementation Content Coverage Audit:
 - Content and capability coverage proven:
 - Discovery/search coverage proven:
+- Interaction inventory covered:
+- Page/screen wireframes complete:
+- Rubric Review complete:
 - Messaging trajectory present:
 - Claims backed by proof or softened:
 - Objections answered where they arise:

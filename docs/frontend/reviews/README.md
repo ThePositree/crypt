@@ -8,8 +8,8 @@ records the Task Contract revision, execution context and methods, tested
 commit or working-tree state, scope, viewport sizes and screenshots, exercised
 interactions, automated checks, console/network status, data/API states,
 accessibility checks, copy review, content/capability coverage,
-discovery/search coverage, separate QA verdicts, known gaps, and the exact next
-action.
+discovery/search coverage, interaction inventory, link/navigation coverage,
+rubric review, separate QA verdicts, known gaps, and the exact next action.
 
 For D2/D3 or context-heavy work, also record the Collaboration Check:
 delegation availability, required collaboration/runtime interface, proposed
@@ -30,3 +30,12 @@ Apply the content and discovery rubric to the surface promised by the owner:
 corpus or data coverage, information depth, included entities or states,
 searchable body content, ranking or grouping behavior, representative queries,
 empty results, and evidence that users can find and use the important material.
+
+Apply the functional interaction rubric to every clickable, focusable,
+stateful, eventful, or navigational element and region. Record expected
+response, actual response, route or URL changes, state changes, observable
+requests or events, keyboard behavior, feedback, and recovery behavior.
+
+Use the six viewport classes from the frontend subsystem for D2/D3 reviews
+unless an owner-approved viewport boundary narrows the surface. Record the
+Frontend Rubric Review verdicts and evidence for every applicable category.

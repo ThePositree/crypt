@@ -4,6 +4,21 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
+## 2026-09-01 - Frontend full QA and messaging audits
+
+- Required the full Messaging System pass for frontend work that creates,
+  changes, or approves user-visible text.
+- Expanded responsive QA to six generic viewport classes and required evidence
+  for each class on substantial frontend surfaces.
+- Required interaction inventories, link/navigation coverage, representative
+  discovery QA, before/after content coverage audits, and an always-present
+  Frontend Rubric Review.
+- Strengthened wireframe requirements so every real page or meaningful screen
+  has its own wireframe package and implementation approval maps page-level
+  artifact paths.
+
+---
+
 ## 2026-09-01 - Frontend raster visual boards
 
 - Clarified that Visual Direction Boards default to raster UI showcase

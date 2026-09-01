@@ -113,6 +113,14 @@ implementation. Narrower scope, representative samples, curated subsets,
 placeholder content, simplified ranking, deferred pages, or reduced interaction
 depth require explicit owner approval before implementation.
 
+Before implementation and before final response, run a Content Coverage Audit
+whenever the surface promises content, data, media, levels, items, workflows,
+generated output, pages, sections, search, filtering, navigation, indexes,
+catalogs, or interactive capabilities. The pre-implementation audit lists the
+promised coverage and source of truth. The post-implementation audit maps each
+promised item to the delivered page, section, component, state, interaction, or
+explicit owner-approved boundary.
+
 Before final response, perform a Final Instruction Audit. The audit states
 which frontend instruction files were applied, which memory files influenced
 the result, which gates passed or remain active, which approvals or waivers were
@@ -358,6 +366,15 @@ these:
 
 Rewrite or cut any phrase whose product job is unclear.
 
+Any frontend task that creates, changes, or approves user-visible text must
+apply the full Messaging System. The pass covers Messaging Identity, Messaging
+Contract, page or screen trajectory, text hierarchy, placement and density,
+proof, objections, microcopy, anti-slop review, specificity, and Copy QA. For
+D0/D1, apply the full pass to the affected text and its immediate context. For
+D2/D3, apply it to every important page, screen, state, navigation area, action,
+and repeated content pattern. Record the applied pass in the Task Contract,
+screen contract, or review evidence.
+
 ### Messaging Identity
 
 Messaging Identity is the product's public voice. It transforms owner input
@@ -563,7 +580,7 @@ During review, ask:
 - does this provide proof?
 - does this help an action?
 - does this reduce friction?
-- is this sentence specific to this product's site?
+- is this sentence specific to this product surface?
 - is there a mechanism, example, result, or limitation?
 
 If a sentence can be moved unchanged to a different product, agency, template,
@@ -783,6 +800,11 @@ D0 change may reference an unchanged flow instead of rewriting it.
 Use persistent low-fidelity rendered wireframes under
 `docs/frontend/wireframes/` as UI contracts. Each real page or meaningful
 screen receives its own wireframe package with relevant breakpoint views.
+Multi-page sites, apps, dashboards, games, portals, catalogs, onboarding flows,
+and tools need a separate wireframe package for every real page or meaningful
+screen. A shared shell wireframe can document global navigation or layout
+system behavior and is paired with page-level wireframes for the actual
+surfaces.
 
 Wireframes show:
 
@@ -803,10 +825,11 @@ Render and inspect affected wireframes at their declared viewports before
 requesting approval.
 
 Wireframe completion requires persistent rendered artifacts at stable paths for
-the affected pages or meaningful screens, including the declared breakpoint
+each affected page or meaningful screen, including the declared breakpoint
 views and required states. Written screen descriptions and layout summaries
 link to the wireframes. This gate is complete when the rendered wireframe
-artifacts and inspection evidence are present.
+artifacts and inspection evidence are present for every page or screen in the
+approved scope.
 
 ### Wireframe Approval
 
@@ -861,7 +884,9 @@ decisions required owner approval, present one bounded summary:
 - Stack and sources of truth:
 - Approved Product Surface revision:
 - Approved Visual Direction revision:
-- Approved flows, wireframes, and screen contracts:
+- Approved flows:
+- Approved wireframes by page or screen:
+- Approved screen contracts by page or screen:
 - Content And Capability Contract, if applicable:
 - Discovery Contract, if applicable:
 - Action Contract, if applicable:
@@ -875,8 +900,10 @@ request this approval after Product Surface Approval, Visual Direction
 Approval, finalized Design Identity and Design System, flows, rendered
 wireframes, screen contracts, Content And Capability Contract, Discovery
 Contract when relevant, Action Contract when relevant, and their decision
-records exist at named paths. A waiver must name what is waived, why, what
-remains required, and the next active gate.
+records exist at named paths. The approval summary maps every approved page or
+meaningful screen to its flow, wireframe path, screen-contract path, content
+coverage, discovery coverage when relevant, and implementation unit. A waiver
+must name what is waived, why, what remains required, and the next active gate.
 
 ## Implementation
 
@@ -892,8 +919,19 @@ renewed approval only for the affected decision.
 ## Responsive Design Pass
 
 Responsive quality is intentional composition beyond overflow control.
-Inspect narrow mobile, regular mobile, intermediate/tablet, desktop, and large
-desktop/wide monitor viewports that are relevant to the product.
+Inspect six viewport classes for every D2/D3 frontend surface and for any D0/D1
+change whose layout can be affected:
+
+- narrow mobile below 640px;
+- mobile-wide or small tablet at 640px and above;
+- tablet at 768px and above;
+- desktop at 1024px and above;
+- large desktop at 1280px and above;
+- wide desktop at 1536px and above.
+
+Choose concrete viewport sizes inside each class and record them. Add extra
+project-specific viewports when analytics, target devices, embedded frames,
+kiosks, dashboards, or dense data displays require them.
 
 For each viewport, verify:
 
@@ -910,14 +948,40 @@ desktop or source composition.
 
 ## Functional QA
 
-Exercise every added or changed interactive element: buttons, links, tabs,
-menus, forms, filters, toggles, dialogs, keyboard/focus behavior, and
-post-interaction state. Validate success, failure, loading, empty, disabled,
-overflow, and partial-data paths that are reachable in scope.
+Build an Interaction Inventory before rendered QA. Include every element or
+region that a user can click, tap, focus, type into, drag, scroll as a local
+control, hover for information, open, close, expand, collapse, select, submit,
+copy, navigate through, or operate with a keyboard shortcut. Include visual
+areas that look interactive and stateful areas expected to emit events,
+navigation, data loading, feedback, animation, or UI changes.
+
+Exercise every inventory item in the rendered interface: buttons, links, tabs,
+menus, forms, filters, toggles, dialogs, accordions, content tiles with click
+behavior, maps, charts, tables, search fields, pagination, command controls,
+copy buttons, overlays, drawers, media controls, keyboard/focus behavior, and
+post-interaction states. For each item, record expected response, actual
+response, URL or route changes, state changes, emitted request or event when
+observable, focus behavior, loading feedback, success feedback, and recovery
+behavior.
+
+Validate success, failure, loading, empty, disabled, overflow, and partial-data
+paths that are reachable in scope. Verify every internal navigation target,
+external link target policy, anchor, back/forward behavior, and stateful URL
+parameter that the surface creates. A screenshot, clean console, and successful
+build support QA evidence and do not replace interaction coverage.
 
 Use automated checks where behavior can be asserted reliably. Inspect the
 rendered interface in an available rendered environment for interaction,
 screenshots, and user-flow QA. Pair code compilation with rendered evidence.
+
+For search, filtering, sorting, recommendations, maps, indexes, catalogs,
+navigation discovery, generated lists, and similar discovery interfaces, run a
+representative Discovery QA set. Cover exact matches, partial matches,
+synonyms or domain-adjacent terms when relevant, role or audience queries,
+topic queries, metadata filters, combined filters, high-value target items,
+empty query behavior, zero-result behavior, keyboard operation, result
+selection, ranking/grouping expectations, and snippet or explanation quality.
+Record queries, filters, expected results, actual results, and fixes.
 
 ## Visual QA And Review Protocol
 
@@ -941,6 +1005,36 @@ Ask two final questions:
 
 Fix observed defects and re-run the affected checks.
 
+## Frontend Rubric Review
+
+Every frontend task ends with a rubric review. For D0/D1, run the rubric
+against the affected component, state, text, route, or viewport. For D2/D3, run
+it against every delivered page, meaningful screen, flow, repeated component
+pattern, and changed state.
+
+Record a verdict and evidence for each category:
+
+- Functional: journeys, interactions, navigation, links, forms, events, and
+  state transitions work as promised.
+- Responsive: all required viewport classes are inspected and each layout
+  transformation preserves hierarchy, reachability, and content.
+- Visual: hierarchy, spacing, typography, alignment, density, composition,
+  component consistency, semantic color, and identity fit are intentional.
+- Copy: the full Messaging System is applied to important text and microcopy.
+- Content and capability: promised corpus, data, pages, sections, states,
+  workflows, media, generated output, and capabilities are covered.
+- Discovery: search, filtering, sorting, recommendations, maps, indexes,
+  catalogs, navigation discovery, and generated lists satisfy the Discovery
+  Contract when present.
+- Accessibility: landmarks, names, focus, keyboard operation, contrast, target
+  sizes, reading order, and reduced-motion or motion safety are checked where
+  relevant.
+- Instruction control: read receipt, gates, approvals, waivers, artifact paths,
+  and final audit match this subsystem.
+
+The final response for frontend work includes a compact rubric summary with
+category verdicts and named evidence.
+
 ## Copy QA And Review Protocol
 
 Production-ready frontend combines polished layout with specific, useful text.
@@ -948,6 +1042,12 @@ Review important copy as product behavior.
 
 Inspect:
 
+- Messaging Identity use;
+- Messaging Contract fulfillment for each important page, screen, and state;
+- page or screen trajectory from starting state to intended leaving state;
+- text hierarchy across main promise, section arguments, supporting copy,
+  action copy, and microcopy;
+- message placement and density;
 - clarity of the main promise and page trajectory;
 - specificity to the product, audience, workflow, and current state;
 - enough concrete information to satisfy the promised surface;
@@ -968,6 +1068,10 @@ For every important text fragment, ask what job it performs. If the answer is
 unclear, rewrite it or cut it. If a strong claim needs proof, add proof,
 weaken the claim, or retire the claim.
 
+Copy QA is complete when the review names the pages, screens, states, actions,
+and repeated patterns inspected; records the rubric result for each; and maps
+rewrite decisions to the Messaging System concept that required the change.
+
 ## Product Completeness Review
 
 For D2/D3 work, verify that approved primary goals, relevant secondary goals,
@@ -978,6 +1082,13 @@ search, filtering, navigation, recommendations, maps, indexes, generated lists,
 catalogs, or other discovery interfaces. Label placeholder/demo-only surfaces
 or replace them. Distinguish planned seams, mock data, disabled controls, and
 future integrations from complete end-to-end behavior.
+
+Content Coverage Audit is required before implementation and after
+implementation. The pre-implementation audit records the promised corpus,
+pages, sections, entities, states, capabilities, and source evidence. The
+post-implementation audit verifies each promised item against implemented
+routes, screens, components, data records, states, interactions, and owner-
+approved boundaries.
 
 ## QA Evidence Record
 
@@ -991,14 +1102,21 @@ Record evidence with verdicts:
 - Execution context and methods:
 - Commit or working-tree state:
 - Scope validated:
+- Pre-implementation Content Coverage Audit:
+- Post-implementation Content Coverage Audit:
 - Content/capability coverage:
 - Discovery/search coverage:
+- Discovery QA query/filter set:
+- Interaction Inventory:
+- Links and navigation exercised:
 - Viewports and screenshots:
 - Interactions exercised:
 - Automated checks:
 - Console/network status:
 - Data/API states:
 - Accessibility checks:
+- Messaging System pass:
+- Rubric Review:
 - Functional QA verdict:
 - Visual QA verdict:
 - Copy QA verdict:
@@ -1079,7 +1197,21 @@ A frontend task is complete when:
 - relevant contracts match the implementation;
 - D3 visual boards, rendered wireframes, and screen contracts exist at named
   paths before implementation approval;
+- every approved page or meaningful screen has its own wireframe package and
+  screen contract, with shared shell artifacts recorded separately;
+- the full Messaging System was applied to important text and microcopy;
+- the Interaction Inventory was exercised across links, controls, stateful
+  regions, navigation, keyboard behavior, and expected events;
+- the required six viewport classes were inspected or a narrower owner-approved
+  viewport scope was recorded;
 - promised content, data, capability, and discovery coverage have evidence;
+- pre-implementation and post-implementation Content Coverage Audits are
+  recorded when the surface promises content or capabilities;
+- search and discovery interfaces were checked with representative queries,
+  filters, zero-result states, result selection, ranking/grouping behavior, and
+  keyboard operation;
+- the Frontend Rubric Review has verdicts and evidence for every applicable
+  category;
 - functional, rendered visual, copy, responsive, accessibility, and
   completeness checks proportional to depth have evidence;
 - placeholders and integration seams are labeled accurately;

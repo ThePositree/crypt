@@ -22,6 +22,10 @@ Each real site page or meaningful screen gets its own separate wireframe. Each
 real page also gets wireframe coverage for all relevant project breakpoints,
 either as separate files or clearly separated breakpoint views inside that
 page's wireframe package.
+For multi-page surfaces, keep a page-to-wireframe index that names every
+approved page or meaningful screen and its wireframe artifact path. Shared
+shell or layout wireframes supplement page-level wireframes and are linked
+from each affected page package.
 
 For every UI edit, read the affected wireframes first. Update or create
 wireframes before production implementation when layout, navigation,
