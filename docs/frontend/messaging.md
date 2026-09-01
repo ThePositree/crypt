@@ -1,8 +1,8 @@
 # Messaging
 
-Status: established.
-Revision: 1
-Approval source: owner onboarding and implementation approval on 2026-09-01.
+Status: not established.
+Revision: 0
+Approval source: none.
 
 Use this file for durable frontend messaging knowledge: public product voice,
 page-level text contracts, proof needs, objection maps, microcopy rules, and
@@ -10,33 +10,33 @@ copy review findings.
 
 ## Messaging Identity
 
-- Directness: direct and concrete.
-- Formality: professional but approachable.
-- Technical depth: developer-oriented; assumes comfort with backtesting, runtime boundaries, and trading infrastructure terms.
-- Claim confidence: confident about system shape, cautious about outcomes and money-related behavior.
-- Emotional intensity: low to medium; playful visual framing carries warmth while copy stays precise.
-- Humor: light lo-fi desk personality is acceptable; jokes should not obscure risk or runtime truth.
-- Relationship to the user: peer engineer explaining a research system.
-- Natural phrases: research workbench, optional runtime module, closed-candle discipline, runtime source of truth, curated docs portal.
-- Foreign phrases: guaranteed profit, best bot, signal group, effortless trading, AI-powered alpha claims.
-- Owner preference signals: "cryptans developers", "docs portal", "working desk", "everything together", English copy.
-- Private owner language not suitable for public copy: casual Russian chat phrasing is translated into English product documentation.
-- Evidence: owner answers on 2026-09-01; `README.md`; `docs/state/current.yml`.
+- Directness:
+- Formality:
+- Technical depth:
+- Claim confidence:
+- Emotional intensity:
+- Humor:
+- Relationship to the user:
+- Natural phrases:
+- Foreign phrases:
+- Owner preference signals:
+- Private owner language not suitable for public copy:
+- Evidence:
 
 ## Messaging Contract
 
-- Page or screen: crypt docs portal.
-- Why it exists: explain how the codebase works as a product system.
-- Audience: crypto developers and technical readers.
-- Starting user state: knows this is a crypto strategy codebase but needs a clear map.
-- Intended leaving state: understands research-first scope, optional live runtime, risk boundaries, and where to read next.
-- Main idea: crypt is a research workbench for automated crypto perpetual strategies with an optional OKX execution module.
-- First messages: what crypt is, who the portal is for, and where to start.
-- Later messages: subsystem responsibilities, pipeline steps, archived research role, runtime truth, risk controls, runbooks.
-- Objections to answer: whether it displays results, whether live execution is required, whether docs are raw markdown, whether claims are financial promises.
-- Required proof: system map, pipeline, concrete page set, source-of-truth boundaries.
-- Natural action: open Architecture, Pipeline, or search the portal.
-- Generic-copy risks: broad "powerful platform" language and unbacked trading claims.
+- Page or screen:
+- Why it exists:
+- Audience:
+- Starting user state:
+- Intended leaving state:
+- Main idea:
+- First messages:
+- Later messages:
+- Objections to answer:
+- Required proof:
+- Natural action:
+- Generic-copy risks:
 
 ## Message Trajectory
 

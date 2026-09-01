@@ -1,52 +1,47 @@
 # Design Identity
 
-Status: established.
-Revision: 1
-Approval source: owner onboarding and implementation approval on 2026-09-01.
+Status: not established.
+Revision: 0
+Approval source: none.
 
-The portal uses a pastel cartoon lo-fi developer desk identity across all
-sections. It should feel curated, technical, and handmade without becoming a
-toy interface.
+This repository does not currently contain an active frontend product surface.
+Before significant frontend work, run the onboarding workflow in
+`docs/agent/frontend_design_subsystem.md` and replace this placeholder with the
+final product-specific identity.
 
 ## Core Feeling
 
-- Decision: cozy developer desk for serious strategy engineering.
-- Evidence: owner selected "cartoon lo-fi in pastel tones" and "working desk" as the visual direction.
+- Decision:
+- Evidence:
 
 ## Personality
 
-- Decision: calm, playful, technical, and peer-to-peer.
-- Evidence: target audience is crypto developers; copy is English and manually curated.
+- Decision:
+- Evidence:
 
 ## Desired Perception
 
-- Decision: a useful docs portal that makes complex research/runtime boundaries easier to understand.
-- Evidence: owner requested a large multi-page docs portal explaining how the code works.
+- Decision:
+- Evidence:
 
 ## Visual Tension
 
-- Decision: illustrated pastel warmth balanced against dense developer documentation.
-- Evidence: owner allowed a strongly cartoon style, but the product remains technical.
+- Decision:
+- Evidence:
 
 ## Signature Traits
 
-- Trait: hand-drawn bordered surfaces.
-- Product purpose: makes pages feel like curated notes on a desk.
-
-- Trait: terminal, notebook, sticky-note, chart-paper, and mug motifs.
-- Product purpose: reinforces the developer workbench framing.
-
-- Trait: pastel semantic accents.
-- Product purpose: separates portal sections without using market-performance colors.
+- Trait:
+- Product purpose:
 
 ## Anti-Identity
 
-- Avoid: profit-driven crypto hype, dark exchange dashboards, generic SaaS gradient hero pages.
-- Reason: the portal explains engineering systems and does not display financial results or promise outcomes.
+- Avoid:
+- Reason:
 
 ## Implementation-Dependent Exploration Record
 
-- Execution context and methods used: owner onboarding in chat; implemented with Next.js, Tailwind CSS, CSS-built lo-fi illustration, and lucide icons.
-- Date: 2026-09-01
-- Approved Visual Direction revision: 1
-- Known limitations: no external raster illustration pack yet; visual language is implemented with HTML/CSS primitives.
+- Execution context and methods used:
+- Date:
+- Approved Visual Direction revision:
+- Known limitations:
