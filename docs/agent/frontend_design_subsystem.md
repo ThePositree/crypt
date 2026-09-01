@@ -107,6 +107,13 @@ The Read Receipt uses this structure:
 - Next Allowed Action:
 ```
 
+Refresh the Read Receipt after a conversation resume, interruption, context
+transition, explicit owner redirect, changed scope, changed depth, changed
+waiver state, or completed approval gate before taking the next frontend
+action. The refreshed receipt names the new active gate, updates every
+canonical obligation status, and states the next artifact or owner decision
+allowed by the current phase.
+
 `Active Gates` are owner-decision gates such as onboarding, Product Surface
 Approval, Visual Direction Approval, Wireframe Approval, Action Contract
 Approval, and Final Implementation Approval.
@@ -181,6 +188,11 @@ to the next artifact phase. They do not unlock implementation until the
 canonical D3 sequence reaches Final Implementation Approval or the owner grants
 a scoped `FRONTEND WAIVER:` for the skipped gates and obligations.
 
+After Product Surface Approval, refresh the Read Receipt and update canonical
+obligations. Record approved pages, screens, content/capability coverage,
+discovery requirements, copy language, source boundaries, visual requirements,
+and implementation boundaries as artifact requirements for the next phases.
+
 Owner words that imply scale, completeness, quality, depth, richness, working
 behavior, production readiness, or broad coverage become acceptance
 requirements. Translate those words into concrete coverage criteria before
@@ -212,7 +224,7 @@ Classify the task before choosing artifacts and approvals.
 | --- | --- | --- |
 | D0 | copy, token, or isolated visual correction | affected contract/context, copy purpose, focused render |
 | D1 | component or small section | Task Contract, relevant states, copy/microcopy impact, responsive impact, focused render |
-| D2 | new section, screen, or meaningful flow change | product slice, Messaging Contract, flow, wireframe, screen contract, owner approval |
+| D2 | new section, screen, or meaningful flow change | product scope, Messaging Contract, flow, wireframe, screen contract, owner approval |
 | D3 | major redesign, many screens, or new frontend/product | full discovery, Product Surface Model, Messaging Identity, onboarding, visual exploration, design system, flows, wireframes, approvals |
 
 Use the smallest depth supported by the requested outcome and risk. A small
@@ -802,6 +814,11 @@ Text-only descriptions, mood summaries, and written design contracts support
 the discussion after the boards exist. This gate is complete when the rendered
 board artifacts and comparison evidence are present.
 
+Before Visual Direction Approval, present a board evidence table. For each
+board, include artifact path, format, product hypothesis, representative UI
+fragments shown, component showcase coverage, state examples, desktop/mobile
+inspection evidence, strengths, trade-offs, and what the direction leaves out.
+
 ### Visual Direction Approval
 
 Ask the owner to select, mix, decline, or request iteration. Present the board
@@ -914,6 +931,14 @@ Required for D2/D3 production work and any lower-depth change that materially
 alters a UI contract. Present paths, inspected sizes, state coverage, open
 questions, and the exact implementation scope unlocked by approval.
 
+For D3 multi-page or multi-screen work, Wireframe Approval is blocked until a
+page-to-wireframe index covers every approved page and meaningful screen. Each
+index row includes page or screen name, route or state, wireframe artifact
+path, screen-contract path, six viewport classes or approved viewport waiver,
+states covered, interaction notes, content/discovery coverage, and inspection
+evidence. A shared shell, template, or combined overview wireframe can appear
+in the index as a supporting artifact and does not replace page-level rows.
+
 ## Screen Contracts
 
 Store agent-readable screen specifications under `docs/frontend/screens/`.
@@ -928,6 +953,12 @@ Keep them aligned with approved flows and wireframes. Each contract states:
 - accessibility requirements;
 - related screens, flows, and wireframes;
 - measurable acceptance criteria.
+
+For D3 multi-page or multi-screen work, create one screen contract file per
+approved page or meaningful screen. Shared shell, navigation, search, overlay,
+or layout-system contracts are separate supporting files. A combined screen
+contract summary can provide an index or shared rules and does not replace the
+per-page or per-screen contract files required for approval.
 
 ## Action Contract
 
@@ -1095,6 +1126,15 @@ Every frontend task ends with a rubric review. For D0/D1, run the rubric
 against the affected component, state, text, route, or viewport. For D2/D3, run
 it against every delivered page, meaningful screen, flow, repeated component
 pattern, and changed state.
+
+For D3 artifact phases, run the rubric before requesting Product Surface
+Approval, Wireframe Approval, and Final Implementation Approval. Apply the
+rubric to the artifact package being approved: product surface, messaging,
+content/discovery contracts, flows, wireframes, screen contracts, responsive
+coverage, instruction control, and remaining implementation evidence. Visual
+Direction Boards keep their board evidence table before approval; the full
+rubric applies when the selected direction becomes part of the design system
+and implementation package.
 
 Record a verdict and evidence for each category:
 

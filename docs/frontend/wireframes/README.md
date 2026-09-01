@@ -26,6 +26,10 @@ For multi-page surfaces, keep a page-to-wireframe index that names every
 approved page or meaningful screen and its wireframe artifact path. Shared
 shell or layout wireframes supplement page-level wireframes and are linked
 from each affected page package.
+The index should also include route or state, linked screen-contract path,
+six viewport classes or approved viewport waiver, covered states,
+interaction notes, content/discovery coverage, and rendered inspection
+evidence for each page or screen.
 
 For every UI edit, read the affected wireframes first. Update or create
 wireframes before production implementation when layout, navigation,
@@ -34,6 +38,7 @@ For an isolated copy, token, or visual correction that changes none of those
 properties, verify that the existing wireframe remains accurate and record the
 result in the Task Contract.
 
-Before Wireframe Approval, record artifact revision, rendered viewport sizes,
-covered states, open questions, and the exact implementation scope approval
-unlocks.
+Before Wireframe Approval, record artifact revision, the page-to-wireframe
+index, rendered viewport sizes for each required viewport class, covered
+states, open questions, artifact-phase rubric verdicts, and the exact
+implementation scope approval unlocks.

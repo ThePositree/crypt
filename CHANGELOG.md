@@ -4,6 +4,21 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
+## 2026-09-01 - Frontend phase transition gates
+
+- Required refreshed frontend Read Receipts after resumes, interruptions,
+  owner redirects, scope changes, waiver changes, and completed approval gates.
+- Added gate-level evidence requirements for Product Surface Approval, Visual
+  Direction Approval, Wireframe Approval, and Final Implementation Approval.
+- Blocked D3 Wireframe Approval until every approved page or meaningful screen
+  appears in a page-to-wireframe index with artifact paths, screen-contract
+  paths, viewport coverage, states, interactions, content/discovery coverage,
+  and inspection evidence.
+- Required one screen contract file per approved page or meaningful screen for
+  D3 multi-page or multi-screen work.
+
+---
+
 ## 2026-09-01 - Frontend explicit waiver phrase
 
 - Required frontend agents to follow the full subsystem exactly unless the

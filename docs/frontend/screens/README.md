@@ -7,6 +7,9 @@ aligned before implementation.
 Each real page or meaningful screen gets its own screen contract. Shared shell
 or layout contracts describe global structure and are linked from page-level
 contracts.
+For D3 multi-page or multi-screen work, store each page or meaningful screen in
+its own contract file. Shared shell, navigation, search, overlay, or layout
+contracts are separate supporting files and link back to page-level contracts.
 
 Use this structure when applicable:
 
@@ -105,6 +108,8 @@ Use this structure when applicable:
 ## Related Screens
 
 ## Related Flows And Wireframes
+
+## Artifact-Phase Rubric
 
 ## Acceptance Criteria
 
