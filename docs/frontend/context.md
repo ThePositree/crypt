@@ -1,6 +1,6 @@
 # Frontend Context
 
-Status: proposed.
+Status: established.
 Last verified: 2026-09-01.
 
 This repository currently has no active frontend application checked into the
@@ -32,47 +32,46 @@ stack from one dependency or abandoned file.
 
 ## Active Stack
 
-- frontend framework: proposed Next.js App Router under `site/`;
-- build, package, and validation setup: proposed npm scripts for `next dev`,
-  `next build`, `next start`, linting, and type-aware TypeScript checks;
-- styling approach: proposed Tailwind CSS v4 through `@tailwindcss/postcss`;
-- UI libraries and local primitives: not yet selected; prefer small local
-  primitives unless a dependency clearly reduces maintenance risk;
-- design tokens and CSS variables: proposed in `docs/frontend/design-system.md`;
+- frontend framework: Next.js App Router under `site/`;
+- build, package, and validation setup: npm with `package-lock.json`; scripts
+  for `next dev`, `next build`, `next start`, and `tsc --noEmit`;
+- styling approach: Tailwind CSS v4 through `@tailwindcss/postcss`, with
+  product tokens in `site/app/globals.css`;
+- UI libraries and local primitives: local React components plus `lucide-react`
+  icons for standard controls and subsystem symbols;
+- design tokens and CSS variables: established in `site/app/globals.css` and
+  summarized in `docs/frontend/design-system.md`;
 - themes and dark/light mode: public docs should start with one light pastel
   theme; dark mode is not in the first approved scope yet;
 - typography: proposed in `docs/frontend/design-system.md`;
-- icon libraries: not yet selected; use a maintained icon package if controls
-  need recognizable symbols;
-- form, chart, table, animation, and visualization libraries: not yet selected;
-  interactive system map may use native React/SVG first unless a library is
-  justified by interaction complexity;
-- responsive conventions: not established; required before implementation via
-  wireframes and screen contracts;
+- icon libraries: `lucide-react`;
+- form, chart, table, animation, and visualization libraries: native React/CSS
+  for the first interactive map and search surfaces; no charting dependency yet;
+- responsive conventions: desktop uses app shell with sidebar and map-first
+  content; tablet/mobile collapse to single-column content with stacked map
+  nodes and top controls;
 - layout patterns: public docs portal with left navigation, journey navigation,
   search, interactive system map, guide pages, reference pages, glossary, and
   version selector;
 - assets and imagery: abstract cute lo-fi mascot system and hand-drawn pastel
   diagrams are requested;
-- component documentation, examples, or catalogs: not established;
-- established screen and component patterns: none yet;
+- component documentation, examples, or catalogs:
+  `docs/frontend/component-registry.md`;
+- established screen and component patterns: Docs Town home, curated doc page,
+  backend search modal/route, guide step, source notes, and related-doc rail;
 - legacy areas, migrations, and inconsistencies: the repository previously
   reverted a local docs portal commit; inspect any reintroduced frontend code
   before assuming it is authoritative.
 
 ## Unresolved Or Conflicting Evidence
 
-- Decision affected: exact package manager and dependency versions.
-- Evidence: Python project has no JavaScript lockfile; owner selected
-  Next.js/Tailwind but not npm/pnpm/yarn.
-- Required resolution: choose a package manager before implementation.
-
 - Decision affected: deployment target.
 - Evidence: no `.openai/hosting.json` exists; Sites tooling is available but
   requires source, build output, commit SHA, and saved version before
   production deployment.
-- Required resolution: create local site first, then create/save/deploy through
-  Sites after implementation approval and validation.
+- Required resolution: deploy only after explicit owner request or hosting
+  decision, because repository rules do not allow pushing without owner
+  instruction.
 
 Stable, actively used choices are intentional unless stronger evidence shows
 otherwise. Include the date observed because dependencies and conventions can

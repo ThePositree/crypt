@@ -201,19 +201,29 @@ project docs, requirements, specs, current state, task context, or a canonical
 
 ## Completeness Review
 
-- Primary goals covered: pending implementation evidence.
-- Secondary goals covered: pending implementation evidence.
-- Necessary content present: pending page inventory and copy review.
-- Content and capability coverage proven: pending route/content map.
-- Discovery/search coverage proven: pending search index/API validation.
+- Primary goals covered: implemented in `site/` through Docs Town map, curated
+  pages, role journeys, and guide/search routes.
+- Secondary goals covered: implemented through Developer and Crypto Trader
+  paths, glossary, source notes, related links, and version selector.
+- Necessary content present: 10 curated first-version pages, 7 map regions, 6
+  glossary entries, and guide steps in `site/lib/content.ts`.
+- Content and capability coverage proven: route inventory from `next build` and
+  `docs/frontend/reviews/public-docs-site-review.md`.
+- Discovery/search coverage proven: `/api/search?q=backtester`, `/search?q=risk`,
+  and backend search implementation in `site/app/api/search/route.ts`.
 - Messaging trajectory present: proposed in Revision 1.
 - Claims backed by proof or softened: pending copy review.
 - Objections answered where they arise: proposed in Revision 1.
-- Core interactions present: pending implementation evidence.
-- Journey endpoints clear: proposed in Revision 1.
-- Placeholder/demo-only surfaces removed or marked out of scope: required for
-  final review.
-- Required states covered: pending wireframes, screen contracts, and QA.
+- Core interactions present: map links, search modal/API, search route, version
+  selector, related docs, and copy buttons.
+- Journey endpoints clear: Developer and Crypto Trader paths link to curated
+  pages.
+- Placeholder/demo-only surfaces removed or marked out of scope: no private
+  live data or uncurated Markdown rendering is present; deeper docs can be
+  expanded in future versions.
+- Required states covered: search idle, loading, results, empty, and error;
+  map default/hover/focus/selected; copy default/copied; responsive desktop and
+  mobile layouts.
 
 ## Approval Record
 

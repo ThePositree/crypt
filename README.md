@@ -16,6 +16,9 @@ The public README is intentionally short. Detailed operating rules live in
 - **Execution:** live OKX execution for the owner-selected strategy, including
   exchange sync, persistent state, risk-base checkpoints, Telegram reporting,
   and live/backtest reconciliation.
+- **Public docs site:** `site/` contains a curated Next.js/Tailwind docs
+  portal that explains the project through an interactive system map, versioned
+  public pages, guide steps, glossary terms, and backend search.
 - **Benchmark:** `docs/strategy_benchmark.md` defines the main money target
   used to compare strategies. It is an optimization target, not a hard
   restriction on the owner. The owner may promote any strategy to production;
@@ -118,3 +121,20 @@ uv run pytest tests -q
 
 Do not run long research commands silently. Any command expected to take more
 than roughly one minute must expose progress and ETA.
+
+### Public docs site
+
+```bash
+cd site
+npm install
+npm run dev
+```
+
+Production validation:
+
+```bash
+cd site
+npm run typecheck
+npm run build
+npm run start
+```
