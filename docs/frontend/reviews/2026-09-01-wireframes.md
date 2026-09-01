@@ -28,9 +28,10 @@
   become controls; diagrams stack; code/tables contain overflow; wide screens
   preserve article measure.
 - Browser console: no messages after the complete capture sequence.
-- Network: wireframe HTML, CSS, and JavaScript requests returned HTTP 200. An
-  initial browser-default `/favicon.ico` request returned 404; the source now
-  declares an empty data favicon and a clean reload no longer requests that path.
+- Network: wireframe HTML, CSS, JavaScript, and local SVG favicon are served from
+  the artifact source. An initial browser-default `/favicon.ico` request returned
+  404 during capture; the source now declares a local favicon and the final
+  smoke verifies that file exists. The issue did not affect rendered layouts.
 
 ## Artifact-phase Rubric
 
