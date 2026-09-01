@@ -4,6 +4,18 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
+## 2026-09-01 - Frontend read receipt obligations
+
+- Required frontend Read Receipts to separate owner-decision gates from active
+  execution obligations.
+- Required receipts to name applicable messaging, content, discovery,
+  interaction, responsive, accessibility, rubric, rendered evidence, memory,
+  and final audit obligations before frontend action.
+- Clarified waiver framing around exact artifacts, obligations, risks, and
+  remaining evidence instead of shortcut or reduced-quality framing.
+
+---
+
 ## 2026-09-01 - Frontend all-text messaging pass
 
 - Clarified that the full Messaging System applies to every user-visible text

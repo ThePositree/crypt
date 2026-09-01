@@ -10,10 +10,11 @@ READ RECEIPT GATE: before planning, editing, generating artifacts, launching
 rendered checks, or delegating frontend work, publish a concise receipt in chat.
 The receipt names every frontend instruction and memory file read, line counts,
 full-file ranges covered, top-level headings observed, the classified depth,
-the active gates, and the first owner approval gate that controls the next
-action. It ends with `Control Verdict: STOP` or `Control Verdict: PROCEED`.
-Frontend action begins after this receipt exists, identifies the currently
-applicable instruction set, and returns `PROCEED`.
+the active gates, the active obligations, and the first owner approval gate
+that controls the next action. It ends with `Control Verdict: STOP` or
+`Control Verdict: PROCEED`. Frontend action begins after this receipt exists,
+identifies the currently applicable instruction set and obligations, and
+returns `PROCEED`.
 
 PRODUCTION STANDARD: every frontend surface is user-visible product quality
 from its first delivered version. Plan and build for complete, accurate,
@@ -80,23 +81,56 @@ The pre-action Read Receipt records:
 - full-file read range for each file, from first line through last line;
 - top-level headings or declared empty-state purpose for each file;
 - current task depth and why that depth fits;
-- active approvals, waivers, and review gates;
+- active approval gates;
+- active obligations that apply to the classified task and surface;
+- active waivers already granted by the owner;
 - first gate that controls the next action;
 - frontend memory entries that are established, pending, or awaiting owner
   input;
 - `Control Verdict: STOP` or `Control Verdict: PROCEED`;
 - exact next action allowed by that verdict.
 
+The Read Receipt uses this structure:
+
+```md
+## Read Receipt
+
+- Files read:
+- Depth:
+- Active Gates:
+- Active Obligations:
+- First Controlling Gate:
+- Existing Owner Waivers:
+- Control Verdict:
+- Next Allowed Action:
+```
+
+`Active Gates` are owner-decision gates such as onboarding, Product Surface
+Approval, Visual Direction Approval, Wireframe Approval, Action Contract
+Approval, and Final Implementation Approval.
+
+`Active Obligations` are execution requirements that remain active even when
+the current gate is `STOP`. Name every applicable obligation, including full
+Messaging System for all user-visible text, Content Coverage Audit,
+Content And Capability Contract, Discovery Contract, page-level wireframes,
+screen contracts, Interaction Inventory, full link/navigation coverage,
+Discovery QA, six viewport classes, accessibility checks, Frontend Rubric
+Review, rendered evidence, durable memory updates, and Final Instruction
+Audit.
+
 Start implementation, artifact generation, rendered inspection, delegation, or
-durable memory updates only after the Read Receipt identifies the active gates
-and returns `PROCEED`. When the first active gate requires owner approval, the
-Read Receipt returns `STOP`; the next action is presenting the required
-artifact or question and waiting for the owner decision.
+durable memory updates only after the Read Receipt identifies the active gates,
+active obligations, and returns `PROCEED`. When the first active gate requires
+owner approval, the Read Receipt returns `STOP`; the next action is presenting
+the required artifact or question and waiting for the owner decision.
 
 Only explicit owner messages grant approvals and scoped waivers. The agent
 records owner-granted waivers and approvals after they are given. The agent
 does its own scope, risk, and depth analysis, then presents the active gate for
-owner decision when a gate controls the next action.
+owner decision when a gate controls the next action. Waiver requests describe
+the exact artifact, obligation, risk, and decision being waived plus the
+evidence that remains required. Waiver framing uses concrete scope and risk
+language rather than speed, shortcut, or reduced-quality framing.
 
 Short owner requests preserve the depth and approval requirements implied by
 the requested surface. A request such as "create a site", "make the app",
@@ -1196,6 +1230,7 @@ reviews record validation evidence.
 A frontend task is complete when:
 
 - the Read Receipt was published before frontend action;
+- the Read Receipt named active gates and active obligations separately;
 - the requested outcome and approved scope are delivered;
 - required gates or scoped waivers are recorded;
 - relevant contracts match the implementation;
