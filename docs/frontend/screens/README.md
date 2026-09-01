@@ -109,6 +109,25 @@ Use this structure when applicable:
 
 ## Related Flows And Wireframes
 
+## HTML Wireframe Contract
+
+- Stable page/screen address:
+- Stable state addresses or fixtures:
+- Operable interactions:
+- State-matrix reference:
+- Viewport evidence:
+
+## Wireframe Conformance Invariants
+
+- Frozen structure and hierarchy:
+- Frozen navigation and journey endpoints:
+- Frozen interactions, states, feedback, focus, and recovery:
+- Frozen responsive transformations:
+- Frozen accessibility relationships:
+- Visual properties intentionally left to the Design System:
+- Production route/component mapping:
+- Conformance verification:
+
 ## Artifact-Phase Rubric
 
 ## Acceptance Criteria
@@ -122,5 +141,7 @@ Use this structure when applicable:
 - Rubric Review:
 - Required states:
 - Rendered evidence:
+- Independent Contract Review:
+- Wireframe conformance evidence:
 - Automated checks:
 ```

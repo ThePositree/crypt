@@ -53,6 +53,24 @@ provide the owner with the exact QA prompt to run in a new session; completion
 remains blocked until returned findings are fixed and rechecked. Mandatory QA
 gaps are not backlog items.
 
+Every new or materially changed frontend Markdown contract also requires an
+independent read-only review before approval or implementation. The reviewer
+acts as a potential frontend lead inheriting the project without the authoring
+session's implicit context. Record the Frontend Lead Contract Review Brief,
+reviewer/session, every contract read, contradictions and guesses found,
+severity, fixes, and re-review verdict. Contract review is separate from
+production QA.
+
+Production frontend implementation is performed in a separate write-scoped
+subagent or fresh session from the design/control session. Final QA uses a
+third independent context. Reviews record all three owners: design/control,
+implementation, and QA, plus any scoped owner waiver that collapses roles.
+
+Wireframe review links to directly openable HTML artifacts first. Screenshots
+are viewport/state evidence only. Production review includes the Wireframe
+Conformance Contract and an invariant-by-invariant comparison between approved
+HTML wireframes and production behavior.
+
 Use the six viewport classes from the frontend subsystem for D2/D3 reviews
 unless an owner-approved viewport boundary narrows the surface. Record the
 Frontend Rubric Review verdicts and evidence for every applicable category.

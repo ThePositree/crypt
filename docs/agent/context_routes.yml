@@ -126,6 +126,10 @@ routes:
       - Important frontend text needs Messaging Identity, Messaging Contract, proof,
         objection handling, and Copy QA proportional to scope.
       - Rendered visual inspection is required for meaningful UI changes.
+      - Wireframes are directly openable HTML artifacts; screenshots are evidence only.
+      - Frontend Markdown contracts require independent potential-lead review.
+      - Design/control, production implementation, and final QA use separate contexts.
+      - Production must satisfy the approved Wireframe Conformance Contract.
       - Persistent frontend memory lives under docs/frontend/.
 
   architecture_or_adr:

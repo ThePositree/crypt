@@ -4,6 +4,22 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
+## 2026-09-01 - Frontend HTML wireframes and separated execution roles
+
+- Required directly openable, operable HTML wireframes for every approved page,
+  screen, and applicable state; screenshots now serve only as QA evidence.
+- Added state matrices and Wireframe Conformance Contracts that freeze approved
+  structural and behavioral invariants through production implementation.
+- Required every frontend Markdown contract package to pass independent
+  read-only review by a potential frontend lead before approval or use.
+- Separated frontend design/control, write-scoped production implementation,
+  and final independent QA into distinct agent or session contexts with
+  self-contained briefs.
+- Reverted the unfinished documentation-portal artifact series before applying
+  the instruction revision.
+
+---
+
 ## 2026-09-01 - Independent frontend QA gate
 
 - Reverted the generated documentation site commit so the repository returns to

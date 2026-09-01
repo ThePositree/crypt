@@ -1,8 +1,10 @@
 # Wireframes
 
-Store persistent low-fidelity rendered wireframes here. Wireframes are durable
-UI contracts, not throwaway sketches. They show screen layout and interaction
-intent before production UI code changes.
+Store persistent low-fidelity rendered HTML wireframes here. Wireframes are
+durable, directly openable UI contracts, not screenshots or throwaway sketches.
+They show and simulate screen layout, interaction behavior, applicable states,
+and responsive intent before production UI code changes. Screenshots are QA
+evidence for HTML wireframes and never replace them.
 
 Use plain gray-box rendering:
 
@@ -22,14 +24,20 @@ Each real site page or meaningful screen gets its own separate wireframe. Each
 real page also gets wireframe coverage for all relevant project breakpoints,
 either as separate files or clearly separated breakpoint views inside that
 page's wireframe package.
+Each package must expose a stable directly openable HTML address for the page
+and every applicable state. A shared renderer is allowed when these addresses
+remain stable and are indexed individually. Every promised control must work
+against local mock state: static interaction notes do not satisfy coverage.
 For multi-page surfaces, keep a page-to-wireframe index that names every
-approved page or meaningful screen and its wireframe artifact path. Shared
+approved page or meaningful screen and its directly openable HTML artifact
+address. Shared
 shell or layout wireframes supplement page-level wireframes and are linked
 from each affected page package.
-The index should also include route or state, linked screen-contract path,
-six viewport classes or approved viewport waiver, covered states,
-interaction notes, content/discovery coverage, and rendered inspection
-evidence for each page or screen.
+The index should also include route or state, HTML artifact address, linked
+screen-contract path, six viewport classes or approved viewport waiver, state
+matrix, operable interactions, content/discovery coverage, screenshots, and
+rendered inspection evidence for each page or screen. Link HTML first and
+screenshots separately.
 
 For every UI edit, read the affected wireframes first. Update or create
 wireframes before production implementation when layout, navigation,
@@ -39,6 +47,13 @@ properties, verify that the existing wireframe remains accurate and record the
 result in the Task Contract.
 
 Before Wireframe Approval, record artifact revision, the page-to-wireframe
-index, rendered viewport sizes for each required viewport class, covered
-states, open questions, artifact-phase rubric verdicts, and the exact
-implementation scope approval unlocks.
+index, directly openable HTML addresses, rendered viewport sizes, state matrix,
+operable interaction evidence, open questions, artifact-phase rubric verdicts,
+and the exact implementation scope approval unlocks.
+
+Wireframe Approval freezes structural and behavioral invariants. Production
+may replace gray-box styling with the approved Design System, but it must
+preserve approved hierarchy, sections, navigation, actions, interactions,
+states, responsive transformations, accessibility relationships, and journey
+endpoints. Record those invariants in a Wireframe Conformance Contract and map
+them to production units before implementation.

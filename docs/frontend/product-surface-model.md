@@ -124,3 +124,21 @@ project docs, requirements, specs, current state, task context, or a canonical
 - Proposed delegated scope:
 - Owner decision: pending / approved / declined
 - Fallback:
+
+## Independent Contract Review Record
+
+- Frontend Lead Contract Review Brief:
+- Reviewer/session:
+- Contracts reviewed:
+- Blocking findings and fixes:
+- Re-review verdict:
+
+## Implementation Separation Record
+
+- Design/control session:
+- Frontend Implementation Brief:
+- Implementation worker/session:
+- Allowed production files and units:
+- Wireframe Conformance Contract:
+- Independent QA worker/session:
+- Owner waivers affecting role separation:
