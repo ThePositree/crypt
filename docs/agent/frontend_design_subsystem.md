@@ -666,12 +666,13 @@ approval.
 The five boards must be meaningfully different but plausible interpretations
 of the same product evidence.
 
-Each Visual Direction Board is a Design System Showcase, Component Showcase,
-Component Gallery, or Component Playground for a possible product direction.
-It is a rendered UI artifact that demonstrates how real interface parts would
-look and behave together. Illustration, mascot, hero art, mood imagery, or
-brand art may support the board only when they appear inside or alongside
-representative UI structure.
+Each Visual Direction Board is a raster Design System Showcase, Component
+Showcase, Component Gallery, or Component Playground for a possible product
+direction. It is a rendered UI artifact that demonstrates how real interface
+parts would look and behave together before the implementation stack is fully
+known. Illustration, mascot, hero art, mood imagery, or brand art may support
+the board only when they appear inside or alongside representative UI
+structure.
 
 Each board is a rendered UI artifact plus concise notes containing:
 
@@ -687,21 +688,22 @@ Each board is a rendered UI artifact plus concise notes containing:
 - what the board leaves outside its direction;
 - desktop and mobile viewport sizes inspected.
 
-Use an appropriate visual artifact generation method when image artifacts are
-part of the approved exploration, then place those images in a UI showcase
-context that proves component composition, hierarchy, state handling, and
-responsive behavior.
-When HTML is the available medium, create five separate rendered HTML board
-pages rather than one page that hides comparison detail.
+Create boards as raster images by default. Place any generated or assembled
+imagery in a UI showcase context that proves component composition, hierarchy,
+state handling, and responsive behavior. Use HTML/CSS/JS board pages only as a
+fallback when raster image generation is unavailable or cannot produce
+inspectable artifacts; when this fallback is used, create five separate
+rendered HTML board pages rather than one page that hides comparison detail.
 
 Render and inspect every board before presenting it. Fix overlap, blank areas,
 unreadable text, broken responsive composition, or insufficient component
 evidence. Boards are direction studies before production assets.
 
-Visual Direction Board completion requires five existing rendered artifacts
-with stable paths, inspected desktop and mobile views, visible representative
-UI fragments, component showcase coverage, state examples, and concise
-comparison notes.
+Visual Direction Board completion requires five existing raster artifacts with
+stable paths, inspected desktop and mobile views, visible representative UI
+fragments, component showcase coverage, state examples, and concise comparison
+notes. When raster generation is unavailable, the fallback completion evidence
+is five existing rendered HTML/CSS/JS artifacts with the same coverage.
 Text-only descriptions, mood summaries, and written design contracts support
 the discussion after the boards exist. This gate is complete when the rendered
 board artifacts and comparison evidence are present.

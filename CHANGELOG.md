@@ -4,6 +4,16 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
+## 2026-09-01 - Frontend raster visual boards
+
+- Clarified that Visual Direction Boards default to raster UI showcase
+  artifacts because the final implementation stack may still be unknown during
+  visual exploration.
+- Limited HTML/CSS/JS visual board pages to fallback use when raster generation
+  is unavailable or cannot produce inspectable artifacts.
+
+---
+
 ## 2026-09-01 - Frontend visual board component showcase
 
 - Clarified that Visual Direction Boards are rendered Design System /
