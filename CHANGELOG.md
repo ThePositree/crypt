@@ -4,6 +4,17 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
+## 2026-09-01 - Frontend all-text messaging pass
+
+- Clarified that the full Messaging System applies to every user-visible text
+  fragment and microcopy point in the affected frontend surface, not only major
+  headings or prominent copy.
+- Updated copy QA and completion language to require evidence for all
+  user-visible text across pages, screens, states, actions, labels, and
+  repeated content patterns.
+
+---
+
 ## 2026-09-01 - Frontend full QA and messaging audits
 
 - Required the full Messaging System pass for frontend work that creates,

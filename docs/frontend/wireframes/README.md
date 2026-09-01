@@ -9,7 +9,7 @@ Use plain gray-box rendering:
 - labeled gray blocks for navigation, content, controls, images, data regions,
   and calls to action;
 - short descriptions for complex blocks;
-- notes for the semantic job of important copy blocks;
+- notes for the semantic job of user-visible copy blocks;
 - coverage notes for content, data, media, levels, tools, workflows, search,
   filtering, navigation, recommendations, maps, indexes, catalogs, and
   generated output when the surface promises them;

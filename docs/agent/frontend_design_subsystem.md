@@ -353,8 +353,8 @@ Frontend copy is a product layer. Text explains,
 sells when selling is appropriate, guides action, reduces doubt, supports
 claims, and shapes how the product is perceived.
 
-Every important text fragment must do useful work. It should do at least one of
-these:
+Every user-visible text fragment must do useful work. It should do at least
+one of these:
 
 - explain the product or the current state;
 - move the user to the next meaningful step;
@@ -370,10 +370,12 @@ Any frontend task that creates, changes, or approves user-visible text must
 apply the full Messaging System. The pass covers Messaging Identity, Messaging
 Contract, page or screen trajectory, text hierarchy, placement and density,
 proof, objections, microcopy, anti-slop review, specificity, and Copy QA. For
-D0/D1, apply the full pass to the affected text and its immediate context. For
-D2/D3, apply it to every important page, screen, state, navigation area, action,
-and repeated content pattern. Record the applied pass in the Task Contract,
-screen contract, or review evidence.
+D0/D1, apply the full pass to every user-visible text fragment in the affected
+surface and its immediate context. For D2/D3, apply it to every user-visible
+text fragment across every page, screen, state, navigation area, action,
+microcopy point, data label, empty/error/loading/success message, and repeated
+content pattern. Record the applied pass in the Task Contract, screen contract,
+or review evidence.
 
 ### Messaging Identity
 
@@ -406,9 +408,9 @@ approved for the audience and surface.
 
 ### Messaging Contract
 
-For any important page, screen, onboarding step, pricing surface, empty state,
-or public product section, define the task of the text before writing final
-copy. The Messaging Contract answers:
+For any page, screen, onboarding step, pricing surface, empty state, or public
+product section with user-visible text, define the task of the text before
+writing final copy. The Messaging Contract answers:
 
 - why this page or screen exists;
 - who it speaks to;
@@ -1020,7 +1022,8 @@ Record a verdict and evidence for each category:
   transformation preserves hierarchy, reachability, and content.
 - Visual: hierarchy, spacing, typography, alignment, density, composition,
   component consistency, semantic color, and identity fit are intentional.
-- Copy: the full Messaging System is applied to important text and microcopy.
+- Copy: the full Messaging System is applied to all user-visible text and
+  microcopy.
 - Content and capability: promised corpus, data, pages, sections, states,
   workflows, media, generated output, and capabilities are covered.
 - Discovery: search, filtering, sorting, recommendations, maps, indexes,
@@ -1038,12 +1041,13 @@ category verdicts and named evidence.
 ## Copy QA And Review Protocol
 
 Production-ready frontend combines polished layout with specific, useful text.
-Review important copy as product behavior.
+Review all user-visible copy as product behavior.
 
 Inspect:
 
 - Messaging Identity use;
-- Messaging Contract fulfillment for each important page, screen, and state;
+- Messaging Contract fulfillment for each page, screen, and state with
+  user-visible text;
 - page or screen trajectory from starting state to intended leaving state;
 - text hierarchy across main promise, section arguments, supporting copy,
   action copy, and microcopy;
@@ -1064,8 +1068,8 @@ Inspect:
 - density by placement;
 - copy is specific, supported, proportionate, and well placed.
 
-For every important text fragment, ask what job it performs. If the answer is
-unclear, rewrite it or cut it. If a strong claim needs proof, add proof,
+For every user-visible text fragment, ask what job it performs. If the answer
+is unclear, rewrite it or cut it. If a strong claim needs proof, add proof,
 weaken the claim, or retire the claim.
 
 Copy QA is complete when the review names the pages, screens, states, actions,
@@ -1199,7 +1203,8 @@ A frontend task is complete when:
   paths before implementation approval;
 - every approved page or meaningful screen has its own wireframe package and
   screen contract, with shared shell artifacts recorded separately;
-- the full Messaging System was applied to important text and microcopy;
+- the full Messaging System was applied to every user-visible text fragment
+  and microcopy point;
 - the Interaction Inventory was exercised across links, controls, stateful
   regions, navigation, keyboard behavior, and expected events;
 - the required six viewport classes were inspected or a narrower owner-approved
