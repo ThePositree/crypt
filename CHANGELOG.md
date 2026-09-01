@@ -4,6 +4,17 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
+## 2026-09-01 - Frontend gate control verdicts
+
+- Added explicit `STOP` / `PROCEED` Read Receipt verdicts for frontend work.
+- Clarified that approvals and scoped waivers come from explicit owner
+  messages, and short frontend requests keep their depth and approval gates.
+- Required D3 onboarding and approval gating when new frontend surfaces are
+  requested while product, messaging, design, system, or active context memory
+  is not established.
+
+---
+
 ## 2026-09-01 - Direct full-doc context routing
 
 - Removed compact route-summary files and the routing layer that loaded them.

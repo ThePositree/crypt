@@ -11,8 +11,9 @@ rendered checks, or delegating frontend work, publish a concise receipt in chat.
 The receipt names every frontend instruction and memory file read, line counts,
 full-file ranges covered, top-level headings observed, the classified depth,
 the active gates, and the first owner approval gate that controls the next
-action. Frontend action begins after this receipt exists and identifies the
-currently applicable instruction set.
+action. It ends with `Control Verdict: STOP` or `Control Verdict: PROCEED`.
+Frontend action begins after this receipt exists, identifies the currently
+applicable instruction set, and returns `PROCEED`.
 
 PRODUCTION STANDARD: every frontend surface is user-visible product quality
 from its first delivered version. Plan and build for complete, accurate,
@@ -78,13 +79,28 @@ The pre-action Read Receipt records:
 - active approvals, waivers, and review gates;
 - first gate that controls the next action;
 - frontend memory entries that are established, pending, or awaiting owner
-  input.
+  input;
+- `Control Verdict: STOP` or `Control Verdict: PROCEED`;
+- exact next action allowed by that verdict.
 
 Start implementation, artifact generation, rendered inspection, delegation, or
-durable memory updates only after the Read Receipt identifies the active gates.
-When the first active gate requires owner approval, present the required
-artifact or question and wait for the owner decision before continuing past
-that gate.
+durable memory updates only after the Read Receipt identifies the active gates
+and returns `PROCEED`. When the first active gate requires owner approval, the
+Read Receipt returns `STOP`; the next action is presenting the required
+artifact or question and waiting for the owner decision.
+
+Only explicit owner messages grant approvals and scoped waivers. The agent
+records owner-granted waivers and approvals after they are given. The agent
+does its own scope, risk, and depth analysis, then presents the active gate for
+owner decision when a gate controls the next action.
+
+Short owner requests preserve the depth and approval requirements implied by
+the requested surface. A request such as "create a site", "make the app",
+"build the page", or "design the screen" receives D3 treatment when frontend
+memory says the product surface, Messaging Identity, Design Identity, Design
+System, or active frontend context is `not established`, `pending`, or awaiting
+owner input. In that state, the Read Receipt verdict is `STOP: D3 onboarding
+and approval gate required`.
 
 Before final response, perform a Final Instruction Audit. The audit states
 which frontend instruction files were applied, which memory files influenced
