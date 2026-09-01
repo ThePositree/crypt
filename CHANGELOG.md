@@ -4,19 +4,6 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
-## 2026-09-01 - Public docs platform direction proposed
-
-- Recorded the owner-selected direction for a public curated `crypt` docs
-  platform: English content, `site/`, Next.js + Tailwind, backend search,
-  semver docs, interactive system-map home, curated pages, and cute lo-fi
-  pastel mascots.
-- Proposed the first Product Surface, Messaging, Design Identity, and Design
-  System revisions for the new frontend.
-- Added a proposed frontend decision and active task entry for the docs
-  platform implementation gates.
-
----
-
 ## 2026-09-01 - Frontend raster visual boards
 
 - Clarified that Visual Direction Boards default to raster UI showcase
