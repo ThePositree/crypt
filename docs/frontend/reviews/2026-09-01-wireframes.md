@@ -28,8 +28,9 @@
   become controls; diagrams stack; code/tables contain overflow; wide screens
   preserve article measure.
 - Browser console: no messages after the complete capture sequence.
-- Network: wireframe HTML, CSS, and JavaScript requests returned HTTP 200; no
-  failed asset request was observed.
+- Network: wireframe HTML, CSS, and JavaScript requests returned HTTP 200. An
+  initial browser-default `/favicon.ico` request returned 404; the source now
+  declares an empty data favicon and a clean reload no longer requests that path.
 
 ## Artifact-phase Rubric
 
