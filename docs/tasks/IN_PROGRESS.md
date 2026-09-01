@@ -3,6 +3,55 @@
 Only active work belongs here. Historical research notes belong in
 `CHANGELOG.md`, `CHANGELOG_ARCHIVE.md`, or archive docs.
 
+## Public docs platform
+
+**What:** create a production-ready public curated docs platform under `site/`
+for developers and crypto-native readers. The site should explain how the
+Python research workbench works through an interactive system map, curated
+pages, guides, glossary, versioned docs, and backend search.
+
+**Why now:** the repository has deep strategy, backtester, and live-execution
+knowledge, but no public frontend surface that explains the system as a
+coherent product.
+
+**Current evidence:**
+
+- Owner onboarding on `2026-09-01` selected English public docs, no private
+  pages, `site/`, Next.js + Tailwind, backend search, semver versioning, cute
+  lo-fi pastel visual direction, abstract mascots, interactive system-map home,
+  and curated pages rather than direct Markdown rendering.
+- Proposed artifacts:
+  `docs/frontend/product-surface-model.md`,
+  `docs/frontend/messaging.md`,
+  `docs/frontend/design-identity.md`,
+  `docs/frontend/design-system.md`, and
+  `docs/frontend/decisions/0001-public-docs-platform-direction.md`.
+- Orca CLI was attempted via
+  `/home/n-tretyakov/.config/orca/linux-orca-cli-shim/orca` but failed with
+  `/tmp/.mount_orca-lPgvcFl/orca-ide: bad option: --no-sandbox`; use raw local
+  commands until the runtime is fixed.
+
+**Next steps:**
+
+1. Get owner approval or corrections for Product Surface Model revision 1 and
+   the proposed public docs platform direction.
+2. Create five rendered visual direction boards for the lo-fi mascot docs
+   platform and request Visual Direction Approval.
+3. Create flows, rendered wireframes, screen contracts, and final
+   implementation approval for the first production slice.
+4. Implement the Next.js/Tailwind site under `site/`, including backend search
+   and version-aware curated content.
+5. Validate with build, route/search checks, rendered desktop/mobile
+   inspection, and frontend review evidence.
+
+**Acceptance:** the deployed site has curated coverage for all approved major
+project areas, global backend search, semver docs navigation, interactive
+system map, role journeys, guide steps with command/output/explanation,
+responsive and accessible UI, and no private live-money details.
+
+**Links:** `docs/frontend/product-surface-model.md`,
+`docs/frontend/decisions/0001-public-docs-platform-direction.md`, `README.md`.
+
 ## Live execution / backtest reconciliation audit
 
 **What:** finish the evidence-backed reconciliation of the live SOL portfolio
