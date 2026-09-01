@@ -192,7 +192,7 @@ Three completion questions remain separate:
 Read the full frontend instruction and memory set before applying
 depth-specific context.
 
-Always begin with the repository bootstrap and routed frontend card. Then read:
+Always begin with the repository bootstrap and routed frontend full docs. Then read:
 
 - `docs/frontend/context.md` for the active stack and conventions;
 - the affected flows, wireframes, screens, components, and decisions;
@@ -423,7 +423,7 @@ Use density intentionally:
 - problem sections may carry more recognition and tension;
 - mechanism sections may be more detailed because the user is ready to
   understand how the product works;
-- feature cards stay short and specific, with one idea per card;
+- feature tiles stay short and specific, with one idea per tile;
 - comparison and FAQ copy answers directly with concrete evidence;
 - CTA copy is concise, confident, and action-oriented.
 
@@ -609,7 +609,7 @@ Each board is a visual artifact plus concise notes containing:
 - composition, hierarchy, typography, density, geometry, surfaces, and color;
 - imagery, illustration, iconography, and motion direction where relevant;
 - representative UI fragments;
-- a component-primitives area covering navigation, controls, forms, cards,
+- a component-primitives area covering navigation, controls, forms, content tiles,
   lists/tables, data visualization, semantic states, and overlays used by the
   product;
 - what the board leaves outside its direction;

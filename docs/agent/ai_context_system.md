@@ -2,7 +2,7 @@
 
 The repository keeps agent accuracy by leaving hard rules and current state in
 plain text, while reducing routine token load through deterministic routing and
-compact cards.
+route-specific full-document selection.
 
 ## Goals
 
@@ -19,13 +19,10 @@ compact cards.
 1. `AGENTS.md`: short bootstrap plus non-negotiable hard rules.
 2. `docs/state/current.yml`: compact current project, production, and
    checkpoint snapshot.
-3. `docs/agent/context_routes.yml`: maps task keywords to cards and full docs.
-4. `.card.md` files: compact summaries for large docs, with exact links to
-   full source docs. Each card stays materially smaller than its source doc so
-   routing remains lightweight.
-5. Full markdown docs: source truth for detailed behavior, commands, evidence,
+3. `docs/agent/context_routes.yml`: maps task keywords to full docs.
+4. Full markdown docs: source truth for detailed behavior, commands, evidence,
    and runbooks.
-6. Archives and experiments: old changelog, old ADRs, old reconciliation docs,
+5. Archives and experiments: old changelog, old ADRs, old reconciliation docs,
    optional vector indexes, and optional text-as-image packs.
 
 The helper CLI is `scripts/agent_context.py`:
@@ -46,11 +43,10 @@ python scripts/agent_context.py image-pack \
   generated summaries.
 - Treat full source docs, runtime config, OKX state, and exact command output as
   final authority when money, production, or regression verdicts depend on exact
-  commands or numbers. Use cards as entry points.
+  commands or numbers. Use route-selected full docs as entry points.
 - Use YAML routing before semantic/vector retrieval.
 - Use `rg` on canonical text when a task needs exact names, paths, commits, or
   dollar values.
-- If a card and its full doc disagree, trust the full doc and fix the card.
 - If docs and runtime config disagree, stop and ask the owner.
 
 ## Knowledge Base Expansion Rules
@@ -60,10 +56,10 @@ Use the smallest durable place that preserves accuracy:
 - Hard rule: put the short mandatory rule in `AGENTS.md`; put detailed policy
   in `docs/agent/operating_rules.md` when needed.
 - Current runtime/production/checkpoint fact: update `docs/state/current.yml`.
-- Large runbook, spec, report, or audit: write the full markdown doc and add a
-  sibling `.card.md` when it is likely to be routed into future sessions.
+- Large runbook, spec, report, or audit: write the full markdown doc and add it
+  to deterministic routing when it is likely to be routed into future sessions.
 - New knowledge area: add or update a route in `docs/agent/context_routes.yml`
-  with `match`, `cards`, and `full_docs`.
+  with `match` and `full_docs`.
 - Live-money or backtester-critical knowledge: add at least one question to
   `docs/agent/context_benchmark.yml` and keep the markdown benchmark aligned.
 - Completed historical work: write `CHANGELOG.md`; archive older history in
@@ -74,17 +70,14 @@ Use the smallest durable place that preserves accuracy:
 Keep knowledge expansion complete and compact:
 
 - Large docs that future agents need have a route.
-- Routes to large docs include a compact card.
+- Routes point directly to canonical full docs.
 - Active production truth lives in current canonical state and runtime sources.
-- `.card.md` files remain summaries that are a smaller percentage of their
-  source doc and link to exactly one full source.
 
 After expanding the knowledge base, run:
 
 ```bash
 UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/agent_context.py validate
 UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/agent_context.py benchmark
-UV_CACHE_DIR=/tmp/uv-cache PYTHONPATH=src uv run pytest tests/docs/test_agent_context_docs.py
 ```
 
 ## Vector Retrieval
@@ -125,7 +118,7 @@ Use `docs/agent/context_benchmark.md` and
 a default workflow. Compare:
 
 - plain markdown with deterministic routing;
-- markdown cards plus `rg`;
+- routed markdown plus `rg`;
 - vector retrieval pointing to markdown;
 - image-pack retrieval for archives only.
 

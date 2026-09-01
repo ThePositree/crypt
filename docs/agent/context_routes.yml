@@ -26,9 +26,6 @@ routes:
       - telegram
       - position
       - exchange
-    cards:
-      - docs/execution/live_execution.card.md
-      - docs/execution/live_backtest_reconciliation_2026-07-28.card.md
     full_docs:
       - docs/execution/live_execution.md
       - docs/deploy/railway.md
@@ -47,8 +44,6 @@ routes:
       - phase-c
       - replay
       - parity
-    cards:
-      - docs/backtester_regression.card.md
     full_docs:
       - docs/backtester_regression.md
       - docs/execution/live_backtest_reconciliation_2026-07-28.md
@@ -66,9 +61,6 @@ routes:
       - dss
       - candidate
       - router
-    cards:
-      - docs/strategy_benchmark.card.md
-      - docs/backtester_regression.card.md
     full_docs:
       - docs/strategy_benchmark.md
       - docs/backtester/candidate_archive.md
@@ -89,10 +81,7 @@ routes:
       - archive
       - vector
       - image-pack
-      - card
       - source
-    cards:
-      - docs/agent/ai_context_system.card.md
     full_docs:
       - docs/agent/ai_context_system.md
       - docs/agent/context_benchmark.md
@@ -117,9 +106,6 @@ routes:
       - browser
       - screenshot
       - component docs
-    cards:
-      - docs/agent/frontend_design_subsystem.card.md
-      - docs/agent/operating_rules.card.md
     full_docs:
       - docs/agent/frontend_design_subsystem.md
       - docs/frontend/context.md
@@ -150,8 +136,6 @@ routes:
       - engine
       - sink
       - sandbox
-    cards:
-      - docs/agent/operating_rules.card.md
     full_docs:
       - docs/agent/operating_rules.md
       - docs/architecture.md
@@ -172,16 +156,12 @@ routes:
       - eta
       - missing
       - candle
-    cards:
-      - docs/agent/operating_rules.card.md
     full_docs:
       - docs/agent/operating_rules.md
     notes:
       - Use detailed operating rules for task hygiene and command policy.
 
 fallback:
-  cards:
-    - docs/agent/operating_rules.card.md
   full_docs:
     - docs/agent/operating_rules.md
   search:

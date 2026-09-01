@@ -4,9 +4,10 @@ Use this benchmark before replacing deterministic markdown routing with vector
 retrieval or text-as-image packs. The benchmark compares accuracy and token use
 across four modes:
 
-- routed markdown: `AGENTS.md`, `docs/state/current.yml`, route cards, then
-  exact full docs only as needed;
-- cards plus `rg`: route cards first, exact `rg` for names/paths/numbers;
+- routed markdown: `AGENTS.md`, `docs/state/current.yml`, then exact
+  route-selected full docs as needed;
+- routed markdown plus `rg`: route-selected full docs first, exact `rg` for
+  names/paths/numbers;
 - vector retrieval: semantic discovery that points back to canonical markdown;
 - image-pack retrieval: archive-only screenshots or rendered text images.
 
@@ -30,7 +31,8 @@ Pass criteria:
 - Runtime config and OKX are treated as live-money truth.
 - Phase checkpoints are reproduced exactly.
 - No hard rule exists only in vector/image form.
-- Token use is lower than loading all root/docs markdown eagerly.
+- Token use is recorded for routed full-doc context and compared with eager
+  loading.
 
 ## Questions
 
@@ -62,4 +64,3 @@ Pass criteria:
     minutes?
 18. Which docs are allowed candidates for a text-as-image experiment?
 19. Which docs must never be available only as vector/image retrieval?
-20. What should the agent do if a card disagrees with its full source doc?

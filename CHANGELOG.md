@@ -4,6 +4,15 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
+## 2026-09-01 - Direct full-doc context routing
+
+- Removed compact route-summary files and the routing layer that loaded them.
+- Updated deterministic context routing, context helper validation, benchmark
+  expectations, README documentation map, and agent bootstrap to use canonical
+  full markdown docs directly.
+
+---
+
 ## 2026-08-31 - Documentation regression tests removed
 
 - Removed repository documentation regression tests so docs and instruction
@@ -43,7 +52,7 @@ Format: newest on top, date in `YYYY-MM-DD`.
 
 ## 2026-08-30 - Frontend instruction system v2
 
-- Rewrote the canonical frontend subsystem and compact route card around an
+- Rewrote the canonical frontend subsystem and compact route summary around an
   explicit Task Contract: outcome, scope, sources of truth, constraints,
   acceptance evidence, and unresolved material decisions.
 - Preserved the established frontend practices: product discovery, minimum
@@ -68,10 +77,10 @@ Format: newest on top, date in `YYYY-MM-DD`.
   precise completion labeling, final pre-implementation summaries, rendered
   artifact review, durable implementation reviews, and component-primitive
   coverage for Visual Direction Boards.
-- Replaced the fixed `.card.md` line-count rule with a relative compactness
-  check so cards remain materially smaller than their full source docs.
+- Replaced the fixed route-summary line-count rule with a relative compactness
+  check so summaries remain materially smaller than their full source docs.
 - Updated docs regression coverage for the new frontend gate protocol and
-  relative card compactness rule.
+  relative compactness rule.
 
 ---
 
@@ -83,7 +92,7 @@ Format: newest on top, date in `YYYY-MM-DD`.
 - Clarified that a frontend session can be successful when it completes
   discovery, onboarding, product modeling, visual direction, wireframes, review,
   or handoff without starting production UI code.
-- Updated docs regression coverage so the full subsystem and compact card keep
+- Updated docs regression coverage so the full subsystem and compact summary keep
   the phase-based framing visible to future agents.
 
 ---
@@ -93,7 +102,7 @@ Format: newest on top, date in `YYYY-MM-DD`.
 - Strengthened frontend phase continuation so capable agents use isolated
   subagents for substantial next phases whenever subagents are available, with
   fresh-session handoff as the fallback.
-- Updated the compact frontend card and docs regression coverage for the
+- Updated the compact frontend summary and docs regression coverage for the
   subagent continuation rule.
 
 ---
@@ -117,7 +126,7 @@ Format: newest on top, date in `YYYY-MM-DD`.
   criteria: phase outputs, minimum interview depth with uncertainty checks,
   rendered visual direction boards, owner-gate completion, canonical handoff
   truth, and responsive composition verdicts.
-- Updated compact frontend card and docs regression tests to preserve the
+- Updated compact frontend summary and docs regression tests to preserve the
   positive workflow contracts instead of relying on negative instruction
   phrases.
 
@@ -134,7 +143,7 @@ Format: newest on top, date in `YYYY-MM-DD`.
   feedback, remain direction studies rather than production assets, and cannot
   be used to finalize Design Identity, Design System, or implementation without
   approval.
-- Updated the compact frontend subsystem card and docs regression tests for the
+- Updated the compact frontend subsystem summary and docs regression tests for the
   new gate semantics.
 
 ---
@@ -149,7 +158,7 @@ Format: newest on top, date in `YYYY-MM-DD`.
   isolated subagent continuation, fresh-session fallback, and the rule that
   agents must not pretend they can remove prior conversation history from
   context.
-- Updated the compact frontend subsystem card and docs regression tests so the
+- Updated the compact frontend subsystem summary and docs regression tests so the
   phase handoff rules remain visible through selective routing.
 
 ---
@@ -192,14 +201,14 @@ Format: newest on top, date in `YYYY-MM-DD`.
   Design Identity is not established, unless the owner waives onboarding or
   prior frontend memory already proves the direction.
 - Added a docs regression test so the frontend onboarding stop gate remains
-  present in both the full subsystem document and compact card.
+  present in both the full subsystem document and compact summary.
 - Added a portable frontend design subsystem for AI agents in
   `docs/agent/frontend_design_subsystem.md`, covering proportional design
   depth, first-use discovery, design onboarding, visual exploration, persistent
   identity, component reuse, screen contracts, rendered inspection, visual
   review, anti-AI-default UI checks, responsive behavior, and state design.
-- Added `docs/agent/frontend_design_subsystem.card.md` and routed frontend/UI
-  tasks through `docs/agent/context_routes.yml`.
+- Added a compact frontend route summary and routed frontend/UI tasks through
+  `docs/agent/context_routes.yml`.
 - Added persistent frontend memory scaffolding under `docs/frontend/` for
   context, design identity, design system, component registry, visual
   references, flows, screen contracts, decisions, and visual reviews.
@@ -276,10 +285,10 @@ Format: newest on top, date in `YYYY-MM-DD`.
   routed detailed operating policy to `docs/agent/operating_rules.md`.
 - Added deterministic context routing in `docs/agent/context_routes.yml` and a
   compact current-state snapshot in `docs/state/current.yml`.
-- Added `.card.md` entry points for backtester regression, strategy benchmark,
+- Added compact route summaries for backtester regression, strategy benchmark,
   live execution, live/backtest reconciliation, and the AI context system.
 - Added `docs/agent/context_benchmark.md` with 20 typical agent questions for
-  comparing routed markdown, cards plus `rg`, vector retrieval, and archive
+  comparing routed markdown, routed markdown plus `rg`, vector retrieval, and archive
   image packs.
 - Added machine-readable benchmark expectations in
   `docs/agent/context_benchmark.yml` plus `scripts/agent_context.py` for
@@ -292,13 +301,12 @@ Format: newest on top, date in `YYYY-MM-DD`.
   `docs/agent/context_benchmark_results.md`: `20/20` source hits and `20/20`
   required-term hits.
 - Added explicit knowledge-base expansion rules: durable knowledge must update
-  routes, cards, current state, or benchmark coverage when it affects future
-  agent routing, current production facts, live money, or backtester
-  checkpoints.
+  routes, current state, or benchmark coverage when it affects future agent
+  routing, current production facts, live money, or backtester checkpoints.
 - Documented the vector/image retrieval policy: canonical rules and current
   state stay as text; vector and text-as-image are archive/discovery
   experiments until a 20-question benchmark proves accuracy.
-- Added docs tests that validate route paths, card source links, and bootstrap
-  size.
+- Added docs tests that validate route paths, compact source links, and
+  bootstrap size.
 - Kept `CHANGELOG.md` as recent history and moved older August entries to
   `CHANGELOG_ARCHIVE.md`.

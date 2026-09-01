@@ -14,8 +14,7 @@ Read only this bootstrap first, then route the rest of the context through:
 
 1. `docs/agent/context_routes.yml` - deterministic task-to-doc routing.
 2. `docs/state/current.yml` - compact current state and production snapshot.
-3. The `.card.md` files named by the selected route.
-4. The full docs named by those cards only when the task needs exact detail.
+3. The full docs named by the selected route.
 
 If docs and active runtime config disagree, stop and ask the owner. For live
 execution, the runtime source of truth is the loaded config/env, especially
@@ -52,9 +51,9 @@ execution, the runtime source of truth is the loaded config/env, especially
   recurring or the owner asks for a reusable command.
 - Keep `docs/tasks/IN_PROGRESS.md` active-only and `docs/tasks/BACKLOG.md`
   unfinished-only. Historical material belongs in changelog/archive docs.
-- When adding durable knowledge, update `docs/agent/context_routes.yml`, a
-  `.card.md`, `docs/state/current.yml`, or the context benchmark when the new
-  fact affects routing, current state, live money, or backtester checkpoints.
+- When adding durable knowledge, update `docs/agent/context_routes.yml`,
+  `docs/state/current.yml`, or the context benchmark when the new fact affects
+  routing, current state, live money, or backtester checkpoints.
 - Write or update specs before or alongside new engines, sinks, execution
   components, or non-trivial modules.
 - Write a new ADR for decisions that commit the project to a future-questioned

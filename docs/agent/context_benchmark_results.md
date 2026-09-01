@@ -12,10 +12,10 @@ Deterministic routed-markdown baseline:
 
 | Metric | Result |
 |---|---:|
-| Questions | `20` |
-| Source hits | `20 / 20` |
+| Questions | `19` |
+| Source hits | `19 / 19` |
 | Source hit rate | `100%` |
-| Required-term hits | `20 / 20` |
+| Required-term hits | `19 / 19` |
 | Required-term hit rate | `100%` |
 
 Token-budget smoke:
@@ -27,8 +27,8 @@ UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/agent_context.py budget --route
 
 | Route | Eager approx tokens | Routed approx tokens | Savings |
 |---|---:|---:|---:|
-| `backtester_regression` | `12719` | `2849` | `77.60%` |
-| `docs_ai_context` | `12719` | `2994` | `76.46%` |
+| `backtester_regression` | `15553` | `9235` | `40.62%` |
+| `docs_ai_context` | `15553` | `78148` | `-402.46%` |
 
 Rules for future retrieval experiments:
 

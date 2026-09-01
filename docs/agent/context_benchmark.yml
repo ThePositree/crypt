@@ -15,7 +15,7 @@ questions:
     required_terms: [OKX, fills, fees]
   - id: benchmark_target_doc
     question: What benchmark doc defines the $10,000 strategy comparison target?
-    expected_sources: [docs/strategy_benchmark.md, docs/strategy_benchmark.card.md]
+    expected_sources: [docs/strategy_benchmark.md]
     required_terms: [strategy_benchmark.md, "$10,000"]
   - id: benchmark_gate_policy
     question: Is the benchmark a hard gate that blocks owner-promoted production strategies?
@@ -35,7 +35,7 @@ questions:
     required_terms: ["83.09804366087424"]
   - id: phase_c_deploy_commit
     question: Which deployed commit starts the phase-C live behavior boundary?
-    expected_sources: [docs/state/current.yml, docs/execution/live_backtest_reconciliation_2026-07-28.card.md]
+    expected_sources: [docs/state/current.yml, docs/execution/live_backtest_reconciliation_2026-07-28.md]
     required_terms: [81a4e01]
   - id: exchange_closed_unknown_scope
     question: Is commit 2704c83 deployed to Railway production, and does it affect the money path?
@@ -43,7 +43,7 @@ questions:
     required_terms: [2704c83, deployed, money]
   - id: phase_c_failure_symptom
     question: What exact symptom makes phase C fail around the 2026-08-03T17:00:00Z signal?
-    expected_sources: [docs/backtester_regression.md, docs/backtester_regression.card.md]
+    expected_sources: [docs/backtester_regression.md]
     required_terms: [2026-08-04T00:58Z, 2026-08-06]
   - id: completed_work_destination
     question: Where should completed historical work go instead of docs/tasks/IN_PROGRESS.md?
@@ -77,7 +77,3 @@ questions:
     question: Which docs must never be available only as vector/image retrieval?
     expected_sources: [docs/agent/ai_context_system.md]
     required_terms: [AGENTS.md, docs/state/current.yml, docs/agent/context_routes.yml]
-  - id: card_disagreement
-    question: What should the agent do if a card disagrees with its full source doc?
-    expected_sources: [docs/agent/ai_context_system.md]
-    required_terms: [trust the full doc, fix the card]

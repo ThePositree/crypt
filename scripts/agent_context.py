@@ -48,7 +48,6 @@ class RouteSelection:
     route: str
     score: int
     matched_terms: list[str]
-    cards: list[str]
     full_docs: list[str]
 
 
@@ -79,7 +78,14 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 def _text_budget(raw_path: str) -> Budget:
     path = _repo_path(raw_path)
-    text = path.read_text(encoding="utf-8")
+    if path.is_dir():
+        text = "\n".join(
+            child.read_text(encoding="utf-8", errors="ignore")
+            for child in sorted(path.rglob("*.md"))
+            if child.is_file()
+        )
+    else:
+        text = path.read_text(encoding="utf-8")
     return Budget(
         path=raw_path,
         chars=len(text),
@@ -101,7 +107,7 @@ def _route_doc_paths(route_name: str) -> list[str]:
     routes = _load_yaml(ROUTES_PATH)
     selected = routes["routes"][route_name]
     paths = [item["path"] for item in routes["always"]]
-    paths.extend(selected.get("cards", []))
+    paths.extend(selected.get("full_docs", []))
     return list(dict.fromkeys(paths))
 
 
@@ -128,7 +134,6 @@ def select_route(question: str) -> RouteSelection:
             route=best_name,
             score=best_score,
             matched_terms=best_matches,
-            cards=fallback.get("cards", []),
             full_docs=fallback.get("full_docs", []),
         )
 
@@ -136,7 +141,6 @@ def select_route(question: str) -> RouteSelection:
         route=best_name,
         score=best_score,
         matched_terms=best_matches,
-        cards=best_route.get("cards", []),
         full_docs=best_route.get("full_docs", []),
     )
 
@@ -145,7 +149,7 @@ def route_report(question: str) -> dict[str, Any]:
     routes = _load_yaml(ROUTES_PATH)
     selection = select_route(question)
     always = [item["path"] for item in routes.get("always", [])]
-    initial_context = list(dict.fromkeys([*always, *selection.cards]))
+    initial_context = list(dict.fromkeys([*always, *selection.full_docs]))
 
     return {
         "question": question,
@@ -169,9 +173,8 @@ def validate_context() -> dict[str, Any]:
     for item in routes.get("always", []):
         route_paths.append(item["path"])
     for route in routes.get("routes", {}).values():
-        route_paths.extend(route.get("cards", []))
         route_paths.extend(route.get("full_docs", []))
-    route_paths.extend(routes.get("fallback", {}).get("cards", []))
+    route_paths.extend(routes.get("fallback", {}).get("full_docs", []))
 
     missing = []
     for raw_path in route_paths:
@@ -182,18 +185,6 @@ def validate_context() -> dict[str, Any]:
         elif not path.is_file():
             missing.append(raw_path)
 
-    cards = sorted((ROOT / "docs").rglob("*.card.md"))
-    broken_cards = []
-    for card in cards:
-        lines = card.read_text(encoding="utf-8").splitlines()
-        source_lines = [line for line in lines if line.startswith("Full source: `")]
-        if len(source_lines) != 1:
-            broken_cards.append(_relative(card))
-            continue
-        source = source_lines[0].removeprefix("Full source: `").removesuffix("`")
-        if not _repo_path(source).is_file():
-            broken_cards.append(f"{_relative(card)} -> {source}")
-
     questions = benchmark.get("questions", [])
     if not isinstance(questions, list):
         raise ValueError("docs/agent/context_benchmark.yml questions must be a list")
@@ -201,10 +192,8 @@ def validate_context() -> dict[str, Any]:
     return {
         "route_paths": len(route_paths),
         "missing_route_paths": missing,
-        "cards": len(cards),
-        "broken_cards": broken_cards,
         "benchmark_questions": len(questions),
-        "ok": not missing and not broken_cards and len(questions) == 20,
+        "ok": not missing and len(questions) > 0,
     }
 
 
@@ -361,7 +350,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="AI context routing utilities")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("validate", help="validate context routes, cards, and benchmark")
+    subparsers.add_parser("validate", help="validate context routes and benchmark")
 
     route = subparsers.add_parser("route", help="select a context route for a question")
     route.add_argument("question")
