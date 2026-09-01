@@ -4,45 +4,6 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
-## 2026-09-01 - Documentation portal wireframe package
-
-- Recorded Warm Workshop as the sole approved visual direction and finalized
-  Design Identity and Design System revisions.
-- Added three UX flows, a shared shell contract, and one screen contract for
-  every approved page.
-- Rendered 78 gray-box wireframes through Orca CLI across six CSS viewport
-  classes for all 13 pages, then inspected every narrow-mobile and wide-desktop artifact.
-- Replaced defective large/wide client-host captures with reduced-device-scale
-  renders that preserve CSS viewport behavior without framebuffer repetition.
-- Added the page-to-wireframe index, wireframe Text Inventory, and artifact rubric.
-
----
-
-## 2026-09-01 - Documentation portal visual direction boards
-
-- Recorded Product Surface revision 1 approval and the owner waiver reducing
-  visual exploration from five raster boards to three.
-- Generated and inspected Warm Workshop, Field Atlas, and Night Instrument Room
-  UI showcase boards with desktop/mobile docs layouts, component galleries, and
-  interaction-state coverage.
-- Added comparison evidence and an artifact-phase rubric for Visual Direction Approval.
-
----
-
-## 2026-09-01 - Documentation portal product surface proposal
-
-- Completed D3 onboarding for a public Russian-language `crypt` documentation
-  portal built from curated Next.js and Tailwind CSS pages.
-- Proposed a 13-page product surface covering quick start, architecture, data,
-  strategies, backtesting, research, live execution, references, development,
-  and troubleshooting without publishing strategy performance results.
-- Established the content, discovery, messaging, responsive, visual, and
-  read-only product boundaries before frontend implementation.
-- Recorded that current source and specialized execution contracts override the
-  historical signal-only overview in `docs/architecture.md`.
-
----
-
 ## 2026-09-01 - Independent frontend QA gate
 
 - Reverted the generated documentation site commit so the repository returns to

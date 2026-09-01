@@ -43,29 +43,10 @@ canonical_docs:
   changelog_recent: CHANGELOG.md
   changelog_archive: CHANGELOG_ARCHIVE.md
 
-frontend_portal:
-  status: wireframe_approval_pending
-  revision: 1
-  requested_surface: public Russian curated documentation portal
-  stack_direction: Next.js and Tailwind CSS
-  visual_direction: dark pastel cartoon lo-fi crypto workshop
-  canonical_product_surface: docs/frontend/product-surface-model.md
-  canonical_messaging: docs/frontend/messaging.md
-  product_surface_approved: true
-  product_surface_approved_at: 2026-09-01
-  visual_board_count: 3
-  visual_board_count_waiver: "FRONTEND WAIVER: Five raster Visual Direction Boards — создать три направления вместо пяти."
-  visual_direction: warm_workshop_only
-  visual_direction_approved_at: 2026-09-01
-  wireframe_revision: 1
-  wireframe_page_count: 13
-  wireframe_render_count: 78
-  implementation_started: false
-
 required_commands:
   uv_agent_prefix: UV_CACHE_DIR=/tmp/uv-cache
   full_pytest: PYTHONPATH=src uv run pytest
-  docs_context_test: unavailable; tests/docs/test_agent_context_docs.py is not present as of 2026-09-01
+  docs_context_test: PYTHONPATH=src uv run pytest tests/docs/test_agent_context_docs.py
 
 known_constraints:
   rtk: documented but may be unavailable in this environment; use raw commands when rtk is missing

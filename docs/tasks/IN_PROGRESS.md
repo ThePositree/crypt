@@ -3,36 +3,6 @@
 Only active work belongs here. Historical research notes belong in
 `CHANGELOG.md`, `CHANGELOG_ARCHIVE.md`, or archive docs.
 
-## Public documentation portal
-
-**What:** design and build a public Russian-language documentation portal that
-presents `crypt` as a research-to-execution framework for developers who also
-trade crypto.
-
-**Approved direction:** curated Next.js and Tailwind CSS pages rather than
-repository Markdown rendering; deep technical content; local full-text search;
-classic documentation navigation; equal desktop/mobile priority; dark pastel
-cartoon lo-fi crypto workshop identity with recurring researcher, backtester
-robot, and live-execution operator characters. Strategy performance results and
-all trading controls are out of scope.
-
-**Current phase:** D3 Product Surface revision 1 was approved by the owner on
-2026-09-01. Three raster Visual Direction Boards were generated and inspected
-under an owner waiver that narrows the canonical five-board requirement.
-Visual Direction Approval is complete. Thirteen page contracts, three flows,
-and 78 rendered wireframes are ready; Wireframe Approval is now the active gate.
-Production frontend code has not started.
-
-**Next steps:**
-
-1. Obtain Wireframe Approval for revision 1.
-2. Complete production content/source manifests and the bounded Final
-   Implementation Approval package.
-
-**Links:** `docs/frontend/product-surface-model.md`,
-`docs/frontend/messaging.md`, and
-`docs/frontend/decisions/0001-docs-portal-onboarding.md`.
-
 ## Live execution / backtest reconciliation audit
 
 **What:** finish the evidence-backed reconciliation of the live SOL portfolio

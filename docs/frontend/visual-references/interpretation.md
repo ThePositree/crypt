@@ -1,126 +1,37 @@
 # Visual References Interpretation
 
-Status: Warm Workshop approved as the sole visual direction.
-Revision: 2.
-Updated: 2026-09-01.
+Status: no visual references selected yet.
+Revision: 0
 
-The owner granted a scoped count waiver:
+Persist selected and rejected visual direction boards here after frontend
+design onboarding or task-specific exploration.
 
-`FRONTEND WAIVER: Five raster Visual Direction Boards — создать три направления вместо пяти.`
+Use this format:
 
-## Board 1 — Warm Workshop — PRIMARY
-
+```text
+Board or Reference Name - PRIMARY / POSITIVE REFERENCE / NEGATIVE REFERENCE
 SOURCE:
-- `docs/frontend/visual-references/boards/01-warm-workshop.png`
+- path or URL
 
 MODEL/TOOL AND DATE:
-- Built-in image generation, 2026-09-01.
+- value
 
 LIKE:
-- Strongest cozy workshop feeling and clearest recurring-character system.
-- Classic documentation hierarchy remains dominant despite rich illustration.
-- Lavender, mint, peach, and cream accents work well on charcoal plum.
-- Rounded article surfaces and precise terminal/diagram geometry express the
-  approved soft-versus-technical visual tension.
+- property
 
 AVOID:
-- Do not let full-height character art reduce content width on ordinary pages.
-- Do not reproduce generated command text or tiny labels; production copy comes
-  from approved contracts and current repository sources.
+- property
 
 DO NOT COPY:
-- The exact composition, generated pseudo-command, or illustration poses.
+- brand, composition, or product-specific element
 
 LOCAL PRODUCT PRINCIPLE:
-- Characters can establish warmth around a rigorous, conventional docs shell.
+- principle supported by this reference
 
 APPROVAL:
-- approved by owner on 2026-09-01 as the sole direction.
+- pending / approved / rejected / mixed
+```
 
-## Board 2 — Field Atlas — REJECTED DIRECTION
-
-SOURCE:
-- `docs/frontend/visual-references/boards/02-field-atlas.png`
-
-MODEL/TOOL AND DATE:
-- Built-in image generation, 2026-09-01.
-
-LIKE:
-- Best architecture-diagram treatment and strongest authored-documentation feel.
-- Paper, graph, annotation, and stamped-verification motifs create a memorable
-  research identity without trading-dashboard associations.
-- Teal, butter, coral, and dusty lilac provide clear semantic accents.
-- Dense component playground remains systematic and inspectable.
-
-AVOID:
-- Paper layers must not become a scrapbook effect or reduce mobile legibility.
-- Generic confirmation-modal content shown in the showcase is not a required
-  product capability for this read-only portal.
-
-DO NOT COPY:
-- Literal binder tabs, paper-note wording, or generated diagram labels.
-
-LOCAL PRODUCT PRINCIPLE:
-- Curated documentation can feel like a verified field manual rather than a
-  rendered repository file.
-
-APPROVAL:
-- rejected by owner on 2026-09-01; do not mix into the approved direction.
-
-## Board 3 — Night Instrument Room — REJECTED DIRECTION
-
-SOURCE:
-- `docs/frontend/visual-references/boards/03-night-instrument-room.png`
-
-MODEL/TOOL AND DATE:
-- Built-in image generation, 2026-09-01.
-
-LIKE:
-- Strongest module/status system and clearest safety-oriented live boundary.
-- Midnight indigo, muted mint, powder blue, rose, and apricot feel calm and
-  operational without becoming neon cyberpunk.
-- Excellent compact mobile transformation and organized component states.
-- Instrument modules make system boundaries visible and memorable.
-
-AVOID:
-- Do not turn the portal into a cockpit or imply live service telemetry.
-- Generated package commands and version strings are conceptual only and must
-  never enter production content.
-
-DO NOT COPY:
-- Literal hardware framing, fake runtime status, generated commands, or labels.
-
-LOCAL PRODUCT PRINCIPLE:
-- Technical boundaries and safety states may look instrumented while the page
-  remains documentation rather than an operational dashboard.
-
-APPROVAL:
-- rejected by owner on 2026-09-01; do not mix into the approved direction.
-
-## Comparison
-
-| Dimension | Warm Workshop | Field Atlas | Night Instrument Room |
-| --- | --- | --- | --- |
-| Primary hypothesis | Cozy illustrated docs workshop | Verified research field manual | Calm modular laboratory cabin |
-| Strongest quality | Character identity and warmth | Diagrams and authored texture | Safety states and modular clarity |
-| Geometry | Rounded cards plus terminal grids | Layered paper with restrained rounding | Instrument panels and compact displays |
-| Character presence | Highest, still secondary to content | Moderate editorial guides | Moderate role-based modules |
-| Density | Balanced | Densest | Structured and compact |
-| Main trade-off | Illustration can consume space | Texture can become busy | Can drift toward dashboard/cockpit |
-
-## Inspection Evidence
-
-- All boards are PNG, `1536×1024`, RGB, and stored at stable project paths.
-- Each board visibly includes a desktop documentation layout and a separate
-  mobile layout; both were inspected at original image resolution.
-- Representative UI fragments: sidebar, article hierarchy, table of contents,
-  search, code/copy, architecture diagram, callout, tabs, accordion, and
-  previous/next navigation.
-- Component coverage: navigation, controls, inputs, content cards, lists/tables,
-  code, semantic callouts, overlays/search, and diagram nodes.
-- State coverage across the set: normal, hover/focus, selected, loading, empty,
-  error, disabled, overflow, success, warning, and partial-data treatment.
-- No board presents strategy results, PnL, price charts, buy/sell controls, or
-  profit promises.
-- Generated microtext is visual evidence only; production Russian copy will be
-  authored and reviewed through the Messaging System and Text Inventory.
+Store positive visual assets in `docs/frontend/visual-references/positive/` and
+negative visual assets in `docs/frontend/visual-references/negative/` when such
+assets exist.
