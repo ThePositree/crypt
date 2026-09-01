@@ -1,7 +1,7 @@
 # Docs Portal Product Direction
 
 - Date: 2026-09-01
-- Status: proposed
+- Status: approved
 - Affected artifact revisions: Product Surface Model revision 1; Messaging revision 1
 
 ## Context
@@ -29,9 +29,21 @@ authentication, trading controls, or version switcher.
   overview prose.
 - Every page requires its own wireframe and screen contract before implementation.
 - Live execution documentation is detailed but the site remains read-only.
-- Approval remains pending until the owner accepts Product Surface revision 1.
+- The owner approved Product Surface revision 1 on 2026-09-01 by replying `да`
+  to the named approval gate. This approval unlocks visual exploration and does
+  not authorize implementation.
 
 ## Validation Or Revisit Trigger
 
 Revisit when the public audience, page inventory, current-main policy, results
 boundary, or read-only product boundary changes.
+
+## Owner Waiver
+
+On 2026-09-01 the owner granted:
+
+`FRONTEND WAIVER: Five raster Visual Direction Boards — создать три направления вместо пяти.`
+
+The waiver changes only the exploration count. Three boards must still satisfy
+the full raster UI showcase, component, state, desktop/mobile inspection, and
+Visual Direction Approval evidence requirements.

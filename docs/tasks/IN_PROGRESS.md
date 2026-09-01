@@ -16,16 +16,16 @@ cartoon lo-fi crypto workshop identity with recurring researcher, backtester
 robot, and live-execution operator characters. Strategy performance results and
 all trading controls are out of scope.
 
-**Current phase:** D3 Product Surface revision 1 is proposed and awaits owner
-approval. Production frontend code has not started.
+**Current phase:** D3 Product Surface revision 1 was approved by the owner on
+2026-09-01. Three raster Visual Direction Boards were generated and inspected
+under an owner waiver that narrows the canonical five-board requirement.
+Visual Direction Approval is now the active gate.
+Production frontend code has not started.
 
 **Next steps:**
 
-1. Obtain Product Surface Approval for the 13-page information architecture and
-   content/discovery contracts.
-2. Produce and inspect five raster Visual Direction Boards.
-3. Obtain Visual Direction Approval, then finalize Design Identity and Design System.
-4. Create flows, per-page screen contracts, and rendered wireframes before
+1. Obtain Visual Direction Approval, then finalize Design Identity and Design System.
+2. Create flows, per-page screen contracts, and rendered wireframes before
    requesting implementation approval.
 
 **Links:** `docs/frontend/product-surface-model.md`,

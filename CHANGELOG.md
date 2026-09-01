@@ -4,6 +4,17 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
+## 2026-09-01 - Documentation portal visual direction boards
+
+- Recorded Product Surface revision 1 approval and the owner waiver reducing
+  visual exploration from five raster boards to three.
+- Generated and inspected Warm Workshop, Field Atlas, and Night Instrument Room
+  UI showcase boards with desktop/mobile docs layouts, component galleries, and
+  interaction-state coverage.
+- Added comparison evidence and an artifact-phase rubric for Visual Direction Approval.
+
+---
+
 ## 2026-09-01 - Documentation portal product surface proposal
 
 - Completed D3 onboarding for a public Russian-language `crypt` documentation

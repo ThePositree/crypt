@@ -44,13 +44,17 @@ canonical_docs:
   changelog_archive: CHANGELOG_ARCHIVE.md
 
 frontend_portal:
-  status: product_surface_approval_pending
+  status: visual_direction_approval_pending
   revision: 1
   requested_surface: public Russian curated documentation portal
   stack_direction: Next.js and Tailwind CSS
   visual_direction: dark pastel cartoon lo-fi crypto workshop
   canonical_product_surface: docs/frontend/product-surface-model.md
   canonical_messaging: docs/frontend/messaging.md
+  product_surface_approved: true
+  product_surface_approved_at: 2026-09-01
+  visual_board_count: 3
+  visual_board_count_waiver: "FRONTEND WAIVER: Five raster Visual Direction Boards — создать три направления вместо пяти."
   implementation_started: false
 
 required_commands:

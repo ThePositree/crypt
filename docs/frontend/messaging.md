@@ -1,8 +1,8 @@
 # Messaging
 
-Status: proposed.
+Status: established for Product Surface revision 1.
 Revision: 1.
-Approval source: pending Product Surface Approval.
+Approval source: owner Product Surface Approval on 2026-09-01.
 Updated: 2026-09-01.
 
 ## Messaging Identity
@@ -144,5 +144,5 @@ warnings, mobile labels, empty/error states, and previous/next links.
 - Microcopy usefulness: state rules established; exact inventory pending.
 - Coverage gaps: page-level copy and independent review await later gates.
 - Slop risks: framework hype, profit language, overpromised parity, and decorative lore.
-- Decision: proposed for Product Surface Approval.
+- Decision: approved as the global messaging direction for Product Surface revision 1.
 - Date: 2026-09-01.

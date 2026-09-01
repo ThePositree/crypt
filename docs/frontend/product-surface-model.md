@@ -1,8 +1,8 @@
 # Product Surface Model
 
-Status: proposed.
+Status: approved.
 Revision: 1.
-Approval: requested.
+Approval: approved by owner on 2026-09-01.
 Updated: 2026-09-01.
 
 ## Task Contract
@@ -199,8 +199,8 @@ cards or links back to repository Markdown.
 
 ## Completeness Review
 
-- Primary goals covered: proposed, awaiting approval.
-- Secondary goals covered: proposed, awaiting approval.
+- Primary goals covered: approved for revision 1.
+- Secondary goals covered: approved for revision 1.
 - Necessary content present: contracted; implementation not started.
 - Pre-implementation Content Coverage Audit: complete for revision 1.
 - Post-implementation Content Coverage Audit: pending implementation.
@@ -220,8 +220,9 @@ cards or links back to repository Markdown.
 ## Approval Record
 
 - Product Surface revision: 1.
-- Decision: pending.
-- Owner feedback or waiver scope: none.
+- Decision: approved.
+- Owner feedback or waiver scope: owner replied `да` to the named Product
+  Surface revision 1 approval gate; no waiver granted.
 - Date: 2026-09-01.
 - Next phase unlocked: Preliminary Identity and five rendered Visual Direction
   Boards, followed by Visual Direction Approval.
