@@ -47,3 +47,10 @@ On 2026-09-01 the owner granted:
 The waiver changes only the exploration count. Three boards must still satisfy
 the full raster UI showcase, component, state, desktop/mobile inspection, and
 Visual Direction Approval evidence requirements.
+
+## Visual Direction Approval
+
+On 2026-09-01 the owner selected only Board 1, Warm Workshop. Boards 2 and 3
+are rejected directions and must not be mixed into the final identity. This
+approval unlocks Design Identity/System finalization and wireframe artifacts;
+it does not authorize production implementation.

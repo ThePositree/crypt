@@ -1,14 +1,14 @@
 # Visual References Interpretation
 
-Status: three Visual Direction Boards ready for owner selection.
-Revision: 1.
+Status: Warm Workshop approved as the sole visual direction.
+Revision: 2.
 Updated: 2026-09-01.
 
 The owner granted a scoped count waiver:
 
 `FRONTEND WAIVER: Five raster Visual Direction Boards — создать три направления вместо пяти.`
 
-## Board 1 — Warm Workshop — CANDIDATE PRIMARY
+## Board 1 — Warm Workshop — PRIMARY
 
 SOURCE:
 - `docs/frontend/visual-references/boards/01-warm-workshop.png`
@@ -35,9 +35,9 @@ LOCAL PRODUCT PRINCIPLE:
 - Characters can establish warmth around a rigorous, conventional docs shell.
 
 APPROVAL:
-- pending.
+- approved by owner on 2026-09-01 as the sole direction.
 
-## Board 2 — Field Atlas — POSITIVE REFERENCE CANDIDATE
+## Board 2 — Field Atlas — REJECTED DIRECTION
 
 SOURCE:
 - `docs/frontend/visual-references/boards/02-field-atlas.png`
@@ -65,9 +65,9 @@ LOCAL PRODUCT PRINCIPLE:
   rendered repository file.
 
 APPROVAL:
-- pending.
+- rejected by owner on 2026-09-01; do not mix into the approved direction.
 
-## Board 3 — Night Instrument Room — POSITIVE REFERENCE CANDIDATE
+## Board 3 — Night Instrument Room — REJECTED DIRECTION
 
 SOURCE:
 - `docs/frontend/visual-references/boards/03-night-instrument-room.png`
@@ -95,7 +95,7 @@ LOCAL PRODUCT PRINCIPLE:
   remains documentation rather than an operational dashboard.
 
 APPROVAL:
-- pending.
+- rejected by owner on 2026-09-01; do not mix into the approved direction.
 
 ## Comparison
 

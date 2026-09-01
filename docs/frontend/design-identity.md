@@ -1,63 +1,76 @@
 # Design Identity
 
-Status: preliminary; visual exploration in progress.
-Revision: 1.
-Approval source: Product Surface revision 1 and owner onboarding; final visual approval pending.
-
-This preliminary identity guides three meaningfully different Visual Direction
-Boards. It becomes final only after the owner approves or mixes a direction.
+Status: approved.
+Revision: 2.
+Approval source: owner selected only Warm Workshop on 2026-09-01.
 
 ## Core Feeling
 
-- Decision: a cozy crypto workshop that makes a complex engineering system feel
-  inspectable, calm, and inviting without reducing its technical seriousness.
-- Evidence: owner onboarding on 2026-09-01.
+- Decision: a quiet, cozy crypto workshop where a technically serious system
+  feels inspectable and approachable.
+- Evidence: owner onboarding and approved Warm Workshop board.
 
 ## Personality
 
-- Decision: precise, curious, handcrafted, quietly playful, and operationally sober.
-- Evidence: expert audience, deep-content requirement, and workshop metaphor.
+- Decision: precise, curious, handcrafted, calm, and quietly playful.
+- Evidence: expert audience, deep authored content, and lo-fi workshop metaphor.
 
 ## Desired Perception
 
-- Decision: a serious developer framework with an unusually warm documentation
-  environment, not a trading dashboard or profit-marketing site.
-- Evidence: public framework framing and explicit exclusion of results.
+- Decision: a mature developer framework documented by people who understand
+  both code and trading systems; never a profit product or exchange dashboard.
+- Evidence: approved Product Surface revision 1.
 
 ## Visual Tension
 
-- Decision: rounded pastel workshop surfaces contrasted with technical grids,
-  terminal panels, architecture diagrams, and exact code examples.
-- Evidence: owner selected mixed soft/technical geometry and a dark theme.
+- Decision: soft illustrated workshop surfaces against exact terminal blocks,
+  architecture grids, code, and deterministic navigation.
+- Evidence: approved board `visual-references/boards/01-warm-workshop.png`.
 
 ## Signature Traits
 
-- Trait: three recurring workshop characters — researcher, backtester robot,
-  and live-execution operator.
+- Trait: warm charcoal-plum workshop lit by localized peach light.
+- Product purpose: create a comfortable long-reading environment in dark mode.
+- Trait: recurring researcher, compact backtester robot, and live operator.
 - Product purpose: orient readers across research, replay, and live boundaries.
-- Trait: instrument-panel diagrams built into authored documentation.
-- Product purpose: turn architecture into a recognizable learning device.
-- Trait: restrained functional micro-animation.
-- Product purpose: clarify copy, selection, search, and diagram state changes.
+- Trait: diagrams presented as tidy workbench assemblies and connected modules.
+- Product purpose: make architecture memorable without becoming decorative art.
+- Trait: lavender primary action with mint success and peach warning accents.
+- Product purpose: create consistent semantic recognition across deep articles.
+- Trait: restrained paper grain, hand-drawn annotations, and technical grid.
+- Product purpose: add authored warmth while preserving interface precision.
+
+## Character Contract
+
+- Researcher: introduces concepts, data provenance, strategy construction, and
+  questions to ask. Never makes performance promises.
+- Backtester robot: explains replay, artifacts, validation, and reproducibility.
+  Never presents generated performance as endorsement.
+- Live operator: explains dry-run, synchronization, safety, deployment, and
+  recovery. Never appears playful beside live-money warnings.
+- Presence: prominent on Home and major section openings; small contextual guide
+  elsewhere; absent when it would compete with code, warnings, or dense tables.
 
 ## Anti-Identity
 
-- Avoid: neon exchange-dashboard aesthetics, glossy fintech gradients, generic
-  cyberpunk, toy-like childishness, dense decorative clutter, and profit imagery.
-- Reason: these outcomes conflict with the calm expert documentation purpose.
+- Avoid: Field Atlas paper-first composition and Night Instrument Room cockpit
+  framing; the owner explicitly rejected mixing boards 2 and 3.
+- Avoid: neon exchange dashboards, glossy fintech gradients, generic cyberpunk,
+  price charts, coin piles, rockets, profit arrows, and trading controls.
+- Avoid: childish proportions, mascot overload, decorative clutter, low-contrast
+  pastel text, and illustration that reduces documentation width.
+- Reason: these outcomes contradict the approved expert documentation purpose.
 
 ## Implementation-Dependent Exploration Record
 
-- Execution context and methods used: built-in image generation for three raster
-  UI showcase boards, followed by local artifact inspection.
+- Execution context and methods used: built-in raster image generation followed
+  by original-resolution inspection.
 - Date: 2026-09-01.
-- Approved Visual Direction revision: pending.
-- Known limitations: generated board text is conceptual; production Russian
-  typography and exact copy will be implemented and QA-checked in code.
+- Approved Visual Direction revision: Visual References revision 2, Warm Workshop.
+- Known limitations: generated raster microtext and commands are conceptual;
+  production content comes from approved contracts and repository sources.
 
 ## Owner Waivers
 
 - `FRONTEND WAIVER: Five raster Visual Direction Boards — создать три
-  направления вместо пяти.` Granted by the owner on 2026-09-01. This narrows
-  only the board count; all showcase, state, responsive, inspection, evidence,
-  and Visual Direction Approval requirements remain active.
+  направления вместо пяти.` The waiver changes only exploration count.

@@ -19,14 +19,15 @@ all trading controls are out of scope.
 **Current phase:** D3 Product Surface revision 1 was approved by the owner on
 2026-09-01. Three raster Visual Direction Boards were generated and inspected
 under an owner waiver that narrows the canonical five-board requirement.
-Visual Direction Approval is now the active gate.
+Visual Direction Approval is complete. Thirteen page contracts, three flows,
+and 78 rendered wireframes are ready; Wireframe Approval is now the active gate.
 Production frontend code has not started.
 
 **Next steps:**
 
-1. Obtain Visual Direction Approval, then finalize Design Identity and Design System.
-2. Create flows, per-page screen contracts, and rendered wireframes before
-   requesting implementation approval.
+1. Obtain Wireframe Approval for revision 1.
+2. Complete production content/source manifests and the bounded Final
+   Implementation Approval package.
 
 **Links:** `docs/frontend/product-surface-model.md`,
 `docs/frontend/messaging.md`, and
