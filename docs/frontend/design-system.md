@@ -1,6 +1,6 @@
 # Design System
 
-Status: approved.
+Status: proposed.
 Revision: 1
 Derived from Design Identity revision: 1.
 
@@ -41,20 +41,17 @@ For every material rule, record one of:
   step, glossary entry, version selector, and risk callout.
 - Accessibility checks: pending contrast, keyboard navigation, focus states,
   semantic structure, and reduced-motion handling.
-- Known exceptions: final CSS tokens may be adjusted during implementation only
-  to satisfy rendered readability, accessibility, and responsive constraints.
+- Known exceptions: final tokens and component rules require Visual Direction
+  Approval before production implementation.
 
 ## Proposed Rules
 
-- Typography: friendly sans for interface text with a soft docs-town character,
-  readable mono for commands and
+- Typography: friendly sans for interface text, readable mono for commands and
   sparse snippets, no viewport-width font scaling.
 - Spacing: dense enough for docs scanning, with larger breathing room around
   diagrams and system-map clusters.
-- Colors: light pastel Docs Town base with distinct semantic zones: teal data,
-  melon engines, lilac strategy, yellow backtest/results, blue execution
-  boundary, rose risk, and off-white paper; avoid a single-hue purple/blue or
-  beige-only palette.
+- Colors: light pastel base with distinct semantic zones; avoid a single-hue
+  purple/blue or beige-only palette.
 - Surfaces: soft paper-like page background, restrained panels, no nested cards.
 - Borders: hand-drawn or slightly irregular accent treatment may be used on
   diagrams and mascots; text containers remain stable and readable.
@@ -63,9 +60,8 @@ For every material rule, record one of:
 - Shadows and elevation: low-contrast, mostly functional separation.
 - Density: docs pages prioritize scanning, table-of-contents, related links,
   and diagram labels over marketing whitespace.
-- Iconography: simple line icons plus abstract round mascot helpers; use
-  standard icons for controls and keep mascots supportive rather than
-  instructional text replacements.
+- Iconography: simple line icons plus mascot illustrations; use standard icons
+  for controls.
 - Motion: small map highlighting and search state transitions; no motion that
   obscures reading.
 - Forms: search is the primary form; it needs clear focus, loading, empty, and
