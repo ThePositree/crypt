@@ -32,6 +32,23 @@ notes, or earlier reviews. This review measures whether the interface itself is
 understandable, navigable, trustworthy, and visually coherent to a new member
 of the approved audience.
 
+Record Independent Wireframe Rendered Visual QA separately from First-Use
+Review. Give the reviewer the short neutral product description, clickable
+wireflow entry address, required journeys, viewport sizes, prepared states, and
+finding format. The reviewer must render and visually inspect every required
+viewport and report alignment, spacing, hierarchy, wrapping, containment,
+clipping, overlap, horizontal overflow, stable dimensions, navigation reach,
+primary-action behavior, and responsive transformations. Source inspection,
+DOM output, accessibility snapshots, and the author's screenshots without an
+independent rendered check do not satisfy this gate.
+
+Wireframe visual blockers are any overlap, clipped or unreadable required text,
+horizontal page overflow, unreachable approved screen, dead primary action,
+broken route/state transition, or missing required viewport inspection. A
+review containing one cannot return pass, pass-with-minor-fixes, or approval
+readiness. Re-render and independently recheck every affected viewport and
+journey after fixes.
+
 For substantial D2/D3 text, record a Source-Grounded Content Author and a
 separate Copy Reviewer. The author receives approved messaging/page contracts
 and only relevant canonical product sources. The reviewer sees rendered copy,

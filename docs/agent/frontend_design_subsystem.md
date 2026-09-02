@@ -129,6 +129,7 @@ Canonical frontend obligations:
 - Full Messaging System for all user-visible text;
 - Source-Grounded Content Authoring;
 - Independent First-Use Review;
+- Independent Wireframe Rendered Visual QA;
 - Pre-implementation Content Coverage Audit;
 - Post-implementation Content Coverage Audit;
 - Product Surface Model;
@@ -778,11 +779,11 @@ Record approval or a scoped waiver in a frontend decision file.
 
 Run deep one-time onboarding when D3 work needs an established Design Identity,
 or when the existing identity needs expansion for the requested product surface.
-The established practice is at least 30 questions in adaptive rounds of five,
+The established practice is exactly 25 questions in five rounds of five,
 followed by an Uncertainty Check.
 
-The number is a coverage floor rather than a script. Every question must
-resolve a material design or product decision; ask each question once and use
+The five-round, 25-question protocol is mandatory. Every question must resolve
+a material design or product decision; ask each question once and use
 repository evidence for established facts. Later rounds must adapt to earlier
 answers. Explain abstract questions with concrete alternatives while allowing
 a custom answer.
@@ -987,6 +988,13 @@ screen. A shared shell wireframe can document global navigation or layout
 system behavior and is paired with page-level wireframes for the actual
 surfaces.
 
+For multi-page or multi-screen work, the required artifact is a clickable
+wireflow: low-fidelity page wireframes connected through the same navigation,
+route, overlay, and prepared-state transitions that the production surface will
+expose. A reviewer must be able to start at the entry screen and traverse every
+primary approved journey by activating the corresponding controls in the
+wireframe. Do not require the reviewer to open each HTML file manually.
+
 Screenshots are rendered QA evidence for the HTML artifact. They never replace
 the artifact. A directory containing only screenshots is not a wireframe
 package. The page-to-wireframe index links first to the directly openable HTML
@@ -1002,6 +1010,25 @@ Wireframes show:
 - responsive transformations;
 - links to related flows and screen contracts.
 
+Keep wireframes visually neutral so reviewers judge structure instead of
+premature visual design:
+
+- use grayscale only, with plain white, gray, and black surfaces, borders, and
+  text;
+- use rectangles and an `X` placeholder for images, illustrations, video,
+  charts, maps, or other media;
+- do not apply brand colors, gradients, textures, shadows, decorative
+  backgrounds, final imagery, mascots, visual-direction styling, or polished
+  production treatments;
+- preserve realistic block sizes, text density, and responsive geometry.
+
+Use stable real text only where wording is part of information architecture:
+product and page names, navigation labels, primary action labels, and approved
+domain terminology. Replace headings, body copy, marketing copy, examples, and
+other production prose with visible meta-text that states the block's semantic
+job, intended content, approximate character or line range, proof or source
+need, media presence and type, and interaction behavior.
+
 Wireframes validate information architecture, hierarchy, page composition,
 journeys, visible states, responsive intent, and interaction intent. They are
 not early production applications. Do not implement production algorithms,
@@ -1012,15 +1039,17 @@ state-transition logic merely to make a wireframe functional.
 Use the lowest fidelity that makes the approval decision observable:
 
 - W0: rendered static structure for a page without meaningful interaction;
-- W1: directly selectable demonstration states such as normal, overlay open,
+- W1: a clickable wireflow with production-equivalent navigation plus directly
+  selectable demonstration states such as normal, overlay open,
   example results, zero results, loading, error, or mobile navigation;
 - W2: a small clickable journey when sequence or navigation is itself an
   unresolved product decision;
 - W3: a functional prototype only after explicit owner approval names the
   behavior whose implementation risk justifies it.
 
-D2/D3 wireframes default to W1. Controls at W1 may reveal prepared local states
-or navigate between stable fixtures. Search uses representative prepared
+D2/D3 wireframes default to W1. Every production navigation, route change,
+overlay entry/exit, and primary journey transition at W1 must navigate between
+stable fixtures or reveal prepared local states. Search uses representative prepared
 results rather than a search engine; copy controls may show prepared feedback
 without using the clipboard; keyboard and focus requirements remain explicit
 in screen contracts for production implementation and QA. A behavior may be
@@ -1051,6 +1080,10 @@ Screenshots record inspection evidence only. This gate is complete when the
 HTML artifacts, state matrix, interaction-intent evidence, deferred-behavior
 list, and responsive inspection evidence are present for every page or screen
 in the approved scope.
+
+The package must also expose a clickable route/state flow for every primary
+approved journey, with no dead primary action or manually opened intermediate
+screen.
 
 ### Wireframe Approval
 
@@ -1152,6 +1185,22 @@ expectations. It does not review contract completeness or implementation
 internals. Record observed failures separately from suggested solutions so the
 design/control context decides the fix.
 
+First-Use Review does not replace Wireframe Rendered Visual QA. Before
+Wireframe Approval, run a separate independent rendered review using a browser
+or screenshots at every required viewport class and applicable prepared state.
+Give this reviewer only the neutral product description, clickable wireflow,
+concrete journeys, viewport list, and visual finding format. Require inspection
+of alignment, spacing, hierarchy, text containment, wrapping, clipping,
+horizontal overflow, overlap, stable dimensions, reachable navigation, primary
+actions, and responsive transformations. DOM, accessibility-tree, source-code,
+or stylesheet inspection alone is not rendered evidence.
+
+Any overlap, clipped or unreadable required text, horizontal page overflow,
+unreachable approved screen, dead primary action, broken route/state
+transition, or uninspected required viewport is a blocking finding. A pass or
+approval-readiness verdict is forbidden until blockers are fixed and the
+affected viewports and journeys are independently re-rendered and rechecked.
+
 ## Action Contract
 
 Before implementing any UI/API path that can move money, change permissions,
@@ -1189,6 +1238,7 @@ decisions required owner approval, present one bounded summary:
 - Approved screen contracts by page or screen:
 - Independent Contract Review and reviewer/session:
 - Independent First-Use Review and reviewer/session:
+- Independent Wireframe Rendered Visual QA and reviewer/session:
 - Source-Grounded Content Author and source map, if applicable:
 - Independent Copy Review, if applicable:
 - Wireframe Conformance Contract:
@@ -1737,6 +1787,10 @@ A frontend task is complete when:
 - W3 behavior was created only after explicit owner approval;
 - Independent First-Use Review was performed without repository or authoring
   context before D2/D3 Wireframe Approval and final completion;
+- Independent Wireframe Rendered Visual QA inspected every required viewport
+  and applicable prepared state before D2/D3 Wireframe Approval;
+- the approved clickable wireflow contains no dead primary actions, broken
+  route/state transitions, or manually opened intermediate screens;
 - substantial D2/D3 copy was produced by a Source-Grounded Content Author and
   checked by an independent Copy Reviewer;
 - every applicable frontend Markdown contract passed Independent Contract

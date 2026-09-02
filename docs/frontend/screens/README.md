@@ -113,12 +113,13 @@ Use this structure when applicable:
 
 - Stable page/screen address:
 - Stable state addresses or fixtures:
-- Fidelity: W0 / W1 / W2 / owner-approved W3
+- Fidelity: W0 / W1 clickable wireflow / W2 / owner-approved W3
 - Demonstrated interaction intent:
 - Behavior deferred to production:
 - State-matrix reference:
 - Viewport evidence:
 - Independent First-Use Review evidence:
+- Independent Wireframe Rendered Visual QA evidence:
 
 ## Wireframe Conformance Invariants
 

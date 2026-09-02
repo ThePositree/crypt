@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-02 - Tighten frontend onboarding and wireflow review
+
+- Fixed D3 design onboarding at five rounds of five questions.
+- Defined W1 as a grayscale clickable wireflow with production-equivalent
+  navigation, prepared states, structured meta-text, and no visual polish.
+- Added independent rendered wireframe QA with blocking criteria for layout,
+  overflow, viewport coverage, and broken journeys before approval.
+
 Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.

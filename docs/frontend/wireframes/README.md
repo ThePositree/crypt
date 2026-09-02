@@ -1,6 +1,6 @@
 # Wireframes
 
-Store persistent low-fidelity rendered HTML wireframes here. Wireframes are
+Store persistent low-fidelity rendered HTML clickable wireflows here. Wireframes are
 durable, directly openable UI contracts, not screenshots, throwaway sketches,
 or early production applications. They demonstrate structure, hierarchy,
 interaction intent, representative states, and responsive intent before
@@ -21,6 +21,17 @@ Use plain gray-box rendering:
 - responsive states for important viewport widths;
 - links to related flows and screen contracts.
 
+Use grayscale only. Do not use brand colors, gradients, textures, shadows,
+decorative backgrounds, final imagery, mascots, or polished visual-direction
+styling. Represent media with a labeled rectangle and an `X` placeholder.
+
+Keep real text only for product/page names, navigation, primary actions, and
+approved domain terms where wording affects information architecture. All other
+copy is visible meta-text stating the block purpose, intended content, expected
+character or line range, proof/source need, media type or absence, and
+interaction behavior. Preserve realistic density so wrapping and layout can be
+reviewed before final copy exists.
+
 Each real site page or meaningful screen gets its own separate wireframe. Each
 real page also gets wireframe coverage for all relevant project breakpoints,
 either as separate files or clearly separated breakpoint views inside that
@@ -28,7 +39,10 @@ page's wireframe package.
 Each package must expose a stable directly openable HTML address for the page
 and every applicable demonstration state. A shared renderer is allowed when
 these addresses remain stable and are indexed individually. D2/D3 defaults to
-W1 fidelity: controls may reveal prepared states, while production algorithms,
+W1 fidelity as a clickable wireflow. Every production route, navigation action,
+overlay entry/exit, and primary journey transition must work through linked
+fixtures or prepared states, so reviewers never have to open screens manually.
+Controls may reveal prepared states, while production algorithms,
 real search/ranking, persistence, clipboard integration, exhaustive keyboard
 behavior, and production-grade focus management remain deferred to production
 and are specified in screen contracts. W2 clickable journeys are used only
@@ -60,6 +74,15 @@ index, directly openable HTML addresses, rendered viewport sizes, state matrix,
 fidelity, demonstrated interaction intent, deferred production behavior, the
 First-Use Review result, open questions, artifact-phase rubric verdicts,
 and the exact implementation scope approval unlocks.
+
+Run a separate Independent Wireframe Rendered Visual QA at every required
+viewport and applicable prepared state. Browser screenshots or live rendered
+inspection are required; DOM, accessibility snapshots, CSS reading, and author
+self-checks are insufficient. Treat overlap, clipping, unreadable required
+text, horizontal page overflow, dead primary actions, broken route/state flow,
+unreachable approved screens, and missing viewport evidence as blockers. Do
+not request Wireframe Approval while any such blocker or pending required
+viewport remains.
 
 Wireframe Approval freezes structural and behavioral invariants. Production
 may replace gray-box styling with the approved Design System, but it must
