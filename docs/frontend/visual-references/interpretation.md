@@ -1,7 +1,7 @@
 # Visual References Interpretation
 
-Status: visual boards generated; approval pending.
-Revision: 1
+Status: Visual Direction approved.
+Revision: 2
 
 Persist selected and rejected visual direction boards here after frontend
 design onboarding or task-specific exploration.
@@ -36,7 +36,7 @@ Store positive visual assets in `docs/frontend/visual-references/positive/` and
 negative visual assets in `docs/frontend/visual-references/negative/` when such
 assets exist.
 
-Soft Workshop Map - POSITIVE REFERENCE
+Soft Workshop Map - SECONDARY REFERENCE
 SOURCE:
 - `docs/frontend/visual-references/boards/board-01-soft-workshop-map.png`
 
@@ -58,9 +58,9 @@ LOCAL PRODUCT PRINCIPLE:
   and risk labels stay clear.
 
 APPROVAL:
-- pending
+- mixed: useful shell balance, not the primary direction.
 
-Pastel Control Room Notebook - POSITIVE REFERENCE
+Pastel Control Room Notebook - SECONDARY REFERENCE
 SOURCE:
 - `docs/frontend/visual-references/boards/board-02-pastel-control-room-notebook.png`
 
@@ -82,9 +82,10 @@ LOCAL PRODUCT PRINCIPLE:
 - Curated technical content benefits from tactile notes and clear local states.
 
 APPROVAL:
-- pending
+- mixed: useful notebook texture and state coverage, but avoid heavy purple
+  accents.
 
-System Islands Atlas - POSITIVE REFERENCE
+System Islands Atlas - PRIMARY
 SOURCE:
 - `docs/frontend/visual-references/boards/board-03-system-islands-atlas.png`
 
@@ -106,7 +107,7 @@ LOCAL PRODUCT PRINCIPLE:
   easier to remember.
 
 APPROVAL:
-- pending
+- approved by owner with "3" on 2026-09-02.
 
 Reference Desk Playground - POSITIVE REFERENCE
 SOURCE:
@@ -130,9 +131,10 @@ LOCAL PRODUCT PRINCIPLE:
   portal uses a more playful home page.
 
 APPROVAL:
-- pending
+- mixed: use for dense reference-page composition, not as the main emotional
+  direction.
 
-Lo-fi Signal Workshop - POSITIVE REFERENCE
+Lo-fi Signal Workshop - SECONDARY REFERENCE
 SOURCE:
 - `docs/frontend/visual-references/boards/board-05-lofi-signal-workshop.png`
 
@@ -154,4 +156,5 @@ LOCAL PRODUCT PRINCIPLE:
   pages precise and scannable.
 
 APPROVAL:
-- pending
+- mixed: useful flow explanation, but not primary because the owner selected
+  Board 3.

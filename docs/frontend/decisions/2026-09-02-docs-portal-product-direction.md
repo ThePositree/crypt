@@ -33,6 +33,8 @@ light themes, abstract mascots, diagrams, breadcrumbs, left navigation, desktop
 page TOC, next-reading blocks, and maturity/risk labels.
 
 Owner approved Product Surface revision 1 with "апрув" on 2026-09-02.
+Owner selected Visual Direction Board 3, `System Islands Atlas`, with "3" on
+2026-09-02.
 
 ## Consequences
 

@@ -29,7 +29,8 @@ terms without requiring raw source reading.
 - Owner approved Product Surface revision 1 on 2026-09-02.
 - Five Visual Direction Boards were generated under
   `docs/frontend/visual-references/boards/`; Visual Direction Approval is
-  pending.
+  complete with Board 3, `System Islands Atlas`, selected by the owner on
+  2026-09-02.
 - Orca CLI was intended for checkpoints and later independent review, but the
   local shim initially failed with `orca-ide: bad option: --no-sandbox`.
   The owner repaired Orca CLI on 2026-09-02 and `orca status --json` then
@@ -37,10 +38,9 @@ terms without requiring raw source reading.
 
 **Next steps:**
 
-1. Obtain Visual Direction Approval for one board, a mix, or an iteration.
-2. Create page-level flows, HTML wireframes, screen contracts, content coverage
+1. Create page-level flows, HTML wireframes, screen contracts, content coverage
    audit, discovery contract, and implementation brief.
-3. Run independent contract review in a separate Orca/fresh context, then
+2. Run independent contract review in a separate Orca/fresh context, then
    request Final Implementation Approval before creating production Next.js
    code.
 

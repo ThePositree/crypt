@@ -18,6 +18,9 @@ Format: newest on top, date in `YYYY-MM-DD`.
   notes before the required frontend approval and visual-board gates.
 - Recorded owner Product Surface Approval and generated five raster Visual
   Direction Boards for the pending visual approval gate.
+- Recorded owner Visual Direction Approval for Board 3, `System Islands
+  Atlas`, and finalized the atlas-based design identity/system direction for
+  artifact work.
 
 ---
 
