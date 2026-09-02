@@ -74,3 +74,5 @@ browser validation checked these fixtures again:
 - After the third-pass fix, browser eval also confirmed the expected primary
   section label for every matrix query and confirmed that sequential
   drawer/palette close behavior clears stale opener references.
+- Fourth-pass independent Orca contract review returned verdict `pass` with no
+  findings for the remaining search/focus blockers.
