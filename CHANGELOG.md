@@ -4,44 +4,6 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
-## 2026-09-02 - Documentation portal product contracts
-
-- Drafted the D3 product direction for `crypt docs`, a curated Russian
-  Next.js/Tailwind documentation portal for developer-crypto traders.
-- Recorded first-release scope across Overview, Architecture, Backtester,
-  Strategies, Live Execution, Data Pipeline, CLI, Configuration, Operations,
-  and Glossary, with full-content search and guided/reference navigation.
-- Captured explicit boundaries: no repository Markdown rendering, no CMS, no
-  command-result displays, and no current live production state, balances,
-  positions, or runtime metrics.
-- Seeded messaging, design identity, design-system direction, and active task
-  notes before the required frontend approval and visual-board gates.
-- Recorded owner Product Surface Approval and generated five raster Visual
-  Direction Boards for the pending visual approval gate.
-- Recorded owner Visual Direction Approval for Board 3, `System Islands
-  Atlas`, and finalized the atlas-based design identity/system direction for
-  artifact work.
-- Added proposed navigation flow, page-level screen contracts, directly
-  openable HTML wireframe package, and Orca browser preflight notes for the
-  documentation portal.
-- Ran independent Orca contract review for the wireframe/screen-contract
-  package, recorded the block verdict, and addressed the findings by expanding
-  page/search contracts, adding search expected-result criteria, correcting
-  screen index evidence, aligning Board 3/breakpoint records, and replacing the
-  fictional wireframe command with source-backed snippets.
-- Ran a second independent contract review, narrowed the remaining blockers to
-  search grouping/matrix behavior and palette/drawer focus behavior, then
-  implemented grouped search, query expectations, map/glossary recovery,
-  local result activation, and overlay focus handling in the HTML wireframe.
-- Ran a third independent contract review, then replaced matrix query results
-  with explicit section-level rows and guarded overlay close restoration to
-  remove stale focus behavior after sequential palette/drawer use.
-- Ran a fourth independent contract review, which passed with no findings for
-  the remaining search/focus blockers; the package is ready for owner
-  Wireframe Approval.
-
----
-
 ## 2026-09-01 - Frontend HTML wireframes and separated execution roles
 
 - Required directly openable, operable HTML wireframes for every approved page,
