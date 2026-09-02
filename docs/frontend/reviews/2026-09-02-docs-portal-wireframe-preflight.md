@@ -60,6 +60,14 @@ browser validation checked these fixtures again:
   the first result is Live Execution as required by the expected-result
   matrix.
 - `index.html?page=home&palette=1&q=unknown`: zero-result state shows recovery
-  link to the framework map.
+  links to the framework map and Glossary.
 - `index.html?page=home`: Home renders the atlas and all cards; selecting the
   Research filter leaves only reference-section cards.
+- `index.html?page=home&palette=1&q=no%20look-ahead%20bias`: grouped search
+  results show Data Pipeline first under Guides and supporting Backtester and
+  Glossary results under Reference.
+- `index.html?page=architecture&nav=1`: drawer fixture exposes a dialog, close
+  button, brand link, and navigation links.
+- Browser eval confirmed the expected-result matrix primary route for
+  `backtester`, `OKX`, `no look-ahead bias`, `strategy config`, `candles`,
+  `CLI`, `Railway`, `risk base`, and `warmup`.

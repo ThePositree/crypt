@@ -49,13 +49,17 @@ terms without requiring raw source reading.
   snippet, expanding all page/search contracts with canonical fields, adding a
   search expected-result matrix, fixing wireframe paths, and aligning Board 3
   and responsive-breakpoint records.
+- A second independent Orca contract review narrowed the remaining block to
+  search matrix/grouping/recovery behavior and palette/drawer focus behavior.
+  Those fixes are now implemented in the HTML wireframe and locally validated
+  with `node --check`, Orca browser snapshots, and browser eval checks for the
+  expected-result matrix.
 
 **Next steps:**
 
-1. Re-run Orca browser validation against the updated HTML wireframe fixtures.
-2. Run a fresh independent contract review in a separate Orca/fresh context,
+1. Run a fresh independent contract review in a separate Orca/fresh context,
    fix any remaining blocking findings, and request Wireframe Approval.
-3. After owner Wireframe Approval, prepare the implementation brief and
+2. After owner Wireframe Approval, prepare the implementation brief and
    Wireframe Conformance Contract, then request Final Implementation Approval
    before creating production Next.js code.
 

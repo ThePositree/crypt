@@ -29,6 +29,10 @@ Format: newest on top, date in `YYYY-MM-DD`.
   page/search contracts, adding search expected-result criteria, correcting
   screen index evidence, aligning Board 3/breakpoint records, and replacing the
   fictional wireframe command with source-backed snippets.
+- Ran a second independent contract review, narrowed the remaining blockers to
+  search grouping/matrix behavior and palette/drawer focus behavior, then
+  implemented grouped search, query expectations, map/glossary recovery,
+  local result activation, and overlay focus handling in the HTML wireframe.
 
 ---
 

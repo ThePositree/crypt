@@ -50,3 +50,53 @@
 Run a fresh independent contract review after local wireframe validation. If
 the next review passes, the portal can move to owner Wireframe Approval before
 Final Implementation Approval.
+
+## Follow-Up Review - Second Pass
+
+- Reviewer channel: Orca orchestration worker.
+- Run: `run_6e6854b21301`.
+- Dispatch: `ctx_7c4267eff452`.
+- Task: `task_c26cb5bbd2d3`.
+- Verdict: block.
+- Critical findings: none.
+
+The second review confirmed that page coverage, canonical page contracts,
+forbidden-content boundaries, Board 3 direction, and principal responsive
+thresholds were reconciled. It still blocked on two issues:
+
+- Search fixture behavior did not yet satisfy every expected-result matrix
+  query, emitted flat duplicate-heavy results instead of area groups, and
+  zero-result recovery omitted Glossary.
+- Palette keyboard navigation could lose the arrow/Enter handler after focus
+  moved to a result link, and the mobile drawer lacked explicit focus
+  containment/restoration behavior.
+
+## Second-Pass Fixes
+
+- Search results now use explicit primary/support query expectations for the
+  expected-result matrix and render grouped result sections by area.
+- Zero-result search now links to both the framework map and Glossary.
+- Palette result activation now uses a local `openSlug()` transition that
+  updates `page`, pushes a stable query URL, closes overlays, and re-renders
+  the wireframe content.
+- Palette keydown handling is attached to the overlay and document fallback so
+  ArrowUp, ArrowDown, Enter, and Tab remain owned while the palette is open.
+- Drawer open/close now records the opener, focuses the close button on open,
+  restores focus on close, closes on backdrop/Escape, and traps Tab within the
+  drawer container.
+
+## Second-Pass Validation
+
+- Inline script extraction plus `node --check` passed.
+- Orca browser snapshot confirmed grouped results for
+  `no look-ahead bias`, with Data Pipeline first.
+- Orca browser snapshot confirmed zero-result recovery links to the framework
+  map and Glossary.
+- Orca browser snapshot confirmed the mobile drawer fixture exposes a dialog,
+  close button, brand link, and navigation links.
+- Orca browser eval confirmed all expected-result matrix primary routes:
+  `backtester -> backtester`, `OKX -> live-execution`,
+  `no look-ahead bias -> data-pipeline`,
+  `strategy config -> configuration`, `candles -> data-pipeline`,
+  `CLI -> cli`, `Railway -> operations`, `risk base -> glossary`, and
+  `warmup -> backtester`.

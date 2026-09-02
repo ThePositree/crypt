@@ -79,12 +79,15 @@ Wireframe Approval.
   accordion rows, command copy button, next-reading links, and desktop TOC.
 - Stable fixture
   `index.html?page=home&palette=1&q=unknown` showed the command palette
-  zero-result state with recovery link to the framework map.
+  zero-result state with recovery links to the framework map and Glossary.
 - Stable fixture `index.html?page=architecture&theme=dark` showed the dark
   theme page structure.
 - Click preflight exercised header search, theme toggle, accordion row, and
   copy command button. These checks are preflight only and do not replace
   independent QA.
+- Post-review validation confirmed grouped search results for
+  `no look-ahead bias`, Live Execution as the first `OKX` result, and drawer
+  fixture visibility after the search/focus follow-up fixes.
 - Remaining approval evidence required: six viewport classes, full state
   matrix screenshots or snapshots, and independent contract review before
   Wireframe Approval can be treated as complete.

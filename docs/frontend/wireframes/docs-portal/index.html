@@ -110,6 +110,7 @@
     .palette-backdrop, .drawer-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.25); z-index: 20; display: none; }
     .palette-backdrop.open, .drawer-backdrop.open { display: block; }
     .palette { width: min(720px, calc(100vw - 32px)); margin: 80px auto 0; padding: 12px; }
+    .result-group h3 { margin: 16px 10px 6px; color: var(--muted); font-size: 13px; text-transform: uppercase; }
     .result { display: block; padding: 12px; border-radius: 8px; border: 1px solid transparent; }
     .result:hover, .result.active { border-color: var(--line); background: var(--sea); }
     .empty { text-align: center; padding: 36px 16px; }
@@ -178,6 +179,7 @@
       ["glossary", "Glossary", "Reference"]
     ];
     let lastPaletteTrigger = null;
+    let lastDrawerTrigger = null;
     let activeResult = 0;
     const body = {
       home: {
@@ -339,6 +341,17 @@
       "risk base": "glossary",
       "warmup": "backtester"
     };
+    const expectedSupport = {
+      "backtester": ["cli", "glossary"],
+      "okx": ["configuration", "operations", "glossary"],
+      "no look-ahead bias": ["backtester", "glossary"],
+      "strategy config": ["strategies", "live-execution"],
+      "candles": ["backtester", "glossary"],
+      "cli": ["backtester"],
+      "railway": ["live-execution", "configuration"],
+      "risk base": ["configuration", "strategies"],
+      "warmup": ["data-pipeline"]
+    };
     const params = new URLSearchParams(location.search);
     let page = params.get("page") || "home";
     let theme = params.get("theme") || "light";
@@ -399,22 +412,61 @@
       activeResult = 0;
       const needle = q.toLowerCase();
       const preferredSlug = expectedPrimary[needle];
+      const supportSlugs = expectedSupport[needle] || [];
       const matches = q && q !== "unknown"
         ? searchDocs
-            .filter(item => item.text.toLowerCase().includes(needle))
+            .filter(item => item.text.toLowerCase().includes(needle) || item.slug === preferredSlug || supportSlugs.includes(item.slug))
             .sort((a,b) => {
-              const score = item => (preferredSlug && item.slug === preferredSlug ? 100 : 0) + (item.title.toLowerCase() === needle ? 20 : 0) + (item.section.toLowerCase().includes(needle) ? 10 : 0) - (item.slug === "home" ? 30 : 0);
+              const score = item => (preferredSlug && item.slug === preferredSlug ? 100 : 0) + (supportSlugs.includes(item.slug) ? 40 : 0) + (item.title.toLowerCase() === needle ? 20 : 0) + (item.section.toLowerCase().includes(needle) ? 10 : 0) - (item.slug === "home" ? 30 : 0);
               return score(b) - score(a);
             })
             .slice(0, 8)
         : [];
+      const grouped = Object.entries(matches.reduce((acc,item) => { (acc[item.area] ||= []).push(item); return acc; }, {}));
       document.getElementById("results").innerHTML = q === "unknown" || (q && !matches.length)
-        ? `<div class="empty"><h2>Ничего не найдено</h2><p>Попробуй изменить запрос или открыть карту разделов.</p><a class="card" href="?page=architecture">Смотреть карту фреймворка</a></div>`
-        : (matches.length ? matches : searchDocs.slice(0,6)).map((item,i)=>`<a class="result ${i===0?'active':''}" href="?page=${item.slug}"><strong>${item.title}</strong><p>${item.area} / ${item.section}: ${item.snippet}</p></a>`).join("");
+        ? `<div class="empty"><h2>Ничего не найдено</h2><p>Попробуй изменить запрос или открыть карту разделов.</p><a class="card" href="?page=architecture">Смотреть карту фреймворка</a><a class="card" href="?page=glossary">Открыть глоссарий</a></div>`
+        : (matches.length ? grouped.map(([area,items])=>`<section class="result-group"><h3>${area}</h3>${items.map((item,i)=>`<a class="result ${matches.indexOf(item)===0?'active':''}" data-result-slug="${item.slug}" href="?page=${item.slug}"><strong>${item.title}</strong><p>${item.area} / ${item.section}: ${item.snippet}</p></a>`).join("")}</section>`).join("") : `<section class="result-group"><h3>Начать</h3>${searchDocs.slice(0,6).map((item,i)=>`<a class="result ${i===0?'active':''}" data-result-slug="${item.slug}" href="?page=${item.slug}"><strong>${item.title}</strong><p>${item.area} / ${item.section}: ${item.snippet}</p></a>`).join("")}</section>`);
+      bindResultLinks();
+    }
+    function openSlug(slug) {
+      page = slug;
+      history.pushState({}, "", `?page=${slug}`);
+      closePalette();
+      closeDrawer();
+      render();
+      document.querySelector("h1")?.focus?.();
+    }
+    function bindResultLinks() {
+      document.querySelectorAll(".result").forEach(link => link.onclick = e => { e.preventDefault(); openSlug(link.dataset.resultSlug); });
+    }
+    function activateResult() {
+      const target = document.querySelector(".result.active");
+      if (target) openSlug(target.dataset.resultSlug);
     }
     function closePalette() {
       document.getElementById("paletteBackdrop").classList.remove("open");
       if (lastPaletteTrigger && lastPaletteTrigger.focus) lastPaletteTrigger.focus();
+    }
+    function focusables(container) {
+      return [...container.querySelectorAll("a, button, input")].filter(el => !el.disabled && el.offsetParent !== null);
+    }
+    function trapFocus(e, container) {
+      if (e.key !== "Tab") return;
+      const items = focusables(container);
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+    function openDrawer() {
+      lastDrawerTrigger = document.activeElement;
+      document.getElementById("drawerBackdrop").classList.add("open");
+      setTimeout(()=>document.getElementById("closeNav").focus(), 0);
+    }
+    function closeDrawer() {
+      document.getElementById("drawerBackdrop").classList.remove("open");
+      if (lastDrawerTrigger && lastDrawerTrigger.focus) lastDrawerTrigger.focus();
     }
     function moveResult(delta) {
       const results = [...document.querySelectorAll(".result")];
@@ -424,21 +476,33 @@
       results[activeResult].classList.add("active");
       results[activeResult].focus();
     }
-    document.getElementById("topSearch").addEventListener("focus", e => openPalette(e.target.value));
-    document.getElementById("paletteSearch").addEventListener("input", e => drawResults(e.target.value));
-    document.getElementById("paletteSearch").addEventListener("keydown", e => {
+    function handlePaletteKeydown(e) {
       if (e.key === "ArrowDown") { e.preventDefault(); moveResult(1); }
       if (e.key === "ArrowUp") { e.preventDefault(); moveResult(-1); }
-      if (e.key === "Enter") { const target = document.querySelector(".result.active"); if (target) location.href = target.href; }
-    });
+      if (e.key === "Enter") { e.preventDefault(); activateResult(); }
+      trapFocus(e, document.getElementById("paletteBackdrop"));
+    }
+    document.getElementById("topSearch").addEventListener("focus", e => openPalette(e.target.value));
+    document.getElementById("paletteSearch").addEventListener("input", e => drawResults(e.target.value));
+    document.getElementById("paletteBackdrop").addEventListener("keydown", handlePaletteKeydown);
     document.getElementById("paletteBackdrop").addEventListener("click", e => { if (e.target.id === "paletteBackdrop") closePalette(); });
+    document.getElementById("drawerBackdrop").addEventListener("click", e => { if (e.target.id === "drawerBackdrop") closeDrawer(); });
+    document.getElementById("drawerBackdrop").addEventListener("keydown", e => trapFocus(e, document.getElementById("drawerBackdrop")));
     document.addEventListener("keydown", e => {
+      if (e.defaultPrevented) return;
+      if (document.getElementById("paletteBackdrop").classList.contains("open") && ["ArrowDown","ArrowUp","Enter","Tab"].includes(e.key)) handlePaletteKeydown(e);
+      if (document.getElementById("drawerBackdrop").classList.contains("open") && e.key === "Tab") trapFocus(e, document.getElementById("drawerBackdrop"));
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openPalette(""); }
-      if (e.key === "Escape") { closePalette(); document.getElementById("drawerBackdrop").classList.remove("open"); }
+      if (e.key === "Escape") { closePalette(); closeDrawer(); }
+    });
+    document.addEventListener("keyup", e => {
+      if (document.getElementById("paletteBackdrop").classList.contains("open") && e.key === "Enter") {
+        activateResult();
+      }
     });
     document.getElementById("themeToggle").onclick = () => { theme = document.body.dataset.theme === "dark" ? "light" : "dark"; document.body.dataset.theme = theme; };
-    document.getElementById("openNav").onclick = () => document.getElementById("drawerBackdrop").classList.add("open");
-    document.getElementById("closeNav").onclick = () => document.getElementById("drawerBackdrop").classList.remove("open");
+    document.getElementById("openNav").onclick = openDrawer;
+    document.getElementById("closeNav").onclick = closeDrawer;
     if (params.get("palette")) openPalette(params.get("q") || "");
     if (params.get("nav")) document.getElementById("drawerBackdrop").classList.add("open");
     render();
