@@ -113,9 +113,12 @@ Use this structure when applicable:
 
 - Stable page/screen address:
 - Stable state addresses or fixtures:
-- Operable interactions:
+- Fidelity: W0 / W1 / W2 / owner-approved W3
+- Demonstrated interaction intent:
+- Behavior deferred to production:
 - State-matrix reference:
 - Viewport evidence:
+- Independent First-Use Review evidence:
 
 ## Wireframe Conformance Invariants
 

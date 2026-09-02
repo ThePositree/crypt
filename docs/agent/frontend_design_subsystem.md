@@ -28,8 +28,8 @@ copy, visual glitches, broken states, unverified assumptions, approximate
 flows, shallow content, partial indexes, and decorative-only product surfaces
 as unfinished frontend work.
 
-Version: 4
-Updated: 2026-09-01
+Version: 5
+Updated: 2026-09-02
 
 This document is the canonical instruction set for frontend product, design,
 implementation, and QA work in this repository. It preserves the established
@@ -127,6 +127,8 @@ or `waived by owner` status.
 Canonical frontend obligations:
 
 - Full Messaging System for all user-visible text;
+- Source-Grounded Content Authoring;
+- Independent First-Use Review;
 - Pre-implementation Content Coverage Audit;
 - Post-implementation Content Coverage Audit;
 - Product Surface Model;
@@ -315,12 +317,48 @@ preference only when the owner states one. Delegation starts after explicit
 owner approval. A decline still allows single-agent progress in the current
 session.
 
+Do not infer collaboration approval from approval of a product, visual,
+wireframe, action, or implementation gate. Before starting each independent
+worker or separate execution context, record the exact reviewed or authored
+outcome and the owner's approval to use that context for that phase.
+
 Ask about delegation for D0/D1 work only when it provides a clear, specific
 benefit. Create a worker after the owner answers the Collaboration Check with
 approval. If repository or environment rules require a particular collaboration
 interface, name that requirement in the proposal and use it after approval.
 
-Three completion questions remain separate:
+### Independent Execution Contexts
+
+`Independent` means a separate execution context that did not author the
+artifact it evaluates. It may be another agent, a subagent, an isolated or
+neighboring session, or another compatible context. No particular agent
+feature, vendor, CLI, or orchestration product is required. When the current
+environment cannot create such a context, provide a self-contained brief for
+the owner to run in a separate session and wait for the returned result.
+
+Independence does not mean maximum repository access. Give every independent
+context only the role, product summary, artifacts, criteria, and source
+material required for its bounded task. Do not make it read this complete
+frontend subsystem, repository bootstrap, task history, changelog, or unrelated
+contracts unless its assigned task is specifically to audit those sources.
+Require a compact result containing the verdict, blocking findings, evidence,
+and recommended fixes. On re-review, provide the previous blockers, changed
+artifacts, and closure criteria instead of replaying the whole project history.
+
+Keep these roles distinct:
+
+- a Contract Reviewer inherits and challenges contracts as a future frontend
+  lead;
+- a First-Use Reviewer experiences the rendered surface as a new user and is
+  intentionally blind to repository and authoring context;
+- a Content Author reads approved product and source context to write grounded
+  interface content;
+- a Copy Reviewer evaluates rendered words and user understanding without the
+  author's rationale;
+- an Implementation QA Reviewer verifies production behavior against approved
+  contracts.
+
+Four completion questions remain separate:
 
 - **Functional QA:** does the requested journey work?
 - **Visual QA:** does the rendered interface look intentional at relevant
@@ -477,6 +515,21 @@ text fragment across every page, screen, state, navigation area, action,
 microcopy point, data label, empty/error/loading/success message, and repeated
 content pattern. Record the applied pass in the Task Contract, screen contract,
 or review evidence.
+
+For substantial D2/D3 content, use a separate Source-Grounded Content Authoring
+context after the owner approves its bounded collaboration scope. Give the
+Content Author the approved audience, Product Surface, Messaging Identity,
+page or screen contracts, explicit content boundaries, and only the canonical
+product sources needed for those pages. Do not require the Content Author to
+read the complete frontend subsystem. The author returns finished copy, a
+source map for factual claims, unresolved facts, and Text Inventory coverage.
+
+Review substantial copy in another independent context. The Copy Reviewer sees
+the rendered pages, the approved audience and voice summary, and the copy
+criteria, but not the author's reasoning. It checks comprehension,
+specificity, information depth, claim/proof proximity, objections, actions,
+microcopy, and generic AI-generated language. Content authorship and copy
+review do not replace owner approval or final implementation QA.
 
 The text pass is exhaustive, not importance-based. Do not limit it to hero
 copy, public marketing copy, important paragraphs, or high-risk messages. Every
@@ -949,13 +1002,31 @@ Wireframes show:
 - responsive transformations;
 - links to related flows and screen contracts.
 
-Every interaction promised by a flow, screen contract, Messaging Contract,
-Discovery Contract, Action Contract, or Interaction Inventory must be operable
-in the HTML wireframe. Wireframe behavior may use local mock state and
-simulated data, but controls must produce the contracted navigation, focus,
-overlay, expansion, selection, loading, empty, error, blocked, success, and
-recovery behavior. A prose interaction note or static screenshot does not
-satisfy interaction coverage.
+Wireframes validate information architecture, hierarchy, page composition,
+journeys, visible states, responsive intent, and interaction intent. They are
+not early production applications. Do not implement production algorithms,
+real full-text search or ranking, data fetching, persistence, clipboard APIs,
+complete keyboard mechanics, production-grade focus management, or exhaustive
+state-transition logic merely to make a wireframe functional.
+
+Use the lowest fidelity that makes the approval decision observable:
+
+- W0: rendered static structure for a page without meaningful interaction;
+- W1: directly selectable demonstration states such as normal, overlay open,
+  example results, zero results, loading, error, or mobile navigation;
+- W2: a small clickable journey when sequence or navigation is itself an
+  unresolved product decision;
+- W3: a functional prototype only after explicit owner approval names the
+  behavior whose implementation risk justifies it.
+
+D2/D3 wireframes default to W1. Controls at W1 may reveal prepared local states
+or navigate between stable fixtures. Search uses representative prepared
+results rather than a search engine; copy controls may show prepared feedback
+without using the clipboard; keyboard and focus requirements remain explicit
+in screen contracts for production implementation and QA. A behavior may be
+described in the interaction note when implementing it would test engineering
+rather than product structure. Record every behavior deferred to production so
+Wireframe Approval cannot be mistaken for functional QA.
 
 For every page or meaningful screen, record a state matrix containing the
 state name, stable HTML address, entry action or fixture, expected behavior,
@@ -972,13 +1043,14 @@ Render and inspect affected wireframes at their declared viewports before
 requesting approval.
 
 Wireframe completion requires persistent, directly openable HTML artifacts at
-stable paths or routes for each affected page or meaningful screen, including
-operable required interactions, stable applicable states, and declared
-responsive transformations. Written screen descriptions and layout summaries
-link to the HTML wireframes. Screenshots record inspection evidence only. This
-gate is complete when the HTML artifacts, state matrix, interaction evidence,
-and responsive inspection evidence are present for every page or screen in the
-approved scope.
+stable paths or routes for each affected page or meaningful screen, the
+approved W0-W3 fidelity, stable demonstration states, declared responsive
+transformations, and an explicit list of behavior deferred to production.
+Written screen descriptions and layout summaries link to the HTML wireframes.
+Screenshots record inspection evidence only. This gate is complete when the
+HTML artifacts, state matrix, interaction-intent evidence, deferred-behavior
+list, and responsive inspection evidence are present for every page or screen
+in the approved scope.
 
 ### Wireframe Approval
 
@@ -990,7 +1062,8 @@ For D3 multi-page or multi-screen work, Wireframe Approval is blocked until a
 page-to-wireframe index covers every approved page and meaningful screen. Each
 index row includes page or screen name, route or state, directly openable HTML
 artifact address, screen-contract path, six viewport classes or approved
-viewport waiver, state-matrix entries, operable interaction evidence,
+viewport waiver, state-matrix entries, declared fidelity and demonstrated
+interaction intent, behavior deferred to production,
 content/discovery coverage, and inspection evidence. A shared shell, template,
 or combined overview wireframe can appear
 in the index as a supporting artifact and does not replace page-level rows.
@@ -1050,6 +1123,35 @@ fresh session and return the findings. The authoring session fixes blocking
 findings, then repeats independent review of the changed package. Contract
 review and production QA are separate gates and require separate evidence.
 
+The Contract Reviewer reads the complete applicable contract package, not the
+complete frontend instruction system by default. Include this subsystem only
+when instruction compliance is itself in review. Do not include changelogs,
+task trackers, repository-wide instructions, or implementation history unless
+one is a named source of truth for a decision under review.
+
+## Independent First-Use Review
+
+Before Wireframe Approval for D2/D3 and again before final completion, run an
+Independent First-Use Review in a separate context. Simulate a person in the
+approved audience encountering the surface for the first time.
+
+The First-Use Reviewer receives only:
+
+- a neutral two-to-five-sentence description of what the product is and who it
+  serves;
+- the rendered surface and instructions needed to open it;
+- concrete first-use tasks or questions;
+- the required finding and evidence format.
+
+Explicitly forbid this reviewer from reading repository files, frontend
+instructions, contracts, task history, changelogs, author notes, or prior
+reviews. The reviewer evaluates what the interface itself communicates:
+orientation, comprehension, perceived purpose, navigation, information scent,
+visual hierarchy, terminology, trust, obvious actions, confusion, and unmet
+expectations. It does not review contract completeness or implementation
+internals. Record observed failures separately from suggested solutions so the
+design/control context decides the fix.
+
 ## Action Contract
 
 Before implementing any UI/API path that can move money, change permissions,
@@ -1086,6 +1188,9 @@ decisions required owner approval, present one bounded summary:
 - Approved wireframes by page or screen:
 - Approved screen contracts by page or screen:
 - Independent Contract Review and reviewer/session:
+- Independent First-Use Review and reviewer/session:
+- Source-Grounded Content Author and source map, if applicable:
+- Independent Copy Review, if applicable:
 - Wireframe Conformance Contract:
 - Frontend Implementation Brief:
 - Content And Capability Contract, if applicable:
@@ -1099,8 +1204,9 @@ decisions required owner approval, present one bounded summary:
 Implementation begins after approval or a recorded scoped waiver. For D3,
 request this approval after Product Surface Approval, Visual Direction
 Approval, finalized Design Identity and Design System, flows, rendered
-HTML wireframes, screen contracts, Independent Contract Review, Content And
-Capability Contract, Discovery
+HTML wireframes, screen contracts, Independent Contract Review, Independent
+First-Use Review, applicable Source-Grounded Content Authoring and Independent
+Copy Review, Content And Capability Contract, Discovery
 Contract when relevant, Action Contract when relevant, and their decision
 records exist at named paths. The approval summary maps every approved page or
 meaningful screen to its flow, wireframe path, screen-contract path, content
@@ -1117,12 +1223,12 @@ sequence forward and does not approve implementation.
 
 ## Implementation
 
-Production frontend implementation is separate work from the session that
+Production frontend implementation is separate work from the context that
 authored or approved the design and contract package. After Final
 Implementation Approval, prepare a self-contained Frontend Implementation
-Brief and delegate write-scoped implementation to a subagent or hand the brief
-to a fresh session. The design/control session does not write production
-frontend code. If neither delegation nor a fresh session is available, stop;
+Brief and assign write-scoped implementation to an approved independent
+execution context. The design/control context does not write production
+frontend code. If no independent execution context is available, stop;
 do not collapse design, implementation, and QA into one context.
 
 The Frontend Implementation Brief includes repository and execution context,
@@ -1275,9 +1381,8 @@ After implementation and before claiming the frontend task complete, run the
 Independent Frontend QA Gate:
 
 1. Prepare an Independent QA Brief.
-2. Prefer delegated read-only QA workers when subagents or orchestration are
-   available.
-3. If subagents are unavailable, stop and ask the owner to open a fresh session
+2. Use an approved independent read-only QA context.
+3. If no independent context is available, stop and ask the owner to open a fresh session
    for QA. Provide the exact prompt that would have been given to the delegated
    reviewer and ask the owner to return the findings.
 4. Fix every blocking finding in the implementation session.
@@ -1300,7 +1405,7 @@ not improve evidence quality. Use more lanes when specialized surfaces need
 separate review, such as editor tools, dashboards, games, checkout flows,
 authentication, data visualization, media, realtime updates, or admin actions.
 
-Independent QA workers are read-only by default. They inspect files, run the
+Independent QA contexts are read-only by default. They inspect files, run the
 app when needed, exercise behavior, capture evidence, and report findings.
 They do not edit files unless the owner explicitly approves a write-scoped
 delegation.
@@ -1376,7 +1481,7 @@ it against every delivered page, meaningful screen, flow, repeated component
 pattern, and changed state.
 
 For implementation work, the final rubric verdict must include independent QA
-evidence from a separate delegated reviewer or separate session. The
+evidence from a separate execution context. The
 implementer may draft a self-rubric as preflight, but self-rubric does not
 close the gate. If no independent result exists, the rubric status is
 `blocked: independent QA not returned`.
@@ -1491,6 +1596,9 @@ Record evidence with verdicts:
 - Commit or working-tree state:
 - Design/control session:
 - Frontend Lead Contract Review Brief and reviewer/session:
+- First-Use Review brief and reviewer/session:
+- Source-Grounded Content Author and source map:
+- Independent Copy Reviewer/session:
 - Frontend Implementation Brief and implementation worker/session:
 - Implementer session:
 - Independent QA owner/session:
@@ -1533,8 +1641,9 @@ scope precisely in the final response.
 ## Phase Handoffs And Independent Review
 
 Split D3 work, many-screen work, or any context-heavy task into bounded phases.
-Use isolated contexts for contract review, production implementation, and final
-QA after the Collaboration Check records availability, the required
+Use isolated contexts for contract review, first-use review, content authoring,
+copy review, production implementation, and final QA after the Collaboration
+Check records availability, the required
 collaboration interface, the delegated contract, and the decision for that
 named phase. Contract-review and QA workers are read-only. The production
 implementation worker is write-scoped only to the files and implementation
@@ -1622,12 +1731,18 @@ A frontend task is complete when:
   screen contract, with shared shell artifacts recorded separately;
 - wireframe packages link to HTML artifacts first and screenshots only as
   rendered evidence;
-- every promised wireframe interaction and applicable state is operable in the
-  approved HTML artifact;
+- every wireframe declares its W0-W3 fidelity, demonstrates the states and
+  interaction intent required for approval, and lists behavior deferred to
+  production;
+- W3 behavior was created only after explicit owner approval;
+- Independent First-Use Review was performed without repository or authoring
+  context before D2/D3 Wireframe Approval and final completion;
+- substantial D2/D3 copy was produced by a Source-Grounded Content Author and
+  checked by an independent Copy Reviewer;
 - every applicable frontend Markdown contract passed Independent Contract
   Review by a potential-lead reviewer in a separate context;
-- production frontend code was written in a separate implementation session or
-  by a write-scoped implementation worker using the approved Frontend
+- production frontend code was written in a separate implementation context by
+  a write-scoped implementation worker using the approved Frontend
   Implementation Brief;
 - the Wireframe Conformance Contract maps every approved page, state, and
   region to production implementation and verification evidence;
@@ -1637,8 +1752,8 @@ A frontend task is complete when:
   and microcopy point;
 - the Interaction Inventory was exercised across links, controls, stateful
   regions, navigation, keyboard behavior, and expected events;
-- independent frontend QA was performed by a separate delegated reviewer or
-  separate session from the implementation session;
+- independent frontend QA was performed in a separate execution context from
+  the implementation context;
 - design/control, production implementation, and final QA contexts remained
   separate unless a scoped owner waiver records otherwise;
 - every blocking independent QA finding was fixed and independently rechecked,

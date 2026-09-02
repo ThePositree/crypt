@@ -4,6 +4,22 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
+## 2026-09-02 - Frontend independent-context and wireframe fidelity rules
+
+- Defined independent work by isolated execution context rather than any
+  specific agent, vendor, CLI, or orchestration capability.
+- Required role-minimal briefs and added repository-blind First-Use Review for
+  D2/D3 wireframe approval and final completion.
+- Added separate source-grounded content authoring and rendered copy review for
+  substantial D2/D3 user-visible text.
+- Reframed wireframes around W0-W3 fidelity: D2/D3 defaults to prepared W1
+  demonstration states, while functional prototypes require explicit owner
+  approval and production algorithms remain deferred.
+- Required explicit collaboration approval per independent phase instead of
+  inferring it from product, visual, wireframe, or implementation approvals.
+
+---
+
 ## 2026-09-01 - Frontend HTML wireframes and separated execution roles
 
 - Required directly openable, operable HTML wireframes for every approved page,

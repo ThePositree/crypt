@@ -128,6 +128,12 @@ routes:
       - Rendered visual inspection is required for meaningful UI changes.
       - Wireframes are directly openable HTML artifacts; screenshots are evidence only.
       - Frontend Markdown contracts require independent potential-lead review.
+      - Independent reviewers use separate contexts with role-minimal briefs;
+        first-use reviewers must not read repository or authoring context.
+      - D2/D3 wireframes default to W1 demonstration fidelity; functional W3
+        prototypes require explicit owner approval.
+      - Substantial D2/D3 copy uses source-grounded content authoring and an
+        independent rendered-copy review.
       - Design/control, production implementation, and final QA use separate contexts.
       - Production must satisfy the approved Wireframe Conformance Contract.
       - Persistent frontend memory lives under docs/frontend/.

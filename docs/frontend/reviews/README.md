@@ -18,6 +18,25 @@ delegation availability, required collaboration/runtime interface, proposed
 scope, owner decision, and whether an independent result was reviewed before
 integration.
 
+`Independent` means a separate execution context, not a specific agent feature
+or vendor. Give each reviewer the minimum context for its role. Contract
+reviewers read the applicable contracts, not the complete frontend subsystem
+unless instruction compliance is under review. Re-review briefs contain prior
+blockers, changed artifacts, and closure criteria rather than full history.
+
+Record Independent First-Use Review separately. Its reviewer receives only a
+neutral two-to-five-sentence product description, the rendered surface,
+first-use tasks, and an evidence format. The reviewer must not read repository
+files, contracts, frontend instructions, changelogs, task history, author
+notes, or earlier reviews. This review measures whether the interface itself is
+understandable, navigable, trustworthy, and visually coherent to a new member
+of the approved audience.
+
+For substantial D2/D3 text, record a Source-Grounded Content Author and a
+separate Copy Reviewer. The author receives approved messaging/page contracts
+and only relevant canonical product sources. The reviewer sees rendered copy,
+audience and voice criteria, but not the author's rationale.
+
 Do not claim that a check passed without naming its evidence. Apply the visual
 rubric to hierarchy, spacing, alignment, typography, density, composition,
 consistency, semantic color, responsive transformations, states,
@@ -46,9 +65,9 @@ response, actual response, route or URL changes, state changes, observable
 requests or events, keyboard behavior, feedback, and recovery behavior.
 
 Frontend implementation reviews must be independent from the implementation
-session. The implementing agent may provide preflight evidence, but the final
-review must identify the separate reviewer/subagent/session that exercised the
-surface. If no subagent is available, the implementing agent must stop and
+context. The implementing agent may provide preflight evidence, but the final
+review must identify the separate execution context that exercised the surface.
+If no independent context is available, the implementing agent must stop and
 provide the owner with the exact QA prompt to run in a new session; completion
 remains blocked until returned findings are fixed and rechecked. Mandatory QA
 gaps are not backlog items.
@@ -62,12 +81,14 @@ severity, fixes, and re-review verdict. Contract review is separate from
 production QA.
 
 Production frontend implementation is performed in a separate write-scoped
-subagent or fresh session from the design/control session. Final QA uses a
-third independent context. Reviews record all three owners: design/control,
+execution context from the design/control context. Final QA uses a third
+independent context. Reviews record all three owners: design/control,
 implementation, and QA, plus any scoped owner waiver that collapses roles.
 
-Wireframe review links to directly openable HTML artifacts first. Screenshots
-are viewport/state evidence only. Production review includes the Wireframe
+Wireframe review links to directly openable HTML artifacts first and records
+W0-W3 fidelity, demonstrated interaction intent, deferred production behavior,
+and Independent First-Use Review evidence. Screenshots are viewport/state
+evidence only. Production review includes the Wireframe
 Conformance Contract and an invariant-by-invariant comparison between approved
 HTML wireframes and production behavior.
 
