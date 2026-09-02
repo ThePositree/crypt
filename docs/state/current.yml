@@ -46,7 +46,6 @@ canonical_docs:
 required_commands:
   uv_agent_prefix: UV_CACHE_DIR=/tmp/uv-cache
   full_pytest: PYTHONPATH=src uv run pytest
-  docs_context_test: PYTHONPATH=src uv run pytest tests/docs/test_agent_context_docs.py
 
 known_constraints:
   rtk: documented but may be unavailable in this environment; use raw commands when rtk is missing

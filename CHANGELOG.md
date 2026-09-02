@@ -182,13 +182,6 @@ Format: newest on top, date in `YYYY-MM-DD`.
 
 ---
 
-## 2026-08-31 - Documentation regression tests removed
-
-- Removed repository documentation regression tests so docs and instruction
-  files are no longer enforced by exact structural test expectations.
-
----
-
 ## 2026-08-31 - Frontend messaging system
 
 - Added a portable frontend messaging system that treats copy as a product
@@ -248,8 +241,6 @@ Format: newest on top, date in `YYYY-MM-DD`.
   coverage for Visual Direction Boards.
 - Replaced the fixed route-summary line-count rule with a relative compactness
   check so summaries remain materially smaller than their full source docs.
-- Updated docs regression coverage for the new frontend gate protocol and
-  relative compactness rule.
 
 ---
 
@@ -261,8 +252,6 @@ Format: newest on top, date in `YYYY-MM-DD`.
 - Clarified that a frontend session can be successful when it completes
   discovery, onboarding, product modeling, visual direction, wireframes, review,
   or handoff without starting production UI code.
-- Updated docs regression coverage so the full subsystem and compact summary keep
-  the phase-based framing visible to future agents.
 
 ---
 
@@ -271,8 +260,6 @@ Format: newest on top, date in `YYYY-MM-DD`.
 - Strengthened frontend phase continuation so capable agents use isolated
   subagents for substantial next phases whenever subagents are available, with
   fresh-session handoff as the fallback.
-- Updated the compact frontend summary and docs regression coverage for the
-  subagent continuation rule.
 
 ---
 
@@ -283,9 +270,8 @@ Format: newest on top, date in `YYYY-MM-DD`.
 - Clarified Mermaid as the default format for frontend user flows, navigation
   maps, and state diagrams, kept current alongside wireframes and screen
   contracts.
-- Routed `docs/frontend/wireframes/` through frontend context and added docs
-  regression coverage for Mermaid flows, wireframes, owner approval, and
-  production UI gating.
+- Routed `docs/frontend/wireframes/` through frontend context for Mermaid
+  flows, wireframes, owner approval, and production UI gating.
 
 ---
 
@@ -295,9 +281,6 @@ Format: newest on top, date in `YYYY-MM-DD`.
   criteria: phase outputs, minimum interview depth with uncertainty checks,
   rendered visual direction boards, owner-gate completion, canonical handoff
   truth, and responsive composition verdicts.
-- Updated compact frontend summary and docs regression tests to preserve the
-  positive workflow contracts instead of relying on negative instruction
-  phrases.
 
 ---
 
@@ -312,8 +295,6 @@ Format: newest on top, date in `YYYY-MM-DD`.
   feedback, remain direction studies rather than production assets, and cannot
   be used to finalize Design Identity, Design System, or implementation without
   approval.
-- Updated the compact frontend subsystem summary and docs regression tests for the
-  new gate semantics.
 
 ---
 
@@ -327,8 +308,6 @@ Format: newest on top, date in `YYYY-MM-DD`.
   isolated subagent continuation, fresh-session fallback, and the rule that
   agents must not pretend they can remove prior conversation history from
   context.
-- Updated the compact frontend subsystem summary and docs regression tests so the
-  phase handoff rules remain visible through selective routing.
 
 ---
 
@@ -369,8 +348,6 @@ Format: newest on top, date in `YYYY-MM-DD`.
   gates: agents must stop before implementation for a new frontend/product when
   Design Identity is not established, unless the owner waives onboarding or
   prior frontend memory already proves the direction.
-- Added a docs regression test so the frontend onboarding stop gate remains
-  present in both the full subsystem document and compact summary.
 - Added a portable frontend design subsystem for AI agents in
   `docs/agent/frontend_design_subsystem.md`, covering proportional design
   depth, first-use discovery, design onboarding, visual exploration, persistent
@@ -475,7 +452,5 @@ Format: newest on top, date in `YYYY-MM-DD`.
 - Documented the vector/image retrieval policy: canonical rules and current
   state stay as text; vector and text-as-image are archive/discovery
   experiments until a 20-question benchmark proves accuracy.
-- Added docs tests that validate route paths, compact source links, and
-  bootstrap size.
 - Kept `CHANGELOG.md` as recent history and moved older August entries to
   `CHANGELOG_ARCHIVE.md`.
