@@ -2,7 +2,7 @@
 
 Status: proposed.
 Revision: 1
-Approval: pending owner Product Surface Approval.
+Approval: approved by owner chat on 2026-09-02.
 
 Use this file for durable frontend product-surface understanding. It should be
 filled before substantial new site/app work, major redesigns, or broad product
@@ -197,9 +197,9 @@ project docs, requirements, specs, current state, task context, or a canonical
 ## Approval Record
 
 - Product Surface revision: 1
-- Decision: pending
+- Decision: approved
 - Owner feedback or waiver scope: owner onboarding answers recorded from
-  2026-09-02; explicit Product Surface Approval not yet requested.
+  2026-09-02; owner approved with "апрув" on 2026-09-02.
 - Date: 2026-09-02
 - Next phase unlocked: owner approval unlocks Visual Direction Boards and
   detailed flow/wireframe/screen-contract artifacts.

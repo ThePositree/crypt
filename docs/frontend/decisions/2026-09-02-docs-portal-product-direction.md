@@ -1,7 +1,7 @@
 # Documentation Portal Product Direction
 
 - Date: 2026-09-02
-- Status: proposed
+- Status: approved
 - Affected artifact revisions: Product Surface Model revision 1, Messaging
   revision 1, Design Identity revision 1, Design System seed revision 1
 
@@ -31,6 +31,8 @@ Execution may explain architecture and operational guarantees only.
 The visual direction is playful abstract lo-fi in pastel tones, with dark and
 light themes, abstract mascots, diagrams, breadcrumbs, left navigation, desktop
 page TOC, next-reading blocks, and maturity/risk labels.
+
+Owner approved Product Surface revision 1 with "апрув" on 2026-09-02.
 
 ## Consequences
 

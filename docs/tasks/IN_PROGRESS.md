@@ -26,19 +26,21 @@ terms without requiring raw source reading.
 - Product Surface Model revision 1, Messaging revision 1, Design Identity
   revision 1, Design System seed revision 1, and a product-direction decision
   were drafted on 2026-09-02.
+- Owner approved Product Surface revision 1 on 2026-09-02.
+- Five Visual Direction Boards were generated under
+  `docs/frontend/visual-references/boards/`; Visual Direction Approval is
+  pending.
 - Orca CLI was intended for checkpoints and later independent review, but the
-  local shim failed with `orca-ide: bad option: --no-sandbox` in this session.
+  local shim initially failed with `orca-ide: bad option: --no-sandbox`.
+  The owner repaired Orca CLI on 2026-09-02 and `orca status --json` then
+  reported a ready runtime.
 
 **Next steps:**
 
-1. Obtain Product Surface Approval for
-   `docs/frontend/product-surface-model.md` revision 1 and the related
-   messaging/design seed artifacts.
-2. Create five Visual Direction Boards for the playful abstract lo-fi
-   documentation portal and request Visual Direction Approval.
-3. Create page-level flows, HTML wireframes, screen contracts, content coverage
+1. Obtain Visual Direction Approval for one board, a mix, or an iteration.
+2. Create page-level flows, HTML wireframes, screen contracts, content coverage
    audit, discovery contract, and implementation brief.
-4. Run independent contract review in a separate Orca/fresh context, then
+3. Run independent contract review in a separate Orca/fresh context, then
    request Final Implementation Approval before creating production Next.js
    code.
 

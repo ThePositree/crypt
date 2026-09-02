@@ -2,7 +2,7 @@
 
 Status: proposed.
 Revision: 1
-Approval source: pending owner approval.
+Approval source: owner Product Surface Approval on 2026-09-02.
 
 Use this file for durable frontend messaging knowledge: public product voice,
 page-level text contracts, proof needs, objection maps, microcopy rules, and
