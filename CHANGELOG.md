@@ -21,6 +21,9 @@ Format: newest on top, date in `YYYY-MM-DD`.
 - Recorded owner Visual Direction Approval for Board 3, `System Islands
   Atlas`, and finalized the atlas-based design identity/system direction for
   artifact work.
+- Added proposed navigation flow, page-level screen contracts, directly
+  openable HTML wireframe package, and Orca browser preflight notes for the
+  documentation portal.
 
 ---
 

@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>crypt docs wireframe</title>
+  <style>
+    :root {
+      --paper: #fbf6ea;
+      --ink: #1f2933;
+      --muted: #667085;
+      --line: #d8d0bf;
+      --panel: #fffdf7;
+      --sea: #c9eadf;
+      --coral: #ffd2c2;
+      --lemon: #ffeaa7;
+      --blue: #d8ecff;
+      --green: #d7f1c8;
+      --shadow: 0 10px 24px rgba(38, 35, 27, .08);
+    }
+    [data-theme="dark"] {
+      --paper: #171d22;
+      --ink: #f4efe2;
+      --muted: #bdc4cb;
+      --line: #34404a;
+      --panel: #202830;
+      --sea: #23483f;
+      --coral: #563227;
+      --lemon: #564a24;
+      --blue: #233d55;
+      --green: #2d4a31;
+      --shadow: 0 10px 24px rgba(0, 0, 0, .25);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+    a { color: inherit; text-decoration: none; }
+    button, input { font: inherit; }
+    .app { min-height: 100vh; display: grid; grid-template-columns: 280px 1fr 240px; }
+    .side, .toc, .top, .drawer, .palette, .panel, .card, .map, .code, .notice {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+    .side { position: sticky; top: 0; height: 100vh; padding: 18px; border-radius: 0; box-shadow: none; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 22px; margin-bottom: 18px; }
+    .marker { width: 26px; height: 30px; border-radius: 7px 7px 12px 7px; background: var(--sea); border: 1px solid var(--line); position: relative; transform: rotate(-8deg); }
+    .marker:before, .marker:after { content: ""; position: absolute; top: 10px; width: 4px; height: 4px; border-radius: 50%; background: var(--ink); }
+    .marker:before { left: 8px; } .marker:after { right: 8px; }
+    .nav-group-title { font-size: 11px; color: var(--muted); text-transform: uppercase; margin: 18px 0 8px; }
+    .nav a, .drawer a { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 8px; color: var(--muted); }
+    .nav a.active, .nav a:hover, .drawer a.active { background: var(--sea); color: var(--ink); }
+    .main { min-width: 0; padding: 18px 24px 64px; }
+    .top { position: sticky; top: 0; z-index: 5; display: flex; gap: 12px; align-items: center; padding: 10px; margin-bottom: 18px; }
+    .hamburger { display: none; }
+    .search { flex: 1; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; color: var(--muted); background: transparent; }
+    .search input { width: 100%; border: 0; background: transparent; color: var(--ink); outline: 0; }
+    .kbd { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; }
+    .icon-button { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 8px; padding: 8px 10px; cursor: pointer; }
+    .crumbs { color: var(--muted); font-size: 13px; margin: 8px 0 24px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .hero { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; align-items: stretch; }
+    h1 { font-size: clamp(34px, 6vw, 72px); line-height: 1; margin: 0 0 14px; letter-spacing: 0; }
+    .page h1 { font-size: 46px; }
+    h2 { margin: 34px 0 12px; font-size: 24px; }
+    h3 { margin: 0 0 8px; font-size: 17px; }
+    p { color: var(--muted); line-height: 1.65; max-width: 760px; }
+    .badges { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0; }
+    .badge { border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; font-size: 13px; background: var(--blue); }
+    .badge.stable { background: var(--green); } .badge.live { background: var(--coral); } .badge.config { background: var(--lemon); }
+    .atlas { min-height: 340px; position: relative; overflow: hidden; padding: 24px; }
+    .islands { display: grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap: 16px; margin-top: 18px; }
+    .island { min-height: 92px; border: 1px dashed var(--line); border-radius: 18px 18px 24px 18px; padding: 16px; background: var(--sea); display: flex; flex-direction: column; justify-content: space-between; }
+    .island:nth-child(2n) { background: var(--lemon); } .island:nth-child(3n) { background: var(--blue); } .island:nth-child(4n) { background: var(--coral); }
+    .routes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 20px; }
+    .card { padding: 18px; min-width: 0; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .flow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .step { border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: var(--blue); min-width: 120px; text-align: center; }
+    .arrow { color: var(--muted); }
+    .tabs { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 18px 0; }
+    .tabs button { flex: 1; border: 0; padding: 11px; background: transparent; color: var(--muted); cursor: pointer; }
+    .tabs button.active { background: var(--sea); color: var(--ink); }
+    .accordion { display: grid; gap: 8px; }
+    .acc { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); overflow: hidden; }
+    .acc button { width: 100%; border: 0; background: transparent; color: var(--ink); padding: 14px; text-align: left; cursor: pointer; display: flex; justify-content: space-between; }
+    .acc .body { display: none; padding: 0 14px 14px; color: var(--muted); }
+    .acc.open .body { display: block; }
+    .code { display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--ink); color: var(--paper); overflow: auto; }
+    .code code { flex: 1; white-space: nowrap; }
+    .code button { border: 1px solid rgba(255,255,255,.25); background: transparent; color: inherit; border-radius: 8px; padding: 8px; cursor: pointer; }
+    .toc { position: sticky; top: 18px; height: calc(100vh - 36px); padding: 18px; border-radius: 0; box-shadow: none; }
+    .toc a { display: block; color: var(--muted); padding: 7px 0; font-size: 13px; border-left: 2px solid transparent; padding-left: 8px; }
+    .toc a:hover { color: var(--ink); border-left-color: var(--sea); }
+    .next { margin-top: 34px; }
+    .notice { padding: 14px; margin: 16px 0; background: var(--lemon); box-shadow: none; }
+    .filters { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+    .filters button { border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); padding: 7px 10px; cursor: pointer; }
+    .filters button.active { background: var(--sea); }
+    .palette-backdrop, .drawer-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.25); z-index: 20; display: none; }
+    .palette-backdrop.open, .drawer-backdrop.open { display: block; }
+    .palette { width: min(720px, calc(100vw - 32px)); margin: 80px auto 0; padding: 12px; }
+    .result { display: block; padding: 12px; border-radius: 8px; border: 1px solid transparent; }
+    .result:hover, .result.active { border-color: var(--line); background: var(--sea); }
+    .empty { text-align: center; padding: 36px 16px; }
+    .drawer { width: min(320px, 90vw); min-height: 100vh; padding: 18px; border-radius: 0; }
+    .mobile-only { display: none; }
+    @media (max-width: 1100px) {
+      .app { grid-template-columns: 240px 1fr; }
+      .toc { display: none; }
+      .hero { grid-template-columns: 1fr; }
+      .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 760px) {
+      .app { display: block; }
+      .side { display: none; }
+      .main { padding: 12px; }
+      .hamburger, .mobile-only { display: inline-flex; }
+      .top { position: static; }
+      .kbd { display: none; }
+      .page h1, h1 { font-size: 34px; }
+      .routes, .two, .grid, .islands { grid-template-columns: 1fr; }
+      .island { min-height: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <aside class="side">
+      <a class="brand" href="?page=home"><span class="marker"></span><span>crypt docs</span></a>
+      <nav class="nav" id="nav"></nav>
+    </aside>
+    <main class="main">
+      <header class="top">
+        <button class="icon-button hamburger" id="openNav">☰</button>
+        <label class="search"><span>⌕</span><input id="topSearch" placeholder="Поиск по документации"><span class="kbd">⌘K</span></label>
+        <button class="icon-button" id="themeToggle">☼</button>
+      </header>
+      <div id="content"></div>
+    </main>
+    <aside class="toc" id="toc"></aside>
+  </div>
+  <div class="palette-backdrop" id="paletteBackdrop">
+    <section class="palette" role="dialog" aria-label="Поиск">
+      <label class="search"><span>⌕</span><input id="paletteSearch" placeholder="Поиск или команда..."><span class="kbd">Esc</span></label>
+      <div id="results"></div>
+    </section>
+  </div>
+  <div class="drawer-backdrop" id="drawerBackdrop">
+    <section class="drawer" role="dialog" aria-label="Навигация">
+      <button class="icon-button" id="closeNav">Закрыть</button>
+      <a class="brand" href="?page=home"><span class="marker"></span><span>crypt docs</span></a>
+      <nav class="drawer-nav" id="drawerNav"></nav>
+    </section>
+  </div>
+  <script>
+    const pages = [
+      ["home", "Карта фреймворка", "Start"],
+      ["overview", "Overview", "Guides"],
+      ["architecture", "Architecture", "Guides"],
+      ["data-pipeline", "Data Pipeline", "Guides"],
+      ["strategies", "Strategies", "Reference"],
+      ["backtester", "Backtester", "Reference"],
+      ["configuration", "Configuration", "Reference"],
+      ["live-execution", "Live Execution", "Operations"],
+      ["cli", "CLI", "Reference"],
+      ["operations", "Operations", "Operations"],
+      ["glossary", "Glossary", "Reference"]
+    ];
+    const body = {
+      home: {
+        title: "crypt docs",
+        lead: "Курируемая документация фреймворка для исследования крипто-стратегий и их живого исполнения.",
+        badges: ["OKX", "Live money", "No look-ahead", "Curated"],
+        sections: ["Учебный маршрут", "Карта фреймворка", "Быстрый reference"]
+      },
+      overview: {
+        title: "Overview",
+        lead: "Что такое crypt, какие контуры входят в систему и где проходят границы ответственности.",
+        badges: ["Stable", "Framework"],
+        sections: ["Назначение", "Контуры системы", "Что не показывает портал"]
+      },
+      architecture: {
+        title: "Architecture",
+        lead: "Связанные острова системы: данные, стратегии, бэктестер, конфигурация, исполнение и операции.",
+        badges: ["Stable", "Map"],
+        sections: ["Карта компонентов", "Потоки", "Границы"]
+      },
+      "data-pipeline": {
+        title: "Data Pipeline",
+        lead: "Как свечи и внешние данные проходят загрузку, нормализацию, хранение и подготовку признаков.",
+        badges: ["Operational", "No look-ahead"],
+        sections: ["Источники", "Закрытые свечи", "Потребители"]
+      },
+      strategies: {
+        title: "Strategies",
+        lead: "Как стратегия превращает закрытые данные в сигналы, решения и параметры исполнения.",
+        badges: ["Research", "Config"],
+        sections: ["Жизненный цикл", "Decision code", "Архивы"]
+      },
+      backtester: {
+        title: "Backtester",
+        lead: "Как симуляция исполняет стратегии на истории без заглядывания в будущее.",
+        badges: ["Stable", "No look-ahead"],
+        sections: ["Модель", "Учет", "Команды"]
+      },
+      configuration: {
+        title: "Configuration",
+        lead: "Где задаются стратегии, символы, риск, execution mode и операционные ограничения.",
+        badges: ["Config", "Live money"],
+        sections: ["Источники истины", "Env", "JSON"]
+      },
+      "live-execution": {
+        title: "Live Execution",
+        lead: "Архитектура живого исполнения через OKX без показа текущих балансов, позиций или PnL.",
+        badges: ["Operational", "Live money", "OKX"],
+        sections: ["Границы", "Ордерный цикл", "Защита"]
+      },
+      cli: {
+        title: "CLI",
+        lead: "Практические команды для исследования, бэктестинга и операторских проверок без вывода результатов.",
+        badges: ["Stable", "Commands"],
+        sections: ["Команды", "Параметры", "Безопасные примеры"]
+      },
+      operations: {
+        title: "Operations",
+        lead: "Как читать операционные гарантии, preflight-проверки, incident response и Railway-контекст.",
+        badges: ["Operational", "Risk"],
+        sections: ["Preflight", "Incident response", "Наблюдаемость"]
+      },
+      glossary: {
+        title: "Glossary",
+        lead: "Термины проекта: свечи, сигналы, risk base, OKX, no look-ahead, replay и другие понятия.",
+        badges: ["Reference", "Search"],
+        sections: ["Термины", "Синонимы", "Связанные разделы"]
+      }
+    };
+    const params = new URLSearchParams(location.search);
+    let page = params.get("page") || "home";
+    let theme = params.get("theme") || "light";
+    document.body.dataset.theme = theme;
+    function link(slug, label) { return `<a class="${slug===page?"active":""}" href="?page=${slug}">${label}</a>`; }
+    function navHtml() {
+      const groups = {};
+      pages.forEach(([slug,label,group]) => { groups[group] ||= []; groups[group].push([slug,label]); });
+      return Object.entries(groups).map(([g,items]) => `<div class="nav-group-title">${g}</div>${items.map(([s,l]) => link(s,l)).join("")}`).join("");
+    }
+    function badges(items) { return `<div class="badges">${items.map(b => `<span class="badge ${/live/i.test(b)?'live':/config/i.test(b)?'config':/stable/i.test(b)?'stable':''}">${b}</span>`).join("")}</div>`; }
+    function atlas() {
+      return `<section class="atlas panel" id="map"><h2>Карта фреймворка</h2><p>Острова показывают смысловые подсистемы, мосты — основные зависимости и маршруты чтения.</p><div class="islands">${pages.slice(1).map(([s,l]) => `<a class="island" href="?page=${s}"><strong>${l}</strong><span>Открыть раздел →</span></a>`).join("")}</div></section>`;
+    }
+    function flow() {
+      return `<section id="flow"><h2>Поток данных и решений</h2><div class="flow">${["candles","indicators","signal","decision","execution"].map((s,i) => `<div class="step">${s}</div>${i<4?'<span class="arrow">→</span>':''}`).join("")}</div><div class="notice">Все расчеты в объяснениях строятся вокруг закрытых свечей и отсутствия look-ahead bias.</div></section>`;
+    }
+    function commonPage(d) {
+      return `<article class="page"><div class="crumbs"><a href="?page=home">Главная</a><span>›</span><span>${d.title}</span></div><h1>${d.title}</h1><p>${d.lead}</p>${badges(d.badges)}<div class="tabs"><button class="active">concept</button><button>flow</button><button>config</button></div>${flow()}<section id="details"><h2>${d.sections[0]}</h2><div class="accordion">${d.sections.map((s,i)=>`<div class="acc ${i===0?'open':''}"><button>${s}<span>⌄</span></button><div class="body">Курируемое объяснение раздела без цитирования исходного кода и без отображения результатов выполнения.</div></div>`).join("")}</div></section><section id="command"><h2>Пример команды</h2><div class="code"><code>uv run crypt docs-check --section ${page}</code><button class="copy">Скопировать</button></div><p>Команды показываются как практические snippets без вывода результатов.</p></section><section class="next" id="next"><h2>Дальше читать</h2><div class="grid">${pages.filter(([s])=>s!==page).slice(0,3).map(([s,l])=>`<a class="card" href="?page=${s}"><h3>${l}</h3><p>Связанный раздел framework docs.</p></a>`).join("")}</div></section></article>`;
+    }
+    function home() {
+      const d = body.home;
+      return `<article><h1>${d.title}</h1><p>${d.lead}</p>${badges(d.badges)}<div class="routes"><a class="card" href="?page=overview"><h3>Учебный маршрут</h3><p>Пошаговый путь от общей модели до live-исполнения.</p></a><a class="card" href="?page=architecture"><h3>Reference</h3><p>Карта подсистем и быстрые входы в разделы.</p></a></div>${atlas()}<section><h2>Фильтры по разделам</h2><div class="filters"><button class="active">Все</button><button>Architecture</button><button>Research</button><button>Execution</button><button>Operations</button></div><div class="grid">${pages.slice(1).map(([s,l])=>`<a class="card" href="?page=${s}"><h3>${l}</h3><p>Курируемая страница портала.</p></a>`).join("")}</div></section></article>`;
+    }
+    function render() {
+      document.getElementById("nav").innerHTML = navHtml();
+      document.getElementById("drawerNav").innerHTML = navHtml();
+      const d = body[page] || body.home;
+      document.getElementById("content").innerHTML = page === "home" ? home() : commonPage(d);
+      document.getElementById("toc").innerHTML = `<h3>На этой странице</h3>${(d.sections||["Карта"]).map(s=>`<a href="#details">${s}</a>`).join("")}<a href="#next">Дальше читать</a>`;
+      document.querySelectorAll(".acc button").forEach(btn => btn.onclick = () => btn.parentElement.classList.toggle("open"));
+      document.querySelectorAll(".tabs button").forEach(btn => btn.onclick = () => { btn.parentElement.querySelectorAll("button").forEach(b=>b.classList.remove("active")); btn.classList.add("active"); });
+      document.querySelectorAll(".copy").forEach(btn => btn.onclick = () => { btn.textContent = "Скопировано"; setTimeout(()=>btn.textContent="Скопировать", 1200); });
+    }
+    function openPalette(q) {
+      document.getElementById("paletteBackdrop").classList.add("open");
+      document.getElementById("paletteSearch").value = q || "";
+      drawResults(q || "");
+      setTimeout(()=>document.getElementById("paletteSearch").focus(), 0);
+    }
+    function drawResults(q) {
+      const matches = q && q !== "unknown" ? pages.filter(([s,l]) => (s+l).toLowerCase().includes(q.toLowerCase()) || ["OKX","No look-ahead","Config","CLI"].join(" ").toLowerCase().includes(q.toLowerCase())) : [];
+      document.getElementById("results").innerHTML = q === "unknown" || (q && !matches.length)
+        ? `<div class="empty"><h2>Ничего не найдено</h2><p>Попробуй изменить запрос или открыть карту разделов.</p><a class="card" href="?page=architecture">Смотреть карту фреймворка</a></div>`
+        : (matches.length ? matches : pages.slice(1,6)).map(([s,l],i)=>`<a class="result ${i===0?'active':''}" href="?page=${s}"><strong>${l}</strong><p>Найдено в курируемом контенте страницы.</p></a>`).join("");
+    }
+    document.getElementById("topSearch").addEventListener("focus", e => openPalette(e.target.value));
+    document.getElementById("paletteSearch").addEventListener("input", e => drawResults(e.target.value));
+    document.getElementById("paletteBackdrop").addEventListener("click", e => { if (e.target.id === "paletteBackdrop") e.currentTarget.classList.remove("open"); });
+    document.addEventListener("keydown", e => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openPalette(""); }
+      if (e.key === "Escape") { document.getElementById("paletteBackdrop").classList.remove("open"); document.getElementById("drawerBackdrop").classList.remove("open"); }
+    });
+    document.getElementById("themeToggle").onclick = () => { theme = document.body.dataset.theme === "dark" ? "light" : "dark"; document.body.dataset.theme = theme; };
+    document.getElementById("openNav").onclick = () => document.getElementById("drawerBackdrop").classList.add("open");
+    document.getElementById("closeNav").onclick = () => document.getElementById("drawerBackdrop").classList.remove("open");
+    if (params.get("palette")) openPalette(params.get("q") || "");
+    if (params.get("nav")) document.getElementById("drawerBackdrop").classList.add("open");
+    render();
+  </script>
+</body>
+</html>

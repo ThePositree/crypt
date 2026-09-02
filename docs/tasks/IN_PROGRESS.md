@@ -31,6 +31,14 @@ terms without requiring raw source reading.
   `docs/frontend/visual-references/boards/`; Visual Direction Approval is
   complete with Board 3, `System Islands Atlas`, selected by the owner on
   2026-09-02.
+- Proposed navigation flow, page-level screen contracts, and a shared
+  directly openable HTML wireframe package were created under
+  `docs/frontend/flows/docs-portal-navigation.md`,
+  `docs/frontend/screens/docs-portal/`, and
+  `docs/frontend/wireframes/docs-portal/`.
+- Orca browser preflight confirmed nonblank architecture, dark-theme, and
+  zero-result search wireframe fixtures; full six-viewport rendered evidence
+  and independent contract review remain pending before implementation.
 - Orca CLI was intended for checkpoints and later independent review, but the
   local shim initially failed with `orca-ide: bad option: --no-sandbox`.
   The owner repaired Orca CLI on 2026-09-02 and `orca status --json` then
@@ -38,11 +46,14 @@ terms without requiring raw source reading.
 
 **Next steps:**
 
-1. Create page-level flows, HTML wireframes, screen contracts, content coverage
-   audit, discovery contract, and implementation brief.
-2. Run independent contract review in a separate Orca/fresh context, then
-   request Final Implementation Approval before creating production Next.js
-   code.
+1. Finish the content coverage contract, full interaction inventory, and
+   Frontend Lead Contract Review Brief for the wireframe/screen-contract
+   package.
+2. Run independent contract review in a separate Orca/fresh context, fix any
+   blocking findings, and request Wireframe Approval.
+3. After Wireframe Approval, prepare the implementation brief and
+   Wireframe Conformance Contract, then request Final Implementation Approval
+   before creating production Next.js code.
 
 **Acceptance:** first release has curated pages for Overview, Architecture,
 Backtester, Strategies, Live Execution, Data Pipeline, CLI, Configuration,
