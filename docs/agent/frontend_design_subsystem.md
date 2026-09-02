@@ -128,6 +128,7 @@ Canonical frontend obligations:
 
 - Full Messaging System for all user-visible text;
 - Source-Grounded Content Authoring;
+- Text Inventory And Copy Approval;
 - Independent Factual Product Research;
 - Independent First-Use Review;
 - Independent Wireframe Rendered Visual QA;
@@ -140,6 +141,11 @@ Canonical frontend obligations:
 - Design Identity and Design System;
 - Five raster Visual Direction Boards;
 - Visual Direction Approval;
+- Selected Visual Direction Translation;
+- UI Library And Component Showcase;
+- UI Library Approval;
+- Production Raster Asset Pack;
+- Production Raster Asset Pack Approval;
 - Flows;
 - Page-level wireframes for every real page or meaningful screen;
 - Persistent HTML Wireframe Artifacts;
@@ -255,6 +261,18 @@ Safety risk is independent of design depth. A visually small control that can
 move money, change permissions, deploy software, destroy data, or mutate an
 external account requires an Action Contract even when its design depth is D0
 or D1.
+
+D3 is a production-surface process, not an MVP shortcut. When the owner asks
+for a complete product, portal, application, dashboard, site, game, tool, or
+other broad frontend surface, plan and artifact the whole promised experience:
+happy paths, recovery paths, empty/loading/error/success/disabled states,
+responsive behavior, system pages, navigation, search or discovery,
+accessibility, copy depth, media/assets, component states, maintainability,
+source-of-truth boundaries, and future change contracts. Do not silently narrow
+the request to a thin first screen, demo shell, placeholder content, generic
+cards, or "good enough" MVP. If the full production surface is too large for
+the current pass, stop and ask the owner to narrow scope or record a scoped
+`FRONTEND WAIVER:`; do not continue with an implied partial build.
 
 ## Lifecycle
 
@@ -549,6 +567,9 @@ page or screen contracts, explicit content boundaries, and only the canonical
 product sources needed for those pages. Do not require the Content Author to
 read the complete frontend subsystem. The author returns finished copy, a
 source map for factual claims, unresolved facts, and Text Inventory coverage.
+For D3, this content work produces a named Text Inventory artifact before
+implementation approval. The design/control context does not replace it with
+ad hoc bullets, ledes, summaries, or implementation-time copy.
 
 Review substantial copy in another independent context. The Copy Reviewer sees
 the rendered pages, the approved audience and voice summary, and the copy
@@ -567,12 +588,22 @@ chart labels, legend text, metadata labels, footer text, legal text, command
 labels, keyboard shortcut hints, toast text, dialog titles, menu items, and
 repeated generated labels.
 
-Before implementation, create a Text Inventory for every planned page, screen,
-state, action, and repeated pattern. After implementation, reconcile that
-inventory against the rendered interface and source code. Record for each item:
-location, exact text or text pattern, semantic job, Messaging Contract link,
-claim/proof status, objection or friction handled when relevant, final decision
-keep/rewrite/cut, and reviewer verdict.
+Before implementation, create a Text Inventory at a named path for every
+planned page, screen, state, action, and repeated pattern. For D3, the
+inventory is an approved contract, not internal notes. Record for each item:
+location, exact text or text pattern, minimum intended depth or length when
+the owner requested rich content, semantic job, Messaging Contract link,
+claim/proof status, objection or friction handled when relevant, source map,
+authoring owner, approval status, and reviewer verdict. Implementation must
+render the approved inventory or stop and report a contract deviation before
+changing, shortening, omitting, or replacing planned copy.
+
+After implementation, reconcile the approved Text Inventory against rendered
+interface evidence and source code. The reconciliation records for each item:
+expected copy, actual copy or omission, rendered location, source-code
+location, pass/fail verdict, and required fix. A production page that follows
+the wireframe but drops approved depth, proof, objections, microcopy, or
+source-backed explanations does not pass copy or content coverage.
 
 ### Messaging Identity
 
@@ -948,8 +979,84 @@ approval and counterexample signals in
 `docs/frontend/visual-references/interpretation.md`; store selected assets in
 the corresponding signal directories.
 
+If the owner selects a mix of multiple boards, generate or assemble one final
+combined raster direction board before downstream work. The combined board
+becomes the single selected visual reference. Do not ask production
+implementation to reconcile multiple competing boards without this merged
+reference or a written owner waiver.
+
 Finalize Design Identity and Design System after this approval passes or the
 owner records a scoped waiver.
+
+### Selected Visual Direction Translation
+
+After Visual Direction Approval, translate the selected raster direction into
+an implementation-facing contract before writing production pages. Record:
+
+- selected board or merged-board artifact path;
+- visual properties that are mandatory in production;
+- visual properties that are mood-only or forbidden to copy literally;
+- component families implied by the board;
+- layout, density, surface, border, color, typography, illustration, icon, and
+  motion rules needed to reproduce the direction;
+- asset needs for hero media, section art, empty/error states, diagrams,
+  thumbnails, mascots, or product imagery;
+- counterexamples from rejected boards and generated artifacts;
+- visual fidelity checks the implementation and QA contexts must run.
+
+This translation is the bridge between generated image evidence and working
+interface code. A selected raster board is not enough by itself; production
+must follow the translated component system and visual fidelity rules.
+
+### UI Library And Component Showcase
+
+For D3 work, build the approved visual direction into a UI library or
+component system before building production pages. This can wrap an existing
+owner-approved UI library, design system, framework primitives, or local
+components. If the owner wants a ready-made UI library, record how its
+primitives map to the selected visual direction and where custom styling,
+tokens, slots, or components are required. Do not treat a third-party library
+as the product identity.
+
+Before creating the UI library or component showcase, obtain the required stack
+contract for the production frontend: framework/runtime, styling approach,
+component library preference if any, package boundaries, target deployment or
+static output constraints, asset handling, accessibility expectations, and
+repo-local build/test commands. If the owner wants the agent to choose, record
+that as an explicit owner decision and choose conservatively from repository
+evidence rather than vendor preference.
+
+Create a storybook-like rendered component showcase before production page
+implementation. It demonstrates the shell, navigation, buttons, links, forms,
+search/filter controls, cards, article layouts, badges, tables or lists,
+diagrams or media frames, overlays/drawers/modals, empty/loading/error/success/
+disabled states, focus/hover/selected states, responsive variants, and every
+signature visual trait. The showcase may be an internal route, static HTML
+artifact, framework story page, or equivalent rendered artifact, but it must be
+openable and inspectable.
+
+The UI Library Approval gate passes only after the rendered component showcase
+is visually inspected against the selected board, Design Identity, Design
+System, and Selected Visual Direction Translation. Production pages do not
+start before this approval or a scoped `FRONTEND WAIVER:`.
+
+### Production Raster Asset Pack
+
+When the selected visual direction depends on raster imagery, illustration,
+characters, physical metaphors, product media, thumbnails, or generated visual
+language, create a Production Raster Asset Pack before production page
+implementation. The pack is a raster collage or asset sheet with reusable
+production-image references such as hero art, section illustrations,
+empty/error/loading/success imagery, mascot or character poses, diagram style
+samples, content thumbnails, texture treatments, and media crops.
+
+The asset pack is separate from Visual Direction Boards. Boards prove the UI
+direction; the asset pack gives future production image generation and asset
+selection a stable reference. Store it at a named path, inspect it for
+readability, nonblank output, visual consistency, unwanted text, licensing or
+source constraints when applicable, and fidelity to the selected board. Ask
+for Production Raster Asset Pack Approval before using it as production
+evidence.
 
 ## Final Design Identity And Design System
 
@@ -1290,23 +1397,33 @@ decisions required owner approval, present one bounded summary:
 
 Implementation begins after approval or a recorded scoped waiver. For D3,
 request this approval after Product Surface Approval, Visual Direction
-Approval, finalized Design Identity and Design System, flows, rendered
-HTML wireframes, screen contracts, Independent Contract Review, Independent
-First-Use Review, applicable Source-Grounded Content Authoring and Independent
-Copy Review, Content And Capability Contract, Discovery
-Contract when relevant, Action Contract when relevant, and their decision
-records exist at named paths. The approval summary maps every approved page or
-meaningful screen to its flow, wireframe path, screen-contract path, content
+Approval, Selected Visual Direction Translation, UI Library Approval,
+Production Raster Asset Pack Approval when raster assets apply, finalized
+Design Identity and Design System, approved Text Inventory and Copy Review
+when copy applies, flows, rendered HTML wireframes, screen contracts,
+Independent Contract Review, Independent First-Use Review, applicable
+Source-Grounded Content Authoring and Independent Copy Review, Content And
+Capability Contract, Discovery Contract when relevant, Action Contract when
+relevant, and their decision records exist at named paths. The approval summary
+maps every approved page or meaningful screen to its flow, wireframe path,
+screen-contract path, UI-library components, selected visual translation,
+asset-pack reference when applicable, text-inventory coverage, content
 coverage, discovery coverage when relevant, conformance invariants, and
-implementation unit. A waiver
-must name what is waived, why, what remains required, and the next active gate.
+implementation unit. A waiver must name what is waived, why, what remains
+required, and the next active gate.
 
 For D3, implementation commands, file creation, package installation, source
 generation, or production-code edits begin after Final Implementation Approval
 or a valid `FRONTEND WAIVER:` that names the skipped approval and remaining
 evidence. Approval of a questionnaire answer, product direction, stack choice,
-language, page list, visual style, or search requirement moves the artifact
-sequence forward and does not approve implementation.
+language, page list, visual style, visual board, raster asset pack, UI
+library, component showcase, wireframe, search requirement, or copy direction
+moves the artifact sequence forward and does not approve implementation unless
+the owner explicitly grants Final Implementation Approval.
+
+Wireframe Approval freezes structure and interaction intent; it does not
+authorize production code, package installation, source generation, or
+implementation inside the design/control context.
 
 ## Implementation
 
@@ -1320,17 +1437,26 @@ do not collapse design, implementation, and QA into one context.
 
 The Frontend Implementation Brief includes repository and execution context,
 approved scope, every contract and HTML wireframe address, exact allowed files,
-implementation units, Wireframe Conformance Contract, sources of truth,
-commands, acceptance evidence, checkpoint expectations, known risks, and the
-required response format. The implementation worker may edit its authorized
-files and create coherent checkpoints. It reports every proposed contract
-deviation instead of silently implementing it.
+implementation units, Wireframe Conformance Contract, Selected Visual
+Direction Translation, approved UI Library/component showcase paths, Production
+Raster Asset Pack paths when applicable, approved Text Inventory paths, sources
+of truth, commands, acceptance evidence, checkpoint expectations, known risks,
+and the required response format. The implementation worker may edit its
+authorized files and create coherent checkpoints. It reports every proposed
+contract deviation instead of silently implementing it.
 
 The implementation session implements against the approved contract. Preserve
 established stack and components. Keep domain and decision logic separable from
 presentation code where practical. Missing data must produce an explicit
 loading, empty, blocked, partial, or error state; represent operational
 availability from real evidence.
+For D3, production output must be production-grade across the whole approved
+surface: complete routes and system states, rich approved copy, real approved
+assets, responsive layouts, accessible controls, useful empty/error/recovery
+paths, maintainable component boundaries, and direct fidelity to the approved
+wireframes, text inventory, UI library, and selected visual direction. A
+working shell, partial happy path, placeholder content, generic generated copy,
+or page that only resembles the wireframe structurally is not complete.
 
 ### Wireframe Conformance Contract
 
@@ -1552,6 +1678,21 @@ contracts. Inspect:
 - signature traits and anti-identity;
 - whether visual techniques have product rationale rather than generic
   AI-generated styling.
+
+For D3, QA must explicitly compare production output against the selected
+raster visual direction and the Selected Visual Direction Translation. Record
+whether the implemented UI preserves the approved composition logic, density,
+surfaces, typography direction, color semantics, illustration or imagery
+treatment, signature traits, and rejected-board counterexamples. A production
+surface that follows the wireframe but visually collapses into generic
+unstyled cards, mismatched stock-like assets, or a different product identity
+does not pass visual QA.
+
+For D3, QA must also compare rendered copy against the approved Text Inventory.
+Record missing, shortened, replaced, generic, unsupported, or misplaced text
+items separately from visual and functional findings. A page that renders all
+wireframe regions but omits promised depth, source-backed explanations,
+objection handling, microcopy, or state text does not pass copy QA.
 
 Ask two final questions:
 
@@ -1809,13 +1950,21 @@ A frontend task is complete when:
   recorded owner message containing `FRONTEND WAIVER:`;
 - D3 implementation began after Final Implementation Approval or a valid
   `FRONTEND WAIVER:` for that approval;
+- D3 scope was treated as a production-grade complete surface, or a scoped
+  owner waiver explicitly narrowed it;
 - the requested outcome and approved scope are delivered;
 - required gates or scoped waivers are recorded;
 - relevant contracts match the implementation;
 - D3 Product Surface drafting was preceded by Independent Factual Product
   Research, and the design/control context verified its accepted evidence;
-- D3 visual boards, directly openable HTML wireframes, state matrices, and
-  screen contracts exist at named paths before implementation approval;
+- D3 visual boards, Selected Visual Direction Translation, UI Library/component
+  showcase, directly openable HTML wireframes, state matrices, and screen
+  contracts exist at named paths before implementation approval;
+- UI Library Approval was recorded before production page implementation, or a
+  scoped owner waiver records why it was skipped;
+- Production Raster Asset Pack and approval were recorded before production
+  page implementation when raster imagery, illustration, characters, product
+  media, thumbnails, or generated visual language apply;
 - every approved page or meaningful screen has its own wireframe package and
   screen contract, with shared shell artifacts recorded separately;
 - wireframe packages link to HTML artifacts first and screenshots only as
@@ -1832,6 +1981,8 @@ A frontend task is complete when:
   route/state transitions, or manually opened intermediate screens;
 - substantial D2/D3 copy was produced by a Source-Grounded Content Author and
   checked by an independent Copy Reviewer;
+- D3 Text Inventory exists as a named approved artifact before implementation
+  approval and maps planned text depth to rendered production copy;
 - every applicable frontend Markdown contract passed Independent Contract
   Review by a potential-lead reviewer in a separate context;
 - production frontend code was written in a separate implementation context by
@@ -1839,6 +1990,11 @@ A frontend task is complete when:
   Implementation Brief;
 - the Wireframe Conformance Contract maps every approved page, state, and
   region to production implementation and verification evidence;
+- production visual QA compared rendered pages against the selected raster
+  direction, Selected Visual Direction Translation, UI library, Design Identity,
+  and rejected-board counterexamples;
+- production copy QA compared rendered pages and source code against the
+  approved Text Inventory item by item;
 - every production deviation from a frozen structural or behavioral invariant
   was re-artifacted, inspected, and approved before implementation continued;
 - the full Messaging System was applied to every user-visible text fragment

@@ -64,11 +64,27 @@ separate Copy Reviewer. The author receives approved messaging/page contracts
 and only relevant canonical product sources. The reviewer sees rendered copy,
 audience and voice criteria, but not the author's rationale.
 
+For D3, record the named Text Inventory artifact before implementation
+approval. Implementation review must compare rendered copy and source code
+against that inventory item by item, including expected depth or length,
+claim/proof status, microcopy, empty/error/loading/success/disabled text, and
+approved omissions. Missing, shortened, generic, unsupported, or relocated copy
+is a review finding even when layout and navigation pass.
+
 Do not claim that a check passed without naming its evidence. Apply the visual
 rubric to hierarchy, spacing, alignment, typography, density, composition,
 consistency, semantic color, responsive transformations, states,
 accessibility, Design Identity, Signature Traits, Anti-Identity, selected
 references, and rejected-reference avoidance.
+
+For D3, visual review must explicitly compare the rendered production surface
+with the selected raster visual direction, the Selected Visual Direction
+Translation, and the approved UI Library/component showcase. A review that only
+checks wireframe structure, build output, screenshots, or generic visual
+quality does not satisfy visual fidelity. Record whether composition logic,
+surface treatment, typography direction, color semantics, illustration/media
+treatment, signature traits, component states, and rejected-board
+counterexamples are preserved.
 
 Apply the copy rubric to every user-visible text fragment, not only important
 or marketing text. Cover message trajectory, text hierarchy, specificity,
@@ -112,12 +128,24 @@ execution context from the design/control context. Final QA uses a third
 independent context. Reviews record all three owners: design/control,
 implementation, and QA, plus any scoped owner waiver that collapses roles.
 
+Wireframe Approval does not authorize production implementation. Reviews for
+D3 implementation must name the Final Implementation Approval or the scoped
+`FRONTEND WAIVER:` that allowed production-code edits, package installation, or
+source generation.
+
 Wireframe review links to directly openable HTML artifacts first and records
 W0-W3 fidelity, demonstrated interaction intent, deferred production behavior,
 and Independent First-Use Review evidence. Screenshots are viewport/state
 evidence only. Production review includes the Wireframe
 Conformance Contract and an invariant-by-invariant comparison between approved
 HTML wireframes and production behavior.
+
+Record UI Library Approval and Production Raster Asset Pack Approval when they
+apply. The UI library review checks the storybook-like rendered component
+showcase before production pages. The asset-pack review checks stable raster
+paths, nonblank readable output, fidelity to the selected direction, unwanted
+text, source or licensing constraints when applicable, and suitability as
+future production image-generation reference.
 
 Use the six viewport classes from the frontend subsystem for D2/D3 reviews
 unless an owner-approved viewport boundary narrows the surface. Record the

@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-09-02 - Add production-grade frontend gates
+
+- Required D3 work to treat broad owner requests as complete production
+  surfaces across routes, states, copy, assets, responsiveness,
+  accessibility, maintainability, and future change contracts instead of
+  silently narrowing to an MVP.
+- Added Selected Visual Direction Translation, UI Library/component showcase
+  approval, and Production Raster Asset Pack approval before D3 production
+  page implementation.
+- Required an explicit frontend stack contract before creating the UI
+  library/component showcase, including handling of owner-requested ready-made
+  UI libraries.
+- Strengthened Text Inventory as a named approved artifact produced through
+  source-grounded content authoring and reconciled item-by-item against
+  rendered production copy.
+- Clarified that Wireframe Approval freezes structure and interaction intent
+  but never authorizes production code, package installation, or source
+  generation without Final Implementation Approval or a scoped waiver.
+- Expanded implementation and review criteria to check wireframe fidelity,
+  selected raster visual fidelity, UI-library fidelity, and Text Inventory
+  fidelity separately.
+
 ## 2026-09-02 - Require raster visual exploration and factual research
 
 - Removed every HTML/CSS/JavaScript fallback for Visual Direction Boards and
