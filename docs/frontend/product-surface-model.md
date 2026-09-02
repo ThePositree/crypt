@@ -36,8 +36,8 @@ project docs, requirements, specs, current state, task context, or a canonical
   current backtest/live metrics, CMS integration, or runtime dashboards.
 - Assumptions: all portal content is authored directly in Next.js/Tailwind
   source files and can use repository docs as curated source material.
-- Unresolved decisions: exact first-release page tree, search library,
-  component primitives, mascot asset production method, and final visual board.
+- Unresolved decisions: production search library, component primitives, and
+  final mascot asset production method.
 
 ## User Capabilities And Goals
 

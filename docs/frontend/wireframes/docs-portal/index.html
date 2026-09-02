@@ -41,6 +41,10 @@
     }
     a { color: inherit; text-decoration: none; }
     button, input { font: inherit; }
+    a:focus-visible, button:focus-visible, input:focus-visible {
+      outline: 3px solid var(--coral);
+      outline-offset: 2px;
+    }
     .app { min-height: 100vh; display: grid; grid-template-columns: 280px 1fr 240px; }
     .side, .toc, .top, .drawer, .palette, .panel, .card, .map, .code, .notice {
       background: var(--panel);
@@ -111,13 +115,13 @@
     .empty { text-align: center; padding: 36px 16px; }
     .drawer { width: min(320px, 90vw); min-height: 100vh; padding: 18px; border-radius: 0; }
     .mobile-only { display: none; }
-    @media (max-width: 1100px) {
+    @media (max-width: 1023px) {
       .app { grid-template-columns: 240px 1fr; }
       .toc { display: none; }
       .hero { grid-template-columns: 1fr; }
       .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
-    @media (max-width: 760px) {
+    @media (max-width: 767px) {
       .app { display: block; }
       .side { display: none; }
       .main { padding: 12px; }
@@ -173,73 +177,167 @@
       ["operations", "Operations", "Operations"],
       ["glossary", "Glossary", "Reference"]
     ];
+    let lastPaletteTrigger = null;
+    let activeResult = 0;
     const body = {
       home: {
         title: "crypt docs",
         lead: "Курируемая документация фреймворка для исследования крипто-стратегий и их живого исполнения.",
         badges: ["OKX", "Live money", "No look-ahead", "Curated"],
-        sections: ["Учебный маршрут", "Карта фреймворка", "Быстрый reference"]
+        sections: ["Учебный маршрут", "Карта фреймворка", "Быстрый reference"],
+        source: "README, current state, owner-approved portal scope",
+        panels: {
+          concept: "Портал объясняет систему как фреймворк: модули, границы, потоки и терминологию.",
+          flow: "Главный путь ведет от обзорной модели к архитектуре, данным, стратегиям, бэктестеру и live-исполнению.",
+          config: "Home не управляет конфигурацией и не показывает runtime state."
+        },
+        area: "Start"
       },
       overview: {
         title: "Overview",
         lead: "Что такое crypt, какие контуры входят в систему и где проходят границы ответственности.",
         badges: ["Stable", "Framework"],
-        sections: ["Назначение", "Контуры системы", "Что не показывает портал"]
+        sections: ["Назначение", "Контуры системы", "Что не показывает портал"],
+        source: "README.md, docs/state/current.yml, AGENTS.md",
+        panels: {
+          concept: "crypt совмещает исследовательский контур и live execution module для выбранной владельцем стратегии.",
+          flow: "Обзор связывает research, strategies, backtester, data, execution и operations.",
+          config: "Runtime-истина не выводится на странице; она остается в env/config и внешних системах."
+        },
+        area: "Guides"
       },
       architecture: {
         title: "Architecture",
         lead: "Связанные острова системы: данные, стратегии, бэктестер, конфигурация, исполнение и операции.",
         badges: ["Stable", "Map"],
-        sections: ["Карта компонентов", "Потоки", "Границы"]
+        sections: ["Карта компонентов", "Потоки", "Границы"],
+        source: "docs/architecture.md, docs/agent/context_routes.yml, docs/state/current.yml",
+        panels: {
+          concept: "Подсистемы разделены на острова ответственности: данные, стратегия, симуляция, исполнение, конфигурация и операции.",
+          flow: "Мосты показывают зависимости: данные питают стратегии, решения питают бэктестер и live execution.",
+          config: "Границы live/runtime помечаются отдельно, чтобы документация не выглядела как control plane."
+        },
+        area: "Guides"
       },
       "data-pipeline": {
         title: "Data Pipeline",
         lead: "Как свечи и внешние данные проходят загрузку, нормализацию, хранение и подготовку признаков.",
         badges: ["Operational", "No look-ahead"],
-        sections: ["Источники", "Закрытые свечи", "Потребители"]
+        sections: ["Источники", "Закрытые свечи", "Потребители"],
+        source: "docs/backfill.md, docs/backtester_regression.md, docs/execution/live_signal_cache.md",
+        panels: {
+          concept: "Data Pipeline описывает путь от exchange/data sources к хранилищу и потребителям.",
+          flow: "Свечи становятся пригодными для стратегий только после нормализации и проверки закрытости.",
+          config: "Недоступность данных должна становиться нейтральным сигналом, блокировкой входа или явной ошибкой."
+        },
+        area: "Guides"
       },
       strategies: {
         title: "Strategies",
         lead: "Как стратегия превращает закрытые данные в сигналы, решения и параметры исполнения.",
         badges: ["Research", "Config"],
-        sections: ["Жизненный цикл", "Decision code", "Архивы"]
+        sections: ["Жизненный цикл", "Decision code", "Архивы"],
+        source: "docs/strategy_benchmark.md, docs/backtester/candidate_archive.md, docs/discovery/direct_signal_search_v3.md",
+        panels: {
+          concept: "Стратегия описывает правила входа, выхода, риска и пригодность к портфельной проверке.",
+          flow: "Кандидат проходит исследование, оптимизацию, архивирование и возможное подключение к портфелю.",
+          config: "Выбор production strategy принадлежит владельцу и читается из runtime config."
+        },
+        area: "Reference"
       },
       backtester: {
         title: "Backtester",
         lead: "Как симуляция исполняет стратегии на истории без заглядывания в будущее.",
         badges: ["Stable", "No look-ahead"],
-        sections: ["Модель", "Учет", "Команды"]
+        sections: ["Модель", "Учет", "Команды"],
+        source: "docs/backtester_regression.md, docs/backtest.md, docs/backtester/exit_geometry.md",
+        panels: {
+          concept: "Backtester моделирует историческое исполнение с заданными правилами учета и ограничениями.",
+          flow: "Warmup через --load-from подготавливает признаки, а --from задает окно исполнения и учета.",
+          config: "CLI snippets показывают команды без таблиц результатов и без PnL-выводов."
+        },
+        area: "Reference"
       },
       configuration: {
         title: "Configuration",
         lead: "Где задаются стратегии, символы, риск, execution mode и операционные ограничения.",
         badges: ["Config", "Live money"],
-        sections: ["Источники истины", "Env", "JSON"]
+        sections: ["Источники истины", "Env", "JSON"],
+        source: "README.md, docs/state/current.yml, docs/execution/live_execution.md, .env.example",
+        panels: {
+          concept: "Конфигурация объясняет hierarchy env, JSON и runtime defaults без возможности менять live state.",
+          flow: "Runtime env загружается перед execution; документация лишь объясняет, где лежит источник истины.",
+          config: "EXECUTION_STRATEGY_CONFIG и loaded env сильнее prose summaries."
+        },
+        area: "Reference"
       },
       "live-execution": {
         title: "Live Execution",
         lead: "Архитектура живого исполнения через OKX без показа текущих балансов, позиций или PnL.",
         badges: ["Operational", "Live money", "OKX"],
-        sections: ["Границы", "Ордерный цикл", "Защита"]
+        sections: ["Границы", "Ордерный цикл", "Защита"],
+        source: "docs/execution/live_execution.md, docs/execution/live_backtest_reconciliation_2026-07-28.md, docs/deploy/railway.md",
+        panels: {
+          concept: "Live Execution страница описывает архитектуру, preflight, синхронизацию и защитные ордера.",
+          flow: "Сигнал превращается в order intent, затем OKX становится источником истины по fills, fees и positions.",
+          config: "Текущие балансы, позиции, account equity и live PnL запрещены для этого портала."
+        },
+        area: "Operations"
       },
       cli: {
         title: "CLI",
         lead: "Практические команды для исследования, бэктестинга и операторских проверок без вывода результатов.",
         badges: ["Stable", "Commands"],
-        sections: ["Команды", "Параметры", "Безопасные примеры"]
+        sections: ["Команды", "Параметры", "Безопасные примеры"],
+        source: "README.md, docs/cli.md, docs/agent/operating_rules.md",
+        panels: {
+          concept: "CLI page группирует команды по задачам: research smoke, backtester, optimize, execution-only dry-run.",
+          flow: "Читатель копирует snippets и открывает связанные разделы, но не видит сохраненные результаты запусков.",
+          config: "Agent commands должны использовать UV_CACHE_DIR=/tmp/uv-cache."
+        },
+        area: "Reference"
       },
       operations: {
         title: "Operations",
         lead: "Как читать операционные гарантии, preflight-проверки, incident response и Railway-контекст.",
         badges: ["Operational", "Risk"],
-        sections: ["Preflight", "Incident response", "Наблюдаемость"]
+        sections: ["Preflight", "Incident response", "Наблюдаемость"],
+        source: "docs/deploy/railway.md, docs/operations/observability.md, docs/agent/operating_rules.md",
+        panels: {
+          concept: "Operations page объясняет runbook-подход, preflight, observability и incident response.",
+          flow: "Сначала воспроизведение или state check, затем root cause, smallest fix, tests и changelog/task hygiene.",
+          config: "External/runtime state проверяется явно; документация не мутирует Railway или OKX."
+        },
+        area: "Operations"
       },
       glossary: {
         title: "Glossary",
         lead: "Термины проекта: свечи, сигналы, risk base, OKX, no look-ahead, replay и другие понятия.",
         badges: ["Reference", "Search"],
-        sections: ["Термины", "Синонимы", "Связанные разделы"]
+        sections: ["Термины", "Синонимы", "Связанные разделы"],
+        source: "README.md, docs/state/current.yml, docs/backtester_regression.md, docs/execution/live_execution.md",
+        panels: {
+          concept: "Glossary связывает русские и английские термины, принятые в проекте.",
+          flow: "Поиск ведет к термину, термин ведет к subsystem page, subsystem page возвращает к контексту.",
+          config: "Термины не обещают торговый результат и не заменяют runtime docs."
+        },
+        area: "Reference"
       }
+    };
+    const searchDocs = Object.entries(body).flatMap(([slug, d]) => {
+      const text = [d.title, d.lead, d.badges.join(" "), d.sections.join(" "), d.source, d.panels.concept, d.panels.flow, d.panels.config].join(" ");
+      return d.sections.map(section => ({ slug, area: d.area, title: d.title, section, text, snippet: d.panels.concept }));
+    });
+    const expectedPrimary = {
+      "backtester": "backtester",
+      "okx": "live-execution",
+      "no look-ahead bias": "data-pipeline",
+      "strategy config": "configuration",
+      "candles": "data-pipeline",
+      "cli": "cli",
+      "railway": "operations",
+      "risk base": "glossary",
+      "warmup": "backtester"
     };
     const params = new URLSearchParams(location.search);
     let page = params.get("page") || "home";
@@ -258,41 +356,85 @@
     function flow() {
       return `<section id="flow"><h2>Поток данных и решений</h2><div class="flow">${["candles","indicators","signal","decision","execution"].map((s,i) => `<div class="step">${s}</div>${i<4?'<span class="arrow">→</span>':''}`).join("")}</div><div class="notice">Все расчеты в объяснениях строятся вокруг закрытых свечей и отсутствия look-ahead bias.</div></section>`;
     }
+    const snippets = {
+      overview: ["Контур чтения", "overview -> architecture -> data-pipeline -> strategies -> backtester -> live-execution"],
+      architecture: ["Архитектурная граница", "pure decision code -> backtester replay + live execution adapter"],
+      "data-pipeline": ["Backfill", "PYTHONPATH=src uv run python -m crypt.backfill --symbol SOL-USDT-SWAP --from 2022-01-01 --to 2026-08-04 --data-types ohlcv --data-dir data"],
+      strategies: ["Strategy config", "EXECUTION_STRATEGY_CONFIG=strategies/archive/<owner-selected-strategy>.json"],
+      backtester: ["Backtester", "PYTHONPATH=src uv run backtester run --strategy strategies/archive/<strategy>.json --output results/<run-name>"],
+      configuration: ["Runtime env", "EXECUTION_STRATEGY_CONFIG=strategies/archive/<owner-selected-strategy>.json"],
+      "live-execution": ["Execution-only dry run", "PYTHONPATH=src EXECUTION_ENABLED=true EXECUTION_DRY_RUN=true uv run python -m crypt --once --execution-only"],
+      cli: ["CLI", "PYTHONPATH=src uv run backtester run --strategy strategies/archive/<strategy>.json --output results/<run-name>"],
+      operations: ["Railway start command", "uv run --no-dev python -u -m crypt --execution-only"],
+      glossary: ["Поисковый алиас", "no look-ahead bias = отсутствие заглядывания в будущие свечи"]
+    };
     function commonPage(d) {
-      return `<article class="page"><div class="crumbs"><a href="?page=home">Главная</a><span>›</span><span>${d.title}</span></div><h1>${d.title}</h1><p>${d.lead}</p>${badges(d.badges)}<div class="tabs"><button class="active">concept</button><button>flow</button><button>config</button></div>${flow()}<section id="details"><h2>${d.sections[0]}</h2><div class="accordion">${d.sections.map((s,i)=>`<div class="acc ${i===0?'open':''}"><button>${s}<span>⌄</span></button><div class="body">Курируемое объяснение раздела без цитирования исходного кода и без отображения результатов выполнения.</div></div>`).join("")}</div></section><section id="command"><h2>Пример команды</h2><div class="code"><code>uv run crypt docs-check --section ${page}</code><button class="copy">Скопировать</button></div><p>Команды показываются как практические snippets без вывода результатов.</p></section><section class="next" id="next"><h2>Дальше читать</h2><div class="grid">${pages.filter(([s])=>s!==page).slice(0,3).map(([s,l])=>`<a class="card" href="?page=${s}"><h3>${l}</h3><p>Связанный раздел framework docs.</p></a>`).join("")}</div></section></article>`;
+      const [snippetLabel, snippet] = snippets[page] || snippets.overview;
+      return `<article class="page"><div class="crumbs"><a href="?page=home">Главная</a><span>›</span><span>${d.title}</span></div><h1>${d.title}</h1><p>${d.lead}</p>${badges(d.badges)}<div class="notice"><strong>Источник:</strong> ${d.source}. Эта страница не показывает runtime results.</div><div class="tabs" role="tablist"><button class="active" data-tab="concept">concept</button><button data-tab="flow">flow</button><button data-tab="config">config</button></div><section id="tab-panel" class="panel card">${d.panels.concept}</section>${flow()}<section id="details"><h2>${d.sections[0]}</h2><div class="accordion">${d.sections.map((s,i)=>`<div class="acc ${i===0?'open':''}"><button aria-expanded="${i===0?'true':'false'}">${s}<span>⌄</span></button><div class="body">${[d.panels.concept,d.panels.flow,d.panels.config][i] || d.panels.concept}</div></div>`).join("")}</div></section><section id="command"><h2>${snippetLabel}</h2><div class="code"><code>${snippet}</code><button class="copy" data-copy="${snippet.replace(/"/g,'&quot;')}">Скопировать</button></div><p>Snippets показываются без вывода результатов, live state, балансов, позиций или PnL.</p></section><section class="next" id="next"><h2>Дальше читать</h2><div class="grid">${pages.filter(([s])=>s!==page).slice(0,3).map(([s,l])=>`<a class="card" href="?page=${s}"><h3>${l}</h3><p>Связанный раздел framework docs.</p></a>`).join("")}</div></section></article>`;
     }
     function home() {
       const d = body.home;
-      return `<article><h1>${d.title}</h1><p>${d.lead}</p>${badges(d.badges)}<div class="routes"><a class="card" href="?page=overview"><h3>Учебный маршрут</h3><p>Пошаговый путь от общей модели до live-исполнения.</p></a><a class="card" href="?page=architecture"><h3>Reference</h3><p>Карта подсистем и быстрые входы в разделы.</p></a></div>${atlas()}<section><h2>Фильтры по разделам</h2><div class="filters"><button class="active">Все</button><button>Architecture</button><button>Research</button><button>Execution</button><button>Operations</button></div><div class="grid">${pages.slice(1).map(([s,l])=>`<a class="card" href="?page=${s}"><h3>${l}</h3><p>Курируемая страница портала.</p></a>`).join("")}</div></section></article>`;
+      return `<article><h1>${d.title}</h1><p>${d.lead}</p>${badges(d.badges)}<div class="routes"><a class="card" href="?page=overview"><h3>Учебный маршрут</h3><p>Пошаговый путь от общей модели до live-исполнения.</p></a><a class="card" href="?page=architecture"><h3>Reference</h3><p>Карта подсистем и быстрые входы в разделы.</p></a></div>${atlas()}<section id="browse"><h2>Фильтры по разделам</h2><div class="filters"><button class="active" data-filter="all">Все</button><button data-filter="Guides">Architecture</button><button data-filter="Reference">Research</button><button data-filter="Operations">Execution</button><button data-filter="Operations">Operations</button></div><div class="grid" id="homeCards">${pages.slice(1).map(([s,l,g])=>`<a class="card" data-area="${g}" href="?page=${s}"><h3>${l}</h3><p>Курируемая страница портала.</p></a>`).join("")}</div></section></article>`;
     }
     function render() {
       document.getElementById("nav").innerHTML = navHtml();
       document.getElementById("drawerNav").innerHTML = navHtml();
       const d = body[page] || body.home;
       document.getElementById("content").innerHTML = page === "home" ? home() : commonPage(d);
-      document.getElementById("toc").innerHTML = `<h3>На этой странице</h3>${(d.sections||["Карта"]).map(s=>`<a href="#details">${s}</a>`).join("")}<a href="#next">Дальше читать</a>`;
-      document.querySelectorAll(".acc button").forEach(btn => btn.onclick = () => btn.parentElement.classList.toggle("open"));
-      document.querySelectorAll(".tabs button").forEach(btn => btn.onclick = () => { btn.parentElement.querySelectorAll("button").forEach(b=>b.classList.remove("active")); btn.classList.add("active"); });
-      document.querySelectorAll(".copy").forEach(btn => btn.onclick = () => { btn.textContent = "Скопировано"; setTimeout(()=>btn.textContent="Скопировать", 1200); });
+      const tocItems = page === "home" ? [["#map","Карта фреймворка"],["#browse","Быстрый reference"]] : [["#tab-panel","Панели"],["#flow","Поток"],["#details","Детали"],["#command","Команда"],["#next","Дальше читать"]];
+      document.getElementById("toc").innerHTML = `<h3>На этой странице</h3>${tocItems.map(([href,label])=>`<a href="${href}">${label}</a>`).join("")}`;
+      document.querySelectorAll(".acc button").forEach(btn => btn.onclick = () => { const acc = btn.parentElement; acc.classList.toggle("open"); btn.setAttribute("aria-expanded", acc.classList.contains("open")); });
+      document.querySelectorAll(".tabs button").forEach(btn => btn.onclick = () => { btn.parentElement.querySelectorAll("button").forEach(b=>b.classList.remove("active")); btn.classList.add("active"); document.getElementById("tab-panel").textContent = d.panels[btn.dataset.tab]; });
+      document.querySelectorAll(".copy").forEach(btn => btn.onclick = async () => { const value = btn.dataset.copy || ""; try { await navigator.clipboard.writeText(value); } catch (_) {} btn.textContent = "Скопировано"; setTimeout(()=>btn.textContent="Скопировать", 1200); });
+      document.querySelectorAll(".filters button").forEach(btn => btn.onclick = () => { document.querySelectorAll(".filters button").forEach(b=>b.classList.remove("active")); btn.classList.add("active"); const f = btn.dataset.filter; document.querySelectorAll("#homeCards .card").forEach(card => card.style.display = f === "all" || card.dataset.area === f ? "" : "none"); });
     }
     function openPalette(q) {
+      lastPaletteTrigger = document.activeElement;
       document.getElementById("paletteBackdrop").classList.add("open");
       document.getElementById("paletteSearch").value = q || "";
       drawResults(q || "");
       setTimeout(()=>document.getElementById("paletteSearch").focus(), 0);
     }
     function drawResults(q) {
-      const matches = q && q !== "unknown" ? pages.filter(([s,l]) => (s+l).toLowerCase().includes(q.toLowerCase()) || ["OKX","No look-ahead","Config","CLI"].join(" ").toLowerCase().includes(q.toLowerCase())) : [];
+      activeResult = 0;
+      const needle = q.toLowerCase();
+      const preferredSlug = expectedPrimary[needle];
+      const matches = q && q !== "unknown"
+        ? searchDocs
+            .filter(item => item.text.toLowerCase().includes(needle))
+            .sort((a,b) => {
+              const score = item => (preferredSlug && item.slug === preferredSlug ? 100 : 0) + (item.title.toLowerCase() === needle ? 20 : 0) + (item.section.toLowerCase().includes(needle) ? 10 : 0) - (item.slug === "home" ? 30 : 0);
+              return score(b) - score(a);
+            })
+            .slice(0, 8)
+        : [];
       document.getElementById("results").innerHTML = q === "unknown" || (q && !matches.length)
         ? `<div class="empty"><h2>Ничего не найдено</h2><p>Попробуй изменить запрос или открыть карту разделов.</p><a class="card" href="?page=architecture">Смотреть карту фреймворка</a></div>`
-        : (matches.length ? matches : pages.slice(1,6)).map(([s,l],i)=>`<a class="result ${i===0?'active':''}" href="?page=${s}"><strong>${l}</strong><p>Найдено в курируемом контенте страницы.</p></a>`).join("");
+        : (matches.length ? matches : searchDocs.slice(0,6)).map((item,i)=>`<a class="result ${i===0?'active':''}" href="?page=${item.slug}"><strong>${item.title}</strong><p>${item.area} / ${item.section}: ${item.snippet}</p></a>`).join("");
+    }
+    function closePalette() {
+      document.getElementById("paletteBackdrop").classList.remove("open");
+      if (lastPaletteTrigger && lastPaletteTrigger.focus) lastPaletteTrigger.focus();
+    }
+    function moveResult(delta) {
+      const results = [...document.querySelectorAll(".result")];
+      if (!results.length) return;
+      results[activeResult]?.classList.remove("active");
+      activeResult = (activeResult + delta + results.length) % results.length;
+      results[activeResult].classList.add("active");
+      results[activeResult].focus();
     }
     document.getElementById("topSearch").addEventListener("focus", e => openPalette(e.target.value));
     document.getElementById("paletteSearch").addEventListener("input", e => drawResults(e.target.value));
-    document.getElementById("paletteBackdrop").addEventListener("click", e => { if (e.target.id === "paletteBackdrop") e.currentTarget.classList.remove("open"); });
+    document.getElementById("paletteSearch").addEventListener("keydown", e => {
+      if (e.key === "ArrowDown") { e.preventDefault(); moveResult(1); }
+      if (e.key === "ArrowUp") { e.preventDefault(); moveResult(-1); }
+      if (e.key === "Enter") { const target = document.querySelector(".result.active"); if (target) location.href = target.href; }
+    });
+    document.getElementById("paletteBackdrop").addEventListener("click", e => { if (e.target.id === "paletteBackdrop") closePalette(); });
     document.addEventListener("keydown", e => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openPalette(""); }
-      if (e.key === "Escape") { document.getElementById("paletteBackdrop").classList.remove("open"); document.getElementById("drawerBackdrop").classList.remove("open"); }
+      if (e.key === "Escape") { closePalette(); document.getElementById("drawerBackdrop").classList.remove("open"); }
     });
     document.getElementById("themeToggle").onclick = () => { theme = document.body.dataset.theme === "dark" ? "light" : "dark"; document.body.dataset.theme = theme; };
     document.getElementById("openNav").onclick = () => document.getElementById("drawerBackdrop").classList.add("open");

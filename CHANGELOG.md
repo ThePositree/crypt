@@ -24,6 +24,11 @@ Format: newest on top, date in `YYYY-MM-DD`.
 - Added proposed navigation flow, page-level screen contracts, directly
   openable HTML wireframe package, and Orca browser preflight notes for the
   documentation portal.
+- Ran independent Orca contract review for the wireframe/screen-contract
+  package, recorded the block verdict, and addressed the findings by expanding
+  page/search contracts, adding search expected-result criteria, correcting
+  screen index evidence, aligning Board 3/breakpoint records, and replacing the
+  fictional wireframe command with source-backed snippets.
 
 ---
 

@@ -43,15 +43,19 @@ terms without requiring raw source reading.
   local shim initially failed with `orca-ide: bad option: --no-sandbox`.
   The owner repaired Orca CLI on 2026-09-02 and `orca status --json` then
   reported a ready runtime.
+- Independent Orca contract review returned a block verdict with no critical
+  findings. The follow-up pass addressed the blocking issues by making the HTML
+  wireframe interactions data-backed, removing the fictional `docs-check`
+  snippet, expanding all page/search contracts with canonical fields, adding a
+  search expected-result matrix, fixing wireframe paths, and aligning Board 3
+  and responsive-breakpoint records.
 
 **Next steps:**
 
-1. Finish the content coverage contract, full interaction inventory, and
-   Frontend Lead Contract Review Brief for the wireframe/screen-contract
-   package.
-2. Run independent contract review in a separate Orca/fresh context, fix any
-   blocking findings, and request Wireframe Approval.
-3. After Wireframe Approval, prepare the implementation brief and
+1. Re-run Orca browser validation against the updated HTML wireframe fixtures.
+2. Run a fresh independent contract review in a separate Orca/fresh context,
+   fix any remaining blocking findings, and request Wireframe Approval.
+3. After owner Wireframe Approval, prepare the implementation brief and
    Wireframe Conformance Contract, then request Final Implementation Approval
    before creating production Next.js code.
 

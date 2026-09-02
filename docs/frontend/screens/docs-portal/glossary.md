@@ -21,6 +21,54 @@ the subsystem pages.
 - `docs/execution/live_execution.md`
 - `docs/strategy_benchmark.md`
 
+## Primary Action
+
+Search a term, then follow its subsystem cross-link.
+
+## Information Hierarchy
+
+- Alphabetical/domain grouped terms.
+- Russian definition with English aliases.
+- Source subsystem links.
+- Boundary notes for live-money and result-sensitive terms.
+
+## Components
+
+- Breadcrumbs, reference/search badges, source notice, term index, alias chips,
+  accordion definitions, glossary snippet, next-reading cards, right TOC.
+
+## Interaction Inventory
+
+- Term groups expand independently.
+- Alias chips link to search results or subsystem pages in production.
+- Search routes Russian, English, and domain-adjacent synonyms here.
+
+## Data Sources And Trust Boundaries
+
+- Curated from README, current state, backtester regression, live execution,
+  and strategy benchmark docs.
+- Definitions avoid performance claims and current runtime facts.
+- Glossary links explain concepts; they do not render source markdown.
+
+## States
+
+- Default grouped glossary.
+- Filtered/search-result glossary.
+- Expanded term definition.
+- Zero-result recovery via search overlay.
+- Dark theme.
+
+## Responsive Behavior
+
+- Term index becomes a single column on mobile.
+- Alias chips wrap without overlapping definitions.
+
+## Accessibility Requirements
+
+- Terms and aliases are text, not image-only labels.
+- Expanded definitions expose state in production.
+- Search recovery links are keyboard reachable.
+
 ## Acceptance Criteria
 
 - Search queries can find terms by English and Russian/domain-adjacent labels.
@@ -29,4 +77,3 @@ the subsystem pages.
 ## Wireframe
 
 - `docs/frontend/wireframes/docs-portal/index.html?page=glossary`
-

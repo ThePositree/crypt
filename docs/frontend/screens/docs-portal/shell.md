@@ -48,12 +48,12 @@ Search the documentation or open the next relevant page.
 
 ## Responsive Behavior
 
-- Below 640px: left navigation becomes a drawer; page TOC is hidden or moved
-  into the page; atlas maps stack as cards.
-- 640px and above: mobile drawer remains available; cards can form two-column
-  groups.
-- 768px and above: persistent left navigation can return.
-- 1024px and above: right TOC appears when space allows.
+- Below 640px: left navigation becomes a drawer, page TOC is hidden or moved
+  into the page, and atlas maps stack as cards.
+- 640px and above: mobile drawer remains available and cards can form
+  two-column groups when space allows.
+- 768px and above: persistent left navigation returns.
+- 1024px and above: right TOC appears.
 - 1280px and above: full three-column documentation shell.
 - 1536px and above: content width remains constrained; maps gain whitespace,
   not larger unreadable text.
@@ -70,4 +70,3 @@ Search the documentation or open the next relevant page.
 
 - Flow: `docs/frontend/flows/docs-portal-navigation.md`
 - Wireframe: `docs/frontend/wireframes/docs-portal/index.html`
-

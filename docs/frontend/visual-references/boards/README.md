@@ -1,7 +1,7 @@
 # Visual Direction Boards - crypt docs
 
 Date: 2026-09-02
-Status: pending Visual Direction Approval
+Status: Visual Direction approved
 Tool: built-in image generation
 Product Surface: `docs/frontend/product-surface-model.md` revision 1
 
@@ -21,14 +21,10 @@ independent contract review, and Final Implementation Approval.
 | Reference Desk Playground | `board-04-reference-desk-playground.png` | Dense framework reference desk with restrained playful details. | Backtester reference page, command palette, full-content search, glossary popover, mobile nav drawer, TOC, command snippet. | Tabs, accordion, copy button, popover, state matrix, navigation states, dark component sample. | Generated and visually inspected in-session; PNG 1672x941. | Closest to serious framework docs, strongest reference readability. | Less playful and less unique; mascots are subtle. |
 | Lo-fi Signal Workshop | `board-05-lofi-signal-workshop.png` | Expressive playful workshop explaining decision flows step by step. | Home page, docs page, mobile page, command palette, empty search, dark sample, candles-to-execution flow diagram. | Buttons, badges, tabs, toggles, alerts, chips, progress steps, command palette, zero-result state. | Generated and visually inspected in-session; PNG 1536x1024. | Strong first-screen personality, excellent abstract mascot direction and flow explanation. | Needs careful density control so playful shapes do not crowd long reference pages. |
 
-## Approval Question
+## Approval Record
 
-Select one board as the primary direction, request a mix, or reject all and ask
-for another iteration. A mixed direction should name which properties to keep
-from each board.
-
-## Current Recommendation
-
-Use Board 5 as the primary emotional direction, mix in Board 4 for reference
-density and Board 3 for architecture-map moments. This keeps the portal
-distinctive while preserving framework-docs readability.
+The owner selected Board 3, `System Islands Atlas`, with "3" on 2026-09-02.
+Use Board 3 as the primary visual direction. Use Board 4 only as a secondary
+reference for dense reference-page composition, and use the other boards as
+supporting signals or avoid notes recorded in
+`docs/frontend/visual-references/interpretation.md`.
