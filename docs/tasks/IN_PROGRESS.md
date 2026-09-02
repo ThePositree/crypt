@@ -54,6 +54,10 @@ terms without requiring raw source reading.
   Those fixes are now implemented in the HTML wireframe and locally validated
   with `node --check`, Orca browser snapshots, and browser eval checks for the
   expected-result matrix.
+- A third independent Orca contract review narrowed the remaining block further
+  to section-level matrix specificity and stale overlay focus restoration.
+  The wireframe now has explicit matrix result rows and guarded overlay close
+  behavior, with local eval validation for section labels and close ordering.
 
 **Next steps:**
 

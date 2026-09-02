@@ -352,6 +352,51 @@
       "risk base": ["configuration", "strategies"],
       "warmup": ["data-pipeline"]
     };
+    const matrixResults = {
+      "backtester": [
+        ["backtester", "Model"],
+        ["cli", "Backtester command"],
+        ["glossary", "backtest"]
+      ],
+      "okx": [
+        ["live-execution", "Boundaries"],
+        ["configuration", "env"],
+        ["operations", "Railway"]
+      ],
+      "no look-ahead bias": [
+        ["data-pipeline", "Closed candles"],
+        ["backtester", "Model"],
+        ["glossary", "alias"]
+      ],
+      "strategy config": [
+        ["configuration", "Runtime truth"],
+        ["strategies", "active config"],
+        ["live-execution", "loaded strategy"]
+      ],
+      "candles": [
+        ["data-pipeline", "Closed candles"],
+        ["backtester", "warmup"],
+        ["glossary", "candle"]
+      ],
+      "cli": [
+        ["cli", "Available commands"],
+        ["backtester", "command snippets"]
+      ],
+      "railway": [
+        ["operations", "Railway boundary"],
+        ["live-execution", "deploy context"],
+        ["configuration", "env"]
+      ],
+      "risk base": [
+        ["glossary", "risk base"],
+        ["configuration", "risk"],
+        ["strategies", "production selection"]
+      ],
+      "warmup": [
+        ["backtester", "Warmup versus accounting"],
+        ["data-pipeline", "feature preparation"]
+      ]
+    };
     const params = new URLSearchParams(location.search);
     let page = params.get("page") || "home";
     let theme = params.get("theme") || "light";
@@ -413,7 +458,8 @@
       const needle = q.toLowerCase();
       const preferredSlug = expectedPrimary[needle];
       const supportSlugs = expectedSupport[needle] || [];
-      const matches = q && q !== "unknown"
+      const exactMatches = matrixResults[needle]?.map(([slug,section]) => ({ slug, section, area: body[slug].area, title: body[slug].title, text: body[slug].lead, snippet: body[slug].panels.concept }));
+      const matches = exactMatches || (q && q !== "unknown"
         ? searchDocs
             .filter(item => item.text.toLowerCase().includes(needle) || item.slug === preferredSlug || supportSlugs.includes(item.slug))
             .sort((a,b) => {
@@ -421,7 +467,7 @@
               return score(b) - score(a);
             })
             .slice(0, 8)
-        : [];
+        : []);
       const grouped = Object.entries(matches.reduce((acc,item) => { (acc[item.area] ||= []).push(item); return acc; }, {}));
       document.getElementById("results").innerHTML = q === "unknown" || (q && !matches.length)
         ? `<div class="empty"><h2>Ничего не найдено</h2><p>Попробуй изменить запрос или открыть карту разделов.</p><a class="card" href="?page=architecture">Смотреть карту фреймворка</a><a class="card" href="?page=glossary">Открыть глоссарий</a></div>`
@@ -444,8 +490,10 @@
       if (target) openSlug(target.dataset.resultSlug);
     }
     function closePalette() {
+      if (!document.getElementById("paletteBackdrop").classList.contains("open")) return;
       document.getElementById("paletteBackdrop").classList.remove("open");
       if (lastPaletteTrigger && lastPaletteTrigger.focus) lastPaletteTrigger.focus();
+      lastPaletteTrigger = null;
     }
     function focusables(container) {
       return [...container.querySelectorAll("a, button, input")].filter(el => !el.disabled && el.offsetParent !== null);
@@ -465,8 +513,10 @@
       setTimeout(()=>document.getElementById("closeNav").focus(), 0);
     }
     function closeDrawer() {
+      if (!document.getElementById("drawerBackdrop").classList.contains("open")) return;
       document.getElementById("drawerBackdrop").classList.remove("open");
       if (lastDrawerTrigger && lastDrawerTrigger.focus) lastDrawerTrigger.focus();
+      lastDrawerTrigger = null;
     }
     function moveResult(delta) {
       const results = [...document.querySelectorAll(".result")];
@@ -493,7 +543,10 @@
       if (document.getElementById("paletteBackdrop").classList.contains("open") && ["ArrowDown","ArrowUp","Enter","Tab"].includes(e.key)) handlePaletteKeydown(e);
       if (document.getElementById("drawerBackdrop").classList.contains("open") && e.key === "Tab") trapFocus(e, document.getElementById("drawerBackdrop"));
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openPalette(""); }
-      if (e.key === "Escape") { closePalette(); closeDrawer(); }
+      if (e.key === "Escape") {
+        if (document.getElementById("paletteBackdrop").classList.contains("open")) closePalette();
+        else closeDrawer();
+      }
     });
     document.addEventListener("keyup", e => {
       if (document.getElementById("paletteBackdrop").classList.contains("open") && e.key === "Enter") {
@@ -504,7 +557,7 @@
     document.getElementById("openNav").onclick = openDrawer;
     document.getElementById("closeNav").onclick = closeDrawer;
     if (params.get("palette")) openPalette(params.get("q") || "");
-    if (params.get("nav")) document.getElementById("drawerBackdrop").classList.add("open");
+    if (params.get("nav")) openDrawer();
     render();
   </script>
 </body>

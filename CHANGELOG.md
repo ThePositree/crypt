@@ -33,6 +33,9 @@ Format: newest on top, date in `YYYY-MM-DD`.
   search grouping/matrix behavior and palette/drawer focus behavior, then
   implemented grouped search, query expectations, map/glossary recovery,
   local result activation, and overlay focus handling in the HTML wireframe.
+- Ran a third independent contract review, then replaced matrix query results
+  with explicit section-level rows and guarded overlay close restoration to
+  remove stale focus behavior after sequential palette/drawer use.
 
 ---
 

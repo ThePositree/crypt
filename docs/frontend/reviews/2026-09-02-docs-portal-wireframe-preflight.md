@@ -71,3 +71,6 @@ browser validation checked these fixtures again:
 - Browser eval confirmed the expected-result matrix primary route for
   `backtester`, `OKX`, `no look-ahead bias`, `strategy config`, `candles`,
   `CLI`, `Railway`, `risk base`, and `warmup`.
+- After the third-pass fix, browser eval also confirmed the expected primary
+  section label for every matrix query and confirmed that sequential
+  drawer/palette close behavior clears stale opener references.

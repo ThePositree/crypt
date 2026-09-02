@@ -100,3 +100,51 @@ thresholds were reconciled. It still blocked on two issues:
   `strategy config -> configuration`, `candles -> data-pipeline`,
   `CLI -> cli`, `Railway -> operations`, `risk base -> glossary`, and
   `warmup -> backtester`.
+
+## Follow-Up Review - Third Pass
+
+- Reviewer channel: Orca orchestration worker.
+- Run: `run_6e6854b21301`.
+- Dispatch: `ctx_d9c83daa12bd`.
+- Task: `task_9b66e1634076`.
+- Verdict: block.
+- Critical findings: none.
+
+The third review confirmed that the previous scope remained intact, but still
+blocked on two narrower issues:
+
+- Search matrix results matched the intended pages but not the intended
+  section-level results, and grouped output still repeated several near-identical
+  page rows for one query.
+- Escape restoration could still call both overlay close paths and restore
+  focus from stale opener state after sequential palette/drawer use.
+
+## Third-Pass Fixes
+
+- Matrix queries now use explicit section-level result rows matching the search
+  contract instead of deriving three repeated rows from every page section.
+- Search fallback remains available for non-matrix queries, but representative
+  approval queries now resolve to the exact primary/support section labels.
+- Overlay close handlers now no-op when already closed and clear their opener
+  references after restoration.
+- Escape now closes the active palette first, otherwise the drawer, instead of
+  closing both unconditionally.
+- The `nav=1` fixture now opens the drawer through the same `openDrawer()`
+  path as the runtime trigger.
+
+## Third-Pass Validation
+
+- Inline script extraction plus `node --check` passed.
+- Orca browser eval confirmed all expected-result matrix primary slug/section
+  pairs:
+  `backtester -> backtester / Model`, `OKX -> live-execution / Boundaries`,
+  `no look-ahead bias -> data-pipeline / Closed candles`,
+  `strategy config -> configuration / Runtime truth`,
+  `candles -> data-pipeline / Closed candles`,
+  `CLI -> cli / Available commands`,
+  `Railway -> operations / Railway boundary`,
+  `risk base -> glossary / risk base`, and
+  `warmup -> backtester / Warmup versus accounting`.
+- Orca browser eval confirmed sequential drawer and palette close behavior:
+  closing palette leaves drawer open, then closing drawer clears its trigger,
+  and both stale opener references are cleared.
