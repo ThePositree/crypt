@@ -128,6 +128,7 @@ Canonical frontend obligations:
 
 - Full Messaging System for all user-visible text;
 - Source-Grounded Content Authoring;
+- Independent Factual Product Research;
 - Independent First-Use Review;
 - Independent Wireframe Rendered Visual QA;
 - Pre-implementation Content Coverage Audit;
@@ -348,6 +349,9 @@ artifacts, and closure criteria instead of replaying the whole project history.
 
 Keep these roles distinct:
 
+- a Factual Product Researcher inspects only the canonical product, runtime,
+  architecture, and implementation sources needed to establish how the product
+  actually works before a Product Surface is drafted;
 - a Contract Reviewer inherits and challenges contracts as a future frontend
   lead;
 - a First-Use Reviewer experiences the rendered surface as a new user and is
@@ -426,6 +430,27 @@ architecture, task context, current state, and approved decisions. Identify:
 - supporting sources;
 - contradictions or stale claims;
 - open decisions that affect the requested surface.
+
+For D3 work, perform this discovery in a separate Factual Product Researcher
+context before drafting the Product Surface Model. Give the researcher a
+bounded product question, the repository entry points needed to find canonical
+sources, explicit exclusions, and a compact output schema. Do not give it the
+frontend subsystem, visual direction, proposed page structure, authoring
+rationale, or a draft Product Surface to defend.
+
+The researcher returns:
+
+- a factual system and capability map;
+- distinct runtime or user paths and their real topology;
+- active, historical, deferred, and absent capabilities;
+- source-of-truth references for every material fact;
+- contradictions and unresolved product questions;
+- facts that must not be inferred from names or historical documentation.
+
+The design/control context reviews this result against the named sources,
+records accepted evidence in the Product Surface Model, and only then drafts
+pages, journeys, diagrams, discovery behavior, or messaging. Contract Review
+must not be used as the first factual product-discovery pass.
 
 Infer what the repository already establishes. Ask the owner for information
 that remains unresolved after repository discovery. When clarification is required, ask a small adaptive batch
@@ -768,6 +793,8 @@ Required for D3 and for D2 changes that materially expand navigation, journeys,
 or capabilities. Present:
 
 - artifact path and revision;
+- Independent Factual Product Research brief, researcher/context, canonical
+  sources, accepted factual map, and unresolved contradictions for D3;
 - in-scope users, journeys, screens, and states;
 - scope boundaries and assumptions;
 - unresolved decisions;
@@ -814,7 +841,7 @@ implementation authorization as explicit gates.
 
 ### Uncertainty Check
 
-After question 30, record:
+After question 25, record:
 
 ```md
 ## Uncertainty Check
@@ -837,9 +864,10 @@ After question 30, record:
 - Required owner gate:
 ```
 
-Continue with another adaptive round of five while a material unknown
-remains. If all fields are sufficiently resolved, move to Preliminary Identity
-and Visual Exploration.
+Do not add a sixth onboarding round. Record any remaining material unknowns in
+the Uncertainty Check and resolve them through repository evidence, the
+Factual Product Researcher, or a later owner decision at the applicable gate.
+Then move to Preliminary Identity and Visual Exploration.
 
 ## Preliminary Identity
 
@@ -851,11 +879,13 @@ design system.
 
 ## Visual Exploration
 
-For first-time D3 onboarding or a D3 visual reset, create five rendered Visual
-Direction Boards by default, with a narrower exploration after explicit owner
-approval.
+For first-time D3 onboarding, create exactly five rendered raster Visual
+Direction Boards. A later D3 visual reset may use a narrower exploration only
+after explicit owner approval.
 The five boards must be meaningfully different but plausible interpretations
-of the same product evidence.
+of the same product evidence. Each board must define and visibly demonstrate
+its own composition, visual metaphor, signature trait, information-density
+approach, illustration or imagery treatment, and component styling logic.
 
 Each Visual Direction Board is a raster Design System Showcase, Component
 Showcase, Component Gallery, or Component Playground for a possible product
@@ -879,23 +909,29 @@ Each board is a rendered UI artifact plus concise notes containing:
 - what the board leaves outside its direction;
 - desktop and mobile viewport sizes inspected.
 
-Create boards as raster images by default. Place any generated or assembled
-imagery in a UI showcase context that proves component composition, hierarchy,
-state handling, and responsive behavior. Use HTML/CSS/JS board pages only as a
-fallback when raster image generation is unavailable or cannot produce
-inspectable artifacts; when this fallback is used, create five separate
-rendered HTML board pages rather than one page that hides comparison detail.
+Generate every board as a raster image. Place generated or assembled imagery in
+a UI showcase context that proves component composition, hierarchy, state
+handling, and responsive behavior. HTML, CSS, JavaScript, SVG, screenshots of
+locally coded pages, and text-only descriptions are not Visual Direction Board
+artifacts. If raster image generation is unavailable, the Visual Direction
+Board gate is blocked; report the missing capability and do not substitute
+another format or request Visual Direction Approval.
+
+Every board must visibly express the Preliminary Identity traits applicable to
+its hypothesis. If the identity calls for characters, illustration, physical
+metaphors, distinctive imagery, unusual geometry, or another signature trait,
+those properties must appear in the raster board itself rather than only in
+its notes. A board that merely names an identity trait does not demonstrate it.
 
 Render and inspect every board before presenting it. Fix overlap, blank areas,
 unreadable text, broken responsive composition, or insufficient component
 evidence. Boards are direction studies before production assets.
 
-Visual Direction Board completion requires five existing raster artifacts with
+Visual Direction Board completion requires five existing generated raster artifacts with
 stable paths, inspected desktop and mobile views, visible representative UI
 fragments, component showcase coverage, state examples, and concise comparison
-notes. When raster generation is unavailable, the fallback completion evidence
-is five existing rendered HTML/CSS/JS artifacts with the same coverage.
-Text-only descriptions, mood summaries, and written design contracts support
+notes. Text-only descriptions, mood summaries, written design contracts, HTML
+pages, and screenshots of coded pages do not satisfy this gate. Written notes support
 the discussion after the boards exist. This gate is complete when the rendered
 board artifacts and comparison evidence are present.
 
@@ -1232,6 +1268,7 @@ decisions required owner approval, present one bounded summary:
 - Explicit scope boundaries:
 - Stack and sources of truth:
 - Approved Product Surface revision:
+- Independent Factual Product Research and source map:
 - Approved Visual Direction revision:
 - Approved flows:
 - Approved wireframes by page or screen:
@@ -1775,6 +1812,8 @@ A frontend task is complete when:
 - the requested outcome and approved scope are delivered;
 - required gates or scoped waivers are recorded;
 - relevant contracts match the implementation;
+- D3 Product Surface drafting was preceded by Independent Factual Product
+  Research, and the design/control context verified its accepted evidence;
 - D3 visual boards, directly openable HTML wireframes, state matrices, and
   screen contracts exist at named paths before implementation approval;
 - every approved page or meaningful screen has its own wireframe package and

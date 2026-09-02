@@ -24,6 +24,16 @@ reviewers read the applicable contracts, not the complete frontend subsystem
 unless instruction compliance is under review. Re-review briefs contain prior
 blockers, changed artifacts, and closure criteria rather than full history.
 
+Record Independent Factual Product Research before drafting a D3 Product
+Surface Model. Its brief contains bounded product questions, canonical
+repository entry points, explicit exclusions, and a compact factual output
+schema. The researcher does not read the frontend subsystem, visual direction,
+proposed IA, draft Product Surface, or authoring rationale. Record the factual
+system/capability map, distinct runtime or user paths, active/historical/
+deferred/absent classifications, source references, contradictions, unresolved
+questions, and the design/control context's verification of accepted evidence.
+This research is separate from later Contract Review.
+
 Record Independent First-Use Review separately. Its reviewer receives only a
 neutral two-to-five-sentence product description, the rendered surface,
 first-use tasks, and an evidence format. The reviewer must not read repository

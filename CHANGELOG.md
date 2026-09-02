@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-02 - Require raster visual exploration and factual research
+
+- Removed every HTML/CSS/JavaScript fallback for Visual Direction Boards and
+  made five generated raster artifacts mandatory for Visual Direction Approval.
+- Required each board to visibly demonstrate its own visual metaphor, signature
+  traits, density, imagery treatment, component logic, and Preliminary Identity.
+- Added Independent Factual Product Research before D3 Product Surface drafting.
+- Corrected the onboarding Uncertainty Check to follow question 25 and forbade
+  additional onboarding rounds.
+
 ## 2026-09-02 - Tighten frontend onboarding and wireflow review
 
 - Fixed D3 design onboarding at five rounds of five questions.

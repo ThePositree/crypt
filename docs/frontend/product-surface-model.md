@@ -19,6 +19,18 @@ project docs, requirements, specs, current state, task context, or a canonical
 - Supporting:
 - Contradictions or gaps:
 
+## Independent Factual Product Research Record
+
+- Research brief:
+- Researcher/session:
+- Canonical sources inspected:
+- Factual system and capability map:
+- Distinct runtime or user paths:
+- Active, historical, deferred, and absent capabilities:
+- Contradictions and unresolved questions:
+- Design/control verification:
+- Accepted evidence used by this Product Surface revision:
+
 ## Scope Contract
 
 - Outcome:

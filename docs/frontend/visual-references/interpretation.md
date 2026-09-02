@@ -6,6 +6,11 @@ Revision: 0
 Persist selected and rejected visual direction boards here after frontend
 design onboarding or task-specific exploration.
 
+Visual Direction Boards are generated raster images only. HTML/CSS/JavaScript
+pages, SVGs, and screenshots of coded pages are not board artifacts and cannot
+be used as a fallback. When raster generation is unavailable, Visual Direction
+Approval remains blocked.
+
 Use this format:
 
 ```text
@@ -27,6 +32,10 @@ DO NOT COPY:
 
 LOCAL PRODUCT PRINCIPLE:
 - principle supported by this reference
+
+VISIBLE PRELIMINARY IDENTITY EVIDENCE:
+- composition, metaphor, signature trait, density, imagery/illustration, and
+  component styling visibly demonstrated in the raster itself
 
 APPROVAL:
 - pending / approved / rejected / mixed
