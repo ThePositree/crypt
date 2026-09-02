@@ -4,6 +4,21 @@ Recent project history. Older entries live in `CHANGELOG_ARCHIVE.md`.
 
 Format: newest on top, date in `YYYY-MM-DD`.
 
+## 2026-09-02 - Documentation portal product contracts
+
+- Drafted the D3 product direction for `crypt docs`, a curated Russian
+  Next.js/Tailwind documentation portal for developer-crypto traders.
+- Recorded first-release scope across Overview, Architecture, Backtester,
+  Strategies, Live Execution, Data Pipeline, CLI, Configuration, Operations,
+  and Glossary, with full-content search and guided/reference navigation.
+- Captured explicit boundaries: no repository Markdown rendering, no CMS, no
+  command-result displays, and no current live production state, balances,
+  positions, or runtime metrics.
+- Seeded messaging, design identity, design-system direction, and active task
+  notes before the required frontend approval and visual-board gates.
+
+---
+
 ## 2026-09-01 - Frontend HTML wireframes and separated execution roles
 
 - Required directly openable, operable HTML wireframes for every approved page,

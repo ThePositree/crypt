@@ -3,6 +3,52 @@
 Only active work belongs here. Historical research notes belong in
 `CHANGELOG.md`, `CHANGELOG_ARCHIVE.md`, or archive docs.
 
+## Documentation portal frontend
+
+**What:** design and implement `crypt docs`, a curated Next.js and Tailwind
+documentation portal that explains how the codebase works as a crypto-trading
+framework.
+
+**Why now:** the project needs a reader-facing surface for developer-crypto
+traders that explains architecture, data flow, strategies, backtester behavior,
+live execution boundaries, CLI usage, configuration, operations, and glossary
+terms without requiring raw source reading.
+
+**Current evidence:**
+
+- Owner selected Russian content, developer-crypto-trader audience, Next.js,
+  Tailwind, full-content search, dark/light themes, guided and reference
+  navigation, curated source-authored content, and playful abstract lo-fi
+  pastel design.
+- Owner explicitly excluded rendering repository Markdown directly, CMS,
+  command execution results, current live production state, balances,
+  positions, and runtime metrics.
+- Product Surface Model revision 1, Messaging revision 1, Design Identity
+  revision 1, Design System seed revision 1, and a product-direction decision
+  were drafted on 2026-09-02.
+- Orca CLI was intended for checkpoints and later independent review, but the
+  local shim failed with `orca-ide: bad option: --no-sandbox` in this session.
+
+**Next steps:**
+
+1. Obtain Product Surface Approval for
+   `docs/frontend/product-surface-model.md` revision 1 and the related
+   messaging/design seed artifacts.
+2. Create five Visual Direction Boards for the playful abstract lo-fi
+   documentation portal and request Visual Direction Approval.
+3. Create page-level flows, HTML wireframes, screen contracts, content coverage
+   audit, discovery contract, and implementation brief.
+4. Run independent contract review in a separate Orca/fresh context, then
+   request Final Implementation Approval before creating production Next.js
+   code.
+
+**Acceptance:** first release has curated pages for Overview, Architecture,
+Backtester, Strategies, Live Execution, Data Pipeline, CLI, Configuration,
+Operations, and Glossary; global full-content search; command palette; dark
+and light themes; diagrams; status/risk labels; breadcrumbs; left navigation;
+desktop TOC; next-reading blocks; and validation evidence across required
+viewports and interactions.
+
 ## Live execution / backtest reconciliation audit
 
 **What:** finish the evidence-backed reconciliation of the live SOL portfolio
