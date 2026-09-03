@@ -3,6 +3,58 @@
 Only active work belongs here. Historical research notes belong in
 `CHANGELOG.md`, `CHANGELOG_ARCHIVE.md`, or archive docs.
 
+## crypt docs documentation portal
+
+**What:** build a Russian Next.js + Tailwind documentation portal that explains
+how the `crypt` codebase works as a framework-style product for
+developer-crypto-traders.
+
+**Why now:** the repository has extensive backend, research, and live execution
+knowledge, but no active frontend portal that gives a curated learning route,
+reference navigation, search, diagrams, operational boundaries, and glossary
+without forcing readers to reverse-engineer source code.
+
+**Current evidence:**
+
+- Product Surface Model Revision 2 is approved:
+  `docs/frontend/product-surface-model.md`.
+- Product Surface approval decision is recorded:
+  `docs/frontend/decisions/product-surface-approval-2026-09-03.md`.
+- Independent factual research and contract reviews are recorded under
+  `docs/frontend/reviews/`.
+- Messaging, Design Identity, and Design System are at Revision 2 and passed
+  independent re-review with zero blocking findings.
+- Five raster Visual Direction Boards are generated under
+  `docs/frontend/visual-references/positive/`.
+- Recommended visual direction is Architecture Atlas mixed with Pocket
+  Framework Handbook, with Workshop Ledger/Risk Sentry/Signal Playground used
+  as secondary references.
+
+**Current gate:** waiting for owner Visual Direction Approval. If the owner
+approves the recommended mix, generate one final combined raster direction
+board before downstream translation, wireframes, screen contracts, and Final
+Implementation Approval.
+
+**Next steps:**
+
+1. Obtain owner Visual Direction Approval for one board, a mix, or an
+   iteration request.
+2. If a mix is approved, generate the final combined raster board and update
+   `docs/frontend/visual-references/interpretation.md`.
+3. Create Selected Visual Direction Translation, flows, page wireframes,
+   screen contracts, and Wireframe Conformance Contract.
+4. Present Final Implementation Approval, then implement the portal in a
+   separate Next.js + Tailwind worker and run independent frontend QA.
+
+**Acceptance:** the portal renders locally, includes the approved route set and
+search, preserves all product/risk boundaries, passes build/lint/rendered
+inspection, and passes independent QA.
+
+**Links:** `docs/frontend/product-surface-model.md`,
+`docs/frontend/messaging.md`, `docs/frontend/design-identity.md`,
+`docs/frontend/design-system.md`,
+`docs/frontend/visual-references/interpretation.md`.
+
 ## Live execution / backtest reconciliation audit
 
 **What:** finish the evidence-backed reconciliation of the live SOL portfolio
