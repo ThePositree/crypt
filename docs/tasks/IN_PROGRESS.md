@@ -3,54 +3,6 @@
 Only active work belongs here. Historical research notes belong in
 `CHANGELOG.md`, `CHANGELOG_ARCHIVE.md`, or archive docs.
 
-## crypt docs documentation portal
-
-**What:** build `crypt docs`, a large Russian Next.js + Tailwind
-documentation portal that explains this repository as a crypto trading
-framework for a developer-crypto trader.
-
-**Why now:** the owner requested a site that fully explains how the code works
-without showing runtime execution results. The frontend product surface was
-not previously established.
-
-**Current evidence:**
-
-- Owner D3 onboarding answers are recorded in
-  `docs/frontend/decisions/2026-09-03-docs-portal-onboarding.md`.
-- Product Surface Model revision 1 is proposed in
-  `docs/frontend/product-surface-model.md`.
-- Messaging revision 1 is proposed in `docs/frontend/messaging.md`.
-- Preliminary Design Identity revision 1 is proposed in
-  `docs/frontend/design-identity.md`.
-- Frontend Context records the proposed Next.js + Tailwind stack in
-  `docs/frontend/context.md`.
-- Independent factual research ran through Orca native worker
-  `ctx_ab8ef2e316a5`; accepted findings are recorded in the Product Surface
-  Model, with the incorrect `src/crypt/data/normalizer.py` claim rejected.
-- Independent contract review ran through Orca native workers
-  `ctx_211d42ca5202` and `ctx_8c234d5de26d`; initial blockers were fixed and
-  re-review verdict was `PASS`.
-
-**Next steps:**
-
-1. Owner approves or rejects Product Surface Model revision 1.
-2. After approval, create exactly five raster Visual Direction Boards for the
-   playful lo-fi abstract-mascot direction.
-3. Present Visual Direction Approval, then proceed to selected visual
-   translation, design system, UI component showcase, wireframes, screen
-   contracts, content inventory, implementation approval, separate
-   implementation, and independent QA.
-
-**Acceptance:** final portal covers all approved routes, full-content search,
-command palette, diagrams, breadcrumbs, left navigation, desktop TOC,
-light/dark themes, maturity labels, risk markers, next-reading blocks,
-Russian framework-style content, and no live trading controls or runtime
-results.
-
-**Links:** `docs/frontend/product-surface-model.md`,
-`docs/frontend/messaging.md`, `docs/frontend/design-identity.md`,
-`docs/frontend/context.md`.
-
 ## Live execution / backtest reconciliation audit
 
 **What:** finish the evidence-backed reconciliation of the live SOL portfolio
