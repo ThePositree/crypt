@@ -1010,8 +1010,12 @@ must follow the translated component system and visual fidelity rules.
 
 ### UI Library And Component Showcase
 
-For D3 work, build the approved visual direction into a UI library or
-component system before building production pages. This can wrap an existing
+For D3 work, build the approved visual direction into a real production UI
+library or component system before building production pages. This is not a
+throwaway HTML demo, visual-only mockup, screenshot reproduction, or isolated
+showcase artifact. The production pages must import, compose, or otherwise use
+the same approved components, tokens, primitives, assets, state styles, and
+layout patterns demonstrated in the showcase. This can wrap an existing
 owner-approved UI library, design system, framework primitives, or local
 components. If the owner wants a ready-made UI library, record how its
 primitives map to the selected visual direction and where custom styling,
@@ -1027,18 +1031,31 @@ that as an explicit owner decision and choose conservatively from repository
 evidence rather than vendor preference.
 
 Create a storybook-like rendered component showcase before production page
-implementation. It demonstrates the shell, navigation, buttons, links, forms,
-search/filter controls, cards, article layouts, badges, tables or lists,
-diagrams or media frames, overlays/drawers/modals, empty/loading/error/success/
-disabled states, focus/hover/selected states, responsive variants, and every
-signature visual trait. The showcase may be an internal route, static HTML
-artifact, framework story page, or equivalent rendered artifact, but it must be
-openable and inspectable.
+implementation. The showcase renders the actual production UI library, not a
+parallel approximation. It demonstrates the shell, navigation, buttons, links,
+forms, search/filter controls, cards, article layouts, badges, tables or
+lists, diagrams or media frames, overlays/drawers/modals, empty/loading/error/
+success/disabled states, focus/hover/selected states, responsive variants, and
+every signature visual trait. The showcase may be an internal route, static
+HTML artifact generated from the same component source, framework story page,
+or equivalent rendered artifact, but it must be openable and inspectable.
 
-The UI Library Approval gate passes only after the rendered component showcase
-is visually inspected against the selected board, Design Identity, Design
-System, and Selected Visual Direction Translation. Production pages do not
-start before this approval or a scoped `FRONTEND WAIVER:`.
+The UI Library Approval gate passes only after an independent read-only visual
+fidelity review receives the rendered component showcase, the selected raster
+board or merged final board, the Selected Visual Direction Translation, and a
+short product description. The reviewer must judge whether the implemented
+primitive system looks like the selected image in practice: composition logic,
+surface treatment, density, typography direction, color semantics, borders,
+shadows, icon/illustration treatment, state styling, responsive behavior, and
+signature traits. If the showcase does not look like the selected image, the
+gate fails even when the components are technically reusable or accessible.
+Production pages do not start before this approval or a scoped
+`FRONTEND WAIVER:`.
+
+After production pages are implemented, QA must verify that pages use the
+approved UI library/components instead of recreating visually similar one-off
+markup. Any production page that bypasses the approved primitive system must
+record an approved exception or be treated as a visual fidelity defect.
 
 ### Production Raster Asset Pack
 

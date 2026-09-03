@@ -142,10 +142,20 @@ HTML wireframes and production behavior.
 
 Record UI Library Approval and Production Raster Asset Pack Approval when they
 apply. The UI library review checks the storybook-like rendered component
-showcase before production pages. The asset-pack review checks stable raster
-paths, nonblank readable output, fidelity to the selected direction, unwanted
-text, source or licensing constraints when applicable, and suitability as
-future production image-generation reference.
+showcase before production pages and confirms it is backed by the real
+production component source, tokens, assets, state styles, and layout patterns
+that production pages will use. The reviewer receives the showcase and the
+selected raster board or merged final board, then reports whether the
+implemented primitive system looks like the selected image in practice. A
+throwaway HTML demo, visual-only mockup, or showcase not reused by production
+pages does not satisfy UI Library Approval.
+
+Production visual QA also checks whether delivered pages use the approved UI
+library/components rather than one-off markup that merely resembles the
+showcase. The asset-pack review checks stable raster paths, nonblank readable
+output, fidelity to the selected direction, unwanted text, source or licensing
+constraints when applicable, and suitability as future production
+image-generation reference.
 
 Use the six viewport classes from the frontend subsystem for D2/D3 reviews
 unless an owner-approved viewport boundary narrows the surface. Record the

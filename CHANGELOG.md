@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-03 - Require production UI library fidelity
+
+- Clarified that the D3 UI library/component showcase is a real production
+  component system, not a throwaway HTML demo or visual-only mockup.
+- Required production pages to use the same approved components, tokens,
+  assets, state styles, and layout patterns demonstrated in the showcase.
+- Added independent UI Library Approval criteria that compare the rendered
+  component showcase against the selected raster direction for practical
+  visual similarity before production page implementation.
+- Required production visual QA to flag pages that bypass the approved
+  component system with one-off markup.
+
 ## 2026-09-02 - Add production-grade frontend gates
 
 - Required D3 work to treat broad owner requests as complete production
