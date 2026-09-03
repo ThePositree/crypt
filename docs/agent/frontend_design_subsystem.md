@@ -158,11 +158,6 @@ Canonical frontend obligations:
 - Independent Factual Product Research;
 - Independent First-Use Review;
 - Independent Wireframe Rendered Visual QA;
-- Pre-implementation Content Coverage Audit;
-- Post-implementation Content Coverage Audit;
-- Product Surface Model;
-- Content And Capability Contract;
-- Discovery Contract;
 - Messaging Identity and Messaging Contracts;
 - Design Identity and Design System;
 - Five raster Visual Direction Boards;
@@ -186,13 +181,11 @@ Canonical frontend obligations:
 - Wireframe Conformance Contract;
 - Interaction Inventory;
 - Full link and navigation coverage;
-- Discovery QA;
 - Six viewport classes;
 - Accessibility checks;
 - Independent Frontend QA Gate;
 - Independent QA Brief;
 - Frontend Rubric Review;
-- Rendered evidence;
 - Durable frontend memory updates;
 - Final Instruction Audit.
 
@@ -239,9 +232,9 @@ canonical D3 sequence reaches Final Implementation Approval or the owner grants
 a scoped `FRONTEND WAIVER:` for the skipped gates and obligations.
 
 After Product Surface Approval, refresh the Read Receipt and update canonical
-obligations. Record approved pages, screens, content/capability coverage,
-discovery requirements, copy language, source boundaries, visual requirements,
-and implementation boundaries as artifact requirements for the next phases.
+obligations. Record approved pages, screens, copy language, source boundaries,
+visual requirements, and implementation boundaries as artifact requirements for
+the next phases.
 
 Owner words that imply scale, completeness, quality, depth, richness, working
 behavior, production readiness, or broad coverage become acceptance
@@ -249,14 +242,6 @@ requirements. Translate those words into concrete coverage criteria before
 implementation. Narrower scope, representative samples, curated subsets,
 placeholder content, simplified ranking, deferred pages, or reduced interaction
 depth require explicit owner approval before implementation.
-
-Before implementation and before final response, run a Content Coverage Audit
-whenever the surface promises content, data, media, levels, items, workflows,
-generated output, pages, sections, search, filtering, navigation, indexes,
-catalogs, or interactive capabilities. The pre-implementation audit lists the
-promised coverage and source of truth. The post-implementation audit maps each
-promised item to the delivered page, section, component, state, interaction, or
-explicit owner-approved boundary.
 
 Before final response, perform a Final Instruction Audit. The audit states
 which frontend instruction files were applied, which memory files influenced
@@ -275,7 +260,7 @@ Classify the task before choosing artifacts and approvals.
 | D0 | copy, token, or isolated visual correction | affected contract/context, copy purpose, focused render |
 | D1 | component or small section | Task Contract, relevant states, copy/microcopy impact, responsive impact, focused render |
 | D2 | new section, screen, or meaningful flow change | product scope, Messaging Contract, flow, wireframe, screen contract, owner approval |
-| D3 | major redesign, many screens, or new frontend/product | full discovery, Product Surface Model, Messaging Identity, onboarding, visual exploration, design system, flows, wireframes, approvals |
+| D3 | major redesign, many screens, or new frontend/product | full discovery, Product Surface Approval, Messaging Identity, onboarding, visual exploration, design system, flows, wireframes, approvals |
 
 Use the smallest depth supported by the requested outcome and risk. A small
 change stays at its actual depth even when frontend memory contains D3
@@ -315,11 +300,10 @@ production code when an owner decision is required or the next phase needs a
 fresh bounded context.
 
 For D3, process quality outranks implementation speed. Complete each required
-artifact phase with inspectable files, rendered evidence, owner-facing
-decision options, and a recorded owner decision before moving to the next
-phase. A summary can explain an artifact, but the gate is satisfied by the
-artifact itself: existing files, paths, rendered views, coverage notes, and the
-decision record.
+artifact phase with inspectable files, owner-facing decision options, and a
+recorded owner decision before moving to the next phase. A summary can explain
+an artifact, but the gate is satisfied by the artifact itself: existing files,
+paths, rendered views, coverage notes, and the decision record.
 
 ## Owner Steering Contract
 
@@ -469,7 +453,6 @@ Always begin with the repository bootstrap and routed frontend full docs. Then r
 
 - `docs/frontend/context.md` for the active stack and conventions;
 - the affected flows, wireframes, screens, components, and decisions;
-- `docs/frontend/product-surface-model.md` for D2/D3 scope decisions;
 - Messaging Identity and Messaging Contracts when page text, public voice, or
   user decision-making is affected;
 - Design Identity, Design System, and visual references when visual direction
@@ -519,7 +502,7 @@ architecture, task context, current state, and approved decisions. Identify:
 - open decisions that affect the requested surface.
 
 For D3 work, perform this discovery in a separate Factual Product Researcher
-context before drafting the Product Surface Model. Give the researcher a
+context before presenting Product Surface Approval. Give the researcher a
 bounded product question, the repository entry points needed to find canonical
 sources, explicit exclusions, and a compact output schema. Do not give it the
 frontend subsystem, visual direction, proposed page structure, authoring
@@ -535,64 +518,13 @@ The researcher returns:
 - facts that must not be inferred from names or historical documentation.
 
 The design/control context reviews this result against the named sources,
-records accepted evidence in the Product Surface Model, and only then drafts
-pages, journeys, diagrams, discovery behavior, or messaging. Contract Review
+records accepted evidence in a decision or review record, and only then drafts
+pages, journeys, diagrams, navigation behavior, or messaging. Contract Review
 must not be used as the first factual product-discovery pass.
 
 Infer what the repository already establishes. Ask the owner for information
 that remains unresolved after repository discovery. When clarification is required, ask a small adaptive batch
 of high-information questions and explain which decision each answer unlocks.
-
-## Product Surface Model
-
-Build or update `docs/frontend/product-surface-model.md` before D3 screen
-design and whenever D2 work changes product scope.
-
-Derive it in this order:
-
-```text
-product evidence
--> users and goals
--> capabilities and content
--> journeys and endpoints
--> messaging trajectory and proof needs
--> information architecture
--> screens
--> sections and components
--> required states
-```
-
-The model must distinguish approved scope, boundaries, assumptions, and
-unresolved decisions. Completeness means the approved product surface fulfills
-its promised journeys at production quality.
-
-Before approval, mentally strip styling from the structure. When the remaining
-structure fails to form a useful product surface, repair the surface before
-visual design.
-
-## Content And Capability Completeness
-
-Any frontend surface that presents information, data, media, levels, items,
-tools, workflows, catalog entries, generated output, or interactive states
-needs a Content And Capability Contract before production implementation. The
-contract defines:
-
-- source corpus, data source, asset set, or capability inventory;
-- user-facing coverage promised by the owner request and product surface;
-- included entities, sections, items, states, levels, views, or workflows;
-- boundaries that require owner approval;
-- depth required for each important page, panel, step, result, or interaction;
-- proof that content comes from canonical sources or approved product
-  decisions;
-- freshness, update, or synchronization expectations when content can change;
-- measurable coverage evidence before final handoff.
-
-For search, filtering, navigation, recommendations, maps, indexes, generated
-lists, catalogs, or any discovery interface, define a Discovery Contract. It
-states the searchable corpus, indexed fields, body-text or metadata coverage,
-ranking or grouping behavior, snippets or result explanations, empty and
-zero-result states, keyboard behavior, and representative queries that prove
-the user can find important content.
 
 Visual polish, build success, screenshots, and console cleanliness validate
 rendering quality. Content depth, corpus coverage, data correctness,
@@ -1329,8 +1261,8 @@ index row includes page or screen name, route or state, directly openable HTML
 artifact address, screen-contract path, six viewport classes or approved
 viewport waiver, state-matrix entries, declared fidelity and demonstrated
 interaction intent, behavior deferred to production,
-content/discovery coverage, and inspection evidence. A shared shell, template,
-or combined overview wireframe can appear
+content requirements, and inspection evidence. A shared shell, template, or
+combined overview wireframe can appear
 in the index as a supporting artifact and does not replace page-level rows.
 
 ## Screen Contracts
@@ -1425,7 +1357,7 @@ concrete journeys, viewport list, and visual finding format. Require inspection
 of alignment, spacing, hierarchy, text containment, wrapping, clipping,
 horizontal overflow, overlap, stable dimensions, reachable navigation, primary
 actions, and responsive transformations. DOM, accessibility-tree, source-code,
-or stylesheet inspection alone is not rendered evidence.
+or stylesheet inspection alone is not sufficient visual inspection.
 
 Any overlap, clipped or unreadable required text, horizontal page overflow,
 unreachable approved screen, dead primary action, broken route/state
@@ -1476,8 +1408,6 @@ decisions required owner approval, present one bounded summary:
 - Independent Copy Review, if applicable:
 - Wireframe Conformance Contract:
 - Frontend Implementation Brief:
-- Content And Capability Contract, if applicable:
-- Discovery Contract, if applicable:
 - Action Contract, if applicable:
 - Implementation units:
 - Acceptance evidence to collect:
@@ -1492,14 +1422,14 @@ Design Identity and Design System, approved Text Inventory and Copy Review
 when copy applies, flows, rendered HTML wireframes, screen contracts,
 Independent Contract Review, Independent First-Use Review, applicable
 Source-Grounded Content Authoring and Independent Copy Review, Content And
-Capability Contract, Discovery Contract when relevant, Action Contract when
-relevant, and their decision records exist at named paths. The approval summary
+Action Contract when relevant, and their decision records exist at named paths.
+The approval summary
 maps every approved page or meaningful screen to its flow, wireframe path,
 screen-contract path, UI-library components, selected visual translation,
 asset-pack reference when applicable, text-inventory coverage, content
-coverage, discovery coverage when relevant, conformance invariants, and
-implementation unit. A waiver must name what is waived, why, what remains
-required, and the next active gate.
+coverage when relevant, conformance invariants, and implementation unit. A
+waiver must name what is waived, why, what remains required, and the next
+active gate.
 
 For D3, implementation commands, file creation, package installation, source
 generation, or production-code edits begin after Final Implementation Approval
@@ -1555,7 +1485,7 @@ page, screen, and applicable state, record what production must preserve:
 - route and journey position;
 - region, section, and information hierarchy;
 - primary action, navigation, and journey endpoint;
-- required components, content/capability coverage, and discovery behavior;
+- required components, content requirements, and navigation behavior;
 - interactions, state transitions, feedback, focus, and recovery;
 - responsive transformations and accessibility relationships;
 - placement of critical proof, warning, confirmation, and recovery content.
@@ -1657,16 +1587,7 @@ build support QA evidence and do not replace interaction coverage.
 
 Use automated checks where behavior can be asserted reliably. Inspect the
 rendered interface in an available rendered environment for interaction,
-screenshots, and user-flow QA. Pair code compilation with rendered evidence.
-
-For search, filtering, sorting, recommendations, maps, indexes, catalogs,
-navigation discovery, generated lists, and similar discovery interfaces, run a
-representative Discovery QA set. Cover exact matches, partial matches,
-synonyms or domain-adjacent terms when relevant, role or audience queries,
-topic queries, metadata filters, combined filters, high-value target items,
-empty query behavior, zero-result behavior, keyboard operation, result
-selection, ranking/grouping expectations, and snippet or explanation quality.
-Record queries, filters, expected results, actual results, and fixes.
+screenshots, and user-flow QA. Pair code compilation with browser inspection.
 
 ## Independent Frontend QA Gate
 
@@ -1722,8 +1643,7 @@ common-sense coverage. Include:
   and known unavailable tools;
 - exact files and artifact paths to read before testing;
 - approved owner scope, gates, waivers, visual direction, wireframes, screen
-  contracts, content/capability contract, discovery contract, and Messaging
-  Identity references;
+  contracts, and Messaging Identity references;
 - directly openable approved HTML wireframe addresses, the Wireframe
   Conformance Contract, and the page/state/region-to-production mapping;
 - page, route, screen, state, component, and viewport lists to cover;
@@ -1732,7 +1652,6 @@ common-sense coverage. Include:
   apparently interactive region;
 - full Text Inventory and the required Messaging System checks for every
   user-visible text fragment;
-- explicit Discovery QA query/filter set and expected outcomes;
 - exact viewport classes and concrete viewport sizes to inspect;
 - exact accessibility, keyboard, focus, console, network, and error-state
   expectations;
@@ -1805,9 +1724,9 @@ close the gate. If no independent result exists, the rubric status is
 
 For D3 artifact phases, run the rubric before requesting Product Surface
 Approval, Wireframe Approval, and Final Implementation Approval. Apply the
-rubric to the artifact package being approved: product surface, messaging,
-content/discovery contracts, flows, wireframes, screen contracts, responsive
-coverage, instruction control, and remaining implementation evidence. Visual
+rubric to the artifact package being approved: approved surface, messaging,
+flows, wireframes, screen contracts, responsive coverage, instruction control,
+and remaining implementation evidence. Visual
 Direction Boards keep their board evidence table before approval; the full
 rubric applies when the selected direction becomes part of the design system
 and implementation package.
@@ -1886,19 +1805,9 @@ sampling is allowed only with a scoped owner message containing
 
 For D2/D3 work, verify that approved primary goals, relevant secondary goals,
 navigation, messaging trajectory, content, interactions, endpoints, and states
-exist. Verify Content And Capability Contract coverage and Discovery Contract
-behavior when the surface includes information, data, media, tools, workflows,
-search, filtering, navigation, recommendations, maps, indexes, generated lists,
-catalogs, or other discovery interfaces. Label placeholder/demo-only surfaces
-or replace them. Distinguish planned seams, mock data, disabled controls, and
-future integrations from complete end-to-end behavior.
-
-Content Coverage Audit is required before implementation and after
-implementation. The pre-implementation audit records the promised corpus,
-pages, sections, entities, states, capabilities, and source evidence. The
-post-implementation audit verifies each promised item against implemented
-routes, screens, components, data records, states, interactions, and owner-
-approved boundaries.
+exist. Label placeholder/demo-only surfaces or replace them. Distinguish
+planned seams, mock data, disabled controls, and future integrations from
+complete end-to-end behavior.
 
 ## QA Evidence Record
 
@@ -1923,11 +1832,6 @@ Record evidence with verdicts:
 - Independent QA iteration:
 - Independent QA decomposition:
 - Scope validated:
-- Pre-implementation Content Coverage Audit:
-- Post-implementation Content Coverage Audit:
-- Content/capability coverage:
-- Discovery/search coverage:
-- Discovery QA query/filter set:
 - Interaction Inventory:
 - Approved HTML wireframe addresses and state matrix:
 - Wireframe Conformance Contract and production mapping:
@@ -2018,7 +1922,6 @@ artifacts and a review.
 ```text
 docs/frontend/
 |-- context.md
-|-- product-surface-model.md
 |-- messaging.md
 |-- design-identity.md
 |-- design-system.md
@@ -2034,8 +1937,8 @@ docs/frontend/
 `-- reviews/
 ```
 
-Persist only knowledge expected to survive the task. Context records the stack;
-the Product Surface Model records capabilities; Messaging records public voice,
+Persist only knowledge expected to survive the task. Context records the stack,
+active surface, and implementation boundaries; Messaging records public voice,
 message contracts, proof, objections, and copy review decisions; identity and
 references record visual intent; the Design System records reusable rules;
 flows, wireframes, and screens record UI contracts; the component registry
@@ -2071,7 +1974,7 @@ A frontend task is complete when:
 - every approved page or meaningful screen has its own wireframe package and
   screen contract, with shared shell artifacts recorded separately;
 - wireframe packages link to HTML artifacts first and screenshots only as
-  rendered evidence;
+  supporting visual captures;
 - every wireframe declares its W0-W3 fidelity, demonstrates the states and
   interaction intent required for approval, and lists behavior deferred to
   production;
@@ -2113,12 +2016,11 @@ A frontend task is complete when:
   remains;
 - the required six viewport classes were inspected or a narrower owner-approved
   viewport scope was recorded;
-- promised content, data, capability, and discovery coverage have evidence;
-- pre-implementation and post-implementation Content Coverage Audits are
-  recorded when the surface promises content or capabilities;
-- search and discovery interfaces were checked with representative queries,
-  filters, zero-result states, result selection, ranking/grouping behavior, and
-  keyboard operation;
+- promised content, data, and capabilities are present in the implemented
+  surface or explicitly bounded by owner approval;
+- search and navigation interfaces were checked with representative queries,
+  zero-result states, result selection, ranking/grouping behavior, and keyboard
+  operation when they exist;
 - the Frontend Rubric Review has verdicts and evidence for every applicable
   category and includes the independent QA verdict for implementation work;
 - functional, rendered visual, copy, responsive, accessibility, and

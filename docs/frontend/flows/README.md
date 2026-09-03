@@ -23,7 +23,7 @@ Each meaningful flow should name:
 - actor and starting state;
 - action;
 - decision, permission, or data condition;
-- content, capability, or discovery coverage required by the step;
+- content or capability required by the step;
 - resulting state and user-visible feedback;
 - failure and recovery path;
 - endpoint.

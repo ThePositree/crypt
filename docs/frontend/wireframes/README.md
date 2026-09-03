@@ -56,8 +56,8 @@ from each affected page package.
 The index should also include route or state, HTML artifact address, linked
 screen-contract path, six viewport classes or approved viewport waiver, state
 matrix, W0-W3 fidelity, demonstrated interaction intent, behavior deferred to
-production, content/discovery coverage, screenshots, and rendered inspection
-evidence for each page or screen. Link HTML first and screenshots separately.
+production, content requirements, screenshots, and visual inspection evidence
+for each page or screen. Link HTML first and screenshots separately.
 
 For every UI edit, read the affected wireframes first. Update or create
 wireframes before production implementation when layout, navigation,

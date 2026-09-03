@@ -9,9 +9,8 @@ commit or working-tree state, implementer session, independent QA owner or
 session, Independent QA Brief, QA iteration, QA decomposition, scope, viewport
 sizes and screenshots, exercised interactions, automated checks,
 console/network status, data/API states, accessibility checks, copy review,
-Text Inventory coverage, content/capability coverage, discovery/search
-coverage, interaction inventory, link/navigation coverage, rubric review,
-separate QA verdicts, known gaps, and the exact next action.
+Text Inventory coverage, interaction inventory, link/navigation coverage,
+rubric review, separate QA verdicts, known gaps, and the exact next action.
 
 For D2/D3 or context-heavy work, also record the Collaboration Check:
 delegation availability, required collaboration/runtime interface, proposed
