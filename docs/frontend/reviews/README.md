@@ -24,7 +24,8 @@ lines instead of importing the whole review transcript.
 
 Required review roles stay separate unless the owner records a scoped waiver:
 
-- Factual Product Research before Product Surface Approval.
+- Factual Product Research before Product Surface Model authoring.
+- Product Surface Model Contract Review before Product Surface Approval.
 - Frontend Lead Contract Review before contract approval or implementation.
 - First-Use Review before Wireframe Approval and final completion.
 - Wireframe Rendered Visual QA before Wireframe Approval.

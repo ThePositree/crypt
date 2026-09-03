@@ -28,7 +28,7 @@ copy, visual glitches, broken states, unverified assumptions, approximate
 flows, shallow content, partial indexes, and decorative-only product surfaces
 as unfinished frontend work.
 
-Version: 7
+Version: 8
 Updated: 2026-09-03
 
 This document is the canonical instruction set for frontend product, design,
@@ -173,38 +173,39 @@ Canonical frontend obligations:
 - O02 Source-Grounded Content Authoring;
 - O03 Text Inventory And Copy Approval;
 - O04 Independent Factual Product Research;
-- O05 Independent First-Use Review;
-- O06 Independent Wireframe Rendered Visual QA;
-- O07 Messaging Identity and Messaging Contracts;
-- O08 Design Identity and Design System;
-- O09 Five raster Visual Direction Boards;
-- O10 Visual Direction Approval;
-- O11 Selected Visual Direction Translation;
-- O12 UI Library And Component Showcase;
-- O13 UI Library Approval;
-- O14 Production Raster Asset Pack;
-- O15 Production Raster Asset Pack Approval;
-- O16 Flows;
-- O17 Page-level wireframes for every real page or meaningful screen;
-- O18 Persistent HTML Wireframe Artifacts;
-- O19 Wireframe Approval;
-- O20 Screen contracts for every real page or meaningful screen;
-- O21 Independent Contract Review;
-- O22 Frontend Lead Contract Review Brief;
-- O23 Action Contract;
-- O24 Final Implementation Approval;
-- O25 Separate Implementation Session;
-- O26 Frontend Implementation Brief;
-- O27 Wireframe Conformance Contract;
-- O28 Interaction Inventory;
-- O29 Full link and navigation coverage;
-- O30 Six viewport classes;
-- O31 Accessibility checks;
-- O32 Independent Frontend QA Gate;
-- O33 Independent QA Brief;
-- O34 Frontend Rubric Review;
-- O35 Durable frontend memory updates;
-- O36 Final Instruction Audit.
+- O05 Product Surface Model;
+- O06 Independent First-Use Review;
+- O07 Independent Wireframe Rendered Visual QA;
+- O08 Messaging Identity and Messaging Contracts;
+- O09 Design Identity and Design System;
+- O10 Five raster Visual Direction Boards;
+- O11 Visual Direction Approval;
+- O12 Selected Visual Direction Translation;
+- O13 UI Library And Component Showcase;
+- O14 UI Library Approval;
+- O15 Production Raster Asset Pack;
+- O16 Production Raster Asset Pack Approval;
+- O17 Flows;
+- O18 Page-level wireframes for every real page or meaningful screen;
+- O19 Persistent HTML Wireframe Artifacts;
+- O20 Wireframe Approval;
+- O21 Screen contracts for every real page or meaningful screen;
+- O22 Independent Contract Review;
+- O23 Frontend Lead Contract Review Brief;
+- O24 Action Contract;
+- O25 Final Implementation Approval;
+- O26 Separate Implementation Session;
+- O27 Frontend Implementation Brief;
+- O28 Wireframe Conformance Contract;
+- O29 Interaction Inventory;
+- O30 Full link and navigation coverage;
+- O31 Six viewport classes;
+- O32 Accessibility checks;
+- O33 Independent Frontend QA Gate;
+- O34 Independent QA Brief;
+- O35 Frontend Rubric Review;
+- O36 Durable frontend memory updates;
+- O37 Final Instruction Audit.
 
 Start implementation, artifact generation, rendered inspection, delegation, or
 durable memory updates only after the Read Receipt identifies the active gates,
@@ -469,6 +470,8 @@ depth-specific context.
 Always begin with the repository bootstrap and routed frontend full docs. Then read:
 
 - `docs/frontend/context.md` for the active stack and conventions;
+- `docs/frontend/product-surface-model.md` for the active product surface and
+  frontend-specific delta from any canonical product source;
 - the affected flows, wireframes, screens, components, and decisions;
 - Messaging Identity and Messaging Contracts when page text, public voice, or
   user decision-making is affected;
@@ -519,7 +522,8 @@ architecture, task context, current state, and approved decisions. Identify:
 - open decisions that affect the requested surface.
 
 For D3 work, perform this discovery in a separate Factual Product Researcher
-context before presenting Product Surface Approval. Give the researcher a
+context before Product Surface Model authoring and Product Surface Approval.
+Give the researcher a
 bounded product question, the repository entry points needed to find canonical
 sources, explicit exclusions, and a compact output schema. Do not give it the
 frontend subsystem, visual direction, proposed page structure, authoring
@@ -535,9 +539,38 @@ The researcher returns:
 - facts that must not be inferred from names or historical documentation.
 
 The design/control context reviews this result against the named sources,
-records accepted evidence in a decision or review record, and only then drafts
-pages, journeys, diagrams, navigation behavior, or messaging. Contract Review
-must not be used as the first factual product-discovery pass.
+records accepted evidence in a decision or review record, and only then assigns
+Product Surface Model authoring. Contract Review must not be used as the first
+factual product-discovery pass.
+
+## Product Surface Model
+
+`docs/frontend/product-surface-model.md` is the canonical frontend source of
+truth for what product the site is building. It exists to prevent later agents
+from reconstructing the product from chat, scattered decisions, or visual
+artifacts.
+
+Before D3 Product Surface Approval, create or update this file. When
+collaboration is available and approved, a separate authoring context writes
+the Product Surface Model from owner onboarding, canonical product sources, and
+the Independent Factual Product Research artifact. The main design/control
+context should not write the full Product Surface Model itself except when no
+independent authoring context is available or the owner explicitly chooses
+single-context work.
+
+If the repository already has a canonical product source such as `product.md`,
+`PRODUCT.md`, `project.md`, `PROJECT.md`, a PRD, a product spec, or a current
+README product section, the Product Surface Model links to that source and
+keeps only the frontend-specific delta, boundaries, approval status, and
+conflicts. Do not duplicate the full product description. If no stronger
+source exists, the Product Surface Model records the product surface directly
+until such a source is created.
+
+Product Surface Model authoring output is file-backed. The authoring worker
+completion message contains only a compact manifest: artifact path, source
+links, unresolved conflicts, and approval-readiness verdict. A separate
+Contract Reviewer checks the Product Surface Model before Product Surface
+Approval is presented to the owner.
 
 Infer what the repository already establishes. Ask the owner for information
 that remains unresolved after repository discovery. When clarification is required, ask a small adaptive batch
@@ -844,7 +877,7 @@ specific result.
 Required for D3 and for D2 changes that materially expand navigation, journeys,
 or capabilities. Present:
 
-- artifact path and revision;
+- Product Surface Model path and revision;
 - Independent Factual Product Research brief, researcher/context, canonical
   sources, accepted factual map, and unresolved contradictions for D3;
 - in-scope users, journeys, screens, and states;
@@ -1412,7 +1445,7 @@ decisions required owner approval, present one bounded summary:
 - Outcome and scope:
 - Explicit scope boundaries:
 - Stack and sources of truth:
-- Approved Product Surface revision:
+- Approved Product Surface Model revision:
 - Independent Factual Product Research and source map:
 - Approved Visual Direction revision:
 - Approved flows:
@@ -1967,9 +2000,9 @@ A frontend task is complete only when the Final Instruction Audit records:
 
 - Read Receipt existed before frontend action and named gates, obligations,
   waivers, controlling gate, verdict, and next action;
-- every applicable O01-O36 obligation is `satisfied` or explicitly
+- every applicable O01-O37 obligation is `satisfied` or explicitly
   `waived by owner` with a scoped `FRONTEND WAIVER:`;
-- D3 implementation started only after O24 or a waiver, and D3 scope stayed
+- D3 implementation started only after O25 or a waiver, and D3 scope stayed
   production-grade unless the owner narrowed it;
 - approved artifacts exist at named paths and match the delivered surface;
 - required independent author/reviewer/implementation/QA contexts remained
