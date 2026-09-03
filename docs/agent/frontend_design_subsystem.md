@@ -336,6 +336,14 @@ recorded owner decision before moving to the next phase. A summary can explain
 an artifact, but the gate is satisfied by the artifact itself: existing files,
 paths, rendered views, coverage notes, and the decision record.
 
+For D3, the visual-to-implementation sequence is strict unless the owner grants
+a scoped waiver: Visual Direction Approval, Selected Visual Direction
+Translation, UI Library And Component Showcase, UI Library Approval, Production
+Raster Asset Pack and approval when raster assets apply, Flows, Wireframes,
+Screen Contracts, then Final Implementation Approval. Do not skip from Selected
+Visual Direction Translation to flows, wireframes, screen contracts, raster
+asset pack, or production implementation before UI Library Approval.
+
 ## Owner Steering Contract
 
 At the start of meaningful frontend work, tell the owner that collaboration is
@@ -1133,6 +1141,11 @@ an implementation-facing contract before writing production pages. Record:
 This translation is the bridge between generated image evidence and working
 interface code. A selected raster board is not enough by itself; production
 must follow the translated component system and visual fidelity rules.
+After this translation is written and reviewed, the next controlling D3 gate is
+UI Library And Component Showcase Approval. Do not start Flows, Wireframes,
+Screen Contracts, Production Raster Asset Pack, or production page
+implementation until UI Library Approval passes or the owner grants a scoped
+waiver for that specific phase order.
 
 ### UI Library And Component Showcase
 
@@ -1166,10 +1179,11 @@ every signature visual trait. The showcase may be an internal route, static
 HTML artifact generated from the same component source, framework story page,
 or equivalent rendered artifact, but it must be openable and inspectable.
 
-The UI Library Approval gate passes only after an independent read-only visual
-fidelity review receives the rendered component showcase, the selected raster
-board or merged final board, the Selected Visual Direction Translation, and a
-short product description. The reviewer must judge whether the implemented
+The UI Library Approval gate is the next controlling D3 gate after Selected
+Visual Direction Translation. It passes only after an independent read-only
+visual fidelity review receives the rendered component showcase, the selected
+raster board or merged final board, the Selected Visual Direction Translation,
+and a short product description. The reviewer must judge whether the implemented
 primitive system looks like the selected image in practice: composition logic,
 surface treatment, density, typography direction, color semantics, borders,
 shadows, icon/illustration treatment, state styling, responsive behavior, and
