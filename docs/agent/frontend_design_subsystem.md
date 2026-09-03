@@ -115,7 +115,7 @@ explicit negative examples:
   Surface, messaging, text inventory, or design-system author;
 - accepting or pasting long worker reports into the main context instead of
   using file-backed artifacts plus compact manifests;
-- accepting summary-only `worker_done` or terminal-only final reports;
+- accepting summary-only completion signals or terminal-only final reports;
 - launching a worker through an unverified native path when the environment
   requires an exact model and YOLO profile;
 - turning low-fidelity wireframes into polished prototypes or production-like
@@ -463,31 +463,31 @@ contracts unless its assigned task is specifically to audit those sources.
 Require a compact result containing the verdict, blocking findings, evidence,
 and recommended fixes. On re-review, provide the previous blockers, changed
 artifacts, and closure criteria instead of replaying the whole project history.
-When the collaboration interface has an explicit completion message such as
-`worker_done`, the completion message body must contain the agreed deliverable
-manifest. For short tasks, the body may be the full deliverable. For long
-research, content, review, QA, or implementation evidence, the brief should
-require a file-backed artifact and a compact completion body containing the
-path, status, verdict, blockers, and line index. The brief must tell the
-worker not to send a summary-only or empty completion signal and not to
-continue producing a separate final report after completion. The design/control
-context treats completion without the requested artifact path or deliverable
-body as a failed or incomplete delegation, not as accepted evidence.
+When the collaboration interface has an explicit completion signal, the
+completion body must contain the agreed deliverable manifest. For short tasks,
+the body may be the full deliverable. For long research, content, review, QA,
+or implementation evidence, the brief should require a file-backed artifact and
+a compact completion body containing the path, status, verdict, blockers, and
+line index. The brief must tell the worker not to send a summary-only or empty
+completion signal and not to continue producing a separate final report after
+completion. The design/control context treats completion without the requested
+artifact path or deliverable body as a failed or incomplete delegation, not as
+accepted evidence.
 
 Do not inspect a worker's unfinished terminal output or partial report to make
-frontend decisions. In Orca-like lifecycle systems, the main design/control
-context waits for the declared completion signal and consumes only the compact
-manifest, artifact path, and cited blocker lines. Use bounded worker-output
-inspection only for anomalies such as timeout, missing completion body, terminal
-still typing after completion, or a mismatch between the expected dispatch and
-the delivered message.
+frontend decisions. In lifecycle-managed collaboration systems, the main
+design/control context waits for the declared completion signal and consumes
+only the compact manifest, artifact path, and cited blocker lines. Use bounded
+worker-output inspection only for anomalies such as timeout, missing completion
+body, visible output still continuing after completion, or a mismatch between
+the expected task and the delivered message.
 
-When a lifecycle system uses delivery acknowledgement, no frontend worker result
-may remain pending while the next worker is launched or awaited in the same
-run. Classify the returned delivery, accept/reject/follow up, acknowledge it,
-release the worker dispatch when applicable, and only then start the next
-author/reviewer worker. Stale or replayed completion from another dispatch is
-not evidence for the current phase.
+When the collaboration interface requires completion acknowledgement or worker
+cleanup, no frontend worker result may remain pending while the next worker is
+launched or awaited in the same phase. Classify the returned result, accept it,
+reject it, or assign follow-up, complete the interface's required cleanup, and
+only then start the next author/reviewer worker. Stale, replayed, or mismatched
+completion from another task is not evidence for the current phase.
 
 Keep these roles distinct:
 
@@ -2002,11 +2002,12 @@ compact artifact manifest. Long deliverables must be file-backed. Summary-only
 completion, terminal-only prose, missing artifact paths, or post-completion
 report typing does not satisfy the phase.
 
-For Orca-style workers, do not run command help during the handoff when the
-environment already supplies a verified launch/check/release recipe. Do not use
-worker output reads as a normal progress check or as a way to harvest partial
-research. Wait for the lifecycle completion event, then process and acknowledge
-that exact delivery before starting the next delegated frontend phase.
+For lifecycle-managed workers, do not re-query tool help during the handoff
+when the environment already supplies a verified launch, wait, and cleanup
+recipe. Do not use partial worker-output reads as a normal progress check or as
+a way to harvest unfinished research. Wait for the lifecycle completion event,
+then process that exact result and complete the interface's cleanup step before
+starting the next delegated frontend phase.
 
 For D3, prefer this handoff shape:
 
