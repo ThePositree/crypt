@@ -28,8 +28,8 @@ copy, visual glitches, broken states, unverified assumptions, approximate
 flows, shallow content, partial indexes, and decorative-only product surfaces
 as unfinished frontend work.
 
-Version: 5
-Updated: 2026-09-02
+Version: 6
+Updated: 2026-09-03
 
 This document is the canonical instruction set for frontend product, design,
 implementation, and QA work in this repository. It preserves the established
@@ -40,6 +40,32 @@ The objective is a frontend that is correct, complete for its approved scope,
 visually intentional, textually specific, responsive, accessible, and
 maintainable. Artifacts and approval gates reduce product and implementation
 risk while serving the delivered result.
+
+## Artifact Model
+
+Frontend work produces durable, file-backed artifacts. An artifact is a named
+Markdown file, HTML file, raster image, source file, rendered capture, or review
+record that can be inspected by a later session without recovering the original
+chat. D2/D3 artifacts are contracts, not scratch notes.
+
+Every D2/D3 artifact record names:
+
+- artifact path;
+- artifact type and lifecycle phase;
+- revision or timestamp;
+- authoring context;
+- owner approval gate, if any;
+- independent reviewer context, when required;
+- source inputs and explicit exclusions;
+- acceptance criteria;
+- current status: proposed / approved / blocked / superseded.
+
+Prefer small manifests plus durable files over long chat transcripts. When an
+artifact or review would be long, the author writes the full deliverable to the
+repository or a named local artifact path and reports only a compact manifest,
+verdict, blocking findings, path, and line index in chat or worker completion.
+The design/control context reads targeted lines only when verifying a blocker,
+resolving a contradiction, or preparing an owner gate.
 
 ## Instruction Model
 
@@ -355,6 +381,26 @@ blockers, and integrate accepted findings. If the main context discovers that
 it must redo the delegated task, stop, explain why the delegation failed, and
 record the fallback before continuing.
 
+For D2/D3, default heavy phase work to artifact-producing independent contexts
+when collaboration is available and approved. The main design/control context
+orchestrates phases, writes briefs, records owner decisions, checks manifests,
+and integrates reviewed results. It should not load a full factual report,
+content inventory, visual audit, QA log, or implementation report into its own
+context when a file-backed artifact and a compact review verdict are enough.
+
+Use paired independent contexts for high-impact artifacts:
+
+- an authoring context gathers evidence and writes the artifact file;
+- a separate review context reads the artifact and its required sources,
+  reports blockers, and verifies fixes;
+- the main design/control context reads the manifest, reviewer verdict, and
+  targeted blocker lines, then presents the owner gate or assigns fixes.
+
+If an authoring worker returns only prose instead of writing the required
+artifact file, treat the phase as incomplete. If a review worker pastes a long
+audit instead of writing or referencing a durable review artifact, ask for a
+compact verdict and path before integrating the result.
+
 Ask about delegation for D0/D1 work only when it provides a clear, specific
 benefit. Create a worker after the owner answers the Collaboration Check with
 approval. If repository or environment rules require a particular collaboration
@@ -378,11 +424,15 @@ Require a compact result containing the verdict, blocking findings, evidence,
 and recommended fixes. On re-review, provide the previous blockers, changed
 artifacts, and closure criteria instead of replaying the whole project history.
 When the collaboration interface has an explicit completion message such as
-`worker_done`, the completion message body is the deliverable. The brief must
-tell the worker not to send a summary-only or empty completion signal and not
-to continue producing a separate final report after completion. The
-design/control context treats completion without the requested deliverable body
-as a failed or incomplete delegation, not as accepted evidence.
+`worker_done`, the completion message body must contain the agreed deliverable
+manifest. For short tasks, the body may be the full deliverable. For long
+research, content, review, QA, or implementation evidence, the brief should
+require a file-backed artifact and a compact completion body containing the
+path, status, verdict, blockers, and line index. The brief must tell the
+worker not to send a summary-only or empty completion signal and not to
+continue producing a separate final report after completion. The design/control
+context treats completion without the requested artifact path or deliverable
+body as a failed or incomplete delegation, not as accepted evidence.
 
 Keep these roles distinct:
 
@@ -585,10 +635,13 @@ Content Author the approved audience, Product Surface, Messaging Identity,
 page or screen contracts, explicit content boundaries, and only the canonical
 product sources needed for those pages. Do not require the Content Author to
 read the complete frontend subsystem. The author returns finished copy, a
-source map for factual claims, unresolved facts, and Text Inventory coverage.
-For D3, this content work produces a named Text Inventory artifact before
+source map for factual claims, unresolved facts, and Text Inventory coverage
+by writing the named content and Text Inventory artifacts directly. For D3,
+this content work produces a named Text Inventory artifact before
 implementation approval. The design/control context does not replace it with
-ad hoc bullets, ledes, summaries, or implementation-time copy.
+ad hoc bullets, ledes, summaries, implementation-time copy, or a full rewrite
+inside the main session. It may inspect targeted inventory lines to resolve
+review findings or present owner approval.
 
 Review substantial copy in another independent context. The Copy Reviewer sees
 the rendered pages, the approved audience and voice summary, and the copy
@@ -1919,9 +1972,20 @@ scope boundaries, required sources, approved decisions, acceptance evidence,
 validation commands, and response format. Include the current Task Contract and
 execution context when relevant. Provide the context the worker needs for the
 assigned outcome. If the execution channel has a lifecycle completion event,
-state that the full deliverable must be included in that completion event body;
-summary-only completion, terminal-only prose, or post-completion report typing
-does not satisfy the phase.
+state whether the completion body must contain the full deliverable or a
+compact artifact manifest. Long deliverables must be file-backed. Summary-only
+completion, terminal-only prose, missing artifact paths, or post-completion
+report typing does not satisfy the phase.
+
+For D3, prefer this handoff shape:
+
+1. The main design/control context creates a brief and allowed write scope.
+2. An independent authoring context writes or updates the artifact file.
+3. A separate independent reviewer checks the artifact and sources.
+4. The authoring context fixes blocking findings in its write scope.
+5. The reviewer rechecks only the changed artifact and previous blockers.
+6. The main context records the compact author/reviewer manifests and presents
+   the owner gate.
 
 For independent QA, include the Independent QA Brief defined above. The prompt
 must be more explicit than a normal engineering handoff: list every route,

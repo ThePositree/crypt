@@ -18,6 +18,13 @@ delegation availability, required collaboration/runtime interface, proposed
 scope, owner decision, and whether an independent result was reviewed before
 integration.
 
+For long delegated research, authoring, review, QA, or implementation evidence,
+prefer file-backed artifacts over pasted reports. The worker completion message
+records a compact manifest: artifact path, status, verdict, blocking findings,
+and targeted line index. The design/control context should not duplicate the
+delegated read or load the whole artifact when a separate reviewer can inspect
+it and return a compact verdict.
+
 `Independent` means a separate execution context, not a specific agent feature
 or vendor. Give each reviewer the minimum context for its role. Contract
 reviewers read the applicable contracts, not the complete frontend subsystem
