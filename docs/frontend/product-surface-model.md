@@ -43,6 +43,8 @@ directly until a stronger product source is created.
 
 - Owner onboarding answers:
 - Independent factual research artifact:
+- Product Surface Author context:
+- Product Surface Contract Reviewer context:
 - Accepted factual map or line index:
 - Rejected or unresolved facts:
 - Related decisions:

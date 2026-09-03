@@ -22,6 +22,13 @@ should contain only a compact manifest: review path, verdict, blocking
 findings, and line references. The design/control context should read targeted
 lines instead of importing the whole review transcript.
 
+For D3 heavy artifacts, the main design/control context is neither the artifact
+author nor the reviewer when independent contexts are available. It provides
+briefs, routes blockers, records compact manifests, and presents owner gates.
+If the main context writes the reviewed artifact itself after delegating
+research, record the phase as incomplete unless the owner granted a scoped
+`FRONTEND WAIVER:`.
+
 Required review roles stay separate unless the owner records a scoped waiver:
 
 - Factual Product Research before Product Surface Model authoring.

@@ -67,6 +67,15 @@ verdict, blocking findings, path, and line index in chat or worker completion.
 The design/control context reads targeted lines only when verifying a blocker,
 resolving a contradiction, or preparing an owner gate.
 
+For D3 and other context-heavy frontend work, large artifacts are delegated
+deliverables by default. The main design/control context owns orchestration,
+briefs, gate presentation, owner decisions, and compact manifests. It does not
+author or fully read large artifacts such as Product Surface Model revisions,
+factual research reports, text inventories, visual audits, wireframe audits,
+screen-contract packages, QA logs, or implementation reports when an approved
+independent context is available. It may inspect narrow cited lines only to
+resolve blockers or contradictions.
+
 ## Instruction Model
 
 Treat every frontend task as a contract with six fields:
@@ -100,6 +109,10 @@ explicit negative examples:
 
 - delegating factual research, then having the main context read the same
   product corpus in parallel;
+- delegating a phase, then having the main context write the large contract
+  artifact itself;
+- asking a worker for research and using the main context as the Product
+  Surface, messaging, text inventory, or design-system author;
 - accepting or pasting long worker reports into the main context instead of
   using file-backed artifacts plus compact manifests;
 - accepting summary-only `worker_done` or terminal-only final reports;
@@ -389,6 +402,10 @@ orchestrates phases, writes briefs, records owner decisions, checks manifests,
 and integrates reviewed results. It should not load a full factual report,
 content inventory, visual audit, QA log, or implementation report into its own
 context when a file-backed artifact and a compact review verdict are enough.
+It should not write those artifacts itself. Writing the artifact in the main
+context after delegating evidence gathering is a failed collaboration pattern,
+because it spends the saved context and removes the independent author/reviewer
+boundary.
 
 Use paired independent contexts for high-impact artifacts:
 
@@ -398,10 +415,31 @@ Use paired independent contexts for high-impact artifacts:
 - the main design/control context reads the manifest, reviewer verdict, and
   targeted blocker lines, then presents the owner gate or assigns fixes.
 
+The default D3 heavy-artifact loop is:
+
+1. Main writes a self-contained brief and allowed read/write scope.
+2. Independent author writes or updates the named artifact file directly.
+3. Author returns a compact manifest only: path, revision, sources, blockers,
+   and readiness verdict.
+4. Main starts a separate read-only reviewer with the artifact path, source
+   list, review rubric, and required verdict format.
+5. Reviewer writes or references a durable review artifact and returns a
+   compact verdict.
+6. Main reads only the manifests, reviewer verdict, and cited blocker lines.
+7. If blockers exist, main routes them back to the author and then reviewer.
+8. Main presents the owner gate only after the artifact is file-backed,
+   reviewed, and either clean or explicitly waived.
+
 If an authoring worker returns only prose instead of writing the required
 artifact file, treat the phase as incomplete. If a review worker pastes a long
 audit instead of writing or referencing a durable review artifact, ask for a
 compact verdict and path before integrating the result.
+
+If no independent execution context is available for a required D3 heavy
+artifact, stop and ask the owner to either open a neighboring session/subagent
+with the provided brief or grant a scoped `FRONTEND WAIVER:` for single-context
+authoring. Do not silently collapse authoring, review, and owner-gate prep into
+the main context.
 
 Ask about delegation for D0/D1 work only when it provides a clear, specific
 benefit. Create a worker after the owner answers the Collaboration Check with
@@ -557,6 +595,25 @@ the Independent Factual Product Research artifact. The main design/control
 context should not write the full Product Surface Model itself except when no
 independent authoring context is available or the owner explicitly chooses
 single-context work.
+
+Required D3 Product Surface delegation sequence:
+
+1. A Factual Product Researcher finds the canonical product source, or writes a
+   factual product research artifact if no sufficient source exists.
+2. A separate Product Surface Author writes
+   `docs/frontend/product-surface-model.md` from owner onboarding, canonical
+   product sources, and the factual research artifact.
+3. A separate read-only Contract Reviewer checks the Product Surface Model
+   against the source list, frontend scope, exclusions, and approval criteria.
+4. The Product Surface Author fixes blocking findings in the artifact.
+5. The Contract Reviewer rechecks the changed artifact and previous blockers.
+6. The main design/control context reads only compact manifests, verdicts, and
+   cited blocker lines before presenting Product Surface Approval.
+
+The main design/control context must not read the full research artifact and
+then author the Product Surface Model itself. It may create the briefs,
+preserve the artifact paths, route blockers between contexts, and present the
+owner decision once the delegated artifact is reviewed.
 
 If the repository already has a canonical product source such as `product.md`,
 `PRODUCT.md`, `project.md`, `PROJECT.md`, a PRD, a product spec, or a current
