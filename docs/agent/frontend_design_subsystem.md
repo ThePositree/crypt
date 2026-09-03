@@ -327,6 +327,8 @@ check whether delegation is available and appropriate. Record:
 - required collaboration interface;
 - available worker or runtime choices;
 - proposed delegated outcome and why it is independently verifiable;
+- context-budget purpose: what reading, analysis, rendering, or review work is
+  being moved out of the main context window;
 - files and permissions the worker would receive;
 - how its result would be reviewed and integrated;
 - fallback using current-session work when the owner chooses single-agent work.
@@ -341,6 +343,17 @@ Do not infer collaboration approval from approval of a product, visual,
 wireframe, action, or implementation gate. Before starting each independent
 worker or separate execution context, record the exact reviewed or authored
 outcome and the owner's approval to use that context for that phase.
+
+Independent contexts are also a context-window budgeting tool. Once a bounded
+research, authoring, inspection, or review task is delegated, the main
+design/control context must not perform the same broad read, crawl, analysis,
+rendering, or QA pass in parallel. Doing duplicate work defeats the delegation
+purpose, spends the owner's context twice, and can produce conflicting
+unreviewed conclusions. The main context may read only enough to prepare a
+precise brief, monitor progress, verify returned claims, inspect narrow
+blockers, and integrate accepted findings. If the main context discovers that
+it must redo the delegated task, stop, explain why the delegation failed, and
+record the fallback before continuing.
 
 Ask about delegation for D0/D1 work only when it provides a clear, specific
 benefit. Create a worker after the owner answers the Collaboration Check with

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-03 - Clarify delegated context budgeting
+
+- Required Collaboration Check records to state what context-heavy work is
+  being moved out of the main context window.
+- Forbade the main design/control context from duplicating the same broad
+  research, authoring, rendered inspection, or QA pass after delegating it to
+  an independent context.
+- Limited main-context work during delegation to brief preparation, progress
+  monitoring, narrow blocker inspection, returned-claim verification, and
+  accepted-finding integration.
+
 ## 2026-09-03 - Require production UI library fidelity
 
 - Clarified that the D3 UI library/component showcase is a real production
