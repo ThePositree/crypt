@@ -377,6 +377,12 @@ contracts unless its assigned task is specifically to audit those sources.
 Require a compact result containing the verdict, blocking findings, evidence,
 and recommended fixes. On re-review, provide the previous blockers, changed
 artifacts, and closure criteria instead of replaying the whole project history.
+When the collaboration interface has an explicit completion message such as
+`worker_done`, the completion message body is the deliverable. The brief must
+tell the worker not to send a summary-only or empty completion signal and not
+to continue producing a separate final report after completion. The
+design/control context treats completion without the requested deliverable body
+as a failed or incomplete delegation, not as accepted evidence.
 
 Keep these roles distinct:
 
@@ -1912,7 +1918,10 @@ A delegated-work prompt must state the exact outcome, allowed files,
 scope boundaries, required sources, approved decisions, acceptance evidence,
 validation commands, and response format. Include the current Task Contract and
 execution context when relevant. Provide the context the worker needs for the
-assigned outcome.
+assigned outcome. If the execution channel has a lifecycle completion event,
+state that the full deliverable must be included in that completion event body;
+summary-only completion, terminal-only prose, or post-completion report typing
+does not satisfy the phase.
 
 For independent QA, include the Independent QA Brief defined above. The prompt
 must be more explicit than a normal engineering handoff: list every route,
