@@ -28,7 +28,7 @@ copy, visual glitches, broken states, unverified assumptions, approximate
 flows, shallow content, partial indexes, and decorative-only product surfaces
 as unfinished frontend work.
 
-Version: 6
+Version: 7
 Updated: 2026-09-03
 
 This document is the canonical instruction set for frontend product, design,
@@ -93,6 +93,23 @@ record when reasoning must be auditable. Use examples when
 they define a format, state, boundary, or quality bar that prose alone would
 leave ambiguous.
 
+## Known Failure Inoculation
+
+Past frontend test runs exposed repeatable failure modes. Treat these as
+explicit negative examples:
+
+- delegating factual research, then having the main context read the same
+  product corpus in parallel;
+- accepting or pasting long worker reports into the main context instead of
+  using file-backed artifacts plus compact manifests;
+- accepting summary-only `worker_done` or terminal-only final reports;
+- launching a worker through an unverified native path when the environment
+  requires an exact model and YOLO profile;
+- turning low-fidelity wireframes into polished prototypes or production-like
+  applications;
+- checking only wireframe structure while ignoring visual fidelity to the
+  selected raster direction, UI library, and approved text inventory.
+
 Frontend prompts and handoffs should include the execution context and date
 when results may vary by implementation. Re-evaluate reusable prompts after
 execution context, rendering environment, framework, or component-library
@@ -152,42 +169,42 @@ or `waived by owner` status.
 
 Canonical frontend obligations:
 
-- Full Messaging System for all user-visible text;
-- Source-Grounded Content Authoring;
-- Text Inventory And Copy Approval;
-- Independent Factual Product Research;
-- Independent First-Use Review;
-- Independent Wireframe Rendered Visual QA;
-- Messaging Identity and Messaging Contracts;
-- Design Identity and Design System;
-- Five raster Visual Direction Boards;
-- Visual Direction Approval;
-- Selected Visual Direction Translation;
-- UI Library And Component Showcase;
-- UI Library Approval;
-- Production Raster Asset Pack;
-- Production Raster Asset Pack Approval;
-- Flows;
-- Page-level wireframes for every real page or meaningful screen;
-- Persistent HTML Wireframe Artifacts;
-- Wireframe Approval;
-- Screen contracts for every real page or meaningful screen;
-- Independent Contract Review;
-- Frontend Lead Contract Review Brief;
-- Action Contract;
-- Final Implementation Approval;
-- Separate Implementation Session;
-- Frontend Implementation Brief;
-- Wireframe Conformance Contract;
-- Interaction Inventory;
-- Full link and navigation coverage;
-- Six viewport classes;
-- Accessibility checks;
-- Independent Frontend QA Gate;
-- Independent QA Brief;
-- Frontend Rubric Review;
-- Durable frontend memory updates;
-- Final Instruction Audit.
+- O01 Full Messaging System for all user-visible text;
+- O02 Source-Grounded Content Authoring;
+- O03 Text Inventory And Copy Approval;
+- O04 Independent Factual Product Research;
+- O05 Independent First-Use Review;
+- O06 Independent Wireframe Rendered Visual QA;
+- O07 Messaging Identity and Messaging Contracts;
+- O08 Design Identity and Design System;
+- O09 Five raster Visual Direction Boards;
+- O10 Visual Direction Approval;
+- O11 Selected Visual Direction Translation;
+- O12 UI Library And Component Showcase;
+- O13 UI Library Approval;
+- O14 Production Raster Asset Pack;
+- O15 Production Raster Asset Pack Approval;
+- O16 Flows;
+- O17 Page-level wireframes for every real page or meaningful screen;
+- O18 Persistent HTML Wireframe Artifacts;
+- O19 Wireframe Approval;
+- O20 Screen contracts for every real page or meaningful screen;
+- O21 Independent Contract Review;
+- O22 Frontend Lead Contract Review Brief;
+- O23 Action Contract;
+- O24 Final Implementation Approval;
+- O25 Separate Implementation Session;
+- O26 Frontend Implementation Brief;
+- O27 Wireframe Conformance Contract;
+- O28 Interaction Inventory;
+- O29 Full link and navigation coverage;
+- O30 Six viewport classes;
+- O31 Accessibility checks;
+- O32 Independent Frontend QA Gate;
+- O33 Independent QA Brief;
+- O34 Frontend Rubric Review;
+- O35 Durable frontend memory updates;
+- O36 Final Instruction Audit.
 
 Start implementation, artifact generation, rendered inspection, delegation, or
 durable memory updates only after the Read Receipt identifies the active gates,
@@ -422,7 +439,7 @@ Keep these roles distinct:
 
 - a Factual Product Researcher inspects only the canonical product, runtime,
   architecture, and implementation sources needed to establish how the product
-  actually works before a Product Surface is drafted;
+  actually works before Product Surface Approval;
 - a Contract Reviewer inherits and challenges contracts as a future frontend
   lead;
 - a First-Use Reviewer experiences the rendered surface as a new user and is
@@ -1291,10 +1308,10 @@ per-page or per-screen contract files required for approval.
 Every new or materially changed frontend Markdown contract must receive an
 independent read-only review before it is presented for owner approval, used to
 authorize implementation, or declared complete. Review the complete applicable
-contract package, not a sample. This includes Product Surface, messaging,
-identity, design system, content/capability, discovery, flows, wireframe index
-and state matrix, screen contracts, Action Contracts, Wireframe Conformance
-Contracts, implementation briefs, and consequential frontend decisions.
+contract package, not a sample. This includes Product Surface Approval records,
+messaging, identity, design system, flows, wireframe index and state matrix,
+screen contracts, Action Contracts, Wireframe Conformance Contracts,
+implementation briefs, and consequential frontend decisions.
 
 The independent reviewer adopts the role of a potential frontend lead joining
 the project after the current session. Assume this lead must understand,
@@ -1619,7 +1636,7 @@ review. Default independent QA lanes:
 - functional interaction, link, navigation, event, keyboard, and state QA;
 - responsive visual, rendered layout, screenshots, accessibility, and console
   or network QA;
-- copy, Messaging System, Text Inventory, content coverage, and discovery QA;
+- copy, Messaging System, Text Inventory, and product completeness QA;
 - instruction compliance, artifact path mapping, gates, waivers, and rubric
   audit.
 
@@ -1745,11 +1762,10 @@ Record a verdict and evidence for each category:
   component consistency, semantic color, and identity fit are intentional.
 - Copy: the full Messaging System is applied to all user-visible text and
   microcopy.
-- Content and capability: promised corpus, data, pages, sections, states,
-  workflows, media, generated output, and capabilities are covered.
-- Discovery: search, filtering, sorting, recommendations, maps, indexes,
-  catalogs, navigation discovery, and generated lists satisfy the Discovery
-  Contract when present.
+- Product completeness: promised corpus, data, pages, states, workflows,
+  media, generated output, and capabilities are present or owner-bounded.
+- Search and navigation: queries, filters, result states, routing, and keyboard
+  behavior work when present.
 - Accessibility: landmarks, names, focus, keyboard operation, contrast, target
   sizes, reading order, and reduced-motion or motion safety are checked where
   relevant.
@@ -1947,89 +1963,23 @@ reviews record validation evidence.
 
 ## Completion Checklist
 
-A frontend task is complete when:
+A frontend task is complete only when the Final Instruction Audit records:
 
-- the Read Receipt was published before frontend action;
-- the Read Receipt named active gates and active obligations separately;
-- the Read Receipt used canonical obligation names and statuses;
-- every skipped, narrowed, reordered, or replaced frontend instruction has a
-  recorded owner message containing `FRONTEND WAIVER:`;
-- D3 implementation began after Final Implementation Approval or a valid
-  `FRONTEND WAIVER:` for that approval;
-- D3 scope was treated as a production-grade complete surface, or a scoped
-  owner waiver explicitly narrowed it;
-- the requested outcome and approved scope are delivered;
-- required gates or scoped waivers are recorded;
-- relevant contracts match the implementation;
-- D3 Product Surface drafting was preceded by Independent Factual Product
-  Research, and the design/control context verified its accepted evidence;
-- D3 visual boards, Selected Visual Direction Translation, UI Library/component
-  showcase, directly openable HTML wireframes, state matrices, and screen
-  contracts exist at named paths before implementation approval;
-- UI Library Approval was recorded before production page implementation, or a
-  scoped owner waiver records why it was skipped;
-- Production Raster Asset Pack and approval were recorded before production
-  page implementation when raster imagery, illustration, characters, product
-  media, thumbnails, or generated visual language apply;
-- every approved page or meaningful screen has its own wireframe package and
-  screen contract, with shared shell artifacts recorded separately;
-- wireframe packages link to HTML artifacts first and screenshots only as
-  supporting visual captures;
-- every wireframe declares its W0-W3 fidelity, demonstrates the states and
-  interaction intent required for approval, and lists behavior deferred to
-  production;
-- W3 behavior was created only after explicit owner approval;
-- Independent First-Use Review was performed without repository or authoring
-  context before D2/D3 Wireframe Approval and final completion;
-- Independent Wireframe Rendered Visual QA inspected every required viewport
-  and applicable prepared state before D2/D3 Wireframe Approval;
-- the approved clickable wireflow contains no dead primary actions, broken
-  route/state transitions, or manually opened intermediate screens;
-- substantial D2/D3 copy was produced by a Source-Grounded Content Author and
-  checked by an independent Copy Reviewer;
-- D3 Text Inventory exists as a named approved artifact before implementation
-  approval and maps planned text depth to rendered production copy;
-- every applicable frontend Markdown contract passed Independent Contract
-  Review by a potential-lead reviewer in a separate context;
-- production frontend code was written in a separate implementation context by
-  a write-scoped implementation worker using the approved Frontend
-  Implementation Brief;
-- the Wireframe Conformance Contract maps every approved page, state, and
-  region to production implementation and verification evidence;
-- production visual QA compared rendered pages against the selected raster
-  direction, Selected Visual Direction Translation, UI library, Design Identity,
-  and rejected-board counterexamples;
-- production copy QA compared rendered pages and source code against the
-  approved Text Inventory item by item;
-- every production deviation from a frozen structural or behavioral invariant
-  was re-artifacted, inspected, and approved before implementation continued;
-- the full Messaging System was applied to every user-visible text fragment
-  and microcopy point;
-- the Interaction Inventory was exercised across links, controls, stateful
-  regions, navigation, keyboard behavior, and expected events;
-- independent frontend QA was performed in a separate execution context from
-  the implementation context;
-- design/control, production implementation, and final QA contexts remained
-  separate unless a scoped owner waiver records otherwise;
-- every blocking independent QA finding was fixed and independently rechecked,
-  or a scoped owner message containing `FRONTEND WAIVER:` records why it
-  remains;
-- the required six viewport classes were inspected or a narrower owner-approved
-  viewport scope was recorded;
-- promised content, data, and capabilities are present in the implemented
-  surface or explicitly bounded by owner approval;
-- search and navigation interfaces were checked with representative queries,
-  zero-result states, result selection, ranking/grouping behavior, and keyboard
-  operation when they exist;
-- the Frontend Rubric Review has verdicts and evidence for every applicable
-  category and includes the independent QA verdict for implementation work;
-- functional, rendered visual, copy, responsive, accessibility, and
-  completeness checks proportional to depth have evidence;
-- placeholders and integration seams are labeled accurately;
-- durable knowledge is current and temporary handoffs are removed;
-- the Final Instruction Audit names applied instructions, memory, gates,
-  approvals, and evidence;
-- validation passes or remaining failures are reported with cause and next command.
+- Read Receipt existed before frontend action and named gates, obligations,
+  waivers, controlling gate, verdict, and next action;
+- every applicable O01-O36 obligation is `satisfied` or explicitly
+  `waived by owner` with a scoped `FRONTEND WAIVER:`;
+- D3 implementation started only after O24 or a waiver, and D3 scope stayed
+  production-grade unless the owner narrowed it;
+- approved artifacts exist at named paths and match the delivered surface;
+- required independent author/reviewer/implementation/QA contexts remained
+  separate or the owner accepted the role collapse;
+- every blocking independent finding was fixed and rechecked or waived;
+- production output matches approved scope, wireframes, Text Inventory, UI
+  library, selected visual direction, responsive targets, accessibility needs,
+  interactions, links, navigation, and product completeness criteria;
+- placeholders, seams, remaining failures, validation gaps, and next commands
+  are explicitly reported.
 
 Optimize this process through evaluation: compare the delivered behavior and
 evidence with the Task Contract. Optimize for delivered behavior, evidence,
