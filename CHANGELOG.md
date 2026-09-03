@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-03 - Propose crypt docs product surface
+
+- Recorded owner D3 onboarding input for a Russian Next.js + Tailwind
+  documentation portal named `crypt docs`.
+- Proposed Product Surface Model revision 1 with route map, source map,
+  discovery contract, diagram contract, snippet policy, and content coverage
+  requirements.
+- Proposed Messaging revision 1 and preliminary Design Identity revision 1 for
+  a playful lo-fi framework documentation surface with abstract mascots.
+- Ran Orca native independent factual research and contract review; fixed the
+  review blockers and recorded the re-review `PASS`.
+
 ## 2026-09-03 - Clarify delegated context budgeting
 
 - Required Collaboration Check records to state what context-heavy work is
