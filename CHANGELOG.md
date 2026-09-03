@@ -1,20 +1,5 @@
 # Changelog
 
-## 2026-09-03 - Start crypt docs portal contracts
-
-- Added the approved Product Surface Model for a Russian `crypt docs`
-  documentation portal targeting developer-crypto-traders.
-- Recorded independent factual research, Product Surface contract review, and
-  re-review artifacts under `docs/frontend/reviews/`.
-- Established Messaging, Design Identity, and Design System Revision 2, with
-  independent re-review clearing prior blockers around negative tracking,
-  downstream gates, Tailwind tokens, viewport classes, and stable dimensions.
-- Generated five raster Visual Direction Boards and saved them under
-  `docs/frontend/visual-references/positive/`.
-- Recorded the recommended visual direction mix in
-  `docs/frontend/visual-references/interpretation.md`; Visual Direction
-  Approval remains the next active gate before wireframes and implementation.
-
 ## 2026-09-03 - Clarify delegated context budgeting
 
 - Required Collaboration Check records to state what context-heavy work is
