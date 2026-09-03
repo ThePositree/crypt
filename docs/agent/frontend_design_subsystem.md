@@ -474,6 +474,21 @@ continue producing a separate final report after completion. The design/control
 context treats completion without the requested artifact path or deliverable
 body as a failed or incomplete delegation, not as accepted evidence.
 
+Do not inspect a worker's unfinished terminal output or partial report to make
+frontend decisions. In Orca-like lifecycle systems, the main design/control
+context waits for the declared completion signal and consumes only the compact
+manifest, artifact path, and cited blocker lines. Use bounded worker-output
+inspection only for anomalies such as timeout, missing completion body, terminal
+still typing after completion, or a mismatch between the expected dispatch and
+the delivered message.
+
+When a lifecycle system uses delivery acknowledgement, no frontend worker result
+may remain pending while the next worker is launched or awaited in the same
+run. Classify the returned delivery, accept/reject/follow up, acknowledge it,
+release the worker dispatch when applicable, and only then start the next
+author/reviewer worker. Stale or replayed completion from another dispatch is
+not evidence for the current phase.
+
 Keep these roles distinct:
 
 - a Factual Product Researcher inspects only the canonical product, runtime,
@@ -1986,6 +2001,12 @@ state whether the completion body must contain the full deliverable or a
 compact artifact manifest. Long deliverables must be file-backed. Summary-only
 completion, terminal-only prose, missing artifact paths, or post-completion
 report typing does not satisfy the phase.
+
+For Orca-style workers, do not run command help during the handoff when the
+environment already supplies a verified launch/check/release recipe. Do not use
+worker output reads as a normal progress check or as a way to harvest partial
+research. Wait for the lifecycle completion event, then process and acknowledge
+that exact delivery before starting the next delegated frontend phase.
 
 For D3, prefer this handoff shape:
 
