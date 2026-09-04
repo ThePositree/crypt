@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-04 - Add D3 phase-main control handoffs
+
+- Required every D3 phase to begin in a fresh main execution context and made
+  context compaction invalidate the current phase main.
+- Added manual neighboring-session and optional observer-managed handoff modes,
+  including the three-level `observer -> phase main -> independent workers`
+  topology.
+- Added a rolling file-backed next-main prompt, minimal bootstrap envelope,
+  append-only transition ledger, acceptance state machine, compaction recovery,
+  single-active-main rule, and explicit phase boundary stop conditions.
+- Kept phase control separate from artifact delegation and independent review;
+  observers coordinate compact manifests only, while phase mains continue to
+  own worker briefs and within-phase orchestration.
+
 ## 2026-09-03 - Clarify delegated context budgeting
 
 - Required Collaboration Check records to state what context-heavy work is

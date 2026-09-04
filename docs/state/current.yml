@@ -1,5 +1,5 @@
 version: 1
-updated: 2026-08-11
+updated: 2026-09-04
 
 project:
   name: crypt
@@ -34,7 +34,7 @@ canonical_docs:
   ai_context_system: docs/agent/ai_context_system.md
   frontend_design_subsystem: docs/agent/frontend_design_subsystem.md
   frontend_memory: docs/frontend/
-  frontend_instruction_version: 5
+  frontend_instruction_version: 9
   benchmark: docs/strategy_benchmark.md
   backtester_regression: docs/backtester_regression.md
   live_reconciliation: docs/execution/live_backtest_reconciliation_2026-07-28.md

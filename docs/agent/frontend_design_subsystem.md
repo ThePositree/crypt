@@ -8,6 +8,16 @@ task, depth, surface, state, and risk. The agent may narrow, skip, reorder, or
 replace a required frontend instruction only after an explicit owner waiver
 uses the waiver phrase defined in this document.
 
+CONTINUITY OBSERVER EXCEPTION: a context assigned only to bootstrap or preserve
+D3 phase control is not a phase main. It reads the repository bootstrap,
+frontend route, `docs/frontend/handoffs/README.md`, and
+`docs/frontend/handoffs/current.md`; it must not load the rest of the frontend
+memory, perform phase work, or satisfy a review role. Every phase main still
+reads this complete document and the complete frontend memory set. If the
+control-only context starts frontend research, authoring, design,
+implementation, rendering, or review, the exception is void and that context
+cannot remain the observer.
+
 READ RECEIPT GATE: before planning, editing, generating artifacts, launching
 rendered checks, or delegating frontend work, publish a concise receipt in chat.
 The receipt names every frontend instruction and memory file read, line counts,
@@ -17,6 +27,13 @@ that controls the next action. It ends with `Control Verdict: STOP` or
 `Control Verdict: PROCEED`. Frontend action begins after this receipt exists,
 identifies the currently applicable instruction set and canonical obligations,
 and returns `PROCEED`.
+
+A continuity observer does not publish the phase-main Read Receipt. It may only
+validate that the fresh phase main published one before treating that main as
+active. Preparing, verifying, accepting, blocking, or repairing
+`docs/frontend/handoffs/current.md` is control-plane bookkeeping allowed before
+the phase-main Read Receipt; no product, design, implementation, or review
+action is allowed through this exception.
 
 PRODUCTION STANDARD: every frontend surface is user-visible product quality
 from its first delivered version. Plan and build for complete, accurate,
@@ -28,8 +45,8 @@ copy, visual glitches, broken states, unverified assumptions, approximate
 flows, shallow content, partial indexes, and decorative-only product surfaces
 as unfinished frontend work.
 
-Version: 8
-Updated: 2026-09-03
+Version: 9
+Updated: 2026-09-04
 
 This document is the canonical instruction set for frontend product, design,
 implementation, and QA work in this repository. It preserves the established
@@ -118,6 +135,12 @@ explicit negative examples:
 - accepting summary-only completion signals or terminal-only final reports;
 - launching a worker through an unverified native path when the environment
   requires an exact model and YOLO profile;
+- keeping one D3 main context across phase boundaries and trusting a compacted
+  or reconstructed chat to preserve control state;
+- treating a fresh phase main as an independent reviewer merely because it runs
+  in another context;
+- allowing a continuity observer to author, inspect, review, implement, or
+  approve frontend artifacts instead of remaining a manifest-only coordinator;
 - turning low-fidelity wireframes into polished prototypes or production-like
   applications;
 - checking only wireframe structure while ignoring visual fidelity to the
@@ -143,6 +166,8 @@ The pre-action Read Receipt records:
 - active obligations that apply to the classified task and surface;
 - active waivers already granted by the owner;
 - first gate that controls the next action;
+- current D3 phase and the incoming handoff record, when D3 applies;
+- active phase-handoff mode and the next required control transfer;
 - frontend memory entries that are established, pending, or awaiting owner
   input;
 - `Control Verdict: STOP` or `Control Verdict: PROCEED`;
@@ -157,6 +182,10 @@ The Read Receipt uses this structure:
 - Depth:
 - Active Gates:
 - Active Obligations:
+- Current D3 Phase:
+- Incoming Handoff:
+- Handoff Mode:
+- Next Required Control Transfer:
 - First Controlling Gate:
 - Existing Owner Waivers:
 - Control Verdict:
@@ -218,7 +247,14 @@ Canonical frontend obligations:
 - O34 Independent QA Brief;
 - O35 Frontend Rubric Review;
 - O36 Durable frontend memory updates;
-- O37 Final Instruction Audit.
+- O37 Final Instruction Audit;
+- O38 Phase Main Control Handoff before every D3 phase.
+
+For O38, an incoming `bootstrap-prepared`, `prepared`, or `recovery-prepared`
+handoff is `applies` during control verification and becomes `satisfied` when a
+fresh receiving main accepts it. It becomes `applies` again as soon as the next
+phase boundary is reached. An inactive or missing initial handoff makes O38
+`blocked` until the bootstrap coordinator prepares the first transfer.
 
 Start implementation, artifact generation, rendered inspection, delegation, or
 durable memory updates only after the Read Receipt identifies the active gates,
@@ -344,6 +380,63 @@ Screen Contracts, then Final Implementation Approval. Do not skip from Selected
 Visual Direction Translation to flows, wireframes, screen contracts, raster
 asset pack, or production implementation before UI Library Approval.
 
+## D3 Phase Control Continuity
+
+D3 uses a fresh main execution context for every phase. One phase main owns one
+bounded phase and may not silently continue into the next phase, even when its
+context window appears sufficient. This is a control-integrity requirement,
+not an optional collaboration preference: a new main must reconstruct control
+from current repository state, the full frontend instruction and memory set,
+and a file-backed handoff instead of depending on remembered chat.
+
+The normative phase catalog and stop condition for each phase live in
+`docs/frontend/handoffs/README.md`. A phase ends when its named acceptance
+evidence exists and every owner decision applicable to that phase has been
+recorded. A phase without an owner gate ends at its declared stop condition.
+Owner-requested corrections remain inside the same phase. Approval or
+completion that unlocks the next catalog item creates a mandatory boundary.
+
+Before the next phase begins, the current phase main must write
+the complete, directly reusable prompt in
+`docs/frontend/handoffs/current.md`, append the control event to
+`docs/frontend/handoffs/ledger.md`, and transfer control by one of these modes:
+
+- **Manual neighboring-session mode:** the owner places the prompt into a new
+  top-level neighboring session. A subagent or worker is not a valid recipient
+  for this control transfer.
+- **Observer-managed mode:** a persistent observer starts a fresh phase main
+  from the prompt. Use this mode only when the environment supports both a
+  persistent parent context and nested delegation from the phase main to its
+  own independent workers.
+
+The selected mode appears in the first Read Receipt and in every handoff. When
+both modes are available, prefer observer-managed continuity; otherwise use the
+manual neighboring-session mode. The owner may select a different mode. Phase
+control transfer itself is not artifact delegation and does not require a new
+Collaboration Check; independent work inside the phase still does.
+
+The outgoing main stops after publishing a valid handoff. It may repair an
+invalid handoff or diagnose why the receiving context cannot start, but it may
+not perform work from the next phase. Same-session continuation across a D3
+phase boundary requires an owner message containing `FRONTEND WAIVER:` and
+naming the exact phase-control transfer being waived.
+
+The receiving phase main must read the full frontend instruction and memory set,
+verify repository revision and working-tree ownership, reconcile the incoming
+handoff against canonical files, mark the handoff accepted, publish a fresh Read
+Receipt with O38 satisfied, and explicitly announce acceptance before any phase
+action. The handoff directs loading; it does not replace canonical files or
+full instruction reading. Exactly one phase main may be active at a time.
+
+Any detected context compaction invalidates the current phase main authority.
+The compacted context stops all artifact and implementation work and must not
+reconstruct or rewrite control from its summary. In observer-managed mode, the
+observer starts a replacement from the last valid rolling handoff. In manual
+mode, the owner places that handoff into a new neighboring session. The fresh
+replacement reconciles its recorded checkpoint with repository state, writes
+any required recovery correction, and either accepts the same phase or blocks
+on an ambiguity.
+
 ## Owner Steering Contract
 
 At the start of meaningful frontend work, tell the owner that collaboration is
@@ -386,7 +479,8 @@ After presenting this bounded proposal, ask the owner whether delegation should
 be used for the stated phase. The answer applies to that scope, with a broader
 preference only when the owner states one. Delegation starts after explicit
 owner approval. A decline still allows single-agent progress in the current
-session.
+session only where the artifact rules permit it. It does not waive D3 Phase
+Main Control Handoff or authorize the current main to cross a phase boundary.
 
 Do not infer collaboration approval from approval of a product, visual,
 wireframe, action, or implementation gate. Before starting each independent
@@ -463,6 +557,11 @@ feature, vendor, CLI, or orchestration product is required. When the current
 environment cannot create such a context, provide a self-contained brief for
 the owner to run in a separate session and wait for the returned result.
 
+A predecessor main, receiving phase main, or continuity observer is not an
+independent reviewer for artifacts carried through that handoff. Those contexts
+receive control history and approved decisions, so use another context for each
+required independent review.
+
 Independence does not mean maximum repository access. Give every independent
 context only the role, product summary, artifacts, criteria, and source
 material required for its bounded task. Do not make it read this complete
@@ -527,6 +626,12 @@ Four completion questions remain separate:
 
 Read the full frontend instruction and memory set before applying
 depth-specific context.
+
+For this rule, the full set is the files and directories routed as `full_docs`
+by `docs/agent/context_routes.yml`. The append-only
+`docs/frontend/handoffs/ledger.md` is targeted control evidence, not a default
+full read: load only the events named by `current.md`, except during final audit
+or ambiguous-control recovery.
 
 Always begin with the repository bootstrap and routed frontend full docs. Then read:
 
@@ -1432,6 +1537,11 @@ messaging, identity, design system, flows, wireframe index and state matrix,
 screen contracts, Action Contracts, Wireframe Conformance Contracts,
 implementation briefs, and consequential frontend decisions.
 
+Phase-control handoff records are operational continuity metadata, not product
+or implementation contracts, and do not recursively require Independent
+Contract Review. Review them only when the assigned task is a control-protocol
+or instruction-compliance audit.
+
 The independent reviewer adopts the role of a potential frontend lead joining
 the project after the current session. Assume this lead must understand,
 challenge, implement, maintain, and defend the frontend without access to the
@@ -1994,7 +2104,7 @@ Record evidence with verdicts:
 Claim each completed check with its evidence. Label the delivered
 scope precisely in the final response.
 
-## Phase Handoffs And Independent Review
+## Phase Handoffs, Observer Control, And Independent Review
 
 Split D3 work, many-screen work, or any context-heavy task into bounded phases.
 Use isolated contexts for contract review, first-use review, content authoring,
@@ -2044,20 +2154,38 @@ production implementation, include the Frontend Implementation Brief and
 Wireframe Conformance Contract. Do not ask one worker or session to perform
 contract approval, implementation, and final QA as a combined task.
 
-When a phase must continue in another session or worktree, create a temporary
-handoff containing:
+### Rolling Phase Handoff
 
-- completed phase and evidence;
-- canonical files changed;
-- decisions and unresolved questions;
-- exact next outcome;
-- required and optional sources;
-- constraints, risks, and validation;
-- source of truth.
+`docs/frontend/handoffs/current.md` is both the rolling control record and the
+complete prompt for the active or next D3 phase. The outgoing phase main writes
+it from canonical files, owner decisions, and compact worker manifests; it does
+not duplicate large artifact bodies. Keep its compact progress checkpoint
+current after every material artifact, review, owner decision, or delegated
+work-state change needed for recovery.
 
-Move durable facts into canonical files. Archive or clear the consumed handoff
-after its facts are confirmed. Fully completed tasks end with canonical
-artifacts and a review.
+`docs/frontend/handoffs/ledger.md` is the append-only evidence of prepared,
+accepted, blocked, recovered, waived, and completed control events. It stores
+only IDs, phases, contexts, mode, timestamps, repository revision, and the
+applicable decision or waiver reference. The rolling prompt may be replaced at
+the next transition; the ledger may not.
+
+In manual mode, present the exact `current.md` content to the owner and stop. In
+observer mode, return only the handoff ID, path, next phase, status, and blocker
+summary; the observer starts the next main with a short instruction to read and
+execute that file. It does not import the full prompt into its own context.
+
+The receiving main verifies the handoff against canonical state, accepts it,
+records acceptance in the ledger, and publishes the Read Receipt before phase
+work. A manual recipient must be a neighboring top-level session. An observer
+may create the phase main, but never its workers; the phase main retains all
+within-phase delegation. Neither is an independent reviewer for transferred
+artifacts.
+
+The exact phase catalog, control roles, state machine, schemas, transfer prompt,
+bootstrap envelope, recovery behavior, and ledger event format live in
+`docs/frontend/handoffs/README.md`. Fully completed tasks end with canonical
+artifacts and required independent review; control records substitute for
+neither.
 
 ## Persistent Frontend Memory
 
@@ -2075,6 +2203,10 @@ docs/frontend/
 |-- flows/
 |-- wireframes/
 |-- screens/
+|-- handoffs/
+|   |-- README.md
+|   |-- current.md
+|   `-- ledger.md
 |-- decisions/
 `-- reviews/
 ```
@@ -2085,7 +2217,10 @@ message contracts, proof, objections, and copy review decisions; identity and
 references record visual intent; the Design System records reusable rules;
 flows, wireframes, and screens record UI contracts; the component registry
 records reusable building blocks; decisions record consequential trade-offs;
-reviews record validation evidence.
+reviews record validation evidence. `handoffs/current.md` records only rolling
+phase control and recovery state, while `handoffs/ledger.md` records compact
+append-only transition evidence. Neither becomes a second product source of
+truth.
 
 ## Completion Checklist
 
@@ -2093,13 +2228,16 @@ A frontend task is complete only when the Final Instruction Audit records:
 
 - Read Receipt existed before frontend action and named gates, obligations,
   waivers, controlling gate, verdict, and next action;
-- every applicable O01-O37 obligation is `satisfied` or explicitly
+- every applicable O01-O38 obligation is `satisfied` or explicitly
   `waived by owner` with a scoped `FRONTEND WAIVER:`;
 - D3 implementation started only after O25 or a waiver, and D3 scope stayed
   production-grade unless the owner narrowed it;
 - approved artifacts exist at named paths and match the delivered surface;
 - required independent author/reviewer/implementation/QA contexts remained
   separate or the owner accepted the role collapse;
+- every D3 phase began under a fresh accepted phase main, every outgoing main
+  stopped at its boundary, and each phase-control transition is evidenced by
+  the append-only ledger or an exact owner waiver;
 - every blocking independent finding was fixed and rechecked or waived;
 - production output matches approved scope, wireframes, Text Inventory, UI
   library, selected visual direction, responsive targets, accessibility needs,
