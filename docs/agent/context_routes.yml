@@ -1,5 +1,5 @@
 version: 1
-updated: 2026-08-11
+updated: 2026-09-04
 purpose: >
   Deterministic first-pass routing for AI agents. Read AGENTS.md and
   docs/state/current.yml first, then pick routes by task instead of loading all
@@ -116,19 +116,29 @@ routes:
     full_docs:
       - docs/agent/frontend_design_subsystem.md
       - docs/frontend/context.md
+      - docs/frontend/collaboration-policy.md
       - docs/frontend/product-surface-model.md
       - docs/frontend/messaging.md
       - docs/frontend/design-identity.md
       - docs/frontend/design-system.md
       - docs/frontend/component-registry.md
       - docs/frontend/visual-references/interpretation.md
-      - docs/frontend/wireframes/
-      - docs/frontend/flows/
-      - docs/frontend/screens/
-      - docs/frontend/handoffs/README.md
-      - docs/frontend/handoffs/current.md
-      - docs/frontend/decisions/
-      - docs/frontend/reviews/
+      - docs/frontend/decisions/README.md
+    role_docs:
+      visual_direction_author_or_reviewer:
+        - docs/frontend/visual-references/README.md
+      content_author_or_reviewer:
+        - docs/frontend/content/README.md
+      visual_asset_author_or_reviewer:
+        - docs/frontend/assets/README.md
+      flow_author_or_reviewer:
+        - docs/frontend/flows/README.md
+      wireframe_author_or_reviewer:
+        - docs/frontend/wireframes/README.md
+      screen_contract_author_or_reviewer:
+        - docs/frontend/screens/README.md
+      artifact_reviewer_or_qa:
+        - docs/frontend/reviews/README.md
     notes:
       - Start with an outcome/scope/source/constraint/evidence/unknowns Task Contract.
       - Frontend depth D0-D3 determines proportional artifacts and approvals.
@@ -141,17 +151,40 @@ routes:
         first-use reviewers must not read repository or authoring context.
       - D2/D3 wireframes default to W1 demonstration fidelity; functional W3
         prototypes require explicit owner approval.
-      - Substantial D2/D3 copy uses source-grounded content authoring and an
-        independent rendered-copy review.
-      - Design/control, production implementation, and final QA use separate contexts.
+      - Substantial D2/D3 copy uses a sharded source-grounded Content Contract
+        Package and independent copy review.
+      - Design/control, product-surface implementation, and final QA use separate contexts.
       - Every D3 phase uses a fresh accepted phase main through the rolling
         neighboring-session or observer-managed handoff protocol.
       - Apply control_first before full_docs. Bootstrap and observer contexts do
-        not load full_docs. A fresh receiving phase-main candidate loads
-        full_docs to validate and accept a prepared handoff, but performs no
-        phase work before ACCEPTED plus a PROCEED Read Receipt.
-      - A control-only observer loads handoffs/README.md and handoffs/current.md,
-        not the full frontend artifact set; each phase main still reads the full set.
+        not load full_docs. A bootstrap context may make one targeted read of
+        collaboration-policy.md limited to its status, revision, future-run mode
+        preference, and reconfirmation triggers; this does not load the rest of
+        that full_doc or the frontend set. A fresh receiving phase-main candidate loads
+        each distinct full_docs path exactly once to validate and accept a
+        prepared handoff, but performs no phase work before ACCEPTED plus a
+        PROCEED Read Receipt. Files already read under control_first are not
+        reread as part of full_docs.
+      - A control-only observer loads handoffs/README.md and only the exact
+        control-header fields or transition pointers it needs from
+        handoffs/current.md, never the full next-main prompt/body or the frontend
+        artifact set. Each phase main still reads the full routed set.
+      - The compact frontend control set is the ordered union of control_first
+        and full_docs, with duplicate paths removed. It is not a recursive read
+        of generated product-surface catalogs, decisions, reviews, content,
+        assets, flows, wireframes, screens, showcases, images, screenshots, or
+        implementation evidence.
+      - role_docs are loaded only by the bounded role that needs their artifact
+        schema. A D3 phase main passes all applicable role_docs to that worker
+        and does not load them in parallel. An artifact author receives its
+        artifact schema; its reviewer receives that schema plus
+        docs/frontend/reviews/README.md; QA or an instruction auditor receives
+        the reviews schema. A First-Use Reviewer remains repository-blind and
+        receives no role_doc. A D0-D2 agent that personally performs a named
+        role reads all applicable role_docs before that work.
+      - Phase artifacts are loaded by exact path from handoffs/current.md. The
+        phase main consumes compact manifests and cited blockers; bounded authors
+        and reviewers receive the artifact bodies their roles require.
       - handoffs/ledger.md is append-only transition evidence and is read in
         full only for final audit or control recovery.
       - Production must satisfy the approved Wireframe Conformance Contract.

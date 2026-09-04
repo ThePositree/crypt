@@ -4,8 +4,9 @@ Store persistent low-fidelity rendered HTML clickable wireflows here. Wireframes
 durable, directly openable UI contracts, not screenshots, throwaway sketches,
 or early production applications. They demonstrate structure, hierarchy,
 interaction intent, representative states, and responsive intent before
-production UI code changes. Screenshots are QA evidence for HTML wireframes and
-never replace them.
+product-surface route/screen implementation. P06 production UI-library source
+and its showcase intentionally precede wireframes. Screenshots are QA evidence
+for HTML wireframes and never replace them.
 
 Use plain gray-box rendering:
 
@@ -32,16 +33,18 @@ character or line range, proof/source need, media type or absence, and
 interaction behavior. Preserve realistic density so wrapping and layout can be
 reviewed before final copy exists.
 
-Each real site page or meaningful screen gets its own separate wireframe. Each
-real page also gets wireframe coverage for all relevant project breakpoints,
-either as separate files or clearly separated breakpoint views inside that
-page's wireframe package.
-Each package must expose a stable directly openable HTML address for the page
-and every applicable demonstration state. A shared renderer is allowed when
-these addresses remain stable and are indexed individually. D2/D3 defaults to
-W1 fidelity as a clickable wireflow. Every production route, navigation action,
-overlay entry/exit, and primary journey transition must work through linked
-fixtures or prepared states, so reviewers never have to open screens manually.
+Every real site page or meaningful screen gets its own route-index row and
+stable directly openable HTML address for every applicable demonstration
+state. Create one source package per unique route template and one delta
+package per structural, interaction, state, responsive, or accessibility
+exception. A route may share a package only when its Product Surface template
+record proves those properties are identical; its fixture must still expose
+the promised hierarchy, section count, media slots, actions, and realistic
+content density. A shared renderer is allowed when addresses remain stable and
+are indexed individually. D2/D3 defaults to W1 fidelity as a clickable
+wireflow. Every production route, navigation action, overlay entry/exit, and
+primary journey transition must work through linked fixtures or prepared
+states, so reviewers never have to open screens manually.
 Controls may reveal prepared states, while production algorithms,
 real search/ranking, persistence, clipboard integration, exhaustive keyboard
 behavior, and production-grade focus management remain deferred to production
@@ -49,18 +52,20 @@ and are specified in screen contracts. W2 clickable journeys are used only
 when sequence is under approval. W3 functional prototypes require explicit
 owner approval.
 For multi-page surfaces, keep a page-to-wireframe index that names every
-approved page or meaningful screen and its directly openable HTML artifact
-address. Shared
-shell or layout wireframes supplement page-level wireframes and are linked
-from each affected page package.
+approved page or meaningful screen, Product Surface `template_id`, canonical
+content ID, directly openable HTML artifact address, and evidence-equivalence
+class. Shared shell or layout wireframes supplement template packages and are
+linked from each affected route row.
 The index should also include route or state, HTML artifact address, linked
 screen-contract path, six viewport classes or approved viewport waiver, state
 matrix, W0-W3 fidelity, demonstrated interaction intent, behavior deferred to
 production, content requirements, screenshots, and visual inspection evidence
-for each page or screen. Link HTML first and screenshots separately.
+for each page or screen. A reviewed template may supply structural and rendered
+evidence for identical routes; every exception needs its own evidence. Link
+HTML first and screenshots separately.
 
 For every UI edit, read the affected wireframes first. Update or create
-wireframes before production implementation when layout, navigation,
+wireframes before product-surface implementation when layout, navigation,
 interaction, state behavior, visual hierarchy, or responsive structure changes.
 For an isolated copy, token, or visual correction that changes none of those
 properties, verify that the existing wireframe remains accurate and record the
@@ -84,9 +89,15 @@ unreachable approved screens, and missing viewport evidence as blockers. Do
 not request Wireframe Approval while any such blocker or pending required
 viewport remains.
 
+Every screenshot uses a unique path and records wireframe revision, content
+hash, viewport/state, capture time, and capturer. Do not overwrite evidence.
+A write-scoped independent Wireframe Author creates the D3 wireflow. The
+separate independent reviewer opens or captures it; author preflight and
+phase-main inspection cannot satisfy this gate.
+
 Wireframe Approval freezes structural and behavioral invariants. Production
 may replace gray-box styling with the approved Design System, but it must
 preserve approved hierarchy, sections, navigation, actions, interactions,
 states, responsive transformations, accessibility relationships, and journey
 endpoints. Record those invariants in a Wireframe Conformance Contract and map
-them to production units before implementation.
+them to production units before product-surface implementation.

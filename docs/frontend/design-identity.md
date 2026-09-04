@@ -31,10 +31,17 @@ final product-specific identity.
 
 ## Signature Traits
 
+For every trait, label its authority: explicit owner decision, observed selected
+reference property, reviewed translation inference, or existing production
+evidence. Incidental generated-image details are not owner constraints.
+
 - Trait:
 - Product purpose:
 
 ## Anti-Identity
+
+Record only owner decisions or reviewed consequences of the approved identity.
+Do not invent prohibitions from an author's personal preference.
 
 - Avoid:
 - Reason:
@@ -44,4 +51,7 @@ final product-specific identity.
 - Execution context and methods used:
 - Date:
 - Approved Visual Direction revision:
+- Selected raster path, revision, hash, and reference frames:
+- Signature Traits Matrix:
+- UI Fidelity Asset Seed:
 - Known limitations:

@@ -1,75 +1,30 @@
 # Frontend Design Subsystem
 
-MANDATORY: before any frontend work, read this full document and the full
-frontend instruction and memory set. Follow this subsystem exactly throughout
+MANDATORY: before any frontend work, read this full document and every exact
+compact frontend memory file routed as `full_docs`. Do not recursively expand
+generated artifact directories. Follow this subsystem exactly throughout
 discovery, planning, design, implementation, rendered inspection, review, and
 final reporting. Apply every instruction whose trigger matches the current
 task, depth, surface, state, and risk. The agent may narrow, skip, reorder, or
 replace a required frontend instruction only after an explicit owner waiver
 uses the waiver phrase defined in this document.
 
-D3 CONTROL ENTRY GATE: for a known or presumptive D3 frontend request, and
-after every resume or detected compaction, inspect the repository bootstrap,
-frontend route, and the control header of `docs/frontend/handoffs/current.md`
-before discovery, onboarding, broad frontend reads, delegation, or a phase-main
-Read Receipt. A missing or `inactive` handoff permits only a control-only
-bootstrap transfer. An invalid or stale handoff permits only blocking or
-recovery. Neither owner chat, pasted onboarding answers, existing repository
-artifacts, nor remembered context substitutes for an accepted handoff. These
-states can never return `PROCEED`.
+D3 EARLY GUARD: before discovery or broad reads, apply the complete D3 Control
+Entry Gate in `docs/frontend/handoffs/README.md`. Missing, inactive, stale, or
+compacted control permits only the bootstrap/block/recovery action defined
+there. A fresh receiving phase-main candidate with a valid
+`bootstrap-prepared`, `prepared`, or `recovery-prepared` handoff loads this full
+document to perform Startup Control. It gains phase authority only after it
+accepts the handoff and publishes a `PROCEED` Read Receipt. A control-only
+observer follows the narrower handoff role and never becomes a phase worker or
+reviewer.
 
-Before a fresh phase main accepts control, the current context must not ask
-discovery or onboarding questions, perform product research, author or review
-artifacts, implement, or launch phase workers. It may only create or repair the
-control files. A compaction detected before any phase work leaves the context
-eligible only to prepare the initial bootstrap envelope. A compaction detected
-after phase authority was accepted permanently removes that context's authority
-for the D3 run; it cannot bootstrap, recover, continue, or complete the phase.
+PRODUCTION STANDARD: deliver the complete approved scope at the production bar
+defined by Depth Classification and Product Completeness Review. A large D3
+scope changes decomposition, never the promise; rough, shallow, partial,
+generic, inaccessible, or visually broken output remains unfinished.
 
-CONTINUITY OBSERVER EXCEPTION: a context assigned only to bootstrap or preserve
-D3 phase control is not a phase main. It reads the repository bootstrap,
-frontend route, `docs/frontend/handoffs/README.md`, and
-`docs/frontend/handoffs/current.md`; it must not load the rest of the frontend
-memory, perform phase work, or satisfy a review role. Every phase main still
-reads this complete document and the complete frontend memory set. If the
-control-only context starts frontend research, authoring, design,
-implementation, rendering, or review, the exception is void and that context
-cannot remain the observer. Observer eligibility is recorded before the first
-phase main starts and is immutable for the D3 run. An eligible observer has not
-previously been a phase main, artifact author, implementer, reviewer, or QA
-context; has not loaded the full artifact set; and has not compacted. A
-predecessor main can never rename itself observer, coordinator, or integrator.
-Without a previously established eligible observer, use manual neighboring-
-session mode.
-
-READ RECEIPT GATE: before planning, editing, generating artifacts, launching
-rendered checks, or delegating frontend work, publish a concise receipt in chat.
-The receipt names every frontend instruction and memory file read, line counts,
-full-file ranges covered, top-level headings observed, the classified depth,
-the active gates, the active obligations, and the first owner approval gate
-that controls the next action. It ends with `Control Verdict: STOP` or
-`Control Verdict: PROCEED`. Frontend action begins after this receipt exists,
-identifies the currently applicable instruction set and canonical obligations,
-and returns `PROCEED`.
-
-A continuity observer does not publish the phase-main Read Receipt. It may only
-validate that the fresh phase main published one before treating that main as
-active. Preparing, verifying, accepting, blocking, or repairing
-`docs/frontend/handoffs/current.md` is control-plane bookkeeping allowed before
-the phase-main Read Receipt; no product, design, implementation, or review
-action is allowed through this exception.
-
-PRODUCTION STANDARD: every frontend surface is user-visible product quality
-from its first delivered version. Plan and build for complete, accurate,
-polished, accessible, responsive, and internally consistent behavior within the
-approved scope. Production quality includes content depth, data coverage,
-interaction completeness, search or filtering quality when present, and
-credible product substance behind the visual shell. Treat rough drafts, vague
-copy, visual glitches, broken states, unverified assumptions, approximate
-flows, shallow content, partial indexes, and decorative-only product surfaces
-as unfinished frontend work.
-
-Version: 10
+Version: 11
 Updated: 2026-09-04
 
 This document is the canonical instruction set for frontend product, design,
@@ -99,23 +54,35 @@ Every D2/D3 artifact record names:
 - independent reviewer context, when required;
 - source inputs and explicit exclusions;
 - acceptance criteria;
-- current status: proposed / approved / blocked / superseded.
+- current status: not established / proposed / reviewed / approved / blocked /
+  superseded.
+
+Every rendered or binary review input also names a unique, non-overwritten path,
+artifact revision, content hash, viewport or state, capture time, and capturer.
+A changed input gets a new path or revision and supersedes the old input. It
+invalidates every verdict that cited the old revision until the affected review
+is repeated. A mutable `latest` screenshot, an overwritten raster, or a review
+that omits exact input identities is not approval evidence.
 
 Prefer small manifests plus durable files over long chat transcripts. When an
 artifact or review would be long, the author writes the full deliverable to the
 repository or a named local artifact path and reports only a compact manifest,
-verdict, blocking findings, path, and line index in chat or worker completion.
-The design/control context reads targeted lines only when verifying a blocker,
+verdict, blocking findings, path, revision/hash, and stable finding IDs in chat
+or worker completion. The design/control context reads targeted headings or
+lines only when verifying a blocker,
 resolving a contradiction, or preparing an owner gate.
 
-For D3 and other context-heavy frontend work, large artifacts are delegated
-deliverables by default. The main design/control context owns orchestration,
-briefs, gate presentation, owner decisions, and compact manifests. It does not
-author or fully read large artifacts such as Product Surface Model revisions,
-factual research reports, text inventories, visual audits, wireframe audits,
-screen-contract packages, QA logs, or implementation reports when an approved
-independent context is available. It may inspect narrow cited lines only to
-resolve blockers or contradictions.
+For D3, large artifacts are delegated deliverables, not phase-main work. The
+main design/control context owns control state, self-contained briefs, gate
+presentation, owner decisions, and compact manifests. Without a scoped owner
+waiver it does not research, author, implement, render, visually inspect, QA,
+or fix Product Surface revisions, factual reports, content packages,
+messaging/design contracts, raster boards or assets, production UI primitives,
+showcases, flows, wireframes, screen packages, implementation code, or review
+evidence. It still fully reads the exact compact memory files routed as
+`full_docs`, including the deliberately thin Product Surface Model. For the
+larger artifact corpus it may inspect only manifest fields and narrow cited
+blocker lines.
 
 ## Instruction Model
 
@@ -143,6 +110,26 @@ record when reasoning must be auditable. Use examples when
 they define a format, state, boundary, or quality bar that prose alone would
 leave ambiguous.
 
+### Scope Vocabulary
+
+Use these terms consistently:
+
+- **Release scope** is the complete user-visible product outcome promised by
+  the owner for the delivery under discussion.
+- **Phase scope** is only the work the current phase main may coordinate. It is
+  never a list of product non-goals.
+- **Artifact scope** is the evidence a particular artifact must contain.
+- **Production UI library** is real reusable source that later product pages
+  import or compose; it is not yet the product-surface implementation.
+- **Product-surface implementation** is the production routes, screens,
+  journeys, and states composed after its explicit approval gate.
+- **Review scope** is the exact immutable artifact revision and evidence set a
+  reviewer must judge.
+
+Do not use `out of scope`, `first release`, `deferred`, or `not part of this
+phase` interchangeably. Required downstream artifacts remain inside the release
+contract even when the current phase does not author them.
+
 ## Known Failure Inoculation
 
 Past frontend test runs exposed repeatable failure modes. Treat these as
@@ -153,12 +140,11 @@ explicit negative examples:
 - delegating a phase, then having the main context write the large contract
   artifact itself;
 - asking a worker for research and using the main context as the Product
-  Surface, messaging, text inventory, or design-system author;
+  Surface, messaging, content-package, or design-system author;
 - accepting or pasting long worker reports into the main context instead of
   using file-backed artifacts plus compact manifests;
-- accepting summary-only completion signals or terminal-only final reports;
-- launching an independent context through an unverified execution path that
-  cannot prove the required runtime capabilities;
+- accepting a claimed completion that omits the contracted file-backed
+  deliverable, revision, or evidence;
 - keeping one D3 main context across phase boundaries and trusting a compacted
   or reconstructed chat to preserve control state;
 - allowing D3 work to start after `Incoming Handoff: absent` or `inactive`;
@@ -175,10 +161,19 @@ explicit negative examples:
 - turning low-fidelity wireframes into polished prototypes or production-like
   applications;
 - checking only wireframe structure while ignoring visual fidelity to the
-  selected raster direction, UI library, and approved text inventory.
+  selected raster direction, UI library, and approved content package;
 - treating path existence as factual review while failing to validate symbols,
   field names, capabilities, maturity claims, counts, and source currency;
-- editing a reviewed artifact without a new revision and focused re-review.
+- editing a reviewed artifact without a new revision and focused re-review;
+- mixing mandatory later phases into product `out of scope` and thereby
+  appearing to waive them;
+- turning an inferred generated-image detail, such as a character species or
+  motif, into an owner constraint without an explicit decision;
+- passing visual fidelity from tokens, source code, CSS, or a feature checklist
+  when the actual images are materially different;
+- overwriting a reviewed screenshot and continuing to cite the stale verdict;
+- letting the phase main perform the visual inspection or review assigned to an
+  independent context.
 
 Frontend prompts and handoffs should include the execution context and date
 when results may vary by implementation. Re-evaluate reusable prompts after
@@ -252,8 +247,9 @@ answers. The only allowed next action is the bootstrap, manual transfer,
 blocking, or recovery operation required by the handoff protocol.
 
 `Active Gates` are owner-decision gates such as onboarding, Product Surface
-Approval, Visual Direction Approval, Wireframe Approval, Action Contract
-Approval, and Final Implementation Approval.
+Approval, Copy Approval, Visual Direction Approval, UI Library Approval,
+Production Raster Asset Pack Approval, Wireframe Approval, and Product-Surface
+Implementation Approval.
 
 `Active Obligations` are execution requirements that remain active even when
 the current gate is `STOP`. Use the exact canonical obligation names below and
@@ -261,11 +257,22 @@ mark each one `applies`, `not applicable`, `satisfied`, `blocked`, or
 `waived by owner`. Add a one-line reason for every `not applicable`, `blocked`,
 or `waived by owner` status.
 
+For D3, O01-O14, O17-O23, and O25-O38 are mandatory. They may be `applies`,
+`satisfied`, `blocked`, or `waived by owner`; they must never be marked `not
+applicable`. O15-O16 may be `not applicable` only when an independent review
+shows that the approved surface needs neither production raster assets nor a
+stable raster-generation reference. O24 may be `not applicable` only when the
+approved surface contains no create, update, delete, mutation, submission, or
+dangerous runtime action. The selected-direction translation in O12 remains
+mandatory even when its UI Fidelity Asset Seed subpart is evidenced as
+unnecessary. Conditional work is resolved inside its assigned phase; it does
+not make the D3 phase itself disappear. A D3 run completes only after P13.
+
 Canonical frontend obligations:
 
 - O01 Full Messaging System for all user-visible text;
 - O02 Source-Grounded Content Authoring;
-- O03 Text Inventory And Copy Approval;
+- O03 Content Contract Package And Copy Approval;
 - O04 Independent Factual Product Research;
 - O05 Product Surface Model;
 - O06 Independent First-Use Review;
@@ -274,22 +281,22 @@ Canonical frontend obligations:
 - O09 Design Identity and Design System;
 - O10 Five raster Visual Direction Boards;
 - O11 Visual Direction Approval;
-- O12 Selected Visual Direction Translation;
-- O13 UI Library And Component Showcase;
+- O12 Selected Visual Direction Translation And UI Fidelity Asset Seed When Applicable;
+- O13 Production UI Library And Rendered Component Showcase;
 - O14 UI Library Approval;
 - O15 Production Raster Asset Pack;
 - O16 Production Raster Asset Pack Approval;
 - O17 Flows;
-- O18 Page-level wireframes for every real page or meaningful screen;
+- O18 Route-complete wireframe coverage for every real page or meaningful screen;
 - O19 Persistent HTML Wireframe Artifacts;
 - O20 Wireframe Approval;
-- O21 Screen contracts for every real page or meaningful screen;
+- O21 Route-complete screen-contract coverage;
 - O22 Independent Contract Review;
 - O23 Frontend Lead Contract Review Brief;
 - O24 Action Contract;
-- O25 Final Implementation Approval;
-- O26 Separate Implementation Session;
-- O27 Frontend Implementation Brief;
+- O25 Product-Surface Implementation Approval;
+- O26 Separate Product-Surface Implementation Context;
+- O27 Product-Surface Implementation Brief;
 - O28 Wireframe Conformance Contract;
 - O29 Interaction Inventory;
 - O30 Full link and navigation coverage;
@@ -312,11 +319,16 @@ Start implementation, artifact generation, rendered inspection, delegation, or
 durable memory updates only after the Read Receipt identifies the active gates,
 canonical active obligations, and returns `PROCEED`. A `PROCEED` verdict is
 valid only when every applicable canonical obligation is listed with a current
-status. When the first active gate requires owner approval, the Read Receipt
-returns `STOP`; the next action is presenting the required artifact or question
-and waiting for the owner decision. That `STOP` uses the complete owner-facing
-control action block defined by the handoff protocol; internal control
-terminology is never sufficient owner guidance.
+status. An active gate that is not ready for owner decision does not cause
+`STOP`; `PROCEED` authorizes the exact current-phase work needed to prepare it.
+Return `STOP` only when the next legal action is an owner answer or decision, an
+unresolved blocker, or the control/bootstrap/recovery action defined above. For
+P01, the first accepted `PROCEED` receipt authorizes the standing collaboration
+question when needed and the next onboarding round. After presenting questions,
+record `STOP`/`WAITING_FOR_OWNER` until the owner answers, then refresh the
+receipt and continue the same phase. Every `STOP` includes the plain-language
+owner action required by the handoff protocol; internal control terminology is
+never sufficient owner guidance.
 
 Only explicit owner messages grant approvals and scoped waivers. A scoped
 waiver is valid only when the owner message contains the exact phrase
@@ -332,24 +344,33 @@ reduced-quality framing. Owner approval words such as "yes", "approved",
 only the current named gate or answer the current question; they do not waive
 frontend instructions.
 
+Follow the normal required sequence by default. Do not open a frontend task by
+asking for a waiver and do not present a waiver as the convenient path around
+onboarding, evidence, or review. Describe a waiver only when the owner asks to
+skip a named requirement or a concrete unavailable capability makes the normal
+path impossible.
+
 Every collaboration, implementation, contract-review, and QA assignment has a
-named scope. An owner decision about delegation applies only to the named phase
-unless the owner explicitly grants a broader preference. A completed phase
-expires its scoped collaboration decision. Run a fresh Collaboration Check
-before another D2/D3 or context-heavy phase.
+named scope. The owner's standing delegation decision is recorded once in
+`docs/frontend/collaboration-policy.md` and remains valid until the owner
+changes it or a proposed assignment crosses one of its reconfirmation triggers.
+A phase boundary does not expire that decision.
 
 Short owner requests preserve the depth and approval requirements implied by
 the requested surface. A request such as "create a site", "make the app",
 "build the page", or "design the screen" receives D3 treatment when frontend
 memory says the product surface, Messaging Identity, Design Identity, Design
 System, or active frontend context is `not established`, `pending`, or awaiting
-owner input. In that state, the Read Receipt verdict is `STOP: D3 onboarding
-and approval gate required`.
+owner input. Enter the D3 Control Entry Gate: missing initial control returns
+`STOP` for bootstrap, while a valid accepted P01 main returns `PROCEED` for the
+onboarding work that prepares later approval gates. Once a question or
+gate-ready artifact is presented, return `STOP` only to await that exact owner
+answer or decision.
 
 Owner answers that define product direction, stack preference, language,
 content scope, search, visual style, pages, or interaction needs become input
 to the next artifact phase. They do not unlock implementation until the
-canonical D3 sequence reaches Final Implementation Approval or the owner grants
+canonical D3 sequence reaches Product-Surface Implementation Approval or the owner grants
 a scoped `FRONTEND WAIVER:` for the skipped gates and obligations.
 
 After Product Surface Approval, refresh the Read Receipt and update canonical
@@ -364,13 +385,17 @@ implementation. Narrower scope, representative samples, curated subsets,
 placeholder content, simplified ranking, deferred pages, or reduced interaction
 depth require explicit owner approval before implementation.
 
-Before final response, perform a Final Instruction Audit. The audit states
-which frontend instruction files were applied, which memory files influenced
-the result, which gates passed or remain active, which approvals or waivers were
-recorded, and which evidence supports the delivered scope. Include the audit or
-a compact version of it in the final response for any frontend task that
-changes code, copy, visual direction, product surface, screen contracts,
-wireframes, flows, frontend memory, or review artifacts.
+Before the final delivered-work response, perform a Final Instruction Audit.
+For D2/D3, a separate read-only Instruction Auditor writes the file-backed
+audit and returns a compact verdict; the author, implementer, and phase main do
+not supply their own passing verdict. The audit states which frontend
+instruction files were applied, which memory files influenced the result,
+which gates passed or remain active, which approvals or waivers were recorded,
+and which evidence supports the delivered scope. In D3 this is P13 work;
+interim phase handoffs are control results, not final audits. Include the audit
+or a compact version of it in the final response for any completed frontend
+task that changes code, copy, visual direction, product surface, screen
+contracts, wireframes, flows, frontend memory, or review artifacts.
 
 ## Depth Classification
 
@@ -403,16 +428,21 @@ accessibility, copy depth, media/assets, component states, maintainability,
 source-of-truth boundaries, and future change contracts. Do not silently narrow
 the request to a thin first screen, demo shell, placeholder content, generic
 cards, or "good enough" MVP. If the full production surface is too large for
-the current pass, stop and ask the owner to narrow scope or record a scoped
-`FRONTEND WAIVER:`; do not continue with an implied partial build.
+one worker or context, split it into more bounded authors, reviewers, and
+implementation units while keeping the release contract intact. Narrow it only
+through an explicit owner decision that names the removed product behavior. A
+repository-wide preference for MVP-first delivery never silently overrides an
+explicit D3 production-complete request; surface the conflict for an owner
+decision before reducing scope.
 
 ## Lifecycle
 
 All depths use the same lifecycle, with evidence proportional to scope:
 
 ```text
-DISCOVER -> CONTRACT -> DESIGN -> APPROVE WHEN REQUIRED -> IMPLEMENT
-         -> RENDER -> INSPECT -> FIX -> RECORD DURABLE KNOWLEDGE
+PHASE MAIN BRIEF -> INDEPENDENT AUTHOR/IMPLEMENTER -> AUTHOR PREFLIGHT
+                 -> INDEPENDENT REVIEW -> AUTHOR FIX -> REVIEWER RECHECK
+                 -> PHASE MAIN OWNER GATE -> RECORD DURABLE KNOWLEDGE
 ```
 
 For D0 and D1, phases may be brief and use existing artifacts. For D2 and D3,
@@ -428,45 +458,22 @@ paths, rendered views, coverage notes, and the decision record.
 
 For D3, the visual-to-implementation sequence is strict unless the owner grants
 a scoped waiver: Visual Direction Approval, Selected Visual Direction
-Translation, UI Library And Component Showcase, UI Library Approval, Production
-Raster Asset Pack and approval when raster assets apply, Flows, Wireframes,
-Screen Contracts, then Final Implementation Approval. Do not skip from Selected
-Visual Direction Translation to flows, wireframes, screen contracts, raster
-asset pack, or production implementation before UI Library Approval.
+Translation plus an applicable UI Fidelity Asset Seed, Production UI Library
+and Rendered Component Showcase, UI Library Approval, Production Raster Asset
+Pack and approval when raster assets apply, Flows, Wireframes, Screen
+Contracts, then Product-Surface Implementation Approval. Production UI-library
+source and its showcase are the intentional pre-approval exception: product
+routes and pages must not start before the later Product-Surface Implementation
+Approval.
 
 ## D3 Phase Control Continuity
 
-D3 uses a fresh main execution context for every phase. One phase main owns one
-bounded phase and may not silently continue into the next phase, even when its
-context window appears sufficient. This is a control-integrity requirement,
-not an optional collaboration preference: a new main must reconstruct control
-from current repository state, the full frontend instruction and memory set,
-and a file-backed handoff instead of depending on remembered chat.
-
-`docs/frontend/handoffs/README.md` is the single normative source for the phase
-catalog, role eligibility, exact mode enum, lifecycle and state machine,
-handoff schema, owner-facing action block, transition events, transfer gap, and
-recovery. Follow it literally; this summary does not redefine those mechanics.
-
-A phase ends only when its catalog stop condition is true, including every
-applicable owner decision. Artifact readiness leaves an owner-gated phase main
-active in `gate-waiting`; it must receive and record the decision before it can
-finish. Owner-requested corrections and re-review remain in that phase. At a
-boundary without an owner decision, an eligible observer transfers control
-automatically without requiring the owner to reply `continue`.
-
-The bootstrap-selected mode is immutable for the D3 run. Manual transfer goes
-only to a fresh neighboring top-level session. Observer-managed transfer uses a
-pre-established control-only observer and a fresh phase main capable of its own
-nested workers. The outgoing main writes the rolling handoff and ledger event;
-the receiver validates and accepts them before phase work. The predecessor
-never becomes observer, and phase-control transfer is not an independent review.
-
-Every stop, gate, manual transfer, recovery, blocker, and terminal phase result
-uses the exact owner-action block in the normative protocol. Context compaction
-immediately revokes phase-main authority and enters the protocol's explicit
-`RECOVERY_REQUIRED -> RECOVERY_PREPARED -> accepted` path; the compacted context
-does not reconstruct or continue the phase.
+`docs/frontend/handoffs/README.md` is the only normative D3 phase-control
+contract. Apply its P01-P13 catalog, fresh-main boundary, observer/manual modes,
+owner-gate lifecycle, entry and rotation budgets, progress-loop guard, plain
+owner action, state machine, recovery, and ledger literally. O38 tracks this
+contract. No remembered chat or local alternative may replace its file-backed
+handoff.
 
 ## Owner Steering Contract
 
@@ -493,108 +500,41 @@ Uncertainty Check and seek evidence before acting on them.
 
 ## Collaboration Check
 
-Before planning D2/D3 work, a context-heavy phase, or an independent review,
-check whether delegation is available and appropriate. Record:
+During the first applicable P01, establish
+`docs/frontend/collaboration-policy.md` once for the repository. Reuse it in
+later phases and future frontend tasks. For D2, establish it with the Task
+Contract only when no valid policy exists. Record:
 
 - availability: available / current-session / unknown;
 - required collaboration interface;
 - available worker or runtime choices;
-- proposed delegated outcome and why it is independently verifiable;
-- context-budget purpose: what reading, analysis, rendering, or review work is
-  being moved out of the main context window;
-- files and permissions the worker would receive;
-- how its result would be reviewed and integrated;
-- fallback using current-session work when the owner chooses single-agent work.
+- standing authorization by role: researcher, author, implementer, reviewer,
+  rendered QA, and first-use reviewer;
+- context-budget purpose and minimal input rule;
+- read/write, command, network, rendering, security, privacy, cost, and
+  concurrency boundaries;
+- preferred phase-control topology and neighboring-session fallback;
+- exact conditions that require owner reconfirmation.
 
-After presenting this bounded proposal, ask the owner whether delegation should
-be used for the stated phase. The answer applies to that scope, with a broader
-preference only when the owner states one. Delegation starts after explicit
-owner approval. A decline still allows single-agent progress in the current
-session only where the artifact rules permit it. It does not waive D3 Phase
-Main Control Handoff or authorize the current main to cross a phase boundary.
+Ask for this decision once and persist the answer. Before each assignment,
+verify that its role, access, and cost fit the standing policy and record the
+bounded brief; do not ask the owner again merely because a new phase or worker
+starts. Reconfirm only when capability changed, the owner revoked permission,
+or the task crosses a recorded security, privacy, write, cost, or external-
+service boundary. Product, visual, wireframe, and implementation approvals do
+not silently broaden the Collaboration Policy.
 
-Do not infer collaboration approval from approval of a product, visual,
-wireframe, action, or implementation gate. Before starting each independent
-worker or separate execution context, record the exact reviewed or authored
-outcome and the owner's approval to use that context for that phase.
+Delegation is also a context-budget contract. For D3, follow the exact
+author -> independent reviewer -> author fix -> reviewer recheck loop in the
+handoff protocol. The phase main writes briefs, records owner decisions, and
+reads compact manifests and cited blockers only; it does not duplicate broad
+research, authoring, implementation, rendering, fixes, or review, and it never
+imports a long worker report. Missing file-backed output, missing independence,
+or unavailable required contexts leaves the phase blocked unless the owner
+grants the exact scoped waiver.
 
-Independent contexts are also a context-window budgeting tool. Once a bounded
-research, authoring, inspection, or review task is delegated, the main
-design/control context must not perform the same broad read, crawl, analysis,
-rendering, or QA pass in parallel. Doing duplicate work defeats the delegation
-purpose, spends the owner's context twice, and can produce conflicting
-unreviewed conclusions. The main context may read only enough to prepare a
-precise brief, monitor progress, verify returned claims, inspect narrow
-blockers, and integrate accepted findings. If the main context discovers that
-it must redo the delegated task, stop, explain why the delegation failed, and
-record the fallback before continuing.
-
-For D2/D3, default heavy phase work to artifact-producing independent contexts
-when collaboration is available and approved. The main design/control context
-orchestrates phases, writes briefs, records owner decisions, checks manifests,
-and integrates reviewed results. It should not load a full factual report,
-content inventory, visual audit, QA log, or implementation report into its own
-context when a file-backed artifact and a compact review verdict are enough.
-It should not write those artifacts itself. Writing the artifact in the main
-context after delegating evidence gathering is a failed collaboration pattern,
-because it spends the saved context and removes the independent author/reviewer
-boundary.
-
-Use paired independent contexts for high-impact artifacts:
-
-- an authoring context gathers evidence and writes the artifact file;
-- a separate review context reads the artifact and its required sources,
-  reports blockers, and verifies fixes;
-- the main design/control context reads the manifest, reviewer verdict, and
-  targeted blocker lines, then presents the owner gate or assigns fixes.
-
-When factual research is itself a required independent role, it is a third
-context rather than work silently folded into the author. Record distinct
-context identities for researcher, author or implementer, and reviewer. The
-phase main may run technically as a child process, but it remains the phase
-main: only it creates phase workers, and it must not use its child-process
-placement to claim an independent worker role. Workers do not edit phase
-control, task, or changelog files unless their brief explicitly assigns that
-separate write scope.
-
-The default D3 heavy-artifact loop is:
-
-1. Main writes a self-contained brief and allowed read/write scope.
-2. Independent author writes or updates the named artifact file directly.
-3. Author returns a compact manifest only: path, revision, sources, blockers,
-   and readiness verdict.
-4. Main starts a separate read-only reviewer with the artifact path, source
-   list, review rubric, and required verdict format.
-5. Reviewer writes or references a durable review artifact and returns a
-   compact verdict.
-6. Main reads only the manifests, reviewer verdict, and cited blocker lines.
-7. If blockers exist, main routes them back to the author and then reviewer.
-8. Main presents the owner gate only after the artifact is file-backed,
-   reviewed, and either clean or explicitly waived.
-
-The main never implements a review fix itself when the author context is
-available. Any content change after review increments the artifact revision and
-invalidates the previous verdict until the same reviewer, or another qualifying
-reviewer, checks the changed revision. Review must validate semantics, cited
-symbols and capabilities, counts, source currency, and internal consistency;
-checking only that cited paths exist is insufficient. Unsupported claims of
-`100%` alignment or zero blockers are blocking review defects.
-
-If an authoring worker returns only prose instead of writing the required
-artifact file, treat the phase as incomplete. If a review worker pastes a long
-audit instead of writing or referencing a durable review artifact, ask for a
-compact verdict and path before integrating the result.
-
-If no independent execution context is available for a required D3 heavy
-artifact, stop and ask the owner to either open a neighboring session/subagent
-with the provided brief or grant a scoped `FRONTEND WAIVER:` for single-context
-authoring. Do not silently collapse authoring, review, and owner-gate prep into
-the main context.
-
-Ask about delegation for D0/D1 work only when it provides a clear, specific
-benefit. Create a worker after the owner answers the Collaboration Check with
-approval. If repository or environment rules require a particular collaboration
-interface, name that requirement in the proposal and use it after approval.
+For D0/D1 work, use the existing Collaboration Policy when present. If none
+exists, ask about delegation only when it provides a clear, specific benefit.
 
 ### Independent Execution Contexts
 
@@ -615,34 +555,17 @@ context only the role, product summary, artifacts, criteria, and source
 material required for its bounded task. Do not make it read this complete
 frontend subsystem, repository bootstrap, task history, changelog, or unrelated
 contracts unless its assigned task is specifically to audit those sources.
+Include all applicable `role_docs` paths from
+`docs/agent/context_routes.yml`; those bounded schemas replace the full
+subsystem for the worker's artifact and review roles.
 Require a compact result containing the verdict, blocking findings, evidence,
 and recommended fixes. On re-review, provide the previous blockers, changed
 artifacts, and closure criteria instead of replaying the whole project history.
-When the collaboration interface has an explicit completion signal, the
-completion body must contain the agreed deliverable manifest. For short tasks,
-the body may be the full deliverable. For long research, content, review, QA,
-or implementation evidence, the brief should require a file-backed artifact and
-a compact completion body containing the path, status, verdict, blockers, and
-line index. The brief must tell the worker not to send a summary-only or empty
-completion signal and not to continue producing a separate final report after
-completion. The design/control context treats completion without the requested
-artifact path or deliverable body as a failed or incomplete delegation, not as
-accepted evidence.
-
-Do not inspect a worker's unfinished terminal output or partial report to make
-frontend decisions. In lifecycle-managed collaboration systems, the main
-design/control context waits for the declared completion signal and consumes
-only the compact manifest, artifact path, and cited blocker lines. Use bounded
-worker-output inspection only for anomalies such as timeout, missing completion
-body, visible output still continuing after completion, or a mismatch between
-the expected task and the delivered message.
-
-When the collaboration interface requires completion acknowledgement or worker
-cleanup, no frontend worker result may remain pending while the next worker is
-launched or awaited in the same phase. Classify the returned result, accept it,
-reject it, or assign follow-up, complete the interface's required cleanup, and
-only then start the next author/reviewer worker. Stale, replayed, or mismatched
-completion from another task is not evidence for the current phase.
+For long research, content, review, QA, or implementation work, require a
+file-backed deliverable and a compact result containing its path, revision,
+hash, status, verdict, blockers, and stable finding IDs. A summary without the
+contracted artifact is incomplete. Worker-runtime mechanics belong to the
+execution environment, not this frontend subsystem.
 
 Keep these roles distinct:
 
@@ -672,26 +595,24 @@ Four completion questions remain separate:
 
 ## Context Loading
 
-Read the full frontend instruction and memory set before applying
-depth-specific context.
+Apply the exact `control_first`, distinct `full_docs`, and `role_docs` routing in
+`docs/agent/context_routes.yml`. Never recursively load artifact directories.
+The handoff ledger is targeted evidence: read only events named by `current.md`,
+except during final audit or ambiguous-control recovery.
 
-For this rule, the full set is the files and directories routed as `full_docs`
-by `docs/agent/context_routes.yml`. The append-only
-`docs/frontend/handoffs/ledger.md` is targeted control evidence, not a default
-full read: load only the events named by `current.md`, except during final audit
-or ambiguous-control recovery.
+Always begin with the repository bootstrap and each distinct routed frontend
+`full_docs` path exactly once. After that read, load only additional sources
+triggered by the task and not already present in `full_docs`:
 
-Always begin with the repository bootstrap and routed frontend full docs. Then read:
-
-- `docs/frontend/context.md` for the active stack and conventions;
-- `docs/frontend/product-surface-model.md` for the active product surface and
-  frontend-specific delta from any canonical product source;
-- the affected flows, wireframes, screens, components, and decisions;
-- Messaging Identity and Messaging Contracts when page text, public voice, or
-  user decision-making is affected;
-- Design Identity, Design System, and visual references when visual direction
-  is affected;
+- in D0-D2 execution contexts, the exact canonical product-source sections
+  named by the Product Surface Model when the task needs them;
+- compact generated manifests for affected flows, wireframes, screens,
+  components, content, assets, decisions, and review evidence;
+- exact phase-artifact paths assigned to the current bounded role;
 - action/runtime sources of truth when the UI can mutate important state.
+
+Do not reread a routed `full_docs` file merely because it is relevant to more
+than one bullet, role, or phase concern.
 
 After full reading, select the artifacts and rules that apply to the classified
 depth and affected surface. Resolve contradictions before implementation.
@@ -699,64 +620,29 @@ Runtime configuration and real service state govern operational behavior;
 approved product/design artifacts govern intended UI behavior until explicitly
 superseded.
 
-## First-Use Discovery
+For D3, the phase main does not load the full canonical product source, repeat
+repository discovery, or expand manifests into artifact bodies. It gives exact
+source sections to the bounded researcher, author, implementer, or reviewer
+that needs them and consumes only their returned manifests, stable finding IDs,
+and cited blockers. A targeted source or artifact read by the main requires a
+recorded contradiction or blocker that cannot be resolved from compact
+evidence; it is not routine research or gate preparation.
 
-Before establishing or changing project-specific rules, inspect the repository
-and record evidence for:
+## First-Use And Product Discovery
 
-- frontend framework and build system;
-- styling approach, tokens, themes, and typography;
-- UI libraries and local primitives;
-- form, chart, table, icon, animation, and visualization libraries;
-- responsive conventions and layout patterns;
-- assets and imagery;
-- component documentation, examples, or catalogs;
-- established screen and component patterns;
-- legacy areas, migrations, and active inconsistencies.
+For D0-D2, inspect the applicable stack, component, asset, responsive, and
+canonical product sources before deciding implementation; persist dated
+evidence in `docs/frontend/context.md` and ask only about material unknowns.
+Consult current authoritative documentation for non-trivial external APIs or
+libraries.
 
-Treat stable, actively used choices as intentional until stronger evidence
-changes that conclusion.
-Ask the owner only about unresolved choices that materially change the result.
-Persist verified choices in `docs/frontend/context.md`, including the evidence
-and date observed.
-
-For non-trivial use of an external library or API, consult current
-authoritative documentation before implementation. If authoritative
-documentation is limited, state that limitation and proceed cautiously.
-
-## Product Knowledge Discovery
-
-For D2 and D3 work, discover product knowledge before deciding pages or
-features. Search current canonical sources such as README, product specs,
-architecture, task context, current state, and approved decisions. Identify:
-
-- primary source;
-- supporting sources;
-- contradictions or stale claims;
-- open decisions that affect the requested surface.
-
-For D3 work, perform this discovery in a separate Factual Product Researcher
-context before Product Surface Model authoring and Product Surface Approval.
-Give the researcher a
-bounded product question, the repository entry points needed to find canonical
-sources, explicit exclusions, and a compact output schema. Do not give it the
-frontend subsystem, visual direction, proposed page structure, authoring
-rationale, or a draft Product Surface to defend.
-
-The researcher returns:
-
-- a factual system and capability map;
-- distinct runtime or user paths and their real topology;
-- active, historical, deferred, and absent capabilities;
-- source-of-truth references for every material fact;
-- contradictions and unresolved product questions;
-- facts that must not be inferred from names or historical documentation.
-
-The Factual Product Researcher writes the result to its named artifact. The
-phase main checks only the compact manifest and required fields, then assigns a
-different Product Surface Author. It does not reread the product corpus or the
-full research artifact in parallel. Contract Review must not be used as the
-first factual product-discovery pass.
+For D3, P02 uses a separate Factual Product Researcher before Product Surface
+authoring. Give it bounded repository entry points and exclusions, not the
+frontend subsystem, visual proposal, or draft it might defend. Its file-backed
+result identifies primary/supporting sources, real topology, active/historical/
+deferred/absent capabilities, fact-level citations, contradictions, and open
+decisions. The phase main reads only the manifest and then assigns the distinct
+Product Surface Author defined below; Contract Review is not the discovery pass.
 
 ## Product Surface Model
 
@@ -808,11 +694,41 @@ conflicts. Do not duplicate the full product description. If no stronger
 source exists, the Product Surface Model records the product surface directly
 until such a source is created.
 
+Record every canonical product source with path, revision or content hash,
+currentness, precedence, and the facts it owns. Name one primary source or an
+explicit precedence rule. Give every audience, job, route, screen, overlay,
+system page, journey, endpoint, capability, data boundary, action boundary,
+state family, genuine product exclusion, and content requirement a stable ID.
+For a large product, keep the Product Surface Model as a compact root and put
+concrete route/template/content mappings in a sharded Route And Template
+Catalog using the schema in `docs/frontend/product-surface-model.md`. Every
+route resolves to one current template, reserved `content_id`, Content Coverage
+Keys, state families, navigation/discovery membership, and
+responsive/accessibility family. P03 later resolves those content identities
+to reviewed canonical leaves before Copy Approval.
+Downstream content, flows, wireframes, screens, assets, components,
+implementation units, and QA evidence reference those IDs and revisions
+instead of repeating or silently changing the product map.
+
+Separate genuine owner-approved product non-goals from `Phase Delivery
+Boundaries`. The latter names mandatory later frontend work that the current
+phase does not author. Product Surface Approval is blocked when wireframes,
+visual work, content, the UI library, assets, system routes, implementation, or
+QA appear as product non-goals merely because they occur later. It is also
+blocked by contradictory lifecycle statuses or duplicated approval records.
+
 Product Surface Model authoring output is file-backed. The authoring worker
 completion message contains only a compact manifest: artifact path, source
-links, unresolved conflicts, and approval-readiness verdict. A separate
+links, Route And Template Catalog path/revision/hash and closure counts when
+used, unresolved conflicts, and approval-readiness verdict. A separate
 Contract Reviewer checks the Product Surface Model before Product Surface
-Approval is presented to the owner.
+Approval is presented to the owner. The review validates full production
+coverage, including global shell, system routes such as not-found and access or
+availability states when applicable, non-happy paths, content/data breadth,
+search/discovery, media, responsive behavior, and accessibility. It cannot
+approve a thin happy-path map under a broad production-complete request. For a
+catalog-backed surface it also blocks nonzero missing, duplicate, orphan, or
+unreviewed route/template/state/content mappings.
 
 Infer what the repository already establishes. Ask the owner for information
 that remains unresolved after repository discovery. When clarification is required, ask a small adaptive batch
@@ -853,26 +769,49 @@ microcopy point, data label, empty/error/loading/success message, and repeated
 content pattern. Record the applied pass in the Task Contract, screen contract,
 or review evidence.
 
-For substantial D2/D3 content, use a separate Source-Grounded Content Authoring
-context after the owner approves its bounded collaboration scope. Give the
-Content Author the approved audience, Product Surface, Messaging Identity,
-page or screen contracts, explicit content boundaries, and only the canonical
-product sources needed for those pages. Do not require the Content Author to
-read the complete frontend subsystem. The author returns finished copy, a
-source map for factual claims, unresolved facts, and Text Inventory coverage
-by writing the named content and Text Inventory artifacts directly. For D3,
-this content work produces a named Text Inventory artifact before
-implementation approval. The design/control context does not replace it with
-ad hoc bullets, ledes, summaries, implementation-time copy, or a full rewrite
-inside the main session. It may inspect targeted inventory lines to resolve
-review findings or present owner approval.
+For D3 P03, assign a write-scoped independent Messaging And Content Lead to
+establish or update the compact Messaging Identity, integrate the root Content
+Package manifest, and prepare the Copy Approval manifest. The phase main, not
+the lead, assigns any additional disjoint Source-Grounded Content Authors for
+large shards and routes their compact manifests to the lead. The lead is not
+the phase main or any reviewer. For substantial D2/D3 content, give each author the approved
+audience, Product Surface route/state/template records, Content Coverage Keys,
+Messaging Identity and Messaging Contract, required depth, explicit shard
+boundary, and only the canonical product sources needed for that shard. A
+screen contract is an optional input only when one already exists; P03 must not
+depend on the P10 screen-contract phase or author P10 early. Do not require the
+Content Author to read the complete frontend subsystem.
 
-Review substantial copy in another independent context. The Copy Reviewer sees
-the rendered pages, the approved audience and voice summary, and the copy
-criteria, but not the author's reasoning. It checks comprehension,
+The author writes a Content Contract Package as defined by
+`docs/frontend/content/README.md`: a compact root or section manifest, finished
+page-local production copy or links to an existing canonical content source,
+and an exact shared UI copy registry for repeated chrome, actions, forms, and
+states. Long copy exists once. A source map, claim/proof relationship, required
+depth, unresolved fact, revision, and stable content ID live beside the copy or
+in its compact manifest. Root, section, and leaf manifest edges pin revisions
+and hashes. Every approved Content Coverage Key resolves exactly once to a
+reviewed canonical leaf, and external content sources are pinned to immutable
+versions or hashes. The phase main reads only aggregate manifests, verdicts,
+and cited blockers.
+
+Review every applicable content shard in another independent context. During
+content authoring, the Copy Reviewer sees the final canonical copy, its factual
+sources, approved audience and voice summary, required depth, and copy criteria,
+but not the author's reasoning. It checks comprehension, completeness,
 specificity, information depth, claim/proof proximity, objections, actions,
-microcopy, and generic AI-generated language. Content authorship and copy
-review do not replace owner approval or final implementation QA.
+microcopy, and generic AI-generated language. An outline, synopsis, placeholder,
+ellipsis, sample-only subset, or heading with token body text cannot pass as
+finished content unless it is the literal owner-approved output. Counts and line
+indexes are not semantic review. Rendered copy is checked again after
+implementation. Content authorship and copy review do not replace owner
+approval or final implementation QA.
+
+After shard review, a separate package-level reviewer verifies transitive
+manifest closure against the approved Product Surface and signs the compact
+Copy Approval manifest defined in `docs/frontend/content/README.md`. P03 ends
+only after that semantic and closure review passes and the owner records Copy
+Approval. Zero-count closure is necessary but never sufficient without the
+reviewer's content-quality verdict.
 
 The text pass is exhaustive, not importance-based. Do not limit it to hero
 copy, public marketing copy, important paragraphs, or high-risk messages. Every
@@ -884,22 +823,19 @@ chart labels, legend text, metadata labels, footer text, legal text, command
 labels, keyboard shortcut hints, toast text, dialog titles, menu items, and
 repeated generated labels.
 
-Before implementation, create a Text Inventory at a named path for every
-planned page, screen, state, action, and repeated pattern. For D3, the
-inventory is an approved contract, not internal notes. Record for each item:
-location, exact text or text pattern, minimum intended depth or length when
-the owner requested rich content, semantic job, Messaging Contract link,
-claim/proof status, objection or friction handled when relevant, source map,
-authoring owner, approval status, and reviewer verdict. Implementation must
-render the approved inventory or stop and report a contract deviation before
-changing, shortening, omitting, or replacing planned copy.
+Before product-surface implementation, every planned page, screen, state,
+action, and repeated copy family maps to a canonical content ID and revision.
+Where the architecture permits, production renders or imports the canonical
+content source directly. Otherwise implementation records the exact production
+location for each ID and must stop on any proposed shortening, omission,
+replacement, or unsupported expansion.
 
-After implementation, reconcile the approved Text Inventory against rendered
-interface evidence and source code. The reconciliation records for each item:
-expected copy, actual copy or omission, rendered location, source-code
-location, pass/fail verdict, and required fix. A production page that follows
-the wireframe but drops approved depth, proof, objections, microcopy, or
-source-backed explanations does not pass copy or content coverage.
+After implementation, reconcile each content shard and shared-copy family
+against rendered evidence and source locations. Record expected revision/hash,
+actual location, omitted or changed IDs, pass/fail verdict, and required fix.
+A production page that follows the wireframe but drops approved depth, proof,
+objections, state text, or source-backed explanations does not pass copy or
+content coverage.
 
 ### Messaging Identity
 
@@ -1123,7 +1059,10 @@ or capabilities. Present:
 - Independent Factual Product Research brief, researcher/context, canonical
   sources, accepted factual map, and unresolved contradictions for D3;
 - in-scope users, journeys, screens, and states;
-- scope boundaries and assumptions;
+- release scope, genuine product non-goals, and separate phase-delivery
+  boundaries;
+- global/system routes and production-completeness coverage;
+- scope assumptions;
 - unresolved decisions;
 - the exact next phase unlocked by approval.
 
@@ -1135,6 +1074,12 @@ Run deep one-time onboarding when D3 work needs an established Design Identity,
 or when the existing identity needs expansion for the requested product surface.
 The established practice is exactly 25 questions in five rounds of five,
 followed by an Uncertainty Check.
+
+After P01 control acceptance and its `PROCEED` receipt, begin the normal P01
+sequence immediately. If `docs/frontend/collaboration-policy.md` is not
+established, ask its one standing collaboration question, record the answer,
+then start onboarding round one. If it is established, do not repeat the
+question. Never ask for a frontend waiver instead of starting onboarding.
 
 The five-round, 25-question protocol is mandatory. Every question must resolve
 a material design or product decision; ask each question once and use
@@ -1194,7 +1139,9 @@ After question 25, record:
 Do not add a sixth onboarding round. Record any remaining material unknowns in
 the Uncertainty Check and resolve them through repository evidence, the
 Factual Product Researcher, or a later owner decision at the applicable gate.
-Then move to Preliminary Identity and Visual Exploration.
+P01 then prepares and transfers control to P02. Preliminary Identity and Visual
+Exploration begin only in P04, after P02 Product Surface Approval and P03 Copy
+Approval reach their stop conditions.
 
 ## Preliminary Identity
 
@@ -1206,9 +1153,9 @@ design system.
 
 ## Visual Exploration
 
-For first-time D3 onboarding, create exactly five rendered raster Visual
-Direction Boards. A later D3 visual reset may use a narrower exploration only
-after explicit owner approval.
+Every D3 P04 creates exactly five rendered raster Visual Direction Boards. A
+later D3 visual reset still creates five unless the owner explicitly waives O10
+with a scoped `FRONTEND WAIVER:` message.
 The five boards must be meaningfully different but plausible interpretations
 of the same product evidence. Each board must define and visibly demonstrate
 its own composition, visual metaphor, signature trait, information-density
@@ -1236,6 +1183,14 @@ Each board is a rendered UI artifact plus concise notes containing:
 - what the board leaves outside its direction;
 - desktop and mobile viewport sizes inspected.
 
+Each board must contain clearly identifiable desktop and mobile product frames,
+not only an outer moodboard collage. Those frames become candidate reference
+compositions for later image-to-image comparison. Use approved content or
+clearly generic non-factual labels inside a board. Commands, integrations,
+technology names, capability claims, and operational states must be grounded in
+the approved product/content sources; attractive fictional product facts are
+blocking defects.
+
 Generate every board as a raster image. Place generated or assembled imagery in
 a UI showcase context that proves component composition, hierarchy, state
 handling, and responsive behavior. HTML, CSS, JavaScript, SVG, screenshots of
@@ -1250,22 +1205,31 @@ metaphors, distinctive imagery, unusual geometry, or another signature trait,
 those properties must appear in the raster board itself rather than only in
 its notes. A board that merely names an identity trait does not demonstrate it.
 
-Render and inspect every board before presenting it. Fix overlap, blank areas,
-unreadable text, broken responsive composition, or insufficient component
-evidence. Boards are direction studies before production assets.
+The write-scoped independent Visual Direction Author first synthesizes the
+Preliminary Identity from approved inputs, then generates every board and
+performs author preflight. A separate image-capable reviewer must open each raster itself and
+inspect the desktop/mobile frames for overlap, blank areas, unreadable text,
+broken composition, unsupported product claims, and insufficient component
+evidence. The phase main neither generates nor visually inspects the boards; it
+consumes the author and reviewer manifests. Boards are direction studies before
+production assets.
 
-Visual Direction Board completion requires five existing generated raster artifacts with
-stable paths, inspected desktop and mobile views, visible representative UI
-fragments, component showcase coverage, state examples, and concise comparison
-notes. Text-only descriptions, mood summaries, written design contracts, HTML
-pages, and screenshots of coded pages do not satisfy this gate. Written notes support
-the discussion after the boards exist. This gate is complete when the rendered
-board artifacts and comparison evidence are present.
+Visual Direction Board completion requires five existing generated raster
+artifacts with immutable paths, revisions and hashes, inspected desktop and
+mobile frames, visible representative UI fragments, component showcase
+coverage, state examples, and concise comparison notes. Text-only descriptions,
+mood summaries, written design contracts, HTML pages, and screenshots of coded
+pages do not satisfy this gate. Written notes support the discussion after the
+boards exist. This gate is complete when the raster artifacts and independent
+image-inspection evidence are present.
 
 Before Visual Direction Approval, present a board evidence table. For each
-board, include artifact path, format, product hypothesis, representative UI
-fragments shown, component showcase coverage, state examples, desktop/mobile
-inspection evidence, strengths, trade-offs, and what the direction leaves out.
+board, include immutable artifact path, revision, content hash, dimensions,
+desktop/mobile reference-frame bounds, format, product hypothesis,
+representative UI fragments shown, component showcase coverage, state examples,
+reviewer context, review report path/revision/hash and verdict,
+desktop/mobile inspection evidence, strengths, trade-offs, and what the
+direction leaves out.
 
 ### Visual Direction Approval
 
@@ -1281,6 +1245,12 @@ becomes the single selected visual reference. Do not ask production
 implementation to reconcile multiple competing boards without this merged
 reference or a written owner waiver.
 
+Record incidental generated-image details as observations, not owner rules. A
+mascot species, object, font category, motif, or layout detail becomes mandatory
+or forbidden only when the owner selected it explicitly or the reviewed visual
+translation demonstrates that it is necessary to the approved identity. Do not
+turn an author's preference into an owner constraint.
+
 Finalize Design Identity and Design System after this approval passes or the
 owner records a scoped waiver.
 
@@ -1289,7 +1259,8 @@ owner records a scoped waiver.
 After Visual Direction Approval, translate the selected raster direction into
 an implementation-facing contract before writing production pages. Record:
 
-- selected board or merged-board artifact path;
+- selected board or merged-board immutable path, revision, hash, dimensions,
+  and the desktop/mobile reference-frame bounds;
 - visual properties that are mandatory in production;
 - visual properties that are mood-only or forbidden to copy literally;
 - component families implied by the board;
@@ -1300,19 +1271,52 @@ an implementation-facing contract before writing production pages. Record:
 - counterexamples from rejected boards and generated artifacts;
 - visual fidelity checks the implementation and QA contexts must run.
 
+Include a finite Signature Traits Matrix. Every row names the exact board
+region or crop, the observed composition/typography/geometry/color/asset trait,
+its production rule, a forbidden counterexample, and an observable pass
+condition. Preserve measured relative proportions, hierarchy, and density from
+the selected frame. Do not weaken a visible requirement into a permissive
+`either/or` threshold that allows a materially different composition.
+
+The translation author and its separate image-capable reviewer must both open
+the selected raster and record the inspection method, revision, hash, and
+regions viewed. Reading metadata, notes, CSS, or a prior evidence table without
+viewing the image cannot pass this contract. Review first judges the image and
+translation holistically, then checks the matrix. It must identify invented
+constraints, missing signature traits, generic substitutions, and any rule that
+would permit a visibly different product identity.
+
+A write-scoped independent Visual-System Author writes the translation, final
+Design Identity/System revisions, and the UI Fidelity Asset Seed when required.
+The phase main supplies the brief and consumes only the author's manifest and
+the separate review verdict; it does not write or visually inspect P05
+artifacts.
+
+When the reference frame depends on custom typography, iconography,
+illustration, mascots, textures, diagrams, or other non-generic assets, the P05
+Visual-System Author also produces a minimal UI Fidelity Asset Seed. It contains
+only the licensed or generated samples and rules needed to reproduce the reference composition in
+the production UI-library showcase. A generic placeholder cannot replace a
+signature seed asset. If no seed is needed, the image-capable reviewer records
+why the frame remains reproducible without one. The complete Production Raster
+Asset Pack remains a later post-showcase phase.
+
 This translation is the bridge between generated image evidence and working
 interface code. A selected raster board is not enough by itself; production
 must follow the translated component system and visual fidelity rules.
 After this translation is written and reviewed, the next controlling D3 gate is
-UI Library And Component Showcase Approval. Do not start Flows, Wireframes,
-Screen Contracts, Production Raster Asset Pack, or production page
+UI Library Approval. Do not start Flows, Wireframes,
+Screen Contracts, the complete Production Raster Asset Pack, or product-surface
 implementation until UI Library Approval passes or the owner grants a scoped
 waiver for that specific phase order.
 
-### UI Library And Component Showcase
+### Production UI Library And Rendered Component Showcase
 
-For D3 work, build the approved visual direction into a real production UI
-library or component system before building production pages. This is not a
+For D3 work, assign a write-scoped independent UI Library Implementer to build
+the approved visual direction into a real production UI library or component
+system before building production pages. The phase main provides the stack and
+artifact brief and reads only compact implementation/review manifests; it does
+not write, fix, render, or visually inspect the library or showcase. This is not a
 throwaway HTML demo, visual-only mockup, screenshot reproduction, or isolated
 showcase artifact. The production pages must import, compose, or otherwise use
 the same approved components, tokens, primitives, assets, state styles, and
@@ -1322,6 +1326,14 @@ components. If the owner wants a ready-made UI library, record how its
 primitives map to the selected visual direction and where custom styling,
 tokens, slots, or components are required. Do not treat a third-party library
 as the product identity.
+
+P06 is allowed and required to create production UI-library source, its
+dependencies, tokens, assets from the approved UI Fidelity Asset Seed when
+required, and its rendered showcase before Product-Surface Implementation
+Approval. When the seed is not required, cite its approved independent
+non-applicability record. That later
+gate blocks product routes and page composition, not the production primitives
+needed to make the visual contract real.
 
 Before creating the UI library or component showcase, obtain the required stack
 contract for the production frontend: framework/runtime, styling approach,
@@ -1333,26 +1345,70 @@ evidence rather than vendor preference.
 
 Create a storybook-like rendered component showcase before production page
 implementation. The showcase renders the actual production UI library, not a
-parallel approximation. It demonstrates the shell, navigation, buttons, links,
-forms, search/filter controls, cards, article layouts, badges, tables or
-lists, diagrams or media frames, overlays/drawers/modals, empty/loading/error/
-success/disabled states, focus/hover/selected states, responsive variants, and
-every signature visual trait. The showcase may be an internal route, static
-HTML artifact generated from the same component source, framework story page,
-or equivalent rendered artifact, but it must be openable and inspectable.
+parallel approximation. Everything presented as a reusable button, field,
+table, card, navigation item, overlay, badge, diagram node, layout, or state is
+an exported production primitive or composition at a named source path. Inline
+showcase-only markup or styling does not satisfy that family.
+
+Maintain a compact coverage matrix from Product Surface/content requirements to
+production module, states, accessibility behavior, responsive behavior,
+consumer, showcase address/state, revision, and hash. Demo data is allowed;
+demo-only structure and styling are not.
+
+The rendered showcase has two clearly separated purposes:
+
+1. A **fidelity scene** composes only registered production primitives and the
+   UI Fidelity Asset Seed when required, or cites its approved non-applicability
+   record, into the same representative screen, viewport/aspect ratio,
+   hierarchy, density, and signature composition as the selected desktop and
+   mobile reference frames.
+2. A **component catalog** demonstrates shell, navigation, buttons, links,
+   forms, search/filter controls, cards, article layouts, badges, tables or
+   lists, diagrams or media frames, overlays, empty/loading/error/success/
+   disabled states, focus/hover/selected states, responsive variants, and every
+   signature trait.
+
+These may be separate routes or stable states of one rendered artifact. Do not
+place phase IDs, debug badges, control metadata, or authoring commentary in the
+user-visible fidelity scene unless the selected production UI genuinely
+requires them.
 
 The UI Library Approval gate is the next controlling D3 gate after Selected
-Visual Direction Translation. It passes only after an independent read-only
-visual fidelity review receives the rendered component showcase, the selected
-raster board or merged final board, the Selected Visual Direction Translation,
-and a short product description. The reviewer must judge whether the implemented
-primitive system looks like the selected image in practice: composition logic,
-surface treatment, density, typography direction, color semantics, borders,
-shadows, icon/illustration treatment, state styling, responsive behavior, and
-signature traits. If the showcase does not look like the selected image, the
-gate fails even when the components are technically reusable or accessible.
-Production pages do not start before this approval or a scoped
-`FRONTEND WAIVER:`.
+Visual Direction Translation. It passes only after independent source/reuse
+review and independent image-capable visual review. Neither role is the phase
+main or the UI Library Implementer. The source reviewer proves that the
+fidelity scene and catalog build successfully, import the registered production
+components, contain no showcase-only substitute implementations, and cover
+every required component family, state, focus/keyboard behavior,
+accessibility behavior, responsive variant, and declared consumer. The visual
+reviewer receives only a short neutral product description at first, the
+selected raster reference frames, fresh immutable fidelity-scene captures for
+all six required viewport classes, and fresh immutable component-catalog
+captures for all six classes and every applicable stable state fixture. The
+desktop/mobile fidelity captures use the declared reference viewport/aspect
+ratios for direct comparison; the other four prove that the same signature
+composition transforms deliberately rather than collapsing between them.
+
+The visual reviewer must open the images and perform a first-pass holistic
+side-by-side comparison before reading the translation checklist. Where the
+images share geometry, use overlay, blink, crop, or difference inspection when
+available. Then review composition, hierarchy and density, typography, geometry
+and surfaces, color roles, borders and shadows, icon/illustration/assets,
+responsive behavior, and every Signature Traits Matrix row. CSS, DOM, source,
+tokens, accessibility trees, and feature presence cannot prove visual fidelity.
+A pass lists the three largest remaining visible differences and explains why
+none is material. A missing signature trait, generic/template appearance, stale
+or absent viewport/state capture, broken component layout, clipped or unreadable
+catalog content, or any unexplained material image difference blocks approval
+even when the code is reusable and accessible. The reviewer opens and inspects
+both fidelity-scene frames and the complete catalog evidence matrix; reviewing
+the scene alone cannot approve the library.
+
+Every reviewed reference and capture is identified by unique path, revision,
+hash, dimensions, viewport/state, and capture time. Do not overwrite evidence.
+Any UI or asset fix creates new captures and invalidates the affected visual
+verdict until re-review. Production pages do not start before owner UI Library
+Approval or a scoped `FRONTEND WAIVER:`.
 
 After production pages are implemented, QA must verify that pages use the
 approved UI library/components instead of recreating visually similar one-off
@@ -1361,21 +1417,13 @@ record an approved exception or be treated as a visual fidelity defect.
 
 ### Production Raster Asset Pack
 
-When the selected visual direction depends on raster imagery, illustration,
-characters, physical metaphors, product media, thumbnails, or generated visual
-language, create a Production Raster Asset Pack before production page
-implementation. The pack is a raster collage or asset sheet with reusable
-production-image references such as hero art, section illustrations,
-empty/error/loading/success imagery, mascot or character poses, diagram style
-samples, content thumbnails, texture treatments, and media crops.
-
-The asset pack is separate from Visual Direction Boards. Boards prove the UI
-direction; the asset pack gives future production image generation and asset
-selection a stable reference. Store it at a named path, inspect it for
-readability, nonblank output, visual consistency, unwanted text, licensing or
-source constraints when applicable, and fidelity to the selected board. Ask
-for Production Raster Asset Pack Approval before using it as production
-evidence.
+P07 creates this pack after UI Library Approval when the selected direction
+needs raster imagery, illustration, characters, physical metaphors, product
+media, thumbnails, or a stable generation language. A write-scoped independent
+asset author and separate image-capable reviewer follow
+`docs/frontend/assets/README.md`; the phase main reads only their manifests and
+presents Production Raster Asset Pack Approval. Otherwise the independent
+non-applicability evidence required for O15-O16 closes P07.
 
 ## Final Design Identity And Design System
 
@@ -1421,168 +1469,46 @@ evidence that a new abstraction is warranted.
 
 ## UX Flows
 
-Use a clear text-based or rendered diagram format under `docs/frontend/flows/`
-for navigation, user flows, and state transitions when the interaction needs
-a richer artifact. Flows describe:
-
-- actor and starting state;
-- available action;
-- decision or permission condition;
-- resulting state and feedback;
-- error/recovery path;
-- journey endpoint.
-
-Create or update flows before production implementation when navigation,
-state transitions, permissions, or journey endpoints change. A purely visual
-D0 change may reference an unchanged flow instead of rewriting it.
+P08 creates or updates route-complete navigation, journey, permission, state,
+feedback, recovery, and endpoint contracts under `docs/frontend/flows/` before
+product-surface implementation. The write-scoped independent Flow Author and
+separate Contract Reviewer follow `docs/frontend/flows/README.md`; the phase
+main handles only their brief, manifests, blockers, and verdict. An unchanged
+D0 visual edit may reference existing flows.
 
 ## Wireframes
 
-Use persistent low-fidelity rendered HTML wireframes under
-`docs/frontend/wireframes/` as UI contracts. A wireframe is a directly
-openable HTML artifact, not a screenshot. Each real page or meaningful screen
-receives its own stable HTML route or artifact entry plus relevant breakpoint
-and state evidence. A shared renderer is allowed when every approved page,
-meaningful screen, and applicable state has a stable directly openable address.
-Multi-page sites, apps, dashboards, games, portals, catalogs, onboarding flows,
-and tools need a separate wireframe package for every real page or meaningful
-screen. A shared shell wireframe can document global navigation or layout
-system behavior and is paired with page-level wireframes for the actual
-surfaces.
+P09 uses the complete role contract in `docs/frontend/wireframes/README.md`.
+Its persistent artifact is a grayscale, route-complete, directly openable HTML
+W1 clickable wireflow with stable prepared states and realistic meta-text, not
+a screenshot or early production application. Every concrete route remains
+indexed, reachable, mapped to content, and assigned to a reviewed template or
+explicit exception; screenshots are immutable review evidence only.
 
-For multi-page or multi-screen work, the required artifact is a clickable
-wireflow: low-fidelity page wireframes connected through the same navigation,
-route, overlay, and prepared-state transitions that the production surface will
-expose. A reviewer must be able to start at the entry screen and traverse every
-primary approved journey by activating the corresponding controls in the
-wireframe. Do not require the reviewer to open each HTML file manually.
-
-Screenshots are rendered QA evidence for the HTML artifact. They never replace
-the artifact. A directory containing only screenshots is not a wireframe
-package. The page-to-wireframe index links first to the directly openable HTML
-artifact and separately to screenshots or other inspection evidence.
-
-Wireframes show:
-
-- information hierarchy and labeled regions;
-- navigation, controls, data, content, and primary actions;
-- interaction notes;
-- loading, empty, error, disabled, overflow, and partial-data states where
-  relevant;
-- responsive transformations;
-- links to related flows and screen contracts.
-
-Keep wireframes visually neutral so reviewers judge structure instead of
-premature visual design:
-
-- use grayscale only, with plain white, gray, and black surfaces, borders, and
-  text;
-- use rectangles and an `X` placeholder for images, illustrations, video,
-  charts, maps, or other media;
-- do not apply brand colors, gradients, textures, shadows, decorative
-  backgrounds, final imagery, mascots, visual-direction styling, or polished
-  production treatments;
-- preserve realistic block sizes, text density, and responsive geometry.
-
-Use stable real text only where wording is part of information architecture:
-product and page names, navigation labels, primary action labels, and approved
-domain terminology. Replace headings, body copy, marketing copy, examples, and
-other production prose with visible meta-text that states the block's semantic
-job, intended content, approximate character or line range, proof or source
-need, media presence and type, and interaction behavior.
-
-Wireframes validate information architecture, hierarchy, page composition,
-journeys, visible states, responsive intent, and interaction intent. They are
-not early production applications. Do not implement production algorithms,
-real full-text search or ranking, data fetching, persistence, clipboard APIs,
-complete keyboard mechanics, production-grade focus management, or exhaustive
-state-transition logic merely to make a wireframe functional.
-
-Use the lowest fidelity that makes the approval decision observable:
-
-- W0: rendered static structure for a page without meaningful interaction;
-- W1: a clickable wireflow with production-equivalent navigation plus directly
-  selectable demonstration states such as normal, overlay open,
-  example results, zero results, loading, error, or mobile navigation;
-- W2: a small clickable journey when sequence or navigation is itself an
-  unresolved product decision;
-- W3: a functional prototype only after explicit owner approval names the
-  behavior whose implementation risk justifies it.
-
-D2/D3 wireframes default to W1. Every production navigation, route change,
-overlay entry/exit, and primary journey transition at W1 must navigate between
-stable fixtures or reveal prepared local states. Search uses representative prepared
-results rather than a search engine; copy controls may show prepared feedback
-without using the clipboard; keyboard and focus requirements remain explicit
-in screen contracts for production implementation and QA. A behavior may be
-described in the interaction note when implementing it would test engineering
-rather than product structure. Record every behavior deferred to production so
-Wireframe Approval cannot be mistaken for functional QA.
-
-For every page or meaningful screen, record a state matrix containing the
-state name, stable HTML address, entry action or fixture, expected behavior,
-relevant viewport evidence, and inspection verdict. Render screenshots for
-the viewports and states needed to make approval decisions; do not multiply
-screenshots when the same HTML evidence proves the behavior sufficiently.
-
-Create or update wireframes before implementation when layout, hierarchy,
-navigation, interaction behavior, states, or responsive structure changes.
-For D0 changes that preserve those properties, verify that the existing
-wireframe remains accurate and record that fact in the Task Contract.
-
-Render and inspect affected wireframes at their declared viewports before
-requesting approval.
-
-Wireframe completion requires persistent, directly openable HTML artifacts at
-stable paths or routes for each affected page or meaningful screen, the
-approved W0-W3 fidelity, stable demonstration states, declared responsive
-transformations, and an explicit list of behavior deferred to production.
-Written screen descriptions and layout summaries link to the HTML wireframes.
-Screenshots record inspection evidence only. This gate is complete when the
-HTML artifacts, state matrix, interaction-intent evidence, deferred-behavior
-list, and responsive inspection evidence are present for every page or screen
-in the approved scope.
-
-The package must also expose a clickable route/state flow for every primary
-approved journey, with no dead primary action or manually opened intermediate
-screen.
+Do not add brand styling, final assets/copy, real search, data fetching,
+persistence, or other production algorithms to prove a wireframe. A
+write-scoped independent Wireframe Author creates and preflights the package;
+separate First-Use and image-capable reviewers traverse it and inspect the six
+viewport classes and applicable prepared states. The phase main receives only
+their coverage manifests, immutable evidence, verdicts, and cited blockers.
 
 ### Wireframe Approval
 
-Required for D2/D3 production work and any lower-depth change that materially
-alters a UI contract. Present paths, inspected sizes, state coverage, open
-questions, and the exact implementation scope unlocked by approval.
-
-For D3 multi-page or multi-screen work, Wireframe Approval is blocked until a
-page-to-wireframe index covers every approved page and meaningful screen. Each
-index row includes page or screen name, route or state, directly openable HTML
-artifact address, screen-contract path, six viewport classes or approved
-viewport waiver, state-matrix entries, declared fidelity and demonstrated
-interaction intent, behavior deferred to production,
-content requirements, and inspection evidence. A shared shell, template, or
-combined overview wireframe can appear
-in the index as a supporting artifact and does not replace page-level rows.
+Required for D2/D3 product-surface work and lower-depth changes that alter a UI
+contract. Approval is blocked until the route/template index, clickable primary
+journeys, state matrices, deferred production behavior, content requirements,
+six-viewport coverage or owner waiver, First-Use Review, and independent visual
+QA cover every route and exception. Present the compact closure, immutable
+evidence indexes, open questions, and exact scope the decision unlocks.
 
 ## Screen Contracts
 
-Store agent-readable screen specifications under `docs/frontend/screens/`.
-Keep them aligned with approved flows and wireframes. Each contract states:
-
-- purpose and user goals;
-- primary action and information hierarchy;
-- sections and components;
-- data sources and trust boundaries;
-- states and recovery behavior;
-- responsive transformations;
-- accessibility requirements;
-- related screens, flows, and wireframes;
-- measurable acceptance criteria.
-
-For D3 multi-page or multi-screen work, create one screen contract file per
-approved page or meaningful screen. Shared shell, navigation, search, overlay,
-or layout-system contracts are separate supporting files. A combined screen
-contract summary can provide an index or shared rules and does not replace the
-per-page or per-screen contract files required for approval.
+P10 uses `docs/frontend/screens/README.md`. Its write-scoped independent Screen
+Contract Author creates one contract per unique route template plus explicit
+exception contracts, while every concrete route maps its Surface ID, content,
+states, journeys, wireframe address, component consumers, and production unit.
+A separate Contract Reviewer validates full cross-package closure; the phase
+main reads only compact manifests, verdicts, and cited blockers.
 
 ## Independent Contract Review
 
@@ -1687,81 +1613,105 @@ material mutation, define:
 This contract is required regardless of visual depth. Production runtime should
 use explicit non-interactive confirmation and recovery paths.
 
-## Final Implementation Approval
+## Product-Surface Implementation Approval
 
-Before D3 implementation, and before D2 implementation when product or visual
-decisions required owner approval, present one bounded summary:
+Before D3 product routes/pages are implemented, and before D2 implementation
+when product or visual decisions required owner approval, present one bounded
+summary:
+
+During P11, the phase main prepares the self-contained Product-Surface
+Implementation Brief from compact approved manifests. A write-scoped
+independent Implementation Planning Author creates the reviewed route
+implementation manifest; a separate read-only Contract Reviewer checks that
+manifest, the brief, and the complete cross-package mappings before the owner
+gate. The phase main reads only their compact verdicts and cited blockers.
 
 ```md
-## Final Implementation Approval
+PRODUCT-SURFACE IMPLEMENTATION APPROVAL RECORD
 
 - Outcome and scope:
 - Explicit scope boundaries:
 - Stack and sources of truth:
 - Approved Product Surface Model revision:
+- Approved Route And Template Catalog revision/hash and closure:
 - Independent Factual Product Research and source map:
 - Approved Visual Direction revision:
+- UI Fidelity Asset Seed or reviewed non-applicability:
 - Approved flows:
-- Approved wireframes by page or screen:
-- Approved screen contracts by page or screen:
+- Approved route-to-wireframe index revision/hash and closure:
+- Approved route/template screen-contract index revision/hash and closure:
 - Independent Contract Review and reviewer/session:
 - Independent First-Use Review and reviewer/session:
 - Independent Wireframe Rendered Visual QA and reviewer/session:
-- Source-Grounded Content Author and source map, if applicable:
-- Independent Copy Review, if applicable:
+- Source-Grounded Content Author and source map:
+- Approved Content Contract Package and shared UI copy registry:
+- Copy Approval manifest revision/hash and closure:
+- Independent Copy Review:
+- Approved Production UI Library, fidelity scene, and component catalog:
+- Independent source/reuse and image-fidelity reviews:
 - Wireframe Conformance Contract:
-- Frontend Implementation Brief:
+- Product-Surface Implementation Brief:
 - Action Contract, if applicable:
 - Implementation units:
 - Acceptance evidence to collect:
 - Known risks and assumptions:
 ```
 
-Implementation begins after approval or a recorded scoped waiver. For D3,
+Product-surface implementation begins after approval or a recorded scoped
+waiver. For D3,
 request this approval after Product Surface Approval, Visual Direction
 Approval, Selected Visual Direction Translation, UI Library Approval,
 Production Raster Asset Pack Approval when raster assets apply, finalized
-Design Identity and Design System, approved Text Inventory and Copy Review
-when copy applies, flows, rendered HTML wireframes, screen contracts,
-Independent Contract Review, Independent First-Use Review, applicable
-Source-Grounded Content Authoring and Independent Copy Review, Content And
-Action Contract when relevant, and their decision records exist at named paths.
+Design Identity and Design System, the approved Content Contract Package and
+Copy Review, flows, rendered HTML wireframes, screen contracts, Independent
+Contract Review, Independent First-Use Review, Source-Grounded Content
+Authoring and Independent Copy Review, and the Action Contract when relevant,
+and their decision
+records exist at named paths.
 The approval summary
-maps every approved page or meaningful screen to its flow, wireframe path,
+links to one reviewed route implementation manifest that maps every approved
+page or meaningful screen to its template, flow, wireframe address,
 screen-contract path, UI-library components, selected visual translation,
-asset-pack reference when applicable, text-inventory coverage, content
-coverage when relevant, conformance invariants, and implementation unit. A
+asset-pack reference when applicable, canonical content IDs/revisions, content
+coverage, conformance invariants, and implementation unit. The bounded approval
+record contains the manifest path/revision/hash and aggregate closure rather
+than repeating every route row. A
 waiver must name what is waived, why, what remains required, and the next
 active gate.
 
-For D3, implementation commands, file creation, package installation, source
-generation, or production-code edits begin after Final Implementation Approval
-or a valid `FRONTEND WAIVER:` that names the skipped approval and remaining
-evidence. Approval of a questionnaire answer, product direction, stack choice,
-language, page list, visual style, visual board, raster asset pack, UI
-library, component showcase, wireframe, search requirement, or copy direction
-moves the artifact sequence forward and does not approve implementation unless
-the owner explicitly grants Final Implementation Approval.
+For D3, commands, file creation, source generation, or code edits that implement
+production product routes, screens, or their composition begin only after
+Product-Surface Implementation Approval or a valid `FRONTEND WAIVER:` that
+names the skipped approval and remaining evidence. Phase-scoped contract,
+Markdown, raster, content, UI-library, flow, HTML-wireframe, screen-contract,
+review, and control artifacts required by P01-P11 remain allowed only inside
+their owning phase. The approved P05 UI Fidelity Asset Seed and P06 production
+UI-library source, dependencies, showcase routes, and evidence are therefore
+allowed before this gate; product-route/screen composition is not. Approval of
+a questionnaire answer, product direction, stack choice,
+language, page list, visual style, visual board, raster asset pack, UI library,
+component showcase, wireframe, search requirement, or copy direction moves the
+artifact sequence forward and does not approve product-surface implementation.
 
 Wireframe Approval freezes structure and interaction intent; it does not
-authorize production code, package installation, source generation, or
-implementation inside the design/control context.
+authorize product routes/pages or implementation inside the design/control
+context.
 
-## Implementation
+## Product-Surface Implementation
 
-Production frontend implementation is separate work from the context that
-authored or approved the design and contract package. After Final
-Implementation Approval, prepare a self-contained Frontend Implementation
-Brief and assign write-scoped implementation to an approved independent
-execution context. The design/control context does not write production
+Product-surface implementation is separate work from the context that authored
+or approved the design and contract package. After Product-Surface
+Implementation Approval, assign the already approved self-contained
+Product-Surface Implementation Brief and route implementation manifest to a
+write-scoped independent implementation context. The design/control context does not write production
 frontend code. If no independent execution context is available, stop;
 do not collapse design, implementation, and QA into one context.
 
-The Frontend Implementation Brief includes repository and execution context,
+The Product-Surface Implementation Brief includes repository and execution context,
 approved scope, every contract and HTML wireframe address, exact allowed files,
 implementation units, Wireframe Conformance Contract, Selected Visual
 Direction Translation, approved UI Library/component showcase paths, Production
-Raster Asset Pack paths when applicable, approved Text Inventory paths, sources
+Raster Asset Pack paths when applicable, approved content package paths and IDs, sources
 of truth, commands, acceptance evidence, checkpoint expectations, known risks,
 and the required response format. The implementation worker may edit its
 authorized files and create coherent checkpoints. It reports every proposed
@@ -1776,7 +1726,7 @@ For D3, production output must be production-grade across the whole approved
 surface: complete routes and system states, rich approved copy, real approved
 assets, responsive layouts, accessible controls, useful empty/error/recovery
 paths, maintainable component boundaries, and direct fidelity to the approved
-wireframes, text inventory, UI library, and selected visual direction. A
+wireframes, content package, UI library, and selected visual direction. A
 working shell, partial happy path, placeholder content, generic generated copy,
 or page that only resembles the wireframe structurally is not complete.
 
@@ -1799,12 +1749,14 @@ approved Design System. Production must not copy gray-box styling merely
 because the wireframe uses it. Visual evolution may not change a frozen
 structural or behavioral invariant.
 
-Before implementation, create a mapping from each approved HTML wireframe
-page/state/region to its production route, component or module, implementation
-unit, invariant, and verification method. When implementation would change a
-frozen invariant, stop production work, update the HTML wireframe and affected
-contracts first, render and inspect the change, obtain renewed approval for the
-affected decision, and only then continue implementation.
+Before product-surface route/screen implementation, create a mapping from each
+approved HTML wireframe page/state/region to its production route, component or
+module, implementation unit, invariant, and verification method. When
+implementation would change a frozen invariant, stop production work and invoke
+the `Contract Regression And Re-entry` protocol in
+`docs/frontend/handoffs/README.md`. Return to the earliest owning phase with a
+fresh main, assigned authors, independent review, and renewed affected gates;
+the P12/P13 context must not edit the HTML wireframe or earlier contracts.
 
 After implementation, compare each production page and applicable state with
 the approved HTML wireframe. Record every invariant with wireframe evidence,
@@ -1812,9 +1764,11 @@ production evidence, and pass/fail verdict. An unexplained structural or
 behavioral difference blocks completion even when the production interface is
 visually polished.
 
-Keep implementation inside the approved scope. When implementation
-reveals a material contract defect, update the relevant artifact and obtain
-renewed approval only for the affected decision.
+Keep implementation inside the approved scope. When implementation reveals a
+material contract defect, use the same regression/re-entry protocol. Preserve
+the prior decision as history, supersede only the affected revision and its
+dependent authorizations, and obtain renewed approval for the replacement
+before implementation resumes.
 
 ## Responsive Design Pass
 
@@ -1899,7 +1853,7 @@ implemented the frontend may run local preflight checks, builds, linting,
 typechecks, route smoke tests, and exploratory sanity checks, but those checks
 do not satisfy final QA and must not be presented as completion evidence.
 The QA reviewer/session is also separate from the design/control session and
-the implementation worker/session. Design, production implementation, and
+the implementation worker/session. Design, product-surface implementation, and
 final QA therefore use distinct contexts unless the owner grants a scoped
 `FRONTEND WAIVER:` naming the collapsed roles and accepted risk.
 
@@ -1907,7 +1861,8 @@ After implementation and before claiming the frontend task complete, run the
 Independent Frontend QA Gate:
 
 1. Prepare an Independent QA Brief.
-2. Use an approved independent read-only QA context.
+2. Use an independent read-only QA context allowed by the standing
+   Collaboration Policy.
 3. If no independent context is available, stop and ask the owner to open a fresh session
    for QA. Provide the exact prompt that would have been given to the delegated
    reviewer and ask the owner to return the findings.
@@ -1915,14 +1870,14 @@ Independent Frontend QA Gate:
 5. Repeat independent QA on the changed surface until blocking findings are
    cleared or the owner explicitly grants a scoped `FRONTEND WAIVER:`.
 
-The implementer decides the number of QA workers. For D2/D3, many-screen, or
+The phase main decides the number of QA workers from the approved QA brief. For D2/D3, many-screen, or
 interaction-heavy work, decompose aggressively instead of using one broad
 review. Default independent QA lanes:
 
 - functional interaction, link, navigation, event, keyboard, and state QA;
 - responsive visual, rendered layout, screenshots, accessibility, and console
   or network QA;
-- copy, Messaging System, Text Inventory, and product completeness QA;
+- copy, Messaging System, Content Contract Package, and product completeness QA;
 - instruction compliance, artifact path mapping, gates, waivers, and rubric
   audit.
 
@@ -1953,8 +1908,8 @@ common-sense coverage. Include:
 - Interaction Inventory with every clickable, focusable, typed, hoverable,
   draggable, scroll-controlled, stateful, eventful, navigational, or
   apparently interactive region;
-- full Text Inventory and the required Messaging System checks for every
-  user-visible text fragment;
+- the content-package index, applicable canonical copy shards, shared UI copy
+  registry, and required Messaging System checks;
 - exact viewport classes and concrete viewport sizes to inspect;
 - exact accessibility, keyboard, focus, console, network, and error-state
   expectations;
@@ -1977,9 +1932,11 @@ state that completion is blocked on returned independent QA findings.
 
 ## Visual QA And Review Protocol
 
-Render the real interface at the relevant viewports. Compare it with the
-approved messaging, identity, design system, references, wireframes, and screen
-contracts. Inspect:
+An independent image-capable visual reviewer renders or captures the real
+interface at the relevant viewports and compares it with approved messaging,
+identity, design system, reference frames, wireframes, and screen contracts.
+The implementer may preflight, but neither implementer nor phase main supplies
+the gate verdict. Inspect:
 
 - hierarchy, spacing, alignment, typography, density, and composition;
 - component consistency and semantic color;
@@ -1991,7 +1948,11 @@ contracts. Inspect:
   AI-generated styling.
 
 For D3, QA must explicitly compare production output against the selected
-raster visual direction and the Selected Visual Direction Translation. Record
+raster visual direction, the approved UI-library fidelity scene, and the
+Selected Visual Direction Translation. Open the actual immutable images and
+record their paths, revisions, hashes, dimensions, viewport/state, and capture
+time. First judge whole-image composition side by side; then inspect critical
+crops and the Signature Traits Matrix. Record
 whether the implemented UI preserves the approved composition logic, density,
 surfaces, typography direction, color semantics, illustration or imagery
 treatment, signature traits, and rejected-board counterexamples. A production
@@ -1999,11 +1960,17 @@ surface that follows the wireframe but visually collapses into generic
 unstyled cards, mismatched stock-like assets, or a different product identity
 does not pass visual QA.
 
-For D3, QA must also compare rendered copy against the approved Text Inventory.
-Record missing, shortened, replaced, generic, unsupported, or misplaced text
-items separately from visual and functional findings. A page that renders all
-wireframe regions but omits promised depth, source-backed explanations,
-objection handling, microcopy, or state text does not pass copy QA.
+Do not infer rendered desktop, mobile, state, or visual fidelity from source,
+CSS, DOM, tokens, accessibility snapshots, or another viewport. Every required
+viewport/state needs current rendered evidence. A fix receives a new capture
+path and affected re-review; never overwrite a reviewed screenshot.
+
+For D3, QA must also compare rendered copy against the approved Content
+Contract Package and shared UI copy registry. Record missing, shortened,
+replaced, generic, unsupported, or misplaced stable content IDs separately from
+visual and functional findings. A page that renders all wireframe regions but
+omits promised depth, source-backed explanations, objection handling, microcopy,
+or state text does not pass copy QA.
 
 Ask two final questions:
 
@@ -2026,13 +1993,18 @@ close the gate. If no independent result exists, the rubric status is
 `blocked: independent QA not returned`.
 
 For D3 artifact phases, run the rubric before requesting Product Surface
-Approval, Wireframe Approval, and Final Implementation Approval. Apply the
+Approval, Wireframe Approval, and Product-Surface Implementation Approval. Apply the
 rubric to the artifact package being approved: approved surface, messaging,
 flows, wireframes, screen contracts, responsive coverage, instruction control,
 and remaining implementation evidence. Visual
 Direction Boards keep their board evidence table before approval; the full
 rubric applies when the selected direction becomes part of the design system
 and implementation package.
+
+The applicable independent Contract Reviewer produces the file-backed rubric
+verdict for a D3 artifact gate. For D2/D3 implementation, the independent QA
+context produces it. The phase main reads only the compact verdict and cited
+blockers; it does not run or amend the rubric itself.
 
 The artifact-phase rubric does not close an approval package until the
 Independent Contract Review has examined every applicable Markdown contract
@@ -2097,9 +2069,10 @@ is unclear, rewrite it or cut it. If a strong claim needs proof, add proof,
 weaken the claim, or retire the claim.
 
 Copy QA is complete only when the review names every page, screen, state,
-action, repeated pattern, and Text Inventory item inspected; records the rubric
-result for each; maps rewrite decisions to the Messaging System concept that
-required the change; and includes an independent reviewer verdict. Partial
+action, repeated pattern, canonical content shard, and shared-copy family
+inspected; records the expected revision/hash and rubric result for each; maps
+rewrite decisions to the Messaging System concept that required the change;
+and includes an independent reviewer verdict. Partial
 sampling is allowed only with a scoped owner message containing
 `FRONTEND WAIVER:`.
 
@@ -2111,180 +2084,24 @@ exist. Label placeholder/demo-only surfaces or replace them. Distinguish
 planned seams, mock data, disabled controls, and future integrations from
 complete end-to-end behavior.
 
+A separate independent QA context writes the D2/D3 Product Completeness Review
+and its coverage manifest. The implementer may preflight completeness but
+cannot close it; the phase main consumes only the verdict and cited blockers.
+
 ## QA Evidence Record
 
-Substantial implementation ends with a review under `docs/frontend/reviews/`.
-Record evidence with verdicts:
-
-```md
-# Frontend Review
-
-- Task Contract revision:
-- Execution context and methods:
-- Commit or working-tree state:
-- Design/control session:
-- Frontend Lead Contract Review Brief and reviewer/session:
-- First-Use Review brief and reviewer/session:
-- Source-Grounded Content Author and source map:
-- Independent Copy Reviewer/session:
-- Frontend Implementation Brief and implementation worker/session:
-- Implementer session:
-- Independent QA owner/session:
-- Independent QA Brief:
-- Independent QA iteration:
-- Independent QA decomposition:
-- Scope validated:
-- Interaction Inventory:
-- Approved HTML wireframe addresses and state matrix:
-- Wireframe Conformance Contract and production mapping:
-- Wireframe-to-production conformance verdict:
-- Links and navigation exercised:
-- Viewports and screenshots:
-- Interactions exercised:
-- Automated checks:
-- Console/network status:
-- Data/API states:
-- Accessibility checks:
-- Messaging System pass:
-- Text Inventory coverage:
-- Copy/content reviewer verdict:
-- Rubric Review:
-- Functional QA verdict:
-- Visual QA verdict:
-- Copy QA verdict:
-- Responsive Design verdict:
-- Product Completeness verdict:
-- Instruction Control Audit:
-- Known gaps and exact next action:
-```
-
-Claim each completed check with its evidence. Label the delivered
-scope precisely in the final response.
-
-## Phase Handoffs, Observer Control, And Independent Review
-
-Split D3 work, many-screen work, or any context-heavy task into bounded phases.
-Use isolated contexts for contract review, first-use review, content authoring,
-copy review, production implementation, and final QA after the Collaboration
-Check records availability, the required
-collaboration interface, the delegated contract, and the decision for that
-named phase. Contract-review and QA workers are read-only. The production
-implementation worker is write-scoped only to the files and implementation
-units named in the approved Frontend Implementation Brief. Delegation does not
-replace owner approval gates.
-
-A delegated-work prompt must state the exact outcome, allowed files,
-scope boundaries, required sources, approved decisions, acceptance evidence,
-validation commands, and response format. Include the current Task Contract and
-execution context when relevant. Provide the context the worker needs for the
-assigned outcome. If the execution channel has a lifecycle completion event,
-state whether the completion body must contain the full deliverable or a
-compact artifact manifest. Long deliverables must be file-backed. Summary-only
-completion, terminal-only prose, missing artifact paths, or post-completion
-report typing does not satisfy the phase.
-
-For lifecycle-managed workers, do not re-query tool help during the handoff
-when the environment already supplies a verified launch, wait, and cleanup
-recipe. Do not use partial worker-output reads as a normal progress check or as
-a way to harvest unfinished research. Wait for the lifecycle completion event,
-then process that exact result and complete the interface's cleanup step before
-starting the next delegated frontend phase.
-
-For D3, prefer this handoff shape:
-
-1. The main design/control context creates a brief and allowed write scope.
-2. An independent authoring context writes or updates the artifact file.
-3. A separate independent reviewer checks the artifact and sources.
-4. The authoring context fixes blocking findings in its write scope.
-5. The reviewer rechecks only the changed artifact and previous blockers.
-6. The main context records the compact author/reviewer manifests and presents
-   the owner gate.
-
-For independent QA, include the Independent QA Brief defined above. The prompt
-must be more explicit than a normal engineering handoff: list every route,
-interaction, viewport, text inventory category, discovery query, expected
-state, and output field that must be checked. Assume the reviewer will miss
-anything not listed.
-
-For contract review, include the Frontend Lead Contract Review Brief. For
-production implementation, include the Frontend Implementation Brief and
-Wireframe Conformance Contract. Do not ask one worker or session to perform
-contract approval, implementation, and final QA as a combined task.
-
-### Rolling Phase Handoff
-
-`docs/frontend/handoffs/current.md` is both the rolling control record and the
-complete prompt for the active or next D3 phase. The outgoing phase main writes
-it from canonical files, owner decisions, and compact worker manifests; it does
-not duplicate large artifact bodies. Keep its compact progress checkpoint
-current after every material artifact, review, owner decision, or delegated
-work-state change needed for recovery.
-
-`docs/frontend/handoffs/ledger.md` is the append-only evidence of prepared,
-accepted, blocked, recovered, waived, and completed control events. It stores
-only IDs, phases, contexts, mode, timestamps, repository revision, and the
-applicable decision or waiver reference. The rolling prompt may be replaced at
-the next transition; the ledger may not.
-
-In manual mode, present the exact `current.md` content to the owner and stop. In
-observer mode, return only the handoff ID, path, next phase, status, and blocker
-summary; the observer starts the next main with a short instruction to read and
-execute that file. It does not import the full prompt into its own context.
-
-The manual response explicitly tells the owner to open a new top-level session
-and paste the complete prompt shown in that response. The observer response
-uses `ACTION REQUIRED FROM OWNER: NONE` and starts the next main without waiting
-for `continue`. At an owner gate, no next handoff exists yet: the current main
-remains active, sends the exact gate question, receives the relayed answer, and
-records it before finishing.
-
-The receiving main verifies the handoff against canonical state, accepts it,
-records acceptance in the ledger, and publishes the Read Receipt before phase
-work. A manual recipient must be a neighboring top-level session. An observer
-may create the phase main, but never its workers; the phase main retains all
-within-phase delegation. Neither is an independent reviewer for transferred
-artifacts.
-
-The exact phase catalog, control roles, state machine, schemas, transfer prompt,
-bootstrap envelope, recovery behavior, and ledger event format live in
-`docs/frontend/handoffs/README.md`. Fully completed tasks end with canonical
-artifacts and required independent review; control records substitute for
-neither.
+Substantial implementation ends with an independent file-backed review under
+`docs/frontend/reviews/` using that role document's QA Evidence Record Template.
+Claim each check with evidence and label the delivered scope precisely.
 
 ## Persistent Frontend Memory
 
-```text
-docs/frontend/
-|-- context.md
-|-- messaging.md
-|-- design-identity.md
-|-- design-system.md
-|-- component-registry.md
-|-- visual-references/
-|   |-- interpretation.md
-|   |-- positive/
-|   `-- negative/
-|-- flows/
-|-- wireframes/
-|-- screens/
-|-- handoffs/
-|   |-- README.md
-|   |-- current.md
-|   `-- ledger.md
-|-- decisions/
-`-- reviews/
-```
-
-Persist only knowledge expected to survive the task. Context records the stack,
-active surface, and implementation boundaries; Messaging records public voice,
-message contracts, proof, objections, and copy review decisions; identity and
-references record visual intent; the Design System records reusable rules;
-flows, wireframes, and screens record UI contracts; the component registry
-records reusable building blocks; decisions record consequential trade-offs;
-reviews record validation evidence. `handoffs/current.md` records only rolling
-phase control and recovery state, while `handoffs/ledger.md` records compact
-append-only transition evidence. Neither becomes a second product source of
-truth.
+Use the exact compact and role-specific roots in
+`docs/agent/context_routes.yml`. Persist only durable product, stack,
+collaboration, messaging, design, component, content, asset, flow, wireframe,
+screen, decision, and review knowledge under `docs/frontend/`; keep large bodies
+behind compact indexes. Handoff files own rolling control and append-only
+transition evidence only and never become a second product source of truth.
 
 ## Completion Checklist
 
@@ -2294,8 +2111,8 @@ A frontend task is complete only when the Final Instruction Audit records:
   waivers, controlling gate, verdict, and next action;
 - every applicable O01-O38 obligation is `satisfied` or explicitly
   `waived by owner` with a scoped `FRONTEND WAIVER:`;
-- D3 implementation started only after O25 or a waiver, and D3 scope stayed
-  production-grade unless the owner narrowed it;
+- D3 product-surface implementation started only after O25 or a waiver, while
+  the explicitly earlier production UI-library phase stayed within P06 scope;
 - approved artifacts exist at named paths and match the delivered surface;
 - required independent author/reviewer/implementation/QA contexts remained
   separate or the owner accepted the role collapse;
@@ -2303,7 +2120,7 @@ A frontend task is complete only when the Final Instruction Audit records:
   stopped at its boundary, and each phase-control transition is evidenced by
   the append-only ledger or an exact owner waiver;
 - every blocking independent finding was fixed and rechecked or waived;
-- production output matches approved scope, wireframes, Text Inventory, UI
+- production output matches approved scope, wireframes, Content Contract Package, UI
   library, selected visual direction, responsive targets, accessibility needs,
   interactions, links, navigation, and product completeness criteria;
 - placeholders, seams, remaining failures, validation gaps, and next commands

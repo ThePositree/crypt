@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-09-04 - Enforce frontend fidelity and bounded phase work
+
+- Removed the latest failed frontend trial artifacts before changing the
+  instruction system, leaving phase control inactive for the next clean run.
+- Upgraded the frontend subsystem to version 11 with mandatory P01-P13 control,
+  production-complete scope, exact owner actions, repeat-run bootstrap, and
+  explicit recovery or regression into an earlier owning phase.
+- Made D3 phase mains control-only for large work: independent contexts author,
+  implement, render, review, fix, and re-review file-backed artifacts while the
+  main consumes compact manifests and cited blockers.
+- Kept Product Surface Model as the compact frontend source of truth, with
+  canonical-product indirection and closed route, template, state, journey, and
+  content identities for large surfaces.
+- Replaced the monolithic copy inventory with a sharded source-grounded Content
+  Contract Package, stable coverage keys, semantic review, closure manifests,
+  and an explicit Copy Approval gate.
+- Required five immutable raster direction boards, one selected or merged
+  reference, selected-direction translation, a real production UI library,
+  fidelity scene, rendered component catalog, and image-based independent
+  comparison before product-page implementation.
+- Added UI fidelity seed and production raster-pack contracts, route-complete
+  flows, grayscale clickable meta-text wireframes, route/template screen
+  contracts, immutable evidence, six-viewport review, and final completeness
+  checks.
+- Split large artifact schemas into role-specific Markdown files and removed
+  redundant main-context prose while preserving mandatory full subsystem
+  reading and vendor-neutral execution semantics.
+
 ## 2026-09-04 - Harden D3 phase control ownership
 
 - Rejected and removed the invalid crypt-docs P01/P02 trial-run artifacts so a

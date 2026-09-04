@@ -22,6 +22,9 @@ stack from one dependency or abandoned file.
 - build, package, and validation setup;
 - styling approach;
 - UI libraries and local primitives;
+- owner preference for an existing UI library or authorization to choose;
+- production UI-library package boundary and exported primitive locations;
+- rendered fidelity-scene and component-catalog addresses;
 - design tokens and CSS variables;
 - themes and dark/light mode;
 - typography;
@@ -30,6 +33,8 @@ stack from one dependency or abandoned file.
 - responsive conventions;
 - layout patterns;
 - assets and imagery;
+- asset loading, optimization, licensing, and deployment constraints;
+- production output and deployment constraints;
 - component documentation, examples, or catalogs;
 - established screen and component patterns;
 - legacy areas, migrations, and inconsistencies.

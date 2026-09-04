@@ -30,8 +30,9 @@ does not permit that context to load the route's `full_docs`.
 ## Hard Rules
 
 - English in code and docs. Russian only in chat replies to the owner.
-- Critical thinking over agreement. MVP-first; cut scope before adding optional
-  systems.
+- Critical thinking over agreement. MVP-first for otherwise unbounded work;
+  an approved D3 frontend Product Surface remains the release contract and may
+  be narrowed only by an explicit owner decision.
 - No look-ahead bias: indicators and features use closed candles only.
 - Backtest and live behavior share the same pure decision code where possible.
 - The owner may promote any strategy to production, including

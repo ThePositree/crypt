@@ -1,20 +1,35 @@
 # Screen Contracts
 
-Store persistent screen contracts here. Before changing UI, read or update the
-related flows and wireframes, then keep the screen contract
-aligned before implementation.
+Store persistent screen contracts here. The P10 author and reviewer read the
+approved related flows and wireframes and keep the screen contract aligned with
+them. They report any upstream conflict instead of editing those earlier
+artifacts; correction returns to the designated upstream author and its
+independent re-review loop. P06 production UI-library source and its showcase
+intentionally precede these contracts.
 
-Each real page or meaningful screen gets its own screen contract. Shared shell
-or layout contracts describe global structure and are linked from page-level
-contracts.
-For D3 multi-page or multi-screen work, store each page or meaningful screen in
-its own contract file. Shared shell, navigation, search, overlay, or layout
-contracts are separate supporting files and link back to page-level contracts.
+Every real page or meaningful screen gets a route-catalog record that resolves
+to a screen contract. Store one contract per unique route template and one
+delta contract per structural, interaction, state, responsive, or
+accessibility exception. Shared shell, navigation, search, overlay, or layout
+contracts are separate supporting files. A route may reuse a template contract
+only when its Product Surface record proves those properties are identical;
+every route still maps its canonical content, states, journeys, wireframe
+address, and production unit.
+
+For D3, a write-scoped independent Screen Contract Author creates this package
+and a separate read-only Contract Reviewer checks it and its cross-package
+mappings.
 
 Use this structure when applicable:
 
 ```md
 # Screen Name
+
+- Contract ID:
+- Contract type: template / route exception / shared system
+- Template ID:
+- Covered Surface IDs or route-catalog query:
+- Explicit exceptions:
 
 ## Purpose
 
@@ -24,32 +39,24 @@ Use this structure when applicable:
 
 ## Information Hierarchy
 
-## Messaging Contract
+## Product And Content References
 
-- Starting user state:
-- Intended leaving state:
-- Main idea:
-- Required proof:
-- Objections:
-- Natural action:
-- Generic-copy risks:
-
-## Messaging System Pass
-
-- Messaging Identity:
-- Page or screen trajectory:
-- Text hierarchy:
-- Placement and density:
-- Proof:
-- Objections:
-- Microcopy:
-- Specificity risks:
+- Product Surface IDs and revision:
+- Route And Template Catalog revision/hash:
+- Messaging Contract and Identity revision:
+- Canonical page-content IDs, paths, revisions, and hashes:
+- Shared UI copy IDs:
+- Required content depth and state-copy families:
+- Unresolved content or source gaps:
 
 ## Layout
 
 ## Sections
 
 ## Components
+
+- Registered production component IDs and source paths:
+- UI-library fidelity-scene/catalog evidence:
 
 ## Interaction Inventory
 

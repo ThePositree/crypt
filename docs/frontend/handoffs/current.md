@@ -1,6 +1,6 @@
 # Current Frontend Phase Handoff
 
-- Protocol version: 2
+- Protocol version: 3
 - Handoff ID: none
 - Status: inactive
 - Updated at: 2026-09-04

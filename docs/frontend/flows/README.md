@@ -4,9 +4,15 @@ Store navigation, user flow, and state diagrams here. Use a clear text-based or
 rendered diagram format for user flows, navigation maps, and state diagrams
 unless a richer artifact is required.
 
+For D3, a write-scoped independent Flow Author creates this package and a
+separate read-only Contract Reviewer checks full route/journey/state coverage.
+
+Reference stable Product Surface, canonical content, and action IDs rather than
+repeating product scope or final copy inside each flow.
+
 Flows answer where the user can go, under what conditions, how states change,
 and where journeys end. Keep them current with related wireframes and screen
-contracts before production UI code changes.
+contracts before product-surface implementation changes.
 
 When a flow depends on information, content, data, media, levels, tools,
 workflows, search, filtering, recommendations, maps, indexes, catalogs, or
