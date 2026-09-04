@@ -20,19 +20,24 @@ labels, copyable CLI snippets, and "what to read next" blocks.
 - D3 P01 task contract, collaboration check, onboarding answers, and
   uncertainty check are recorded in
   `docs/frontend/decisions/2026-09-04-crypt-docs-portal-p01.md`.
-- The rolling P02 handoff is prepared in
-  `docs/frontend/handoffs/current.md` with handoff id
-  `crypt-docs-p02-2026-09-04`.
-- Owner selected Orca-managed independent review/QA for later D3 phases.
+- D3 P02 factual product research and section-to-source mapping are recorded in
+  `docs/frontend/decisions/2026-09-04-crypt-docs-source-map-p02.md`.
+- The Product Surface Model for `crypt docs` is established in
+  `docs/frontend/product-surface-model.md` (Revision 1).
+- The phase handoff `crypt-docs-p02-2026-09-04` is accepted in
+  `docs/frontend/handoffs/current.md` and recorded in
+  `docs/frontend/handoffs/ledger.md`.
+- Independent P02 Product Surface review passed with 0 blocking findings in
+  `docs/frontend/reviews/2026-09-04-crypt-docs-p02-product-surface-review.md`.
+- P02 artifacts are ready for Product Surface Approval.
 
 **Next steps:**
 
-1. Start P02 from `docs/frontend/handoffs/current.md`.
-2. Produce source-grounded Product Surface Model for the documentation portal.
-3. Run independent review for the P02 artifact through Orca-managed
-   coordination when needed.
-4. Present Product Surface Approval to the owner before moving to messaging,
-   visual direction, wireframes, or implementation.
+1. Obtain owner decision on Product Surface Approval.
+2. Advance to P03 (Messaging Identity, source-grounded content authoring,
+   Text Inventory, and independent copy review).
+3. Do not implement Next.js/Tailwind code or visual wireframes until controlling
+   gates are satisfied.
 
 **Acceptance:** the production portal is implemented only after D3 gates are
 satisfied or explicitly waived, and final completion includes rendered

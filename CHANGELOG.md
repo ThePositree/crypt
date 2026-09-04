@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-09-04 - Establish crypt docs Product Surface Model (P02)
+
+- Performed source-grounded factual research for `crypt docs`, mapping all 10
+  required sections and 38 pages directly to canonical repository
+  implementations, architecture specs, and configuration schemas.
+- Authored the canonical Product Surface Model in
+  `docs/frontend/product-surface-model.md` (Revision 1) detailing audience jobs,
+  dual navigation model, interactive affordances, page states, risk boundaries,
+  and maturity classifications.
+- Added supporting factual research and source map artifact in
+  `docs/frontend/decisions/2026-09-04-crypt-docs-source-map-p02.md`.
+- Corrected P02 source-map references to existing repository paths before
+  approval review.
+- Recorded independent P02 Product Surface review evidence with 0 blocking
+  findings and one remaining advisory note about runtime-generated risk-base
+  checkpoint directories.
+- Accepted D3 P02 phase handoff in `docs/frontend/handoffs/current.md` and
+  appended transition evidence to `docs/frontend/handoffs/ledger.md`.
+- Preserved strict non-goals: no Next.js/Tailwind code implemented, no live
+  balances or positions displayed, and no CMS. Prepared artifact for owner
+  Product Surface Approval.
+
 ## 2026-09-04 - Prepare crypt docs portal P01 contract
 
 - Recorded the owner-selected documentation portal scope for `crypt docs`:
