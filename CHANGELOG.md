@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-04 - Prepare crypt docs portal P01 contract
+
+- Recorded the owner-selected documentation portal scope for `crypt docs`:
+  Russian Next.js/Tailwind framework-style docs for developer-crypto-traders,
+  with full-content search, guided and reference navigation, diagrams,
+  dark/light themes, risk markers, maturity labels, and source-authored
+  content.
+- Added the D3 P01 task contract, collaboration check, onboarding answers, and
+  uncertainty check.
+- Prepared the P02 rolling frontend handoff for Product Surface Model authoring
+  and approval.
+
 ## 2026-09-04 - Add D3 phase-main control handoffs
 
 - Required every D3 phase to begin in a fresh main execution context and made

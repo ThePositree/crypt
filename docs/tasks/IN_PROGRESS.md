@@ -3,6 +3,42 @@
 Only active work belongs here. Historical research notes belong in
 `CHANGELOG.md`, `CHANGELOG_ARCHIVE.md`, or archive docs.
 
+## crypt docs documentation portal
+
+**What:** build a large Russian documentation portal that explains how the
+`crypt` codebase works as a crypto-trading framework for a
+developer-crypto-trader audience.
+
+**Why now:** the owner selected a documentation portal as the frontend surface,
+with Next.js plus Tailwind, full curated content in source, full-content
+search, guided learning paths, framework-style reference docs, diagrams,
+dark/light themes, breadcrumbs, sidebar, desktop TOC, risk markers, maturity
+labels, copyable CLI snippets, and "what to read next" blocks.
+
+**Current evidence:**
+
+- D3 P01 task contract, collaboration check, onboarding answers, and
+  uncertainty check are recorded in
+  `docs/frontend/decisions/2026-09-04-crypt-docs-portal-p01.md`.
+- The rolling P02 handoff is prepared in
+  `docs/frontend/handoffs/current.md` with handoff id
+  `crypt-docs-p02-2026-09-04`.
+- Owner selected Orca-managed independent review/QA for later D3 phases.
+
+**Next steps:**
+
+1. Start P02 from `docs/frontend/handoffs/current.md`.
+2. Produce source-grounded Product Surface Model for the documentation portal.
+3. Run independent review for the P02 artifact through Orca-managed
+   coordination when needed.
+4. Present Product Surface Approval to the owner before moving to messaging,
+   visual direction, wireframes, or implementation.
+
+**Acceptance:** the production portal is implemented only after D3 gates are
+satisfied or explicitly waived, and final completion includes rendered
+validation, full-content search evidence, accessibility checks, independent QA,
+durable frontend memory updates, and changelog/task hygiene.
+
 ## Live execution / backtest reconciliation audit
 
 **What:** finish the evidence-backed reconciliation of the live SOL portfolio
