@@ -96,9 +96,13 @@ routes:
   frontend_design:
     match:
       - frontend
+      - site
+      - website
+      - web application
       - ui
       - ux
       - design
+      - page
       - screen
       - component
       - visual
@@ -106,6 +110,9 @@ routes:
       - browser
       - screenshot
       - component docs
+    control_first:
+      - docs/frontend/handoffs/README.md
+      - docs/frontend/handoffs/current.md
     full_docs:
       - docs/agent/frontend_design_subsystem.md
       - docs/frontend/context.md
@@ -139,6 +146,10 @@ routes:
       - Design/control, production implementation, and final QA use separate contexts.
       - Every D3 phase uses a fresh accepted phase main through the rolling
         neighboring-session or observer-managed handoff protocol.
+      - Apply control_first before full_docs. Bootstrap and observer contexts do
+        not load full_docs. A fresh receiving phase-main candidate loads
+        full_docs to validate and accept a prepared handoff, but performs no
+        phase work before ACCEPTED plus a PROCEED Read Receipt.
       - A control-only observer loads handoffs/README.md and handoffs/current.md,
         not the full frontend artifact set; each phase main still reads the full set.
       - handoffs/ledger.md is append-only transition evidence and is read in

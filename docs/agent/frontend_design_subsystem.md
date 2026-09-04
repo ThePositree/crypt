@@ -8,6 +8,24 @@ task, depth, surface, state, and risk. The agent may narrow, skip, reorder, or
 replace a required frontend instruction only after an explicit owner waiver
 uses the waiver phrase defined in this document.
 
+D3 CONTROL ENTRY GATE: for a known or presumptive D3 frontend request, and
+after every resume or detected compaction, inspect the repository bootstrap,
+frontend route, and the control header of `docs/frontend/handoffs/current.md`
+before discovery, onboarding, broad frontend reads, delegation, or a phase-main
+Read Receipt. A missing or `inactive` handoff permits only a control-only
+bootstrap transfer. An invalid or stale handoff permits only blocking or
+recovery. Neither owner chat, pasted onboarding answers, existing repository
+artifacts, nor remembered context substitutes for an accepted handoff. These
+states can never return `PROCEED`.
+
+Before a fresh phase main accepts control, the current context must not ask
+discovery or onboarding questions, perform product research, author or review
+artifacts, implement, or launch phase workers. It may only create or repair the
+control files. A compaction detected before any phase work leaves the context
+eligible only to prepare the initial bootstrap envelope. A compaction detected
+after phase authority was accepted permanently removes that context's authority
+for the D3 run; it cannot bootstrap, recover, continue, or complete the phase.
+
 CONTINUITY OBSERVER EXCEPTION: a context assigned only to bootstrap or preserve
 D3 phase control is not a phase main. It reads the repository bootstrap,
 frontend route, `docs/frontend/handoffs/README.md`, and
@@ -16,7 +34,13 @@ memory, perform phase work, or satisfy a review role. Every phase main still
 reads this complete document and the complete frontend memory set. If the
 control-only context starts frontend research, authoring, design,
 implementation, rendering, or review, the exception is void and that context
-cannot remain the observer.
+cannot remain the observer. Observer eligibility is recorded before the first
+phase main starts and is immutable for the D3 run. An eligible observer has not
+previously been a phase main, artifact author, implementer, reviewer, or QA
+context; has not loaded the full artifact set; and has not compacted. A
+predecessor main can never rename itself observer, coordinator, or integrator.
+Without a previously established eligible observer, use manual neighboring-
+session mode.
 
 READ RECEIPT GATE: before planning, editing, generating artifacts, launching
 rendered checks, or delegating frontend work, publish a concise receipt in chat.
@@ -45,7 +69,7 @@ copy, visual glitches, broken states, unverified assumptions, approximate
 flows, shallow content, partial indexes, and decorative-only product surfaces
 as unfinished frontend work.
 
-Version: 9
+Version: 10
 Updated: 2026-09-04
 
 This document is the canonical instruction set for frontend product, design,
@@ -133,10 +157,17 @@ explicit negative examples:
 - accepting or pasting long worker reports into the main context instead of
   using file-backed artifacts plus compact manifests;
 - accepting summary-only completion signals or terminal-only final reports;
-- launching a worker through an unverified native path when the environment
-  requires an exact model and YOLO profile;
+- launching an independent context through an unverified execution path that
+  cannot prove the required runtime capabilities;
 - keeping one D3 main context across phase boundaries and trusting a compacted
   or reconstructed chat to preserve control state;
+- allowing D3 work to start after `Incoming Handoff: absent` or `inactive`;
+- allowing a predecessor phase main to rename itself observer, coordinator, or
+  integrator after it has already performed phase work;
+- using a hybrid handoff mode instead of one exact protocol mode;
+- ending or releasing a phase main while its owner gate is still pending;
+- telling the owner only that a new phase or session is next without stating
+  the exact required owner action;
 - treating a fresh phase main as an independent reviewer merely because it runs
   in another context;
 - allowing a continuity observer to author, inspect, review, implement, or
@@ -145,6 +176,9 @@ explicit negative examples:
   applications;
 - checking only wireframe structure while ignoring visual fidelity to the
   selected raster direction, UI library, and approved text inventory.
+- treating path existence as factual review while failing to validate symbols,
+  field names, capabilities, maturity claims, counts, and source currency;
+- editing a reviewed artifact without a new revision and focused re-review.
 
 Frontend prompts and handoffs should include the execution context and date
 when results may vary by implementation. Re-evaluate reusable prompts after
@@ -168,6 +202,11 @@ The pre-action Read Receipt records:
 - first gate that controls the next action;
 - current D3 phase and the incoming handoff record, when D3 applies;
 - active phase-handoff mode and the next required control transfer;
+- current session control role and whether compaction was detected;
+- observer identity and immutable eligibility evidence, when observer mode
+  applies;
+- handoff schema and repository-snapshot freshness validation;
+- active phase-main identity and lifecycle state;
 - frontend memory entries that are established, pending, or awaiting owner
   input;
 - `Control Verdict: STOP` or `Control Verdict: PROCEED`;
@@ -185,6 +224,12 @@ The Read Receipt uses this structure:
 - Current D3 Phase:
 - Incoming Handoff:
 - Handoff Mode:
+- Session Control Role:
+- Compaction Seen:
+- Observer Identity And Eligibility:
+- Handoff Schema Validation:
+- Handoff Freshness Validation:
+- Phase-Main Identity And Lifecycle:
 - Next Required Control Transfer:
 - First Controlling Gate:
 - Existing Owner Waivers:
@@ -198,6 +243,13 @@ waiver state, or completed approval gate before taking the next frontend
 action. The refreshed receipt names the new active gate, updates every
 canonical obligation status, and states the next artifact or owner decision
 allowed by the current phase.
+
+For D3, `Incoming Handoff: absent`, `inactive`, stale, or invalid; an unknown or
+hybrid mode; a compacted phase-main context; an unproven observer; a dead active
+main; an incomplete schema; or a repository-state mismatch forces `STOP`.
+These conditions cannot be explained away by product knowledge or prior owner
+answers. The only allowed next action is the bootstrap, manual transfer,
+blocking, or recovery operation required by the handoff protocol.
 
 `Active Gates` are owner-decision gates such as onboarding, Product Surface
 Approval, Visual Direction Approval, Wireframe Approval, Action Contract
@@ -262,7 +314,9 @@ canonical active obligations, and returns `PROCEED`. A `PROCEED` verdict is
 valid only when every applicable canonical obligation is listed with a current
 status. When the first active gate requires owner approval, the Read Receipt
 returns `STOP`; the next action is presenting the required artifact or question
-and waiting for the owner decision.
+and waiting for the owner decision. That `STOP` uses the complete owner-facing
+control action block defined by the handoff protocol; internal control
+terminology is never sufficient owner guidance.
 
 Only explicit owner messages grant approvals and scoped waivers. A scoped
 waiver is valid only when the owner message contains the exact phrase
@@ -389,53 +443,30 @@ not an optional collaboration preference: a new main must reconstruct control
 from current repository state, the full frontend instruction and memory set,
 and a file-backed handoff instead of depending on remembered chat.
 
-The normative phase catalog and stop condition for each phase live in
-`docs/frontend/handoffs/README.md`. A phase ends when its named acceptance
-evidence exists and every owner decision applicable to that phase has been
-recorded. A phase without an owner gate ends at its declared stop condition.
-Owner-requested corrections remain inside the same phase. Approval or
-completion that unlocks the next catalog item creates a mandatory boundary.
+`docs/frontend/handoffs/README.md` is the single normative source for the phase
+catalog, role eligibility, exact mode enum, lifecycle and state machine,
+handoff schema, owner-facing action block, transition events, transfer gap, and
+recovery. Follow it literally; this summary does not redefine those mechanics.
 
-Before the next phase begins, the current phase main must write
-the complete, directly reusable prompt in
-`docs/frontend/handoffs/current.md`, append the control event to
-`docs/frontend/handoffs/ledger.md`, and transfer control by one of these modes:
+A phase ends only when its catalog stop condition is true, including every
+applicable owner decision. Artifact readiness leaves an owner-gated phase main
+active in `gate-waiting`; it must receive and record the decision before it can
+finish. Owner-requested corrections and re-review remain in that phase. At a
+boundary without an owner decision, an eligible observer transfers control
+automatically without requiring the owner to reply `continue`.
 
-- **Manual neighboring-session mode:** the owner places the prompt into a new
-  top-level neighboring session. A subagent or worker is not a valid recipient
-  for this control transfer.
-- **Observer-managed mode:** a persistent observer starts a fresh phase main
-  from the prompt. Use this mode only when the environment supports both a
-  persistent parent context and nested delegation from the phase main to its
-  own independent workers.
+The bootstrap-selected mode is immutable for the D3 run. Manual transfer goes
+only to a fresh neighboring top-level session. Observer-managed transfer uses a
+pre-established control-only observer and a fresh phase main capable of its own
+nested workers. The outgoing main writes the rolling handoff and ledger event;
+the receiver validates and accepts them before phase work. The predecessor
+never becomes observer, and phase-control transfer is not an independent review.
 
-The selected mode appears in the first Read Receipt and in every handoff. When
-both modes are available, prefer observer-managed continuity; otherwise use the
-manual neighboring-session mode. The owner may select a different mode. Phase
-control transfer itself is not artifact delegation and does not require a new
-Collaboration Check; independent work inside the phase still does.
-
-The outgoing main stops after publishing a valid handoff. It may repair an
-invalid handoff or diagnose why the receiving context cannot start, but it may
-not perform work from the next phase. Same-session continuation across a D3
-phase boundary requires an owner message containing `FRONTEND WAIVER:` and
-naming the exact phase-control transfer being waived.
-
-The receiving phase main must read the full frontend instruction and memory set,
-verify repository revision and working-tree ownership, reconcile the incoming
-handoff against canonical files, mark the handoff accepted, publish a fresh Read
-Receipt with O38 satisfied, and explicitly announce acceptance before any phase
-action. The handoff directs loading; it does not replace canonical files or
-full instruction reading. Exactly one phase main may be active at a time.
-
-Any detected context compaction invalidates the current phase main authority.
-The compacted context stops all artifact and implementation work and must not
-reconstruct or rewrite control from its summary. In observer-managed mode, the
-observer starts a replacement from the last valid rolling handoff. In manual
-mode, the owner places that handoff into a new neighboring session. The fresh
-replacement reconciles its recorded checkpoint with repository state, writes
-any required recovery correction, and either accepts the same phase or blocks
-on an ambiguity.
+Every stop, gate, manual transfer, recovery, blocker, and terminal phase result
+uses the exact owner-action block in the normative protocol. Context compaction
+immediately revokes phase-main authority and enters the protocol's explicit
+`RECOVERY_REQUIRED -> RECOVERY_PREPARED -> accepted` path; the compacted context
+does not reconstruct or continue the phase.
 
 ## Owner Steering Contract
 
@@ -517,6 +548,15 @@ Use paired independent contexts for high-impact artifacts:
 - the main design/control context reads the manifest, reviewer verdict, and
   targeted blocker lines, then presents the owner gate or assigns fixes.
 
+When factual research is itself a required independent role, it is a third
+context rather than work silently folded into the author. Record distinct
+context identities for researcher, author or implementer, and reviewer. The
+phase main may run technically as a child process, but it remains the phase
+main: only it creates phase workers, and it must not use its child-process
+placement to claim an independent worker role. Workers do not edit phase
+control, task, or changelog files unless their brief explicitly assigns that
+separate write scope.
+
 The default D3 heavy-artifact loop is:
 
 1. Main writes a self-contained brief and allowed read/write scope.
@@ -531,6 +571,14 @@ The default D3 heavy-artifact loop is:
 7. If blockers exist, main routes them back to the author and then reviewer.
 8. Main presents the owner gate only after the artifact is file-backed,
    reviewed, and either clean or explicitly waived.
+
+The main never implements a review fix itself when the author context is
+available. Any content change after review increments the artifact revision and
+invalidates the previous verdict until the same reviewer, or another qualifying
+reviewer, checks the changed revision. Review must validate semantics, cited
+symbols and capabilities, counts, source currency, and internal consistency;
+checking only that cited paths exist is insufficient. Unsupported claims of
+`100%` alignment or zero blockers are blocking review defects.
 
 If an authoring worker returns only prose instead of writing the required
 artifact file, treat the phase as incomplete. If a review worker pastes a long
@@ -704,10 +752,11 @@ The researcher returns:
 - contradictions and unresolved product questions;
 - facts that must not be inferred from names or historical documentation.
 
-The design/control context reviews this result against the named sources,
-records accepted evidence in a decision or review record, and only then assigns
-Product Surface Model authoring. Contract Review must not be used as the first
-factual product-discovery pass.
+The Factual Product Researcher writes the result to its named artifact. The
+phase main checks only the compact manifest and required fields, then assigns a
+different Product Surface Author. It does not reread the product corpus or the
+full research artifact in parallel. Contract Review must not be used as the
+first factual product-discovery pass.
 
 ## Product Surface Model
 
@@ -720,9 +769,9 @@ Before D3 Product Surface Approval, create or update this file. When
 collaboration is available and approved, a separate authoring context writes
 the Product Surface Model from owner onboarding, canonical product sources, and
 the Independent Factual Product Research artifact. The main design/control
-context should not write the full Product Surface Model itself except when no
-independent authoring context is available or the owner explicitly chooses
-single-context work.
+context must not write the Product Surface Model. If an independent authoring
+context is unavailable, stop and use a neighboring author session or obtain an
+exact scoped owner waiver for single-context authoring.
 
 Required D3 Product Surface delegation sequence:
 
@@ -732,11 +781,19 @@ Required D3 Product Surface delegation sequence:
    `docs/frontend/product-surface-model.md` from owner onboarding, canonical
    product sources, and the factual research artifact.
 3. A separate read-only Contract Reviewer checks the Product Surface Model
-   against the source list, frontend scope, exclusions, and approval criteria.
+   against the source list, frontend scope, exclusions, approval criteria,
+   cited symbols and capabilities, source currency, counts, arithmetic, and
+   internal consistency.
 4. The Product Surface Author fixes blocking findings in the artifact.
 5. The Contract Reviewer rechecks the changed artifact and previous blockers.
 6. The main design/control context reads only compact manifests, verdicts, and
    cited blocker lines before presenting Product Surface Approval.
+
+The researcher, author, reviewer, and phase main must have four distinct
+recorded context identities. A phase main running in a child process is still
+the phase main and cannot count as the researcher or author. After review, it
+enters `gate-waiting` and remains active until the owner decision is recorded;
+only then may it prepare P03 and finish.
 
 The main design/control context must not read the full research artifact and
 then author the Product Surface Model itself. It may create the briefs,
@@ -2173,6 +2230,13 @@ In manual mode, present the exact `current.md` content to the owner and stop. In
 observer mode, return only the handoff ID, path, next phase, status, and blocker
 summary; the observer starts the next main with a short instruction to read and
 execute that file. It does not import the full prompt into its own context.
+
+The manual response explicitly tells the owner to open a new top-level session
+and paste the complete prompt shown in that response. The observer response
+uses `ACTION REQUIRED FROM OWNER: NONE` and starts the next main without waiting
+for `continue`. At an owner gate, no next handoff exists yet: the current main
+remains active, sends the exact gate question, receives the relayed answer, and
+records it before finishing.
 
 The receiving main verifies the handoff against canonical state, accepts it,
 records acceptance in the ledger, and publishes the Read Receipt before phase

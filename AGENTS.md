@@ -20,6 +20,13 @@ If docs and active runtime config disagree, stop and ask the owner. For live
 execution, the runtime source of truth is the loaded config/env, especially
 `EXECUTION_STRATEGY_CONFIG`, not a prose summary.
 
+For any request to create or materially change a frontend, site, website, web
+application, UI, screen, or page, select the `frontend_design` route before
+asking discovery questions. Apply that route's `control_first` files before its
+`full_docs`. For presumptive D3 work, inspect the frontend handoff control state
+first; a missing or inactive handoff allows only the control-only bootstrap and
+does not permit that context to load the route's `full_docs`.
+
 ## Hard Rules
 
 - English in code and docs. Russian only in chat replies to the owner.

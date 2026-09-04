@@ -3,47 +3,6 @@
 Only active work belongs here. Historical research notes belong in
 `CHANGELOG.md`, `CHANGELOG_ARCHIVE.md`, or archive docs.
 
-## crypt docs documentation portal
-
-**What:** build a large Russian documentation portal that explains how the
-`crypt` codebase works as a crypto-trading framework for a
-developer-crypto-trader audience.
-
-**Why now:** the owner selected a documentation portal as the frontend surface,
-with Next.js plus Tailwind, full curated content in source, full-content
-search, guided learning paths, framework-style reference docs, diagrams,
-dark/light themes, breadcrumbs, sidebar, desktop TOC, risk markers, maturity
-labels, copyable CLI snippets, and "what to read next" blocks.
-
-**Current evidence:**
-
-- D3 P01 task contract, collaboration check, onboarding answers, and
-  uncertainty check are recorded in
-  `docs/frontend/decisions/2026-09-04-crypt-docs-portal-p01.md`.
-- D3 P02 factual product research and section-to-source mapping are recorded in
-  `docs/frontend/decisions/2026-09-04-crypt-docs-source-map-p02.md`.
-- The Product Surface Model for `crypt docs` is established in
-  `docs/frontend/product-surface-model.md` (Revision 1).
-- The phase handoff `crypt-docs-p02-2026-09-04` is accepted in
-  `docs/frontend/handoffs/current.md` and recorded in
-  `docs/frontend/handoffs/ledger.md`.
-- Independent P02 Product Surface review passed with 0 blocking findings in
-  `docs/frontend/reviews/2026-09-04-crypt-docs-p02-product-surface-review.md`.
-- P02 artifacts are ready for Product Surface Approval.
-
-**Next steps:**
-
-1. Obtain owner decision on Product Surface Approval.
-2. Advance to P03 (Messaging Identity, source-grounded content authoring,
-   Text Inventory, and independent copy review).
-3. Do not implement Next.js/Tailwind code or visual wireframes until controlling
-   gates are satisfied.
-
-**Acceptance:** the production portal is implemented only after D3 gates are
-satisfied or explicitly waived, and final completion includes rendered
-validation, full-content search evidence, accessibility checks, independent QA,
-durable frontend memory updates, and changelog/task hygiene.
-
 ## Live execution / backtest reconciliation audit
 
 **What:** finish the evidence-backed reconciliation of the live SOL portfolio

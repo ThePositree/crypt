@@ -1,38 +1,24 @@
 # Changelog
 
-## 2026-09-04 - Establish crypt docs Product Surface Model (P02)
+## 2026-09-04 - Harden D3 phase control ownership
 
-- Performed source-grounded factual research for `crypt docs`, mapping all 10
-  required sections and 38 pages directly to canonical repository
-  implementations, architecture specs, and configuration schemas.
-- Authored the canonical Product Surface Model in
-  `docs/frontend/product-surface-model.md` (Revision 1) detailing audience jobs,
-  dual navigation model, interactive affordances, page states, risk boundaries,
-  and maturity classifications.
-- Added supporting factual research and source map artifact in
-  `docs/frontend/decisions/2026-09-04-crypt-docs-source-map-p02.md`.
-- Corrected P02 source-map references to existing repository paths before
-  approval review.
-- Recorded independent P02 Product Surface review evidence with 0 blocking
-  findings and one remaining advisory note about runtime-generated risk-base
-  checkpoint directories.
-- Accepted D3 P02 phase handoff in `docs/frontend/handoffs/current.md` and
-  appended transition evidence to `docs/frontend/handoffs/ledger.md`.
-- Preserved strict non-goals: no Next.js/Tailwind code implemented, no live
-  balances or positions displayed, and no CMS. Prepared artifact for owner
-  Product Surface Approval.
-
-## 2026-09-04 - Prepare crypt docs portal P01 contract
-
-- Recorded the owner-selected documentation portal scope for `crypt docs`:
-  Russian Next.js/Tailwind framework-style docs for developer-crypto-traders,
-  with full-content search, guided and reference navigation, diagrams,
-  dark/light themes, risk markers, maturity labels, and source-authored
-  content.
-- Added the D3 P01 task contract, collaboration check, onboarding answers, and
-  uncertainty check.
-- Prepared the P02 rolling frontend handoff for Product Surface Model authoring
-  and approval.
+- Rejected and removed the invalid crypt-docs P01/P02 trial-run artifacts so a
+  later frontend run starts from an inactive, unpolluted control state.
+- Made missing, inactive, stale, or compacted D3 handoffs hard entry blockers
+  and made observer eligibility immutable before P01.
+- Replaced ambiguous phase endings with an exact owner-action contract for
+  automatic transfer, owner decisions, manual handoff, recovery, and blockers.
+- Required phase mains to remain active through owner gates and prohibited
+  terminal completion or release before the catalog stop condition.
+- Enforced distinct researcher, author, reviewer, and phase-main contexts,
+  revisioned re-review after fixes, and semantic factual checks beyond path
+  existence.
+- Added strict handoff modes, lifecycle states, freshness invalidators, complete
+  schema provenance, and closed transition-ledger event names.
+- Routed site, website, web-application, and page requests into frontend control
+  before discovery questions can bypass the D3 bootstrap.
+- Split frontend routing into control-first and phase-main full-context loading
+  so a bootstrap observer cannot invalidate itself by reading phase artifacts.
 
 ## 2026-09-04 - Add D3 phase-main control handoffs
 
